@@ -37,6 +37,20 @@ public record Models(StreamingChatLanguageModel editModel,
                      String quickModelName,
                      String searchModelName)
 {
+
+    /**
+     * Returns the name of the given model.
+     * 
+     * @param model The model to get the name for
+     * @return The name of the model, or "unknown" if the model is not recognized
+     */
+    public String nameOf(Object model) {
+        if (model == editModel) return editModelName;
+        if (model == applyModel) return applyModelName;
+        if (model == quickModel) return quickModelName;
+        if (model == searchModel) return searchModelName;
+        return "unknown";
+    }
     // langchain4j only supports openai tokenization, this is not very accurate for other providers
     // but doing loc-based estimation based on information in the responses was worse
     private static final OpenAiTokenizer tokenizer = new OpenAiTokenizer("o3-mini");
@@ -111,7 +125,7 @@ public record Models(StreamingChatLanguageModel editModel,
     search_model:
       provider: deepseek
       key: DEEPSEEK_API_KEY
-      name: deepseek-reasoner
+      name: deepseek-chat
       maxTokens: 8192
 
     apply_model:

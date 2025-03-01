@@ -1,5 +1,9 @@
 package io.github.jbellis.brokk;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -11,7 +15,8 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
-import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.model.chat.request.ResponseFormat;
+import dev.langchain4j.model.chat.request.ResponseFormatType;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.Response;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
@@ -282,19 +287,26 @@ public class Coder {
             io.toolOutput(description);
         }
 
-        var response = sendMessageInternal(model, messages, tools);
+        var response = sendMessageInternal(model, messages, tools, false);
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
+        // Also needed for our DeepSeek emulation if it returns a response without a tool call
         while (!tools.isEmpty() && !response.aiMessage().hasToolExecutionRequests()) {
             if (io.isSpinning()) {
                 io.spin("Enforcing tool selection");
             }
             var extraMessages = new ArrayList<>(messages);
             extraMessages.add(response.aiMessage());
-            extraMessages.add(new UserMessage("At least one tool execution request is required"));
-            response = sendMessageInternal(model, extraMessages, tools);
+
+            // Add a stronger instruction for DeepSeek models
+            if (model.toString().toLowerCase().contains("deepseek")) {
+                extraMessages.add(new UserMessage("You MUST call one of the available tools. Format your response as JSON with a tool_calls array."));
+            } else {
+                extraMessages.add(new UserMessage("At least one tool execution request is required"));
+            }
+
+            response = sendMessageInternal(model, extraMessages, tools, true);
         }
 
-        writeToHistory("Response", response.toString());
         if (model instanceof AnthropicChatModel) {
             var tu = (AnthropicTokenUsage) response.tokenUsage();
             writeToHistory("Cache usage", "%s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
@@ -304,18 +316,164 @@ public class Coder {
         return response;
     }
 
-    private ChatResponse sendMessageInternal(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools) {
+    private ChatResponse sendMessageInternal(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, boolean isRetry) {
         writeRequestToHistory(messages, tools);
         var builder = ChatRequest.builder().messages(messages);
+        
         if (!tools.isEmpty()) {
+            // Check if this is a DeepSeek model that needs function calling emulation
+            if (models.nameOf(model).toLowerCase().contains("deepseek")) {
+                return emulateToolsUsingStructuredOutput(model, messages, tools, isRetry);
+            }
+            
+            // For models with native function calling
             var params = ChatRequestParameters.builder()
                     .toolSpecifications(tools)
                     .build();
             builder = builder.parameters(params);
         }
+        
         var request = builder.build();
         var response = model.chat(request);
+        writeToHistory("Response", response.toString());
         return response;
+    }
+    
+    /**
+     * Emulates function calling for models that support structured output but not native function calling
+     * Used primarily for DeepSeek models
+     */
+    private ChatResponse emulateToolsUsingStructuredOutput(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, boolean isRetry) {
+        ObjectMapper mapper = new ObjectMapper();
+
+        logger.debug("sending {} messages with {}", messages.size(), isRetry);
+        if (!isRetry) {
+            // Inject  instructions for the model re how to format function calls
+            messages = new ArrayList<>(messages); // so we can modify it
+            String toolsDescription = tools.stream()
+                    .map(tool -> {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("- ").append(tool.name()).append(": ").append(tool.description());
+
+                        // Add parameters information if available
+                        if (tool.parameters() != null && tool.parameters().properties() != null) {
+                            sb.append("\n  Parameters:");
+                            for (var entry : tool.parameters().properties().entrySet()) {
+                                sb.append("\n    - ").append(entry.getKey());
+
+                                // Try to extract description if available
+                                try {
+                                    JsonNode node = mapper.valueToTree(entry.getValue());
+                                    if (node.has("description")) {
+                                        sb.append(": ").append(node.get("description").asText());
+                                    }
+                                } catch (Exception e) {
+                                    // Ignore, just don't add the description
+                                }
+                            }
+                        }
+                        return sb.toString();
+                    })
+                    .reduce((a, b) -> a + "\n" + b)
+                    .orElse("");
+
+            var jsonPrompt = """
+                You must respond in JSON format with one or more tool calls.
+                Available tools:
+                %s
+
+                Response format:
+                {
+                  "tool_calls": [
+                    {
+                      "name": "tool_name",
+                      "arguments": {
+                        "arg1": "value1",
+                        "arg2": "value2"
+                      }
+                    }
+                  ]
+                }
+                """.formatted(toolsDescription);
+            // Add the system message to the beginning of the messages list
+            messages.set(messages.size() - 1, new UserMessage(Models.getText(messages.getLast()) + "\n\n" + jsonPrompt));
+            logger.debug("Modified messages are {}", messages);
+        }
+
+        // Create a request with JSON response format
+        var requestParams = ChatRequestParameters.builder()
+                .responseFormat(ResponseFormat.builder()
+                        .type(ResponseFormatType.JSON)
+                        .build())
+                .build();
+
+        var request = ChatRequest.builder()
+                .messages(messages)
+                .parameters(requestParams)
+                .build();
+
+        var response = model.chat(request);
+
+        // Parse the JSON response and convert it to a tool execution request
+        try {
+            String jsonResponse = response.aiMessage().text();
+            logger.debug("Raw JSON response from model: {}", jsonResponse);
+                        JsonNode root = mapper.readTree(jsonResponse);
+
+            // Check for tool_calls array format
+            if (root.has("tool_calls") && root.get("tool_calls").isArray()) {
+                JsonNode toolCalls = root.get("tool_calls");
+
+                // Create list of tool execution requests
+                var toolExecutionRequests = new ArrayList<ToolExecutionRequest>();
+
+                for (int i = 0; i < toolCalls.size(); i++) {
+                    JsonNode toolCall = toolCalls.get(i);
+                    if (toolCall.has("name") && toolCall.has("arguments")) {
+                        String toolName = toolCall.get("name").asText();
+                        JsonNode arguments = toolCall.get("arguments");
+                        
+                        String argumentsJson;
+                        if (arguments.isObject()) {
+                            argumentsJson = arguments.toString();
+                        } else {
+                            // Handle case where arguments might be a string instead of object
+                            try {
+                                JsonNode parsedArgs = mapper.readTree(arguments.asText());
+                                argumentsJson = parsedArgs.toString();
+                            } catch (Exception e) {
+                                // If parsing fails, use as-is
+                                argumentsJson = arguments.toString();
+                            }
+                        }
+                        
+                        var toolExecutionRequest = ToolExecutionRequest.builder()
+                                .id(String.valueOf(i))
+                                .name(toolName)
+                                .arguments(argumentsJson)
+                                .build();
+                        
+                        toolExecutionRequests.add(toolExecutionRequest);
+                    }
+                }
+
+                assert !toolExecutionRequests.isEmpty();
+                logger.debug("Generated tool execution requests: {}", toolExecutionRequests);
+
+                // Create a properly formatted AiMessage with tool execution requests
+                var aiMessage = new AiMessage("[json]", toolExecutionRequests);
+
+                return ChatResponse.builder().aiMessage(aiMessage).build();
+            }
+            // If no tool_call found, return original response
+            logger.debug("No tool calls found in response, returning original");
+            return response;
+        } catch (JsonProcessingException e) {
+            logger.error("Error processing JSON response: " + e.getMessage(), e);
+            // Return the original response if parsing fails
+            // TODO better fix for internal errors?
+            return response;
+        }
     }
 
     private void writeRequestToHistory(List<ChatMessage> messages, List<ToolSpecification> tools) {

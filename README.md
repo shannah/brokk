@@ -53,6 +53,7 @@ Requirements: Java 21+
 1. `cd /path/to/my/project`
 2. `export ANTHROPIC_API_KEY=xxy`
    - or, `export OPENAI_API_KEY=xxy`
+   - or, `export DEEPSEEK_API_KEY=xxy`
    - other providers and models are technically supported, making them easier to use is high priority.
      In the meantime, look at Models.java for how to set up a ~/.config/brokk/brokk.yml file with
      your preferred option if the defaults don't work for you.
