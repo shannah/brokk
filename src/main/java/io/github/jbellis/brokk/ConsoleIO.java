@@ -39,7 +39,9 @@ public class ConsoleIO implements AutoCloseable, IConsoleIO {
             // System.setProperty("jline.terminal.read.timeout", "50");
 
             var historyFile = sourceRoot.resolve(".brokk/linereader.txt");
-            this.terminal = TerminalBuilder.terminal();
+            this.terminal = TerminalBuilder.builder()
+                    .nativeSignals(false)
+                    .build();
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)

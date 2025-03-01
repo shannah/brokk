@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import sun.misc.Signal;
 
 import java.io.File;
 import java.io.IOException;
@@ -18,11 +17,10 @@ public class Environment {
      * Runs a shell command using /bin/sh, returning {stdout, stderr}.
      */
     public ProcessResult runShellCommand(String command) throws IOException {
-        var process = createProcessBuilder("/bin/sh", "-c", command).start();
-        var sig = new Signal("INT");
-        var oldHandler = Signal.handle(sig, signal -> process.destroy());
-
+        Process process = null;
         try {
+            process = createProcessBuilder("/bin/sh", "-c", command).start();
+
             var out = new StringBuilder();
             var err = new StringBuilder();
             try (var scOut = new Scanner(process.getInputStream());
@@ -36,15 +34,13 @@ public class Environment {
                 }
             }
 
-            int exitCode;
-            try {
-                exitCode = process.waitFor();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+            int exitCode = process.waitFor();
             return new ProcessResult(exitCode, out.toString(), err.toString());
-        } finally {
-            Signal.handle(sig, oldHandler);
+        } catch (InterruptedException e) {
+            if (process != null) {
+                process.destroy();
+            }
+            throw new RuntimeException("Interrupted!", e);
         }
     }
 

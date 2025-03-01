@@ -13,8 +13,6 @@ import dev.langchain4j.model.output.Response;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import sun.misc.Signal;
-import sun.misc.SignalHandler;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -179,10 +177,6 @@ public class Coder {
 
         var latch = new CountDownLatch(1);
         var streamThread = Thread.currentThread();
-
-        // Handle ctrl-c
-        Signal sig = new Signal("INT");
-        SignalHandler oldHandler = Signal.handle(sig, signal -> streamThread.interrupt());
         AtomicBoolean canceled = new AtomicBoolean(false);
         var lock = new ReentrantLock();
         Consumer<Runnable> ifNotCancelled = (r -> {
@@ -239,8 +233,6 @@ public class Coder {
             lock.unlock();
             io.toolErrorRaw("\nInterrupted!");
             return null;
-        } finally {
-            Signal.handle(sig, oldHandler);
         }
         return atomicResponse.get();
     }

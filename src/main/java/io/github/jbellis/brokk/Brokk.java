@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.ContextManager.OperationResult;
+import sun.misc.Signal;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -70,6 +71,13 @@ public class Brokk {
         
         contextManager.resolveCircularReferences(io, coder);
         commands.resolveCircularReferences(io, coder);
+
+        // Install a global signal handler for CTRL+C
+        Thread mainThread = Thread.currentThread();
+        Signal.handle(new Signal("INT"), signal -> {
+            System.out.println("SH int!");
+            mainThread.interrupt();
+        });
 
         // MOTD
         io.toolOutput("Editor model: " + models.editModelName());

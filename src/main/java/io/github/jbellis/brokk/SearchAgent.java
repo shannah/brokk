@@ -103,6 +103,10 @@ public class SearchAgent {
 
         io.spin("Exploring: " + query);
         while (totalUsage.inputTokenCount() < TOKEN_BUDGET) {
+            if (Thread.interrupted()) {
+                return null;
+            }
+
             // Special handling based on previous steps
             updateActionControlsBasedOnContext();
 
