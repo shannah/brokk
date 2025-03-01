@@ -316,6 +316,8 @@ public record Models(StreamingChatLanguageModel editModel,
             case "openai" -> {
                 if (streaming) {
                     var builder = OpenAiStreamingChatModel.builder()
+                            .logRequests(true)
+                            .logResponses(true)
                             .apiKey(resolvedKey)
                             .modelName(modelName)
                             .maxCompletionTokens(maxTokens);
@@ -333,6 +335,8 @@ public record Models(StreamingChatLanguageModel editModel,
                     yield builder.build();
                 } else {
                     var builder = OpenAiChatModel.builder()
+                            .logRequests(true)
+                            .logResponses(true)
                             .apiKey(resolvedKey)
                             .modelName(modelName)
                             .maxCompletionTokens(maxTokens);
@@ -349,6 +353,8 @@ public record Models(StreamingChatLanguageModel editModel,
             case "anthropic" -> {
                 if (streaming) {
                     var builder = AnthropicStreamingChatModel.builder()
+                            .logRequests(true)
+                            .logResponses(true)
                             .apiKey(resolvedKey)
                             .modelName(modelName)
                             .maxTokens(maxTokens);
@@ -356,6 +362,8 @@ public record Models(StreamingChatLanguageModel editModel,
                     yield builder.build();
                 } else {
                     var builder = AnthropicChatModel.builder()
+                            .logRequests(true)
+                            .logResponses(true)
                             .apiKey(resolvedKey)
                             .modelName(modelName)
                             .maxTokens(maxTokens);
