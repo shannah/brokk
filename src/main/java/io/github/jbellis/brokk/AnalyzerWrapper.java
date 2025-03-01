@@ -108,7 +108,7 @@ public class AnalyzerWrapper {
             }
         }
 
-        return new CodeWithSource(code, sources);
+        return new CodeWithSource(code.toString(), sources);
     }
 
     public static List<String> combinedPageRankFor(Analyzer analyzer, Map<String, Double> weightedSeeds) {
@@ -418,6 +418,6 @@ public class AnalyzerWrapper {
         watcherThread.start();
     }
 
-    public record CodeWithSource(StringBuilder code, Set<CodeUnit> sources) {
+    public record CodeWithSource(String code, Set<CodeUnit> sources) {
     }
 }

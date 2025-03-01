@@ -345,7 +345,7 @@ public class ContextManager implements IContextManager {
             return OperationResult.success("No relevant uses found for " + identifier);
         }
 
-        String combined = result.code().toString();
+        String combined = result.code();
         pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
         return OperationResult.success();
     }

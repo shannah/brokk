@@ -285,6 +285,7 @@ public class Coder {
         if (model instanceof AnthropicChatModel) {
             var tu = (AnthropicTokenUsage) response.tokenUsage();
             writeToHistory("Cache usage", "%s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
+            logger.debug("Cache usage: %s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
         }
 
         return response;

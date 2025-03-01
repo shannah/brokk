@@ -563,7 +563,7 @@ public class SearchAgent {
         }
 
         // Check if we need to filter by relevance (if results are > 10% of token budget)
-        String processedUsages = AnalyzerWrapper.processUsages(analyzer, uses).toString();
+        var processedUsages = AnalyzerWrapper.processUsages(analyzer, uses).code();
         int usageTokens = Models.getApproximateTokens(processedUsages);
         boolean shouldFilter = usageTokens > TOKEN_BUDGET * 0.1;
         if (!shouldFilter) {
