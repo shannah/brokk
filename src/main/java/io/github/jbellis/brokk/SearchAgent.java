@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.CRC32;
 
 /**
  * SearchAgent implements an iterative, agentic approach to code search.
@@ -335,7 +336,7 @@ public class SearchAgent {
         List<ChatMessage> messages = new ArrayList<>();
 
         // System prompt outlining capabilities
-        StringBuilder systemPrompt = new StringBuilder();
+        var systemPrompt = new StringBuilder();
         systemPrompt.append("""
         You are a code search agent that helps find relevant code based on queries.
         Even if not explicitly stated, the query should be understood to refer to the current codebase,
@@ -364,47 +365,54 @@ public class SearchAgent {
             systemPrompt.append("</action-history>\n");
         }
 
-        // Add beast mode if we're out of time
-        if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET) {
-            systemPrompt.append("""
-            <beast-mode>
-            🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
-            - YOU MUST FINALIZE RESULTS NOW WITH AVAILABLE INFORMATION
-            - USE DISCOVERED CODE UNITS TO PROVIDE BEST POSSIBLE ANSWER
-            - FAILURE IS NOT AN OPTION
-            </beast-mode>
-            """.stripIndent());
-            // Force finalize only
-            allowAnswer = true;
-            allowSearch = false;
-            allowSubstringSearch = false;
-            allowInspect = false;
-            allowPagerank = false;
-        }
-
         // Remind about the original query
         systemPrompt.append("\n<original-query>\n");
         systemPrompt.append(query);
         systemPrompt.append("\n</original-query>\n");
 
-        messages.add(new SystemMessage(systemPrompt.toString()));
-        
+        var sysPromptStr = systemPrompt.toString();
+        messages.add(new SystemMessage(sysPromptStr));
+        // log checksum of system prompt
+        var crc32 = new CRC32();
+        crc32.update(sysPromptStr.getBytes());
+        long checksum = crc32.getValue();
+        logger.debug("System prompt length / checksum: {} / {}", sysPromptStr.length(), checksum);
+
         // Add uncached action history to user message
         StringBuilder userActionHistory = new StringBuilder();
         if (!actionHistory.isEmpty()) {
             userActionHistory.append("\n<action-history>\n");
             for (int i = 0; i < actionHistory.size(); i++) {
                 var step = actionHistory.get(i);
-                systemPrompt.append(formatHistory(step, cachedActionHistory.size() + i + 1));
+                userActionHistory.append(formatHistory(step, cachedActionHistory.size() + i + 1));
             }
             userActionHistory.append("</action-history>\n");
         }
+
         var instructions = """
         Determine the next action(s) to take to search for code related to: %s.
         It is more efficient to call multiple tools in a single response when you know they will be needed.
         But if you don't have enough information to speculate, you can call just one tool.
         """.formatted(query);
-        if (!symbolsFound) {
+        if (symbolsFound) {
+            // Switch to beast mode if we're out of time
+            if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET) {
+                instructions = """
+                <beast-mode>
+                🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
+                - YOU MUST FINALIZE RESULTS NOW WITH AVAILABLE INFORMATION
+                - USE DISCOVERED CODE UNITS TO PROVIDE BEST POSSIBLE ANSWER
+                - FAILURE IS NOT AN OPTION
+                </beast-mode>
+                """.stripIndent();
+                // Force finalize only
+                allowAnswer = true;
+                allowSearch = false;
+                allowSubstringSearch = false;
+                allowInspect = false;
+                allowPagerank = false;
+            }
+        } else {
             instructions += """
             Start with broad searches, and then explore more specific code units once you find a foothold.
             For example, if the user is asking
@@ -419,15 +427,15 @@ public class SearchAgent {
     }
 
     private String formatHistory(ToolCall step, int i) {
-        logger.debug("Formatting step: {}", step);
         return """
         <step sequence="%d" tool="%s">
-        <arguments>
-        %s
-        </arguments>
-        <result>
-        %s
-        </result>
+         <arguments>
+         %s
+         </arguments>
+         <result>
+         %s
+         </result>
+        </step>
         """.stripIndent().formatted(i, step.request.name(), step.request.arguments(), step.result);
     }
 
