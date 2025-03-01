@@ -359,7 +359,7 @@ public class SearchAgent {
             systemPrompt.append("\n<action-history>\n");
             for (int i = 0; i < cachedActionHistory.size(); i++) {
                 var step = cachedActionHistory.get(i);
-                systemPrompt.append(String.format("Cached Step %d: %s\n", i + 1, step));
+                systemPrompt.append(formatHistory(step, i + 1));
             }
             systemPrompt.append("</action-history>\n");
         }
@@ -395,7 +395,7 @@ public class SearchAgent {
             userActionHistory.append("\n<action-history>\n");
             for (int i = 0; i < actionHistory.size(); i++) {
                 var step = actionHistory.get(i);
-                userActionHistory.append(String.format("Step %d: %s\n", cachedActionHistory.size() + i + 1, step));
+                systemPrompt.append(formatHistory(step, cachedActionHistory.size() + i + 1));
             }
             userActionHistory.append("</action-history>\n");
         }
@@ -416,6 +416,19 @@ public class SearchAgent {
         messages.add(new UserMessage(userActionHistory + instructions.stripIndent()));
 
         return messages;
+    }
+
+    private String formatHistory(ToolCall step, int i) {
+        logger.debug("Formatting step: {}", step);
+        return """
+        <step sequence="%d" tool="%s">
+        <arguments>
+        %s
+        </arguments>
+        <result>
+        %s
+        </result>
+        """.stripIndent().formatted(i, step.request.name(), step.request.arguments(), step.result);
     }
 
     /**
@@ -575,9 +588,9 @@ public class SearchAgent {
     /**
      * Find related code using PageRank.
      */
-    @Tool("Find related code units using PageRank algorithm. Use this when you've made some progress but got stuck, or when you're almost done and want to double-check that you haven't missed anything.")
+    @Tool("Find related classes. Use this for exploring and also when you're almost done and want to double-check that you haven't missed anything.")
     public String getRelatedClasses(
-        @P(value = "List of fully qualified class names to use as seeds for PageRank. Use classes you've already found that seem relevant.")
+        @P(value = "List of fully qualified class names.")
         List<String> classList,
         @P(value = "Reasoning about what related code you're hoping to discover")
         String reasoning
@@ -686,9 +699,9 @@ public class SearchAgent {
         return methodSourceOpt.get();
     }
 
-    @Tool("Provide a final answer to the current query and remove it from the queue. Use this when you have enough information to fully address the query.")
+    @Tool("Provide a final answer to the query. Use this when you have enough information to fully address the query.")
     public String answer(
-        @P(value = "Comprehensive explanation that answers the current query. Include relevant source code snippets and explain how they relate to the query.")
+        @P(value = "Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query.")
         String explanation,
         @P(value = "List of fully qualified class names (FQCNs) of all classes relevant to the explanation.")
         List<String> classNames
