@@ -42,9 +42,7 @@ public class SearchAgent {
 
     // Budget and action control state
     private boolean allowSearch = true;
-    private boolean allowSkeleton = true;
-    private boolean allowClass = true;
-    private boolean allowMethod = true;
+    private boolean allowInspect = true;
     private boolean allowPagerank = true;
     private boolean allowAnswer = true;
     private boolean allowSubstringSearch = false; // Starts disabled until searchSymbols is called
@@ -184,9 +182,7 @@ public class SearchAgent {
         allowAnswer = !actionHistory.isEmpty();
 
         allowSearch = true;
-        allowSkeleton = true;
-        allowClass = true;
-        allowMethod = true;
+        allowInspect = true;
         allowPagerank = true;
         // don't reset allowSubstringSearch
     }
@@ -292,17 +288,11 @@ public class SearchAgent {
                     getMethodByName("getRelatedClasses")));
         }
 
-        if (allowSkeleton) {
+        if (allowInspect) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getClassSkeleton")));
-        }
-
-        if (allowClass) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getClassSource")));
-        }
-
-        if (allowMethod) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getMethodSource")));
         }
@@ -362,9 +352,9 @@ public class SearchAgent {
             // Force finalize only
             allowAnswer = true;
             allowSearch = false;
-            allowSkeleton = false;
-            allowClass = false;
-            allowMethod = false;
+            allowSubstringSearch = false;
+            allowInspect = false;
+            allowPagerank = false;
         }
 
         // Add knowledge gathered during search
