@@ -19,4 +19,8 @@ public interface IConsoleIO {
 
     default void spinComplete() {
     }
+
+    default boolean isSpinning() {
+        return false;
+    }
 }

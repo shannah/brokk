@@ -406,4 +406,9 @@ public class ConsoleIO implements AutoCloseable, IConsoleIO {
         terminal.writer().println();
         terminal.writer().flush();
     }
+
+    @Override
+    public boolean isSpinning() {
+        return spinnerActive.get();
+    }
 }

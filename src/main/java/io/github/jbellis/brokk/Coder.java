@@ -281,17 +281,18 @@ public class Coder {
         if (description != null) {
             io.toolOutput(description);
         }
-        writeRequestToHistory(messages, tools);
-        var builder = ChatRequest.builder().messages(messages);
-        if (!tools.isEmpty()) {
-            var params = ChatRequestParameters.builder()
-                    .toolSpecifications(tools)
-//                    .toolChoice(ToolChoice.REQUIRED)
-                    .build();
-            builder = builder.parameters(params);
+
+        var response = sendMessageInternal(model, messages, tools);
+        // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
+        while (!tools.isEmpty() && !response.aiMessage().hasToolExecutionRequests()) {
+            if (io.isSpinning()) {
+                io.spin("Enforcing tool selection");
+            }
+            var extraMessages = new ArrayList<>(messages);
+            extraMessages.add(response.aiMessage());
+            extraMessages.add(new UserMessage("At least one tool execution request is required"));
+            response = sendMessageInternal(model, extraMessages, tools);
         }
-        var request = builder.build();
-        var response = model.chat(request);
 
         writeToHistory("Response", response.toString());
         if (model instanceof AnthropicChatModel) {
@@ -300,6 +301,20 @@ public class Coder {
             logger.debug("Cache usage: %s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
         }
 
+        return response;
+    }
+
+    private ChatResponse sendMessageInternal(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools) {
+        writeRequestToHistory(messages, tools);
+        var builder = ChatRequest.builder().messages(messages);
+        if (!tools.isEmpty()) {
+            var params = ChatRequestParameters.builder()
+                    .toolSpecifications(tools)
+                    .build();
+            builder = builder.parameters(params);
+        }
+        var request = builder.build();
+        var response = model.chat(request);
         return response;
     }
 
