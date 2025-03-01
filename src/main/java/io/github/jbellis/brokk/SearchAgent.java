@@ -60,6 +60,8 @@ public class SearchAgent {
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
     private int totalSteps = 0;
+    private int cacheHistoryThreshold = 2000; // Initial threshold for caching
+    private final List<ToolCall> cachedActionHistory = new ArrayList<>(); // Actions moved to system prompt
 
     public SearchAgent(String query, ContextManager contextManager, Coder coder, ConsoleIO io) {
         this.query = query;
@@ -169,8 +171,11 @@ public class SearchAgent {
                 return new ContextFragment.StringFragment(query, result);
             }
 
-            // Add the step to the history
+            // Add the steps to the history
             actionHistory.addAll(results);
+            
+            // Check if we need to move action history to cached history
+            checkAndMoveActionHistoryToCache();
         }
 
         logger.debug("Search complete after reaching max steps or budget");
@@ -379,12 +384,12 @@ public class SearchAgent {
             systemPrompt.append("\n<knowledge>\n%s\n</knowledge>\n".formatted(collected));
         }
 
-        // Add information about current search state
-        if (!actionHistory.isEmpty()) {
+        // Add cached action history to system prompt (for Anthropic context caching)
+        if (!cachedActionHistory.isEmpty()) {
             systemPrompt.append("\n<action-history>\n");
-            for (int i = 0; i < actionHistory.size(); i++) {
-                var step = actionHistory.get(i);
-                systemPrompt.append(String.format("Step %d: %s\n", i + 1, step));
+            for (int i = 0; i < cachedActionHistory.size(); i++) {
+                var step = cachedActionHistory.get(i);
+                systemPrompt.append(String.format("Cached Step %d: %s\n", i + 1, step));
             }
             systemPrompt.append("</action-history>\n");
         }
@@ -395,6 +400,17 @@ public class SearchAgent {
         systemPrompt.append("\n</original-query>\n");
 
         messages.add(new SystemMessage(systemPrompt.toString()));
+        
+        // Add uncached action history to user message
+        StringBuilder userActionHistory = new StringBuilder();
+        if (!actionHistory.isEmpty()) {
+            userActionHistory.append("\n<action-history>\n");
+            for (int i = 0; i < actionHistory.size(); i++) {
+                var step = actionHistory.get(i);
+                userActionHistory.append(String.format("Step %d: %s\n", cachedActionHistory.size() + i + 1, step));
+            }
+            userActionHistory.append("</action-history>\n");
+        }
         var instructions = """
         Determine the next action(s) to take to search for code related to: %s.
         It is more efficient to call multiple tools in a single response when you know they will be needed.
@@ -409,7 +425,7 @@ public class SearchAgent {
             instead of a more specific pattern like ".*SSTable.*compaction.*" or ".*compaction.*invalidation.*"
             """;
         }
-        messages.add(new UserMessage(instructions.stripIndent()));
+        messages.add(new UserMessage(userActionHistory + instructions.stripIndent()));
 
         return messages;
     }
@@ -860,6 +876,36 @@ public class SearchAgent {
                     ", arguments=" + request.arguments() +
                     ", result=" + (result != null ? "'" + result + "'" : "null") +
                     '}';
+        }
+    }
+
+    /**
+     * Checks if action history has exceeded the threshold and if so, moves it to cached history.
+     * This allows us to take advantage of Anthropic context caching while maintaining the full history.
+     */
+    private void checkAndMoveActionHistoryToCache() {
+        if (actionHistory.isEmpty()) {
+            return;
+        }
+        
+        // Calculate approximate tokens in the action history
+        String historyText = actionHistory.stream()
+            .map(ToolCall::toString)
+            .collect(Collectors.joining("\n"));
+        int historyTokens = Models.getApproximateTokens(historyText);
+        
+        // If we've exceeded the threshold, move action history to cached history and double the threshold
+        if (historyTokens > cacheHistoryThreshold) {
+            logger.debug("Moving action history to cache: {} tokens > {} threshold", 
+                        historyTokens, cacheHistoryThreshold);
+            
+            // Move all current actions to cached history
+            cachedActionHistory.addAll(actionHistory);
+            actionHistory.clear();
+            
+            // Double the threshold for next time
+            cacheHistoryThreshold = historyTokens * 2;
+            logger.debug("New cache threshold: {}", cacheHistoryThreshold);
         }
     }
 }

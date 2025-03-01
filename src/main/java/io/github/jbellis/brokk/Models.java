@@ -364,8 +364,9 @@ public record Models(StreamingChatLanguageModel editModel,
                     // Enable caching for search model if specified
                     if (modelMap.containsKey("enableCaching") && (boolean)modelMap.get("enableCaching")) {
                         builder = builder
-                            .cacheSystemMessages(true)
-                            .cacheTools(true);
+                            .cacheSystemMessages(true);
+                        // don't cache tools b/c each one is considered a separate "block" and anthropic only allows 4 cached blocks
+                        //    .cacheTools(true);
                     }
                     yield builder.build();
                 }

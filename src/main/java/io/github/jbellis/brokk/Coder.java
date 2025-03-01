@@ -5,6 +5,8 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
+import dev.langchain4j.model.anthropic.AnthropicChatModel;
+import dev.langchain4j.model.anthropic.AnthropicTokenUsage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
@@ -288,6 +290,10 @@ public class Coder {
         response = model.generate(messages, tools);
 
         writeToHistory("Response", response.toString());
+        if (model instanceof AnthropicChatModel) {
+            var tu = (AnthropicTokenUsage) response.tokenUsage();
+            writeToHistory("Cache usage", "%s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
+        }
 
         return response;
     }
