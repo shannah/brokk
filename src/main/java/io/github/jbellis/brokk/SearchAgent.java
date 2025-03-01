@@ -34,7 +34,6 @@ import java.util.stream.Stream;
 public class SearchAgent {
     private final Logger logger = LogManager.getLogger(SearchAgent.class);
     private static final int TOKEN_BUDGET = 64000; // 64K context window for models like R1
-    private static final int MAX_STEPS = 20;
 
     private final Analyzer analyzer;
     private final ContextManager contextManager;
@@ -42,8 +41,6 @@ public class SearchAgent {
     private final ConsoleIO io;
 
     // Budget and action control state
-    private int badAttempts = 0;
-    private static final int MAX_BAD_ATTEMPTS = 3;
     private boolean allowSearch = true;
     private boolean allowSkeleton = true;
     private boolean allowClass = true;
@@ -59,7 +56,6 @@ public class SearchAgent {
     private final List<Tuple2<String, String>> knowledge = new ArrayList<>();
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
-    private int totalSteps = 0;
     private int cacheHistoryThreshold = 2000; // Initial threshold for caching
     private final List<ToolCall> cachedActionHistory = new ArrayList<>(); // Actions moved to system prompt
 
@@ -108,9 +104,7 @@ public class SearchAgent {
         }
 
         io.spin("Exploring: " + query);
-        while (totalSteps < MAX_STEPS && totalUsage.inputTokenCount() < TOKEN_BUDGET) {
-            totalSteps++;
-
+        while (totalUsage.inputTokenCount() < TOKEN_BUDGET) {
             // Special handling based on previous steps
             updateActionControlsBasedOnContext();
 
@@ -356,7 +350,7 @@ public class SearchAgent {
         """.stripIndent());
 
         // Add beast mode if we're out of time or we've had too many bad attempts
-        if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET || badAttempts >= MAX_BAD_ATTEMPTS) {
+        if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET) {
             systemPrompt.append("""
             <beast-mode>
             🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
