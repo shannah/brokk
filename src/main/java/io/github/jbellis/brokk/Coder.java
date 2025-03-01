@@ -9,6 +9,10 @@ import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.anthropic.AnthropicTokenUsage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ChatRequestParameters;
+import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.Response;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import org.apache.logging.log4j.LogManager;
@@ -256,10 +260,10 @@ public class Coder {
      */
     public String sendMessage(String description, List<ChatMessage> messages) {
         var R = sendMessage(models.quickModel(), description, messages, List.of());
-        return R.content().text().trim();
+        return R.aiMessage().text().trim();
     }
 
-    public Response<AiMessage> sendMessage(ChatLanguageModel model, List<ChatMessage> messages) {
+    public ChatResponse sendMessage(ChatLanguageModel model, List<ChatMessage> messages) {
         return sendMessage(model, null, messages, List.of());
     }
     
@@ -273,13 +277,21 @@ public class Coder {
      * @param tools       List of tools to enable for the LLM
      * @return The LLM response as a string
      */
-    public Response<AiMessage> sendMessage(ChatLanguageModel model, String description, List<ChatMessage> messages, List<ToolSpecification> tools) {
+    public ChatResponse sendMessage(ChatLanguageModel model, String description, List<ChatMessage> messages, List<ToolSpecification> tools) {
         if (description != null) {
             io.toolOutput(description);
         }
         writeRequestToHistory(messages, tools);
-        Response<AiMessage> response;
-        response = model.generate(messages, tools);
+        var builder = ChatRequest.builder().messages(messages);
+        if (!tools.isEmpty()) {
+            var params = ChatRequestParameters.builder()
+                    .toolSpecifications(tools)
+//                    .toolChoice(ToolChoice.REQUIRED)
+                    .build();
+            builder = builder.parameters(params);
+        }
+        var request = builder.build();
+        var response = model.chat(request);
 
         writeToHistory("Response", response.toString());
         if (model instanceof AnthropicChatModel) {

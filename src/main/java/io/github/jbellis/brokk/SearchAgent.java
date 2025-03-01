@@ -99,7 +99,7 @@ public class SearchAgent {
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
             var response = coder.sendMessage(coder.models.searchModel(), messages);
-            knowledge.add(new Tuple2<>("Initial context", response.content().text()));
+            knowledge.add(new Tuple2<>("Initial context", response.aiMessage().text()));
         }
 
         io.spin("Exploring: " + query);
@@ -267,7 +267,7 @@ public class SearchAgent {
         totalUsage = TokenUsage.sum(totalUsage, response.tokenUsage());
 
         // Parse response into potentially multiple actions
-        return parseResponse(response.content());
+        return parseResponse(response.aiMessage());
     }
 
     /**
@@ -512,7 +512,7 @@ public class SearchAgent {
             io.spin("Filtering very large search result");
 
             // Extract mentions of the definitions from the response
-            var relevantDefinitions = extractMatches(response.content().text(), definitions.stream().map(CodeUnit::reference).collect(Collectors.toSet()));
+            var relevantDefinitions = extractMatches(response.aiMessage().text(), definitions.stream().map(CodeUnit::reference).collect(Collectors.toSet()));
 
             logger.debug("Filtered definitions: {} (from {})", relevantDefinitions.size(), definitions.size());
 
@@ -590,7 +590,7 @@ public class SearchAgent {
         if (response == null) {
             return "Error: No response from coder";
         }
-        return "Relevant usages of " + symbol + ":\n\n" + Models.getText(response.content());
+        return "Relevant usages of " + symbol + ":\n\n" + Models.getText(response.aiMessage());
     }
 
     /**
@@ -680,7 +680,7 @@ public class SearchAgent {
             var response = coder.sendMessage(coder.models.searchModel(), messages);
             io.spin("Filtering very large class source");
 
-            return "Relevant portions of " + className + ":\n\n" + response.content().text();
+            return "Relevant portions of " + className + ":\n\n" + response.aiMessage().text();
         } else {
             // Return full class source without filtering
             return "Source code of " + className + ":\n\n" + classSource;
@@ -791,7 +791,7 @@ public class SearchAgent {
                 io.spin("Filtering very large substring search result");
 
                 // Extract mentions of the class names from the response
-                var relevantClasses = extractMatches(response.content().text(), matchingClasses);
+                var relevantClasses = extractMatches(response.aiMessage().text(), matchingClasses);
 
                 logger.debug("Filtered substring search results: {} (from {})", relevantClasses.size(), matchingClasses.size());
                 return "Relevant classes with content matching pattern: " + String.join(", ", relevantClasses);
