@@ -343,24 +343,6 @@ public class SearchAgent {
         Your goal is to find code definitions, implementations, and usages that answer the user's query.
         """.stripIndent());
 
-        // Add beast mode if we're out of time or we've had too many bad attempts
-        if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET) {
-            systemPrompt.append("""
-            <beast-mode>
-            🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
-            - YOU MUST FINALIZE RESULTS NOW WITH AVAILABLE INFORMATION
-            - USE DISCOVERED CODE UNITS TO PROVIDE BEST POSSIBLE ANSWER
-            - FAILURE IS NOT AN OPTION
-            </beast-mode>
-            """.stripIndent());
-            // Force finalize only
-            allowAnswer = true;
-            allowSearch = false;
-            allowSubstringSearch = false;
-            allowInspect = false;
-            allowPagerank = false;
-        }
-
         // Add knowledge gathered during search
         if (!knowledge.isEmpty()) {
             var collected = knowledge.stream().map(t -> systemPrompt.append("""
@@ -380,6 +362,24 @@ public class SearchAgent {
                 systemPrompt.append(String.format("Cached Step %d: %s\n", i + 1, step));
             }
             systemPrompt.append("</action-history>\n");
+        }
+
+        // Add beast mode if we're out of time
+        if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET) {
+            systemPrompt.append("""
+            <beast-mode>
+            🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
+            - YOU MUST FINALIZE RESULTS NOW WITH AVAILABLE INFORMATION
+            - USE DISCOVERED CODE UNITS TO PROVIDE BEST POSSIBLE ANSWER
+            - FAILURE IS NOT AN OPTION
+            </beast-mode>
+            """.stripIndent());
+            // Force finalize only
+            allowAnswer = true;
+            allowSearch = false;
+            allowSubstringSearch = false;
+            allowInspect = false;
+            allowPagerank = false;
         }
 
         // Remind about the original query
