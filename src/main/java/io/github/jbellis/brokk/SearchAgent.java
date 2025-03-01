@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -273,8 +274,8 @@ public class SearchAgent {
     /**
      * Create tool specifications for the LLM based on allowed actions.
      */
-    private List<dev.langchain4j.agent.tool.ToolSpecification> createToolSpecifications() {
-        List<dev.langchain4j.agent.tool.ToolSpecification> tools = new ArrayList<>();
+    private List<ToolSpecification> createToolSpecifications() {
+        List<ToolSpecification> tools = new ArrayList<>();
 
         if (allowSearch) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
