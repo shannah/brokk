@@ -7,6 +7,8 @@ on large codebases that cannot be jammed entirely into working context.
 
 # What Brokk can do
 
+1. Ridiculously good agentic search / code retrieval. Better than Claude Code, better than Sourcegraph,
+   better than Augment Code.  TODO link examples
 1. Automatically determine the most-related classes to your working context and summarize them
 1. Parse a stacktrace and add source for all the methods to your context
 1. Add source for all the usages of a class, field, or method to your context
@@ -29,11 +31,8 @@ Brokk and it will apply the edits.
 
 # What Brokk can do very soon
 
-1. Automerge
-1. Better autocomplete of identifiers while composing a request to the LLM.
-   Right now Brokk requires you to complete a classname before it will
-   offer to complete members of that class.  Just stuffing all the identifiers
-   into the autocomplete would be better.
+1. Automerge with conflict resolution
+1. Dataflow analysis
 
 # Current status
 
