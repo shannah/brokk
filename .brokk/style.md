@@ -6,3 +6,4 @@ Coding Style Guide
 1. **Provide Comprehensive Logging**: The codebase makes extensive use of the `LogManager` and `Logger` classes to log relevant information, including request/response details, errors, and other important events.
 1. **Utilize Try-with-Resources**: The codebase makes use of the try-with-resources construct to ensure proper resource management and cleanup, as seen in the `Environment` class.
 1. **Use `var`**: Prefer `var` for local variable declarations. Exception: numeric types, such as `int`, `float`, etc.
+1. **Avoid StringBuilder**: prefer joins or String.format where possible
