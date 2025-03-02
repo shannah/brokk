@@ -7,3 +7,12 @@ Coding Style Guide
 1. **Utilize Try-with-Resources**: The codebase makes use of the try-with-resources construct to ensure proper resource management and cleanup, as seen in the `Environment` class.
 1. **Use `var`**: Prefer `var` for local variable declarations. Exception: numeric types, such as `int`, `float`, etc.
 1. **Avoid StringBuilder**: prefer joins or String.format where possible
+1. **Multiline parameters**: When calling a method with more parameters than reasonably fit on one line, align as follows:
+```
+   var combined = Streams.concat(currentContext().readonlyFiles(),
+                                 currentContext().virtualFragments(),
+                                 Stream.of(currentContext().getAutoContext()))
+       .map(this::formattedOrNull)
+       .filter(Objects::nonNull)
+       .collect(Collectors.joining("\n\n"));
+```

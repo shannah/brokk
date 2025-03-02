@@ -423,7 +423,7 @@ public interface ContextFragment {
             String st = "";
             for (SkeletonFragment s : skeletons) {
                 if (!st.isEmpty()) {
-                    st += "\n\n";
+                    st += "\n";
                 }
                 st += s.format();
             }

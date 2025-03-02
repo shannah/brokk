@@ -669,11 +669,9 @@ public class ContextManager implements IContextManager {
             return List.of();
         }
 
-        String combined = Streams.concat(
-                        currentContext().readonlyFiles(),
-                        currentContext().virtualFragments(),
-                        Stream.of(currentContext().getAutoContext())
-                )
+        var combined = Streams.concat(currentContext().readonlyFiles(),
+                                      currentContext().virtualFragments(),
+                                      Stream.of(currentContext().getAutoContext()))
                 .map(this::formattedOrNull)
                 .filter(Objects::nonNull)
                 .collect(Collectors.joining("\n\n"));
