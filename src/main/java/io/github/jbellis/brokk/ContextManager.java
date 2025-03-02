@@ -694,6 +694,10 @@ public class ContextManager implements IContextManager {
 
     private String formattedOrNull(ContextFragment fragment) {
         try {
+            if (fragment instanceof ContextFragment.VirtualFragment) {
+                // For virtual fragments, we need to pass the context to get the correct ID
+                return ((ContextFragment.VirtualFragment) fragment).format(currentContext());
+            }
             return fragment.format();
         } catch (IOException e) {
             removeBadFragment(fragment, e);

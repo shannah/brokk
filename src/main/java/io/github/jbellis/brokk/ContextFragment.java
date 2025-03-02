@@ -161,11 +161,15 @@ public interface ContextFragment {
 
         @Override
         public String format() throws IOException {
+            throw new UnsupportedOperationException();
+        }
+        
+        public String format(Context context) throws IOException {
             return """
-            <fragment description="%s">
+            <fragment id="%s" description="%s">
             %s
             </fragment>
-            """.formatted(description(), text()).stripIndent();
+            """.formatted(source(context), description(), text()).stripIndent();
         }
 
         @Override
