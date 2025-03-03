@@ -30,10 +30,10 @@ class ReflectionManager {
     /**
      * getReflectionMessage is responsible for displaying something to the user
      */
-    String getParseReflection(EditBlock.ParseResult parseResult, List<EditBlock.FailedBlock> failedBlocks, List<EditBlock.SearchReplaceBlock> blocks, IContextManager contextManager) {
+    String getParseReflection(List<EditBlock.FailedBlock> failedBlocks, List<EditBlock.SearchReplaceBlock> blocks, IContextManager contextManager) {
         assert !blocks.isEmpty();
 
-        if (parseResult.parseError() == null && failedBlocks.isEmpty()) {
+        if (failedBlocks.isEmpty()) {
             resetParseErrors();
             return "";
         }
@@ -41,10 +41,6 @@ class ReflectionManager {
         incrementParseErrors();
         var reflectionMsg = new StringBuilder();
         
-        if (parseResult.parseError() != null) {
-            io.toolErrorRaw(parseResult.parseError());
-            reflectionMsg.append(parseResult.parseError()).append("\n");
-        }
         if (!failedBlocks.isEmpty()) {
             var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
             var failedApplyMessage = handleFailedBlocks(suggestions, blocks.size() - failedBlocks.size());

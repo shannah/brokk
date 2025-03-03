@@ -68,13 +68,13 @@ public class Coder {
             return;
         }
 
+        // Collect messages from context
+        var messages = DefaultPrompts.instance.collectMessages((ContextManager) contextManager);
         var requestMsg = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
 
         // Reflection loop: up to reflectionManager.maxReflections passes
         var reflectionManager = new ReflectionManager(io, this);
         while (true) {
-            // Collect messages from context
-            var messages = DefaultPrompts.instance.collectMessages((ContextManager) contextManager);
             messages.add(requestMsg);
 
             // Actually send the message to the LLM and get the response
@@ -94,9 +94,16 @@ public class Coder {
 
             // Add the request/response to pending history
             pendingHistory.addAll(List.of(requestMsg, llmResponse.content()));
+            messages.add(llmResponse.content());
 
             // Gather all edit blocks in the reply
             var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, contextManager.getEditableFiles());
+            if (parseResult.parseError() != null) {
+                io.toolErrorRaw(parseResult.parseError());
+                requestMsg = new UserMessage(parseResult.parseError());
+                continue;
+            }
+
             var blocks = parseResult.blocks();
             logger.debug("Parsed {} blocks", blocks.size());
 
@@ -136,7 +143,7 @@ public class Coder {
             logger.debug("Failed blocks: {}", editResult.blocks());
 
             // Check for parse/match failures first 
-            var parseReflection = reflectionManager.getParseReflection(parseResult, editResult.blocks(), blocks, contextManager);
+            var parseReflection = reflectionManager.getParseReflection(editResult.blocks(), blocks, contextManager);
             if (!parseReflection.isEmpty()) {
                 io.toolOutput("Attempting to fix parse/match errors...");
                 model = models.applyModel();
