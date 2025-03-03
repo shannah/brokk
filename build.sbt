@@ -36,7 +36,6 @@ libraryDependencies ++= Seq(
   "dev.langchain4j" % "langchain4j-open-ai" % "1.0.0-beta1",
   
   // Console and logging
-  "org.jline" % "jline" % "3.28.0",
   "org.slf4j" % "slf4j-api" % "2.0.16",
   "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.20.0",
 
@@ -48,11 +47,14 @@ libraryDependencies ++= Seq(
   "io.joern" %% "semanticcpg" % "4.0.265",
   
   // Utilities
+  "com.formdev" % "flatlaf" % "3.5.4",
+  "com.fifesoft" % "rsyntaxtextarea" % "3.5.4",
+  "com.fifesoft" % "autocomplete" % "3.3.2",
   "io.github.java-diff-utils" % "java-diff-utils" % "4.15",
   "org.yaml" % "snakeyaml" % "2.3",
   "org.eclipse.jgit" % "org.eclipse.jgit" % "7.1.0.202411261347-r",
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.0",
-  
+
   // Testing
   "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test
 )

@@ -13,9 +13,16 @@ import java.util.regex.Pattern;
  * Utility for extracting and applying before/after search-replace blocks in content
  */
 public class EditBlock {
+    public enum EditBlockFailureReason {
+        FILE_NOT_FOUND,
+        NO_MATCH,
+        NO_FILENAME,
+        IO_ERROR
+    }
+
     public record EditResult(Map<RepoFile, String> originalContents, List<FailedBlock> blocks) { }
 
-    public record FailedBlock(SearchReplaceBlock block, ReflectionManager.EditBlockFailureReason reason) { }
+    public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
 
     /**
      * Parse the LLM response for SEARCH/REPLACE blocks (or shell blocks, etc.) and apply them.
@@ -73,7 +80,7 @@ public class EditBlock {
 
             // if we still haven't found a matching file, we have to give up
             if (file == null) {
-                failed.add(new FailedBlock(block, ReflectionManager.EditBlockFailureReason.NO_MATCH));
+                failed.add(new FailedBlock(block, EditBlockFailureReason.NO_MATCH));
                 continue;
             }
 
@@ -84,13 +91,13 @@ public class EditBlock {
                     fileContent = file.read();
                 } catch (IOException e) {
                     io.toolError("Could not read files: " + e.getMessage());
-                    failed.add(new FailedBlock(block, ReflectionManager.EditBlockFailureReason.IO_ERROR
+                    failed.add(new FailedBlock(block, EditBlockFailureReason.IO_ERROR
                     ));
                     continue;
                 }
 
                 // Build suggestions
-                var failedBlock = new FailedBlock(block, ReflectionManager.EditBlockFailureReason.NO_MATCH);
+                var failedBlock = new FailedBlock(block, EditBlockFailureReason.NO_MATCH);
                 failed.add(failedBlock);
             } else {
                 // Actually write the file if it changed
@@ -99,7 +106,7 @@ public class EditBlock {
                     file.write(finalUpdated);
                 } catch (IOException e) {
                     io.toolError("Failed writing " + file + ": " + e.getMessage());
-                    failed.add(new FailedBlock(block, ReflectionManager.EditBlockFailureReason.IO_ERROR));
+                    failed.add(new FailedBlock(block, EditBlockFailureReason.IO_ERROR));
                     error = true;
                 }
                 if (!error) {

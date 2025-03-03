@@ -8,7 +8,6 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
-import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -27,11 +26,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -43,9 +41,10 @@ public class ContextManager implements IContextManager {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
     private AnalyzerWrapper analyzerWrapper;
-    private ConsoleIO io;
+    private Chrome io;
     private Coder coder;
     private final ExecutorService backgroundTasks = Executors.newFixedThreadPool(2);
+    private final ConcurrentHashMap<Future<?>, String> activeTasks = new ConcurrentHashMap<>();
 
     public enum Mode {
         EDIT,
@@ -101,7 +100,7 @@ public class ContextManager implements IContextManager {
     /**
      * Called from Brokk to finish wiring up references to ConsoleIO and Coder
      */
-    public void resolveCircularReferences(ConsoleIO io, Coder coder) {
+    public void resolveCircularReferences(Chrome io, Coder coder) {
         this.io = io;
         this.coder = coder;
         this.project = new Project(root, io);
@@ -116,11 +115,11 @@ public class ContextManager implements IContextManager {
         ensureBuildCommand(io, coder);
     }
 
-    private void ensureBuildCommand(ConsoleIO io, Coder coder) {
+    private void ensureBuildCommand(Chrome io, Coder coder) {
         String loadedCommand = project.getBuildCommand();
         if (loadedCommand != null) {
             buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
-            io.toolOutput("Using saved build command: " + loadedCommand);
+            io.llmOutput("\nUsing saved build command: " + loadedCommand);
         } else {
             // do background inference
             List<String> filenames = GitRepo.instance.getTrackedFiles().stream()
@@ -140,7 +139,7 @@ public class ContextManager implements IContextManager {
                     )
             );
 
-            buildCommand = backgroundTasks.submit(() -> {
+            buildCommand = submitBackgroundTask("Inferring build command", () -> {
                 String response;
                 try {
                     response = coder.sendMessage(messages);
@@ -169,20 +168,16 @@ public class ContextManager implements IContextManager {
     }
 
     /**
-     * Return the RepoFiles associated with the given Fragmen index. Throws IllegalArgumentException if no such fragment
+     * Returns the RepoFiles associated with the given fragment index for all fragments. Throws IllegalArgumentException if no such fragment
      */
-    public Set<RepoFile> getFilesFromVirtualFragmentIndex(int index) {
-        // numeric indexes are shown as 1-based in /show
-        int position = index - 1;
+    public Set<RepoFile> getFilesFromFragmentIndex(int index) {
         Context ctx = currentContext();
-        var fragment = ctx.virtualFragments()
-                .filter(f -> ctx.getPositionOfFragment(f) == position)
-                .findFirst();
-        if (fragment.isEmpty()) {
-            throw new IllegalArgumentException("No virtual fragment found at position " + index);
+        var fragment = ctx.toFragment(index);
+        if (fragment == null) {
+            throw new IllegalArgumentException("No fragment found at position " + index);
         }
 
-        var classnames = fragment.get().sources(getAnalyzer());
+        var classnames = fragment.sources(getAnalyzer());
         var files = classnames.stream()
                 .map(cu -> getAnalyzer().pathOf(cu))
                 .filter(Objects::nonNull)
@@ -233,6 +228,21 @@ public class ContextManager implements IContextManager {
                 .removeVirtualFragments(virtualToRemove));
     }
 
+    /**
+     * Removes a single fragment from the context
+     */
+    public void dropOne(ContextFragment frag) {
+        if (frag instanceof ContextFragment.AutoContext) {
+            setAutoContextFiles(0);
+        } else if (frag instanceof ContextFragment.PathFragment pf) {
+            pushContext(ctx -> ctx
+                .removeEditableFiles(List.of(pf))
+                .removeReadonlyFiles(List.of(pf)));
+        } else if (frag instanceof ContextFragment.VirtualFragment vf) {
+            pushContext(ctx -> ctx.removeVirtualFragments(List.of(vf)));
+        }
+    }
+
     /** Clear conversation history */
     public OperationResult clearHistory() {
         pushContext(Context::clearHistory);
@@ -253,7 +263,8 @@ public class ContextManager implements IContextManager {
         var popped = contextHistory.removeLast();
         var redoContext = undoAndInvertChanges(popped);
         redoHistory.add(redoContext);
-        return OperationResult.success();
+        io.updateContextTable(currentContext());
+        return OperationResult.success("Undo!");
     }
 
     /** For /redo */
@@ -264,7 +275,8 @@ public class ContextManager implements IContextManager {
         var popped = redoHistory.removeLast();
         var undoContext = undoAndInvertChanges(popped);
         contextHistory.add(undoContext);
-        return OperationResult.success();
+        io.updateContextTable(currentContext());
+        return OperationResult.success("Redo!");
     }
 
     /**
@@ -314,9 +326,49 @@ public class ContextManager implements IContextManager {
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
     }
 
+    /**
+     * Submits a task to the background executor and updates UI status
+     * @param taskDescription Description of the task for status display
+     * @param task The task to execute
+     * @param <T> Return type of the task
+     * @return Future representing the pending task result
+     */
+    public <T> Future<T> submitBackgroundTask(String taskDescription, java.util.concurrent.Callable<T> task) {
+        var callable = new java.util.concurrent.Callable<T>() {
+            @Override
+            public T call() throws Exception {
+                try {
+                    updateBackgroundStatus();
+                    return task.call();
+                } finally {
+                    activeTasks.remove(this);
+                    updateBackgroundStatus();
+                }
+            }
+        };
+        
+        Future<T> future = backgroundTasks.submit(callable);
+        activeTasks.put(future, taskDescription);
+        updateBackgroundStatus();
+        return future;
+    }
+    
+    /**
+     * Updates the console UI with current background task status
+     */
+    private void updateBackgroundStatus() {
+        if (activeTasks.isEmpty()) {
+            io.spinComplete();
+        } else {
+            String status = activeTasks.values().stream()
+                    .collect(Collectors.joining(", "));
+            io.spin(status);
+        }
+    }
+
     /** Submits a background summarization for pasted content */
     public Future<String> submitSummarizeTaskForPaste(Coder coder, String pastedContent) {
-        return backgroundTasks.submit(() -> {
+        return submitBackgroundTask("Summarizing pasted content", () -> {
             // Summarize these changes in a single line:
             var msgs = List.of(
                     new UserMessage("Please summarize these changes in a single line:"),
@@ -472,153 +524,10 @@ public class ContextManager implements IContextManager {
         this.lastShellOutput = s;
     }
 
-    /**
-     * Shows the current context in a user-friendly listing.
-     */
-    public void show() {
-        // FIXME move to Commands
-        if (currentContext().isEmpty()) {
-            showHeader("No context! Use /add to add files or /help to list commands");
-            return;
-        }
-        int humanContextSize = contextHistory.size() - 1; // first entry is sentinel
-        showHeader("%s mode. %d %s in context history".formatted(
-                mode.name(),
-                humanContextSize,
-                humanContextSize > 1 ? "entries" : "entry"
-        ));
-
-        int termWidth = io.getTerminalWidth();
-        int totalLines = 0;
-
-        // message history lines
-        int historyLines = currentContext().getHistory().stream()
-                .mapToInt(m -> Models.getText(m).split("\n").length)
-                .sum();
-        totalLines += historyLines;
-
-        io.context("Read-only:");
-        if (historyLines > 0) {
-            // just one line summary for message history
-            io.context(formatLine(historyLines, "  [Message History]", termWidth));
-        }
-
-        // auto context
-        totalLines += formatFragments(Stream.of(currentContext().getAutoContext()), termWidth);
-
-        // virtual fragments
-        totalLines += formatFragments(currentContext().virtualFragments(), termWidth);
-
-        // read-only filenames
-        totalLines += formatFragments(currentContext().readonlyFiles(), termWidth);
-
-        // editable
-        if (currentContext().hasEditableFiles()) {
-            io.context("\nEditable:");
-            totalLines += formatFragments(currentContext().editableFiles(), termWidth);
-        }
-
-        io.context("\nTotal:");
-        var st = DefaultPrompts.instance.collectMessages(this).stream().map(Models::getText).collect(Collectors.joining("\n"));
-        int approxTokens = Models.getApproximateTokens(st);
-        io.context(String.format("%s lines, about %,dk tokens",
-                                 formatLoc(totalLines),
-                                 approxTokens / 1000));
-    }
-
-    private void showHeader(String label) {
-        int width = io.getTerminalWidth();
-        String line = "%s %s ".formatted("-".repeat(8), label);
-        if (width - line.length() > 0) {
-            line += "-".repeat(width - line.length());
-        }
-        io.toolOutput(line);
-        if (!coder.isLlmAvailable()) {
-            io.toolErrorRaw("LLM is not configured, not much will work besides /copy");
-        }
-    }
-
-    /**
-     * Formats and prints each fragment with:
-     *   - the line count on the left (6 chars, right-justified)
-     *   - the fragment filename/description (possibly wrapped) on the right
-     * Returns the sum of lines across all fragments printed.
-     */
-    private int formatFragments(Stream<? extends ContextFragment> fragments, int termWidth) {
-        final AtomicInteger sum = new AtomicInteger();
-        Context ctx = currentContext();
-        fragments.forEach(f -> {
-            try {
-                String text = f.text();
-                int lines = text.isEmpty() ? 0 : text.split("\n").length;
-                sum.addAndGet(lines);
-
-                // The "source", i.e. the filename or virtual fragment position
-                String source = f.source(ctx) + ": ";
-
-                // We do naive wrapping of the fragment's short description
-                List<String> wrapped = wrapOnSpace(f.description(), termWidth - (LOC_FIELD_WIDTH + 3 + source.length()));
-
-                if (wrapped.isEmpty()) {
-                    // No description, just print lines + prefix
-                    io.context(formatLine(lines, source, termWidth));
-                } else {
-                    // For virtual fragments, use the context-aware source method
-                    String displaySource = source;
-                    if (f instanceof ContextFragment.VirtualFragment vf) {
-                        displaySource = vf.source(currentContext()) + ": ";
-                    }
-
-                    // First line includes the actual lines count
-                    io.context(formatLine(lines, displaySource + wrapped.getFirst(), termWidth));
-
-                    // Remaining lines: pass 0 so we don't repeat the line count
-                    String indent = " ".repeat(displaySource.length());
-                    for (int i = 1; i < wrapped.size(); i++) {
-                        io.context(formatLine(0, indent + wrapped.get(i), termWidth));
-                    }
-                }
-            } catch (IOException e) {
-                removeBadFragment(f, e);
-            }
-        });
-        return sum.get();
-    }
-
     public void removeBadFragment(ContextFragment f, IOException e) {
-        logger.warn("Removing unreadable fragment %s".formatted(f.source(currentContext())), e);
-        io.toolErrorRaw("Removing unreadable fragment %s".formatted(f.source(currentContext())));
+        logger.warn("Removing unreadable fragment %s".formatted(f.description()), e);
+        io.toolErrorRaw("Removing unreadable fragment %s".formatted(f.description()));
         pushContext(c -> c.removeBadFragment(f));
-    }
-
-    private static final int LOC_FIELD_WIDTH = 9;
-
-    /**
-     * Prints a single line with the integer 'loc' (if > 0) on the left, right-justified to LOC_FIELD_WIDTH, then 'text'.
-     */
-    private static String formatLine(int loc, String text, int width) {
-        var locStr = formatLoc(loc);
-
-        // We'll trim or leave the right side as needed
-        int spaceForText = width - (locStr.length() + 1);
-        if (spaceForText < 1) {
-            spaceForText = 1;
-        }
-        String trimmed = (text.length() > spaceForText)
-                ? text.substring(0, spaceForText)
-                : text;
-
-        return locStr + "  " + trimmed;
-    }
-
-    private static String formatLoc(int loc) {
-        if (loc == 0) {
-            return " ".repeat(LOC_FIELD_WIDTH - 2);
-        }
-
-        int width = LOC_FIELD_WIDTH - 2; // 2 padding spaces
-        String locStr = String.format("%,d", loc);
-        return String.format("%" + width + "s", locStr);
     }
 
     /**
@@ -777,18 +686,6 @@ public class ContextManager implements IContextManager {
     }
 
     /**
-     * Return a combined list of all fragment "sources" (filenames or numeric indices)
-     * used for autocompletion (for /drop, /copy, etc.).
-     */
-    public List<String> getAllFragmentSources() {
-        return Streams.concat(
-                currentContext().editableFiles(),
-                currentContext().readonlyFiles(),
-                currentContext().virtualFragments()
-        ).map(f -> f.source(currentContext())).toList();
-    }
-
-    /**
      * Returns the main analyzer, building it if needed.
      * This will display a UI spinner for user-facing operations.
      */
@@ -808,24 +705,9 @@ public class ContextManager implements IContextManager {
             if (contextHistory.size() > MAX_UNDO_DEPTH) {
                 contextHistory.removeFirst();
             }
-            // Clear redo history
-            redoHistory.clear();
-        }
-    }
 
-    /** Builds the code with the inferred or user-supplied build command, if any. */
-    @Override
-    public OperationResult runBuild() {
-        try {
-            BuildCommand cmd = buildCommand.get();
-            if (cmd.command == null || cmd.command.isBlank()) {
-                io.toolOutput("No build command configured");
-                return OperationResult.success();
-            }
-            io.toolOutput("Running " + cmd.command);
-            return Environment.instance.captureShellCommand(cmd.command);
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
+            redoHistory.clear();
+            io.updateContextTable(newContext);
         }
     }
 
@@ -847,7 +729,7 @@ public class ContextManager implements IContextManager {
             return;
         }
 
-        backgroundTasks.submit(() -> {
+        submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.toolOutput("Generating project style guide...");
 
@@ -883,17 +765,17 @@ public class ContextManager implements IContextManager {
 
                 if (codeForLLM.isEmpty()) {
                     io.toolOutput("No relevant code found for style guide generation");
-                    return;
+                    return Boolean.FALSE;
                 }
 
                 // Generate style guide using LLM
                 List<ChatMessage> messages = List.of(
                         new SystemMessage("You are an expert software engineer. Your task is to extract a concise coding style guide from the provided code examples."),
                         new UserMessage("""
-                        Based on these code examples, create a concise, clear coding style guide in Markdown format 
+                        Based on these code examples, create a concise, clear coding style guide in Markdown format
                         that captures the conventions used in this codebase, particularly the ones that leverage new or uncommon features.
                         DO NOT repeat what are simply common best practices.
-                        
+
                         %s
                         """.stripIndent().formatted(codeForLLM))
                 );
@@ -901,14 +783,17 @@ public class ContextManager implements IContextManager {
                 String styleGuide = coder.sendMessage(messages);
                 if (styleGuide.equals(Models.UNAVAILABLE)) {
                     io.toolOutput("Failed to generate style guide: LLM unavailable");
-                    return;
+                    return Boolean.FALSE;
                 }
 
                 project.saveStyleGuide(styleGuide);
                 io.toolOutput("Style guide generated and saved to .brokk/style.md");
+                return Boolean.TRUE;
             } catch (Exception e) {
                 logger.error("Error generating style guide", e);
             }
+            // Return a dummy value since we're not using the result
+            return null;
         });
     }
 

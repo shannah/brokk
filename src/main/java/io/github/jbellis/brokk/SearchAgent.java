@@ -40,7 +40,7 @@ public class SearchAgent {
     private final Analyzer analyzer;
     private final ContextManager contextManager;
     private final Coder coder;
-    private final ConsoleIO io;
+    private final IConsoleIO io;
 
     // Budget and action control state
     private boolean allowSearch = true;
@@ -59,7 +59,7 @@ public class SearchAgent {
     private int cacheHistoryThreshold = 2000; // Initial threshold for caching
     private final List<ToolCall> cachedActionHistory = new ArrayList<>(); // Actions moved to system prompt
 
-    public SearchAgent(String query, ContextManager contextManager, Coder coder, ConsoleIO io) {
+    public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io) {
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getAnalyzer();

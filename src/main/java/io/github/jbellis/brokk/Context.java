@@ -288,31 +288,7 @@ public class Context {
         return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of());
     }
 
-    /**
-     * Return the String or Path Fragment corresponding to the given target,
-     * or null if not found.
-     */
-    public ContextFragment toFragment(String target) {
-        try {
-            int ordinal = Integer.parseInt(target);
-            if (ordinal == 0) {
-                if (!isAutoContextEnabled()) {
-                    return null;
-                }
-                return autoContext;
-            }
-
-            if (ordinal > virtualFragments.size() || ordinal < 1) {
-                return null;
-            }
-            return virtualFragments.get(ordinal - 1);
-        } catch (NumberFormatException e) {
-            return Streams.concat(editableFiles.stream(), readonlyFiles.stream())
-                    .filter(f -> f.source(this).equals(target))
-                    .findFirst()
-                    .orElse(null);
-        }
-    }
+    // Method removed in favor of toFragment(int position)
 
     public boolean isEmpty() {
         return editableFiles.isEmpty()
@@ -393,10 +369,54 @@ public class Context {
     }
 
     /**
-     * Returns the position (index) of the given fragment in the virtual fragments list.
-     * Returns -1 if the fragment is not in the list.
+     * Returns all fragments in display order:
+     * 0 => autoContext (always present, even when DISABLED)
+     * next => read-only (readonlyFiles + virtualFragments)
+     * finally => editable
      */
-    public int getPositionOfFragment(ContextFragment.VirtualFragment fragment) {
-        return virtualFragments.indexOf(fragment);
+    public List<ContextFragment> getAllFragmentsInDisplayOrder() {
+        var result = new ArrayList<ContextFragment>();
+
+        // Always include autoContext at position 0
+        result.add(autoContext);
+        // then read-only
+        result.addAll(readonlyFiles);
+        result.addAll(virtualFragments);
+        // then editable
+        result.addAll(editableFiles);
+
+        return result;
+    }
+
+    /**
+     * Returns the position (index) of the given fragment in the display-ordered list.
+     * Returns -1 if the fragment is not in the list.
+     * Position 0 is always the autoContext (even if disabled).
+     */
+    public int getPositionOfFragment(ContextFragment fragment) {
+        var ordered = getAllFragmentsInDisplayOrder();
+        int idx = ordered.indexOf(fragment);
+        return idx;  // returns -1 if not found; 0 if autoContext, etc.
+    }
+
+    /**
+     * Returns the fragment at the given position in the display-ordered list.
+     * Returns null if no fragment exists at that position.
+     */
+    public ContextFragment toFragment(int position) {
+        var ordered = getAllFragmentsInDisplayOrder();
+        if (position >= 0 && position < ordered.size()) {
+            return ordered.get(position);
+        }
+        return null;
+    }
+
+    public ContextFragment toFragment(String maybePosition) {
+        try {
+            int position = Integer.parseInt(maybePosition);
+            return toFragment(position);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

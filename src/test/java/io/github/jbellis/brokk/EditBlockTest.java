@@ -51,11 +51,6 @@ class EditBlockTest {
         public Set<RepoFile> findMissingFileMentions(String text) {
             throw new UnsupportedOperationException();
         }
-
-        @Override
-        public ContextManager.OperationResult runBuild() {
-            throw new UnsupportedOperationException();
-        }
     }
 
     static class TestConsoleIO implements IConsoleIO {

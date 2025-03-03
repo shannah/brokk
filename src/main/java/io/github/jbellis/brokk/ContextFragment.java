@@ -14,14 +14,20 @@ public interface ContextFragment {
     /** raw content */
     String text() throws IOException;
 
-    String source(Context context);
-
     /** content formatted for LLM */
     String format() throws IOException;
     /** fq classes found in this fragment */
     Set<CodeUnit> sources(Analyzer analyzer);
     /** should classes found in this fragment be included in AutoContext? */
     boolean isEligibleForAutoContext();
+
+    /**
+     * Returns the position of this fragment in its containing context.
+     * This is computed dynamically by the Context when needed.
+     */
+    default int position(Context context) {
+        return context.getPositionOfFragment(this);
+    }
 
     sealed interface PathFragment extends ContextFragment 
         permits RepoPathFragment, ExternalPathFragment
@@ -43,13 +49,8 @@ public interface ContextFragment {
 
     record RepoPathFragment(RepoFile file) implements PathFragment {
         @Override
-        public String source(Context context) {
-            return file.getFileName();
-        }
-
-        @Override
         public String description() {
-            return file.getParent();
+            return "%s [%s]".formatted(file.getFileName(), file.getParent());
         }
 
         @Override
@@ -70,13 +71,8 @@ public interface ContextFragment {
 
     record ExternalPathFragment(ExternalFile file) implements PathFragment {
         @Override
-        public String source(Context context) {
-            return file.toString();
-        }
-
-        @Override
         public String description() {
-            return "(External)";
+            return file.toString();
         }
 
         @Override
@@ -138,27 +134,6 @@ public interface ContextFragment {
     }
 
     abstract class VirtualFragment implements ContextFragment {
-        /**
-         * Returns the position of this fragment in its containing context.
-         * This is computed dynamically by the Context when needed.
-         */
-        public int position(Context context) {
-            return context.getPositionOfFragment(this);
-        }
-
-        /**
-         * Returns the position-based source string when context is available
-         */
-        @Override
-        public String source(Context context) {
-            int pos = position(context);
-            if (pos == -1) {
-                return "[detached fragment]";
-            }
-            // 1-based label for display
-            return "%d".formatted(pos + 1);
-        }
-
         @Override
         public String format() throws IOException {
             throw new UnsupportedOperationException();
@@ -166,10 +141,10 @@ public interface ContextFragment {
         
         public String format(Context context) throws IOException {
             return """
-            <fragment id="%s" description="%s">
+            <fragment id="%d" description="%s">
             %s
             </fragment>
-            """.formatted(source(context), description(), text()).stripIndent();
+            """.formatted(position(context), description(), text()).stripIndent();
         }
 
         @Override
@@ -395,11 +370,6 @@ public interface ContextFragment {
         }
 
         @Override
-        public String source(Context context) {
-            return "0 [Auto]";
-        }
-
-        @Override
         public String text() {
             return String.join("\n\n", skeletons.stream().map(SkeletonFragment::text).toList());
         }
@@ -414,7 +384,7 @@ public interface ContextFragment {
          */
         @Override
         public String description() {
-            return String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
+            return "[Auto] " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
         }
 
         @Override

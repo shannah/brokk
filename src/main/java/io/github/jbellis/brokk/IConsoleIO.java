@@ -23,4 +23,11 @@ public interface IConsoleIO {
     default boolean isSpinning() {
         return false;
     }
+
+    default void clear() {
+    }
+
+    default char askOptions(String label, String options) {
+        return 'y';
+    }
 }

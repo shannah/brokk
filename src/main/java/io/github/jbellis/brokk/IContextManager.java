@@ -18,5 +18,7 @@ public interface IContextManager {
 
     Set<RepoFile> findMissingFileMentions(String text);
 
-    ContextManager.OperationResult runBuild();
+    default Project getProject() {
+        return null;
+    }
 }

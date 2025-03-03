@@ -37,10 +37,8 @@ public class Environment {
             int exitCode = process.waitFor();
             return new ProcessResult(exitCode, out.toString(), err.toString());
         } catch (InterruptedException e) {
-            if (process != null) {
-                process.destroy();
-            }
-            throw new RuntimeException("Interrupted!", e);
+            process.destroy();
+            return new ProcessResult(Integer.MIN_VALUE, "", "");
         }
     }
 

@@ -11,6 +11,7 @@ public class Project {
     private final IConsoleIO io;
     private final Properties props;
     private final Path styleGuidePath;
+    private final Path historyFilePath;
 
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
 
@@ -18,6 +19,7 @@ public class Project {
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
+        this.historyFilePath = root.resolve(".brokk").resolve("linereader.txt");
         this.io = io;
         this.props = new Properties();
 
@@ -106,5 +108,12 @@ public class Project {
         } catch (IOException e) {
             io.toolErrorRaw("Error saving style guide: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Returns the path to the command history file
+     */
+    public Path getHistoryFilePath() {
+        return historyFilePath;
     }
 }
