@@ -1,5 +1,8 @@
 0.3.0
 
+## Features
+- New agentic /search command offers the most powerful code RAG anywhere
+
 ## Fixes
 - Corner cases of /usages
 
