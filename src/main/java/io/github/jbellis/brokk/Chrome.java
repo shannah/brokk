@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.gui.SmartScroll;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -204,7 +205,9 @@ public class Chrome implements AutoCloseable, IConsoleIO
         llmStreamArea.setWrapStyleWord(true);
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-        return new JScrollPane(llmStreamArea);
+        var jsp = new JScrollPane(llmStreamArea);
+        new SmartScroll(jsp);
+        return jsp;
     }
 
     /**
@@ -1081,25 +1084,9 @@ public class Chrome implements AutoCloseable, IConsoleIO
     }
 
     @Override
-    public void llmOutput(String token)
-    {
+    public void llmOutput(String token) {
         SwingUtilities.invokeLater(() -> {
-            JScrollBar sb = llmScrollPane.getVerticalScrollBar();
-            int value = sb.getValue();
-            int extent = sb.getModel().getExtent();
-            int max = sb.getMaximum();
-
-            // If the user is near the bottom, scroll to stay there
-            var userHasManuallyScrolled = (value + extent < max - 1);
-            System.out.println("Manually scrolled: " + userHasManuallyScrolled);
-
-            // Append the text
             llmStreamArea.append(token);
-
-            // Only auto-scroll if user hasn't scrolled manually
-            if (!userHasManuallyScrolled) {
-                llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
-            }
         });
     }
 
