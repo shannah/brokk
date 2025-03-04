@@ -398,7 +398,7 @@ class EditBlockTest {
      * (Similar to python test_replace_part_with_missing_leading_whitespace_including_blank_line)
      */
     @Test
-    void testReplacePartWithMissingLeadingWhitespaceIncludingBlankLine() {
+    void testReplaceIgnoringWhitespaceIncludingBlankLine() {
         String original = """
                 line1
                     line2

@@ -292,25 +292,6 @@ public class EditBlock {
             return attempt;
         }
 
-        // Count how many leading blank lines in the "search" block
-        int partLeadingBlanks = countLeadingBlankLines(partCL.lines);
-
-        // For 1..partLeadingBlanks: remove exactly i blank lines from search
-        for (int i = 1; i <= partLeadingBlanks; i++) {
-            // slice i leading blank lines from 'partCL'
-            String[] truncatedPart = Arrays.copyOfRange(partCL.lines, i, partCL.lines.length);
-
-            // also slice up to i blank lines from 'replaceCL'
-            int replaceLeadingBlanks = countLeadingBlankLines(replaceCL.lines);
-            int limit = Math.min(i, replaceLeadingBlanks);
-            String[] truncatedReplace = Arrays.copyOfRange(replaceCL.lines, limit, replaceCL.lines.length);
-
-            attempt = perfectOrWhitespace(originalCL.lines, truncatedPart, truncatedReplace);
-            if (attempt != null) {
-                return attempt;
-            }
-        }
-
         // 3) handle triple-dot expansions
         try {
             attempt = tryDotdotdots(content, part, replace);
@@ -403,7 +384,7 @@ public class EditBlock {
         if (perfect != null) {
             return perfect;
         }
-        return replacePartWithMissingLeadingWhitespace(originalLines, partLines, replaceLines);
+        return replaceIgnoringWhitespace(originalLines, partLines, replaceLines);
     }
 
     /**
@@ -440,9 +421,9 @@ public class EditBlock {
      * slice by adjusting each replacement line's indentation to preserve the relative
      * indentation from the 'search' lines.
      */
-    static String replacePartWithMissingLeadingWhitespace(String[] originalLines,
-                                                          String[] partLines,
-                                                          String[] replaceLines) {
+    static String replaceIgnoringWhitespace(String[] originalLines,
+                                            String[] partLines,
+                                            String[] replaceLines) {
         // Skip leading blank lines in the 'search'
         int pStart = 0;
         while (pStart < partLines.length && partLines[pStart].trim().isEmpty()) {

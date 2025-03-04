@@ -91,7 +91,7 @@ class EditBlockInternalsTest {
     }
 
     @Test
-    void testReplacePartWithMissingLeadingWhitespace_includingBlankLine() {
+    void testReplaceIgnoringWhitespace_includingBlankLine() {
         // This is closer to the scenario that breaks in your test:
         // There's an extra blank line in 'search' that doesn't appear in the original.
         String[] whole = {
@@ -108,7 +108,7 @@ class EditBlockInternalsTest {
                 "  replaced_line2\n"
         };
 
-        String attempt = EditBlock.replacePartWithMissingLeadingWhitespace(whole, part, replace);
+        String attempt = EditBlock.replaceIgnoringWhitespace(whole, part, replace);
 
         // We'll see if it aligns or if we get an extra blank line in between
         // (which might be the bug).
