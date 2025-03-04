@@ -516,7 +516,17 @@ public class Chrome implements AutoCloseable, IConsoleIO
             }
         });
         contextTable.setRowHeight(18);
-        contextTable.setTableHeader(null);
+
+        // Set up table header with custom column headers
+        var tableHeader = contextTable.getTableHeader();
+        tableHeader.setReorderingAllowed(false);
+        tableHeader.setResizingAllowed(true);
+        tableHeader.setFont(new Font(Font.DIALOG, Font.BOLD, 12));
+
+        // Hide the header for the "Select" column
+        contextTable.getColumnModel().getColumn(3).setHeaderValue("");
+        contextTable.getColumnModel().getColumn(3).setMaxWidth(60);
+
         contextTable.setIntercellSpacing(new Dimension(10,1));
 
         // column widths
