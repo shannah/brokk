@@ -1183,6 +1183,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
         }
     }
 
+    JFrame getFrame() {
+        assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
+        return frame;
+    }
+
     /**
      * Helper row panel for editing secret keys in a single row
      */

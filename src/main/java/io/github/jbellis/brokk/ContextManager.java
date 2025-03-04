@@ -9,6 +9,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import org.apache.logging.log4j.LogManager;
@@ -172,10 +173,9 @@ public class ContextManager implements IContextManager
      */
     public Future<?> runGoCommandAsync(String input)
     {
+        assert chrome != null;
         return userActionExecutor.submit(() -> {
             try {
-                assert chrome != null;
-
                 if (input.startsWith("$$")) {
                     var command = input.substring(2).trim();
                     chrome.toolOutput("Executing: " + command);
@@ -303,9 +303,9 @@ public class ContextManager implements IContextManager
      */
     public Future<?> addContextViaDialogAsync()
     {
+        assert chrome != null;
         return userActionExecutor.submit(() -> {
             try {
-                if (chrome == null) return;
                 var files = showFileSelectionDialog("Add Context");
                 if (!files.isEmpty()) {
                     addFiles(files);
@@ -331,16 +331,11 @@ public class ContextManager implements IContextManager
     private List<RepoFile> showFileSelectionDialog(String title)
     {
         var dialog = new FileSelectionDialog(null, getRoot(), title);
-        // We can’t safely do frame’s size in background thread. Must do it on EDT:
-        try {
-            SwingUtilities.invokeAndWait(() -> {
-                dialog.setSize(800, dialog.getHeight());
-                dialog.setLocationRelativeTo(null);
-                dialog.setVisible(true);
-            });
-        } catch (Exception e) {
-            logger.warn("Interrupted showing file selection dialog", e);
-        }
+        SwingUtil.runOnEDT(() -> {
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), 400);
+            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setVisible(true);
+        });
         if (dialog.isConfirmed()) {
             return dialog.getSelectedFiles();
         }
