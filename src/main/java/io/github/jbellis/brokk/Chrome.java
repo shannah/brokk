@@ -567,6 +567,63 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Tools or "View" or "Actions" menu
         JMenu actionsMenu = new JMenu("Actions");
         actionsMenu.setMnemonic(KeyEvent.VK_T);
+        JMenuItem setAutoContextItem = new JMenuItem("Set autocontext size");
+        setAutoContextItem.addActionListener(e -> {
+            // Create a custom dialog with a spinner
+            JDialog dialog = new JDialog(frame, "Set Autocontext Size", true);
+            dialog.setLayout(new BorderLayout());
+
+            // Create a panel for the spinner and label
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+            // Label
+            JLabel label = new JLabel("Enter autocontext size (0-100):");
+            panel.add(label, BorderLayout.NORTH);
+
+            // Create spinner with number model (default to current setting or 50)
+            JSpinner spinner = new JSpinner(new SpinnerNumberModel(
+                    contextManager.currentContext().autoContextFileCount,    // initial value (current setting)
+                    0,     // min
+                    100,   // max
+                    1      // step
+            ));
+            panel.add(spinner, BorderLayout.CENTER);
+            
+            // Add button panel with OK and Cancel
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            JButton okButton = new JButton("OK");
+            JButton cancelButton = new JButton("Cancel");
+
+            okButton.addActionListener(okEvent -> {
+                int newSize = (Integer) spinner.getValue();
+                contextManager.setAutoContextFiles(newSize);
+                toolOutput("Auto-context size set to " + newSize);
+                dialog.dispose();
+            });
+
+            cancelButton.addActionListener(cancelEvent -> dialog.dispose());
+
+            buttonPanel.add(okButton);
+            buttonPanel.add(cancelButton);
+            panel.add(buttonPanel, BorderLayout.SOUTH);
+
+            // Set OK as the default button
+            dialog.getRootPane().setDefaultButton(okButton);
+            
+            // Add escape key handler to cancel
+            dialog.getRootPane().registerKeyboardAction(
+                event -> dialog.dispose(),
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW
+            );
+
+            dialog.add(panel);
+            dialog.pack();
+            dialog.setLocationRelativeTo(frame);
+            dialog.setVisible(true);
+        });
+        actionsMenu.add(setAutoContextItem);
 
         JMenuItem refreshItem = new JMenuItem("Refresh Code Intelligence");
         refreshItem.addActionListener(e -> {
