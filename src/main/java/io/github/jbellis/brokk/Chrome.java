@@ -497,7 +497,10 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
-        tablePanel.add(new JScrollPane(contextTable), BorderLayout.CENTER);
+        JScrollPane tableScrollPane = new JScrollPane(contextTable);
+        // Set a preferred size to maintain height even when empty (almost works)
+        tableScrollPane.setPreferredSize(new Dimension(600, 150));
+        tablePanel.add(tableScrollPane, BorderLayout.CENTER);
 
         // Buttons panel
         var buttonsPanel = createContextButtonsPanel();
