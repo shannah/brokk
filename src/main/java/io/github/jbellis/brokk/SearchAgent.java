@@ -90,7 +90,7 @@ public class SearchAgent {
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {
-            io.spin("Evaluating context");
+            io.shellOutput("Evaluating context");
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
             You are an expert software architect.
@@ -103,7 +103,7 @@ public class SearchAgent {
             knowledge.add(new Tuple2<>("Initial context", response.aiMessage().text()));
         }
 
-        io.spin("Exploring: " + query);
+        io.shellOutput("Exploring: " + query);
         while (totalUsage.inputTokenCount() < TOKEN_BUDGET) {
             if (Thread.interrupted()) {
                 return null;
@@ -124,7 +124,7 @@ public class SearchAgent {
             ToolCall firstStep = steps.getFirst();
             String toolName = firstStep.getRequest().name();
             String explanation = getExplanationForTool(toolName, firstStep);
-            io.spin(explanation);
+            io.shellOutput(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
             logger.debug("Actions: {}", steps);
 
@@ -510,7 +510,7 @@ public class SearchAgent {
                                           "to your previous reasoning."));
             messages.add(new UserMessage("Query: %s\nReasoning:%s\nDefinitions found:\n%s".formatted(query, reasoning, definitions)));
             var response = coder.sendMessage(coder.models.searchModel(), messages);
-            io.spin("Filtering very large search result");
+            io.shellOutput("Filtering very large search result");
 
             // Extract mentions of the definitions from the response
             var relevantDefinitions = extractMatches(response.aiMessage().text(), definitions.stream().map(CodeUnit::reference).collect(Collectors.toSet()));
@@ -679,7 +679,7 @@ public class SearchAgent {
             messages.add(new UserMessage("Query: %s\nReasoning: %s\nClass source for %s:\n%s".formatted(
                     query, reasoning, className, classSource)));
             var response = coder.sendMessage(coder.models.searchModel(), messages);
-            io.spin("Filtering very large class source");
+            io.shellOutput("Filtering very large class source");
 
             return "Relevant portions of " + className + ":\n\n" + response.aiMessage().text();
         } else {
@@ -789,7 +789,7 @@ public class SearchAgent {
                 messages.add(new UserMessage("Query: %s\nReasoning: %s\nClasses found with content matching pattern '%s':\n%s".formatted(
                         query, reasoning, pattern, String.join("\n", matchingClasses))));
                 var response = coder.sendMessage(coder.models.searchModel(), messages);
-                io.spin("Filtering very large substring search result");
+                io.shellOutput("Filtering very large substring search result");
 
                 // Extract mentions of the class names from the response
                 var relevantClasses = extractMatches(response.aiMessage().text(), matchingClasses);
