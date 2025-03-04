@@ -8,10 +8,13 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Future;
@@ -192,7 +195,8 @@ public class Chrome implements AutoCloseable, IConsoleIO
         llmStreamArea.setEditable(false);
         // We'll treat the content as plain text
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
-        llmStreamArea.setAutoscrolls(true);
+        var caret = (DefaultCaret) llmStreamArea.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
         llmStreamArea.setLineWrap(true);
         llmStreamArea.setWrapStyleWord(true);
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
@@ -201,20 +205,14 @@ public class Chrome implements AutoCloseable, IConsoleIO
         
         // Add scroll listener to detect manual scrolling
         scrollPane.getVerticalScrollBar().addAdjustmentListener(e -> {
-            // Check if we're at the bottom
-            JScrollBar scrollBar = scrollPane.getVerticalScrollBar();
-            int value = scrollBar.getValue();
-            int extent = scrollBar.getModel().getExtent();
-            int maximum = scrollBar.getMaximum();
+            JScrollBar sb = scrollPane.getVerticalScrollBar();
+            int value = sb.getValue();
+            int extent = sb.getModel().getExtent();
+            int max = sb.getMaximum();
 
-            // If we're at (or very near) the bottom, re-enable auto-scroll
-            if (value + extent >= maximum - 1) {
-                // User scrolled to bottom, so we should auto-scroll from now on
-                userHasManuallyScrolled = false;
-            } else {
-                // User has scrolled somewhere else, so don't auto-scroll
-                userHasManuallyScrolled = true;
-            }
+            // If the user is near the bottom, re-enable autoscroll. Otherwise disable it.
+            userHasManuallyScrolled = (value + extent < max - 1);
+            System.out.println("Manually scrolled: " + userHasManuallyScrolled);
         });
 
         return scrollPane;
@@ -484,7 +482,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-
+        
         contextTable = new JTable(new DefaultTableModel(
                 new Object[]{"ID", "LOC", "Description", "Select"}, 0)
         {
@@ -551,6 +549,12 @@ public class Chrome implements AutoCloseable, IConsoleIO
         contextPanel.add(tablePanel, BorderLayout.CENTER);
         contextPanel.add(buttonsPanel, BorderLayout.EAST);
         contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
+        contextPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                contextPanel.requestFocusInWindow();
+            }
+        });
 
         updateContextButtons();  // initialize
         locSummaryLabel.setText("No context - use Edit or Read or Summarize to add content");
@@ -739,34 +743,106 @@ public class Chrome implements AutoCloseable, IConsoleIO
     {
         var rootPane = frame.getRootPane();
 
-        // Ctrl+Z => undo
-        var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
-        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
-        rootPane.getActionMap().put("globalUndo", new AbstractAction()
-        {
+        // Register global keyboard shortcuts using KeyboardFocusManager
+        // This approach handles events even when input components have focus
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
+            // Only process PRESSED events to avoid duplicates
+            if (e.getID() != KeyEvent.KEY_PRESSED) {
+                return false;
+            }
+
+            // Check for Ctrl+V (paste)
+            if (e.isControlDown() && !e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_V) {
+                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                // Only intercept if not already in a text component
+                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
+                    if (contextManager != null) {
+                        currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+                        return true; // Consume the event
+                    }
+                }
+            }
+
+            // Check for Ctrl+Z (undo)
+            else if (e.isControlDown() && !e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_Z) {
+                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                // Only intercept if not in a text component
+                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
+                    if (contextManager != null) {
+                        disableUserActionButtons();
+                        disableContextActionButtons();
+                        currentUserTask = contextManager.undoContextAsync();
+                        return true; // Consume the event
+                    }
+                }
+            }
+
+            // Check for Ctrl+Shift+Z (redo)
+            else if (e.isControlDown() && e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_Z) {
+                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                // Only intercept if not in a text component
+                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
+                    if (contextManager != null) {
+                        disableUserActionButtons();
+                        disableContextActionButtons();
+                        currentUserTask = contextManager.redoContextAsync();
+                        return true; // Consume the event
+                    }
+                }
+            }
+
+            return false; // Let other components handle the event
+        });
+
+        // Also keep the menu shortcuts working by registering them normally
+        // These will work when menu items are focused
+
+        // Ctrl+V => paste (for menus)
+        var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
+        rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (contextManager != null) {
-                    disableUserActionButtons();
-                    disableContextActionButtons();
-                    // run in background
-                    currentUserTask = contextManager.undoContextAsync();
+                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
+                    if (contextManager != null) {
+                        currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+                    }
                 }
             }
         });
 
-        // Ctrl+Shift+Z => redo
+        // Ctrl+Z => undo (for menus)
+        var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
+        rootPane.getActionMap().put("globalUndo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
+                    if (contextManager != null) {
+                        disableUserActionButtons();
+                        disableContextActionButtons();
+                        currentUserTask = contextManager.undoContextAsync();
+                    }
+                }
+            }
+        });
+
+        // Ctrl+Shift+Z => redo (for menus)
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
                                                    InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
-        rootPane.getActionMap().put("globalRedo", new AbstractAction()
-        {
+        rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (contextManager != null) {
-                    disableUserActionButtons();
-                    disableContextActionButtons();
-                    currentUserTask = contextManager.redoContextAsync();
+                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
+                    if (contextManager != null) {
+                        disableUserActionButtons();
+                        disableContextActionButtons();
+                        currentUserTask = contextManager.redoContextAsync();
+                    }
                 }
             }
         });
@@ -821,6 +897,15 @@ public class Chrome implements AutoCloseable, IConsoleIO
             currentUserTask = contextManager.redoContextAsync();
         });
         editMenu.add(redoItem);
+
+        editMenu.addSeparator();
+
+        var pasteMenuItem = new JMenuItem("Paste");
+        pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK));
+        pasteMenuItem.addActionListener(e -> {
+            currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+        });
+        editMenu.add(pasteMenuItem);
 
         menuBar.add(editMenu);
 
@@ -1224,7 +1309,9 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 llmStreamArea.append("\n");
             }
             llmStreamArea.append(st);
-            llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
+            if (!userHasManuallyScrolled) {
+                llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
+            }
         });
     }
 
