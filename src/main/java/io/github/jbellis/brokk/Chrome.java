@@ -5,6 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -16,6 +17,7 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Future;
@@ -123,12 +125,16 @@ public class Chrome implements AutoCloseable, IConsoleIO
         frame.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
-                saveWindowSizeAndPosition();
+                if (project != null) {
+                    project.saveMainWindowBounds(frame);
+                }
             }
-            
+
             @Override
             public void componentMoved(java.awt.event.ComponentEvent e) {
-                saveWindowSizeAndPosition();
+                if (project != null) {
+                    project.saveMainWindowBounds(frame);
+                }
             }
         });
     }
@@ -544,6 +550,22 @@ public class Chrome implements AutoCloseable, IConsoleIO
         // column widths
         contextTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(480);
+        
+        // Add double-click listener to open fragment preview
+        contextTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = contextTable.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+                        if (fragment != null) {
+                            openFragmentPreview(fragment);
+                        }
+                    }
+                }
+            }
+        });
         ((DefaultTableModel) contextTable.getModel()).addTableModelListener(e -> {
             if (e.getColumn() == CHECKBOX_COLUMN) {
                 updateContextButtons();
@@ -1257,22 +1279,122 @@ public class Chrome implements AutoCloseable, IConsoleIO
         }
     }
 
+    
     /**
-     * Saves the current window size and position to project properties
+     * Opens a preview window for a context fragment
+     * @param fragment The fragment to preview
      */
-    private void saveWindowSizeAndPosition() {
-        if (project != null && frame != null && frame.isDisplayable()) {
-            // Only save position if the window is in a non-iconified state
-            if (frame.getExtendedState() == JFrame.NORMAL) {
-                project.setWindowX(frame.getX());
-                project.setWindowY(frame.getY());
-                project.setWindowWidth(frame.getWidth());
-                project.setWindowHeight(frame.getHeight());
-                
-                // Immediately save properties to ensure they're persisted
-                project.saveProperties();
+    private void openFragmentPreview(ContextFragment fragment) {
+        String text;
+        try {
+            text = fragment.text();
+        } catch (IOException e) {
+            contextManager.removeBadFragment(fragment, e);
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            // Create a new window
+            var previewFrame = new JFrame(fragment.description());
+            previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            
+            // Create syntax text area
+            var textArea = new RSyntaxTextArea();
+            textArea.setText(text);
+            textArea.setEditable(false);
+            textArea.setCodeFoldingEnabled(true);
+            textArea.setSyntaxEditingStyle(getSyntaxStyleForFragment(fragment));
+            
+            try {
+                Theme.load(getClass().getResourceAsStream(
+                    "/org/fife/ui/rsyntaxtextarea/themes/default.xml"))
+                    .apply(textArea);
+            } catch (Exception e) {
+                logger.warn("Could not load theme for preview", e);
+            }
+            
+            var scrollPane = new JScrollPane(textArea);
+            previewFrame.add(scrollPane);
+            
+            // Ensure text area starts scrolled to the top
+            textArea.setCaretPosition(0);
+            
+            // Set window size from saved properties
+            Rectangle bounds = project.getPreviewWindowBounds();
+            previewFrame.setSize(bounds.width, bounds.height);
+            
+            // Position the window, checking if position is valid
+            if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
+                previewFrame.setLocation(bounds.x, bounds.y);
+            } else {
+                previewFrame.setLocationRelativeTo(frame);
+            }
+            
+            // Add component listener to save position
+            previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
+                @Override
+                public void componentResized(java.awt.event.ComponentEvent e) {
+                    project.savePreviewWindowBounds(previewFrame);
+                }
+
+                @Override
+                public void componentMoved(java.awt.event.ComponentEvent e) {
+                    project.savePreviewWindowBounds(previewFrame);
+                }
+            });
+            
+            // Add Escape key to close
+            previewFrame.getRootPane().registerKeyboardAction(
+                e -> previewFrame.dispose(),
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW
+            );
+            
+            previewFrame.setVisible(true);
+        });
+    }
+    
+    /**
+     * Determines the appropriate syntax style for a fragment
+     */
+    private String getSyntaxStyleForFragment(ContextFragment fragment) {
+        // Default to Java
+        var style = SyntaxConstants.SYNTAX_STYLE_JAVA;
+        
+        // Check fragment path if it's a file
+        if (fragment instanceof ContextFragment.RepoPathFragment) {
+            var path = ((ContextFragment.RepoPathFragment) fragment).file().getFileName().toLowerCase();
+            
+            if (path.endsWith(".md") || path.endsWith(".markdown")) {
+                style = SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
+            } else if (path.endsWith(".py")) {
+                style = SyntaxConstants.SYNTAX_STYLE_PYTHON;
+            } else if (path.endsWith(".js")) {
+                style = SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT;
+            } else if (path.endsWith(".html") || path.endsWith(".htm")) {
+                style = SyntaxConstants.SYNTAX_STYLE_HTML;
+            } else if (path.endsWith(".xml")) {
+                style = SyntaxConstants.SYNTAX_STYLE_XML;
+            } else if (path.endsWith(".json")) {
+                style = SyntaxConstants.SYNTAX_STYLE_JSON;
+            } else if (path.endsWith(".css")) {
+                style = SyntaxConstants.SYNTAX_STYLE_CSS;
+            } else if (path.endsWith(".sql")) {
+                style = SyntaxConstants.SYNTAX_STYLE_SQL;
+            } else if (path.endsWith(".sh") || path.endsWith(".bash")) {
+                style = SyntaxConstants.SYNTAX_STYLE_UNIX_SHELL;
+            } else if (path.endsWith(".c") || path.endsWith(".h")) {
+                style = SyntaxConstants.SYNTAX_STYLE_C;
+            } else if (path.endsWith(".cpp") || path.endsWith(".hpp") || 
+                       path.endsWith(".cc") || path.endsWith(".hh")) {
+                style = SyntaxConstants.SYNTAX_STYLE_CPLUSPLUS;
+            } else if (path.endsWith(".properties")) {
+                style = SyntaxConstants.SYNTAX_STYLE_PROPERTIES_FILE;
+            } else if (path.endsWith(".kt")) {
+                style = SyntaxConstants.SYNTAX_STYLE_KOTLIN;
             }
         }
+        
+        return style;
     }
     
     /**
@@ -1280,44 +1402,37 @@ public class Chrome implements AutoCloseable, IConsoleIO
      */
     private void loadWindowSizeAndPosition() {
         assert project != null;
-        int x = project.getWindowX();
-        int y = project.getWindowY();
-        int width = project.getWindowWidth();
-        int height = project.getWindowHeight();
-
+        Rectangle bounds = project.getMainWindowBounds();
+        
         // Only apply saved values if they're valid
-        if (width > 0 && height > 0) {
-            frame.setSize(width, height);
+        if (bounds.width > 0 && bounds.height > 0) {
+            frame.setSize(bounds.width, bounds.height);
 
             // Only use the position if it was actually set (not -1)
-            if (x >= 0 && y >= 0) {
-                // Check if the saved position is on a visible screen
-                boolean validPosition = false;
-                for (var screen : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
-                    for (var config : screen.getConfigurations()) {
-                        var bounds = config.getBounds();
-                        if (bounds.contains(x, y)) {
-                            validPosition = true;
-                            break;
-                        }
-                    }
-                    if (validPosition) break;
-                }
-
-                if (validPosition) {
-                    frame.setLocation(x, y);
-                } else {
-                    // If not on a visible screen, center the window
-                    frame.setLocationRelativeTo(null);
-                }
+            if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
+                frame.setLocation(bounds.x, bounds.y);
             } else {
-                // If position wasn't saved, center the window
+                // If not on a visible screen, center the window
                 frame.setLocationRelativeTo(null);
             }
         } else {
             // If no valid size is saved, center the window
             frame.setLocationRelativeTo(null);
         }
+    }
+    
+    /**
+     * Checks if a position is on any available screen
+     */
+    private boolean isPositionOnScreen(int x, int y) {
+        for (var screen : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            for (var config : screen.getConfigurations()) {
+                if (config.getBounds().contains(x, y)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     JFrame getFrame() {

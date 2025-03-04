@@ -1,7 +1,10 @@
 package io.github.jbellis.brokk;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +23,8 @@ public class Project {
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
     private static final int DEFAULT_WINDOW_WIDTH = 800;
     private static final int DEFAULT_WINDOW_HEIGHT = 1200;
+    
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public Project(Path root, IConsoleIO io) {
         this.root = root;
@@ -41,10 +46,18 @@ public class Project {
         // Set defaults on missing or error
         if (props.isEmpty()) {
             props.setProperty("autoContextFileCount", String.valueOf(DEFAULT_AUTO_CONTEXT_FILE_COUNT));
-            props.setProperty("windowWidth", String.valueOf(DEFAULT_WINDOW_WIDTH));
-            props.setProperty("windowHeight", String.valueOf(DEFAULT_WINDOW_HEIGHT));
-            props.setProperty("windowX", "-1");  // -1 means center the window
-            props.setProperty("windowY", "-1");
+            // Create default window positions
+            var mainFrame = objectMapper.createObjectNode();
+            mainFrame.put("x", -1);
+            mainFrame.put("y", -1);
+            mainFrame.put("width", DEFAULT_WINDOW_WIDTH);
+            mainFrame.put("height", DEFAULT_WINDOW_HEIGHT);
+            
+            try {
+                props.setProperty("mainFrame", objectMapper.writeValueAsString(mainFrame));
+            } catch (Exception e) {
+                io.toolErrorRaw("Error creating default window settings: " + e.getMessage());
+            }
         }
     }
 
@@ -190,63 +203,88 @@ public class Project {
      * @param keys Map of key names to values
      */
     /**
-     * Gets the saved window X position
+     * Save a window's position and size
+     * @param key identifier for the window
+     * @param window the window to save position for
      */
-    public int getWindowX() {
-        return Integer.parseInt(props.getProperty("windowX", "-1"));
+    public void saveWindowBounds(String key, JFrame window) {
+        if (window == null || !window.isDisplayable() || 
+            window.getExtendedState() != java.awt.Frame.NORMAL) {
+            return;
+        }
+        
+        try {
+            var node = objectMapper.createObjectNode();
+            node.put("x", window.getX());
+            node.put("y", window.getY());
+            node.put("width", window.getWidth());
+            node.put("height", window.getHeight());
+            
+            props.setProperty(key, objectMapper.writeValueAsString(node));
+            saveProperties();
+        } catch (Exception e) {
+            io.toolErrorRaw("Error saving window bounds: " + e.getMessage());
+        }
     }
     
     /**
-     * Gets the saved window Y position
+     * Get the saved window bounds as a Rectangle
+     * @param key identifier for the window
+     * @param defaultWidth default width if not found
+     * @param defaultHeight default height if not found
+     * @return Rectangle with the window bounds
      */
-    public int getWindowY() {
-        return Integer.parseInt(props.getProperty("windowY", "-1"));
+    public java.awt.Rectangle getWindowBounds(String key, int defaultWidth, int defaultHeight) {
+        var result = new java.awt.Rectangle(-1, -1, defaultWidth, defaultHeight);
+        
+        try {
+            String json = props.getProperty(key);
+            if (json != null) {
+                var node = objectMapper.readValue(json, ObjectNode.class);
+                
+                if (node.has("width") && node.has("height")) {
+                    result.width = node.get("width").asInt();
+                    result.height = node.get("height").asInt();
+                }
+                
+                if (node.has("x") && node.has("y")) {
+                    result.x = node.get("x").asInt();
+                    result.y = node.get("y").asInt();
+                }
+            }
+        } catch (Exception e) {
+            io.toolErrorRaw("Error reading window bounds: " + e.getMessage());
+        }
+        
+        return result;
     }
     
     /**
-     * Gets the saved window width
+     * Gets the saved main window bounds
      */
-    public int getWindowWidth() {
-        return Integer.parseInt(props.getProperty("windowWidth", String.valueOf(DEFAULT_WINDOW_WIDTH)));
+    public java.awt.Rectangle getMainWindowBounds() {
+        return getWindowBounds("mainFrame", DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
     }
     
     /**
-     * Gets the saved window height
+     * Gets the saved preview window bounds
      */
-    public int getWindowHeight() {
-        return Integer.parseInt(props.getProperty("windowHeight", String.valueOf(DEFAULT_WINDOW_HEIGHT)));
+    public java.awt.Rectangle getPreviewWindowBounds() {
+        return getWindowBounds("previewFrame", 600, 400);
     }
     
     /**
-     * Sets the window X position
+     * Save main window bounds
      */
-    public void setWindowX(int x) {
-        props.setProperty("windowX", String.valueOf(x));
-        saveProperties();
+    public void saveMainWindowBounds(JFrame window) {
+        saveWindowBounds("mainFrame", window);
     }
     
     /**
-     * Sets the window Y position
+     * Save preview window bounds
      */
-    public void setWindowY(int y) {
-        props.setProperty("windowY", String.valueOf(y));
-        saveProperties();
-    }
-    
-    /**
-     * Sets the window width
-     */
-    public void setWindowWidth(int width) {
-        props.setProperty("windowWidth", String.valueOf(width));
-        saveProperties();
-    }
-    
-    /**
-     * Sets the window height
-     */
-    public void setWindowHeight(int height) {
-        props.setProperty("windowHeight", String.valueOf(height));
-        saveProperties();
+    public void savePreviewWindowBounds(JFrame window) {
+        saveWindowBounds("previewFrame", window);
     }
     
     public void saveLlmKeys(Map<String, String> keys) {
