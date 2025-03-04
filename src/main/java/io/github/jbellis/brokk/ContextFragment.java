@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.ChatMessage;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
@@ -340,6 +342,55 @@ public interface ContextFragment {
      * A context fragment that holds a list of short class names and a text
      * representation (e.g. skeletons) of those classes.
      */
+    class ConversationFragment extends VirtualFragment {
+        private final List<ChatMessage> messages;
+
+        public ConversationFragment(List<ChatMessage> messages) {
+            super();
+            this.messages = List.copyOf(messages);
+        }
+
+        @Override
+        public String text() {
+            return messages.stream()
+                .map(m -> m.type() + ": " + Models.getText(m))
+                .collect(java.util.stream.Collectors.joining("\n\n"));
+        }
+
+        @Override
+        public Set<CodeUnit> sources(Analyzer analyzer) {
+            return Set.of(); // Conversation history doesn't contain code sources
+        }
+
+        @Override
+        public String description() {
+            return "Conversation history (" + messages.size() + " messages)";
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return false;
+        }
+
+        @Override
+        public String format() {
+            return """
+            <conversation>
+            %s
+            </conversation>
+            """.formatted(text()).stripIndent();
+        }
+
+        @Override
+        public String toString() {
+            return "ConversationFragment(" + messages.size() + " messages)";
+        }
+
+        public List<ChatMessage> getMessages() {
+            return messages;
+        }
+    }
+
     class AutoContext implements ContextFragment {
         public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(List.of("Enabled, but no references found"), Set.of(), "")));
         public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(List.of("Disabled"), Set.of(), "")));

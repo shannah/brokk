@@ -370,18 +370,26 @@ public class Context {
 
     /**
      * Returns all fragments in display order:
-     * 0 => autoContext (always present, even when DISABLED)
+     * 0 => conversation history (if not empty)
+     * 1 => autoContext (always present, even when DISABLED)
      * next => read-only (readonlyFiles + virtualFragments)
      * finally => editable
      */
     public List<ContextFragment> getAllFragmentsInDisplayOrder() {
         var result = new ArrayList<ContextFragment>();
 
-        // Always include autoContext at position 0
+        // First include conversation history if not empty
+        if (!historyMessages.isEmpty()) {
+            result.add(new ContextFragment.ConversationFragment(historyMessages));
+        }
+        
+        // Then include autoContext
         result.add(autoContext);
+        
         // then read-only
         result.addAll(readonlyFiles);
         result.addAll(virtualFragments);
+        
         // then editable
         result.addAll(editableFiles);
 

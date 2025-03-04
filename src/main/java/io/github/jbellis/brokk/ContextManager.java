@@ -524,9 +524,12 @@ public class ContextManager implements IContextManager
         } else {
             var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
             var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
+            boolean clearHistory = false;
 
             for (var frag : selectedFragments) {
-                if (frag instanceof ContextFragment.AutoContext) {
+                if (frag instanceof ContextFragment.ConversationFragment) {
+                    clearHistory = true;
+                } else if (frag instanceof ContextFragment.AutoContext) {
                     setAutoContextFiles(0);
                 } else if (frag instanceof ContextFragment.PathFragment pf) {
                     pathFragsToRemove.add(pf);
@@ -535,8 +538,17 @@ public class ContextManager implements IContextManager
                     virtualToRemove.add((VirtualFragment) frag);
                 }
             }
+            
+            if (clearHistory) {
+                clearHistory();
+                chrome.toolOutput("Cleared conversation history");
+            }
+            
             drop(pathFragsToRemove, virtualToRemove);
-            chrome.toolOutput("Dropped " + selectedFragments.size() + " items");
+            
+            if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
+                chrome.toolOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
+            }
         }
     }
 
