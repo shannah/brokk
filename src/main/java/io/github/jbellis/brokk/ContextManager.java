@@ -552,43 +552,40 @@ public class ContextManager implements IContextManager
         }
     }
 
-    private void doSummarizeAction(List<ContextFragment> selectedFragments)
-    {
-        var ctx = currentContext();
+    private void doSummarizeAction(List<ContextFragment> selectedFragments) {
+        HashSet<CodeUnit> sources = new HashSet<>();
+        String sourceDescription;
+
         if (selectedFragments.isEmpty()) {
-            // Summarize all eligible
-            var allFrags = ctx.getAllFragmentsInDisplayOrder().stream()
-                    .filter(ContextFragment::isEligibleForAutoContext)
-                    .collect(Collectors.toSet());
-            if (allFrags.isEmpty()) {
-                chrome.toolErrorRaw("No eligible items to summarize");
+            // Show file selection dialog when nothing is selected
+            var files = showFileSelectionDialog("Summarize Files");
+            if (files.isEmpty()) {
+                chrome.toolOutput("No files selected for summarization");
                 return;
             }
-            var sources = new HashSet<CodeUnit>();
-            for (var f : allFrags) {
-                sources.addAll(f.sources(getAnalyzer()));
+
+            for (var file : files) {
+                sources.addAll(getAnalyzer().getClassesInFile(file));
             }
-            var success = summarizeClasses(sources);
-            if (success) {
-                chrome.toolOutput("Summarized " + sources.size() + " classes");
-            } else {
-                chrome.toolErrorRaw("Failed to summarize classes");
-            }
+            sourceDescription = files.size() + " files";
         } else {
-            if (selectedFragments.isEmpty()) {
-                chrome.toolErrorRaw("No items to summarize");
-                return;
-            }
-            var sources = new HashSet<CodeUnit>();
+            // Extract sources from selected fragments
             for (var frag : selectedFragments) {
                 sources.addAll(frag.sources(getAnalyzer()));
             }
-            var success = summarizeClasses(sources);
-            if (success) {
-                chrome.toolOutput("Summarized from " + selectedFragments.size() + " fragments");
-            } else {
-                chrome.toolErrorRaw("Failed to summarize classes");
-            }
+            sourceDescription = selectedFragments.size() + " fragments";
+        }
+
+        if (sources.isEmpty()) {
+            chrome.toolErrorRaw("No classes found in the selected " + (selectedFragments.isEmpty() ? "files" : "fragments"));
+            return;
+        }
+
+        boolean success = summarizeClasses(sources);
+        if (success) {
+            chrome.toolOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
+        } else {
+            chrome.toolErrorRaw("Failed to summarize classes");
         }
     }
 
