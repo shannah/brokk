@@ -73,57 +73,6 @@ public class Commands {
         }
     }
 
-    public OperationResult cmdCopy(String args) {
-        String content;
-        if (args.isBlank()) {
-            var msgs = ArchitectPrompts.instance.collectMessages(cm);
-            var combined = new StringBuilder();
-            msgs.forEach(m -> {
-                if (!(m instanceof AiMessage)) {
-                    combined.append(Models.getText(m)).append("\n\n");
-                }
-            });
-            combined.append("\n<goal>\n\n</goal>");
-            content = combined.toString();
-        } else {
-            var frag = cm.currentContext().toFragment(args.trim());
-            if (frag == null) {
-                return OperationResult.error("No matching fragment found for: " + args);
-            }
-            try {
-                content = frag.text();
-            } catch (Exception e) {
-                cm.removeBadFragment(frag, new java.io.IOException(e));
-                return OperationResult.success(); // error already handled
-            }
-        }
-        try {
-            var sel = new java.awt.datatransfer.StringSelection(content);
-            var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-            cb.setContents(sel, sel);
-            io.toolOutput("Content copied to clipboard");
-        } catch (Exception e) {
-            return OperationResult.error("Failed to copy: " + e.getMessage());
-        }
-        return OperationResult.skipShow();
-    }
-
-    public OperationResult cmdHelp() {
-        var sb = new StringBuilder();
-        sb.append("Available commands:\n");
-        sb.append("<> denotes required, [] denotes optional parameters\n");
-        sb.append("Examples:\n");
-        sb.append("  Add: triggers file selection to add files to context\n");
-        sb.append("  Read-only: triggers file selection for read-only context\n");
-        sb.append("  Clear: clears the conversation history\n");
-        sb.append("  Commit: generates a commit message\n");
-        sb.append("  Mode: sets the LLM mode (EDIT or APPLY)\n");
-        sb.append("  Copy: copies context to clipboard\n");
-        sb.append("  Refresh: refreshes code intelligence\n");
-        io.toolOutput(sb.toString());
-        return OperationResult.skipShow();
-    }
-
     public OperationResult cmdRefresh() {
         GitRepo.instance.refresh();
         cm.requestRebuild();
@@ -131,87 +80,11 @@ public class Commands {
         return OperationResult.skipShow();
     }
 
-    public OperationResult cmdSearch(String query) {
-        if (query.isBlank()) {
-            return OperationResult.error("Please provide a search query");
-        }
-        SearchAgent agent = new SearchAgent(query, cm, coder, io);
-        io.spin("searching");
-        var result = agent.execute();
-        io.spinComplete();
-        if (result == null) {
-            return OperationResult.success("Interrupted!");
-        }
-        io.llmOutput(result.text() + "\n");
-        cm.addSearchFragment(result);
-        return OperationResult.success();
-    }
-
-    public OperationResult cmdUndo() {
-        return cm.undoContext();
-    }
-
-    public OperationResult cmdRedo() {
-        return cm.redoContext();
-    }
-
     public OperationResult cmdUsage(String symbol) {
         if (symbol.isBlank()) {
             return OperationResult.error("Please provide a symbol name");
         }
         return cm.usageForIdentifier(symbol.trim());
-    }
-
-    public OperationResult cmdSummarize(String input) {
-        if (input.isBlank()) {
-            return OperationResult.error("Provide a file path or fragment reference");
-        }
-        return summarize(input.trim());
-    }
-
-    private OperationResult summarize(String input) {
-        var fragments = new java.util.HashSet<CodeUnit>();
-        var frag = cm.currentContext().toFragment(input);
-        if (frag != null) {
-            fragments.addAll(frag.sources(cm.getAnalyzer()));
-        } else {
-            for (var raw : Completions.parseQuotedFilenames(input)) {
-                var matches = Completions.expandPath(cm.getRoot(), raw);
-                for (var f : matches) {
-                    if (f instanceof RepoFile rf) {
-                        cm.getAnalyzer().getClassesInFile(rf).forEach(fragments::add);
-                    }
-                }
-            }
-        }
-        boolean success = cm.summarizeClasses(fragments);
-        if (!success) {
-            return OperationResult.error("Unable to read source to summarize");
-        }
-        return OperationResult.success();
-    }
-
-    public OperationResult cmdPrepare(String msg) {
-        if (msg.isBlank()) {
-            return OperationResult.error("Please provide a message");
-        }
-        var messages = PreparePrompts.instance.collectMessages(cm);
-        var st = """
-                <task>
-                %s
-                </task>
-                <goal>
-                Evaluate if you have the right summaries and files. Do not write code yet; just summarize what's needed.
-                </goal>
-                """.formatted(msg.trim());
-        messages.add(new UserMessage(st));
-        var response = coder.sendStreaming(cm.getCurrentModel(coder.models), messages, true);
-        if (response != null) {
-            cm.addToHistory(List.of(messages.get(messages.size() - 1), response.aiMessage()));
-            var missing = cm.findMissingFileMentions(response.aiMessage().text());
-            confirmAddRequestedFiles(missing);
-        }
-        return OperationResult.success();
     }
 
     private void confirmAddRequestedFiles(java.util.Set<RepoFile> missing) {
@@ -238,21 +111,8 @@ public class Commands {
             cm.addReadOnlyFiles(toRead);
         }
         for (var file : toSummarize) {
-            summarize(file.toString());
+            // summarize(file.toString());
         }
-    }
-
-    public OperationResult cmdSend(String args) {
-        var lastShellOutput = cm.getLastShellOutput();
-        if (lastShellOutput == null) {
-            return OperationResult.error("No shell output available to send");
-        }
-        if (!args.isBlank()) {
-            cm.setConstructedMessage(args.trim() + "\n\n" + lastShellOutput);
-        } else {
-            cm.setConstructedMessage(lastShellOutput);
-        }
-        return OperationResult.skipShow();
     }
 
     /**

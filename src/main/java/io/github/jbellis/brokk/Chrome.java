@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.ContextManager.OperationResult;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
+import io.github.jbellis.brokk.prompts.AskPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -17,6 +18,7 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.List;
+import dev.langchain4j.data.message.UserMessage;
 
 /**
  * Chrome provides a Swing-based UI for Brokk, replacing the old Lanterna-based ConsoleIO.
@@ -245,6 +247,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
+        
+        // When input field gets focus, ensure Go is the default button
+        commandInputField.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                if (frame != null && frame.getRootPane() != null) {
+                    // Find the Go button to set as default
+                    for (Component c : frame.getContentPane().getComponents()) {
+                        if (c instanceof JButton && "Go".equals(((JButton)c).getText())) {
+                            frame.getRootPane().setDefaultButton((JButton)c);
+                            break;
+                        }
+                    }
+                }
+            }
+        });
 
         // Keybindings for Emacs-like shortcuts
         bindEmacsKeys(commandInputField);
@@ -261,10 +279,45 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.add(promptLabel, BorderLayout.WEST);
         panel.add(commandInputField, BorderLayout.CENTER);
 
-        // Create a wrapper panel with some padding
+        // Create a buttons panel for Go, Ask, Search - right-justified
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        
+        // Create and add the Go button
+        JButton goButton = new JButton("Go");
+        goButton.addActionListener(e -> {
+            String text = commandInputField.getText();
+            if (text != null && !text.isBlank()) {
+                onUserCommand(text);
+            }
+        });
+        
+        // Create and add the Ask button
+        JButton askButton = new JButton("Ask");
+        askButton.addActionListener(e -> {
+            String text = commandInputField.getText();
+            showOperationResult(cmdAsk(text));
+        });
+        
+        // Create and add the Search button
+        JButton searchButton = new JButton("Search");
+        searchButton.addActionListener(e -> {
+            String text = commandInputField.getText();
+            showOperationResult(cmdSearch(text));
+        });
+        
+        // Add buttons to the panel
+        buttonsPanel.add(goButton);
+        buttonsPanel.add(askButton);
+        buttonsPanel.add(searchButton);
+        
+        // Set Go as the default button
+        frame.getRootPane().setDefaultButton(goButton);
+        
+        // Create a wrapper panel for both input and buttons
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBorder(new EmptyBorder(5, 5, 5, 5));
-        wrapper.add(panel, BorderLayout.CENTER);
+        wrapper.add(panel, BorderLayout.NORTH);
+        wrapper.add(buttonsPanel, BorderLayout.CENTER);
 
         return wrapper;
     }
@@ -1114,6 +1167,55 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (frame != null) {
             frame.dispose();
         }
+    }
+    
+    /**
+     * Ask the LLM a specific question about the codebase
+     */
+    private OperationResult cmdAsk(String input) {
+        if (input.isBlank()) {
+            return OperationResult.error("Please provide a question");
+        }
+
+        // Provide the prompt messages
+        var messages = AskPrompts.instance.collectMessages(contextManager);
+        messages.add(new UserMessage("<question>\n%s\n</question>".formatted(input.trim())));
+
+        var response = coder.sendStreaming(contextManager.getCurrentModel(coder.models), messages, true);
+        if (response != null) {
+            contextManager.addToHistory(List.of(messages.getLast(), response.aiMessage()));
+        }
+
+        return OperationResult.success();
+    }
+
+    /**
+     * Search the codebase for a specified query
+     */
+    private OperationResult cmdSearch(String query) {
+        if (query.isBlank()) {
+            return OperationResult.error("Please provide a search query");
+        }
+
+        // Create and run the search agent
+        SearchAgent agent = new SearchAgent(query, contextManager, coder, this);
+        spin("");
+        var result = agent.execute();
+        spinComplete();
+
+        if (result == null) {
+            return OperationResult.success("Interrupted!");
+        }
+        llmOutput(wrap(result.text()) + "\n");
+        contextManager.addSearchFragment(result);
+        return OperationResult.success();
+    }
+    
+    /**
+     * Helper to wrap text for display
+     */
+    public String wrap(String text) {
+        return text;
     }
 
     /**
