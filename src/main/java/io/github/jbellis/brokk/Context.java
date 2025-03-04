@@ -388,35 +388,4 @@ public class Context {
         return result;
     }
 
-    /**
-     * Returns the position (index) of the given fragment in the display-ordered list.
-     * Returns -1 if the fragment is not in the list.
-     * Position 0 is always the autoContext (even if disabled).
-     */
-    public int getPositionOfFragment(ContextFragment fragment) {
-        var ordered = getAllFragmentsInDisplayOrder();
-        int idx = ordered.indexOf(fragment);
-        return idx;  // returns -1 if not found; 0 if autoContext, etc.
-    }
-
-    /**
-     * Returns the fragment at the given position in the display-ordered list.
-     * Returns null if no fragment exists at that position.
-     */
-    public ContextFragment toFragment(int position) {
-        var ordered = getAllFragmentsInDisplayOrder();
-        if (position >= 0 && position < ordered.size()) {
-            return ordered.get(position);
-        }
-        return null;
-    }
-
-    public ContextFragment toFragment(String maybePosition) {
-        try {
-            int position = Integer.parseInt(maybePosition);
-            return toFragment(position);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
 }

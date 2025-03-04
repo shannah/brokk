@@ -380,19 +380,19 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Performed by the action buttons in the context panel: “edit / read / copy / drop / summarize”
-     * If selectedIndices is empty, it means “All”. We handle logic accordingly.
+     * Performed by the action buttons in the context panel: "edit / read / copy / drop / summarize"
+     * If selectedFragments is empty, it means "All". We handle logic accordingly.
      */
-    public Future<?> performContextActionAsync(String action, List<Integer> selectedIndices)
+    public Future<?> performContextActionAsync(String action, List<ContextFragment> selectedFragments)
     {
         return userActionExecutor.submit(() -> {
             try {
                 switch (action) {
-                    case "edit" -> doEditAction(selectedIndices);
-                    case "read" -> doReadAction(selectedIndices);
-                    case "copy" -> doCopyAction(selectedIndices);
-                    case "drop" -> doDropAction(selectedIndices);
-                    case "summarize" -> doSummarizeAction(selectedIndices);
+                    case "edit" -> doEditAction(selectedFragments);
+                    case "read" -> doReadAction(selectedFragments);
+                    case "copy" -> doCopyAction(selectedFragments);
+                    case "drop" -> doDropAction(selectedFragments);
+                    case "summarize" -> doSummarizeAction(selectedFragments);
                     case "paste" -> doPasteAction();
                     default -> chrome.toolErrorRaw("Unknown action: " + action);
                 }
@@ -408,9 +408,9 @@ public class ContextManager implements IContextManager
         });
     }
 
-    private void doEditAction(List<Integer> selectedIndices)
+    private void doEditAction(List<ContextFragment> selectedFragments)
     {
-        if (selectedIndices.isEmpty()) {
+        if (selectedFragments.isEmpty()) {
             // Show a file selection dialog to add new files
             var files = showFileSelectionDialog("Add Context");
             if (!files.isEmpty()) {
@@ -421,17 +421,17 @@ public class ContextManager implements IContextManager
             }
         } else {
             var files = new HashSet<RepoFile>();
-            for (var idx : selectedIndices) {
-                files.addAll(getFilesFromFragmentIndex(idx));
+            for (var fragment : selectedFragments) {
+                files.addAll(getFilesFromFragment(fragment));
             }
             addFiles(files);
             chrome.toolOutput("Converted " + files.size() + " files to editable.");
         }
     }
 
-    private void doReadAction(List<Integer> selectedIndices)
+    private void doReadAction(List<ContextFragment> selectedFragments)
     {
-        if (selectedIndices.isEmpty()) {
+        if (selectedFragments.isEmpty()) {
             // Show a file selection dialog for read-only
             var files = showFileSelectionDialog("Read Context");
             if (!files.isEmpty()) {
@@ -442,19 +442,18 @@ public class ContextManager implements IContextManager
             }
         } else {
             var files = new HashSet<RepoFile>();
-            for (var idx : selectedIndices) {
-                files.addAll(getFilesFromFragmentIndex(idx));
+            for (var fragment : selectedFragments) {
+                files.addAll(getFilesFromFragment(fragment));
             }
             addReadOnlyFiles(files);
             chrome.toolOutput("Added " + files.size() + " read-only files");
         }
     }
 
-    private void doCopyAction(List<Integer> selectedIndices)
-    {
+    private void doCopyAction(List<ContextFragment> selectedFragments) {
         // If none are selected, copy ALL
         String content;
-        if (selectedIndices.isEmpty()) {
+        if (selectedFragments.isEmpty()) {
             // gather entire context
             var msgs = ArchitectPrompts.instance.collectMessages(this);
             var combined = new StringBuilder();
@@ -467,30 +466,16 @@ public class ContextManager implements IContextManager
             content = combined.toString();
         } else {
             // copy only selected fragments
-            var ctx = currentContext();
-            var allFrags = ctx.getAllFragmentsInDisplayOrder();
             var sb = new StringBuilder();
-            for (var idx : selectedIndices) {
-                if (idx >= 0 && idx < allFrags.size()) {
-                    var frag = allFrags.get(idx);
-                    try {
-                        sb.append(frag.text()).append("\n\n");
-                    } catch (IOException e) {
-                        removeBadFragment(frag, e);
-                        chrome.toolErrorRaw("Error reading fragment: " + e.getMessage());
-                    }
+            for (var frag : selectedFragments) {
+                try {
+                    sb.append(frag.text()).append("\n\n");
+                } catch (IOException e) {
+                    removeBadFragment(frag, e);
+                    chrome.toolErrorRaw("Error reading fragment: " + e.getMessage());
                 }
             }
             content = sb.toString();
-        }
-
-        try {
-            var sel = new java.awt.datatransfer.StringSelection(content);
-            var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-            cb.setContents(sel, sel);
-            chrome.toolOutput("Content copied to clipboard");
-        } catch (Exception e) {
-            chrome.toolErrorRaw("Failed to copy: " + e.getMessage());
         }
     }
 
@@ -527,9 +512,9 @@ public class ContextManager implements IContextManager
         chrome.toolOutput("Clipboard content added as text");
     }
 
-    private void doDropAction(List<Integer> selectedIndices)
+    private void doDropAction(List<ContextFragment> selectedFragments)
     {
-        if (selectedIndices.isEmpty()) {
+        if (selectedFragments.isEmpty()) {
             if (currentContext().isEmpty()) {
                 chrome.toolErrorRaw("No context to drop");
                 return;
@@ -537,39 +522,28 @@ public class ContextManager implements IContextManager
             dropAll();
             chrome.toolOutput("Dropped all context");
         } else {
-            var ctx = currentContext();
-            var allFrags = ctx.getAllFragmentsInDisplayOrder();
-            
-            // Special case: If only the autocontext (index 0) is selected, set autocontext size to 0
-            if (selectedIndices.size() == 1 && selectedIndices.get(0) == 0) {
-                assert allFrags.get(0) == ctx.getAutoContext() : allFrags.get(0);
-                setAutoContextFiles(0);
-                return;
-            }
-            
-            // Regular drop behavior for other fragments
             var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
             var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
 
-            for (var idx : selectedIndices) {
-                if (idx >= 0 && idx < allFrags.size()) {
-                    var frag = allFrags.get(idx);
-                    if (frag instanceof ContextFragment.PathFragment pf) {
-                        pathFragsToRemove.add(pf);
-                    } else if (frag instanceof ContextFragment.VirtualFragment vf) {
-                        virtualToRemove.add(vf);
-                    }
+            for (var frag : selectedFragments) {
+                if (frag instanceof ContextFragment.AutoContext) {
+                    setAutoContextFiles(0);
+                } else if (frag instanceof ContextFragment.PathFragment pf) {
+                    pathFragsToRemove.add(pf);
+                } else {
+                    assert frag instanceof ContextFragment.VirtualFragment: frag;
+                    virtualToRemove.add((VirtualFragment) frag);
                 }
             }
             drop(pathFragsToRemove, virtualToRemove);
-            chrome.toolOutput("Dropped " + selectedIndices.size() + " items");
+            chrome.toolOutput("Dropped " + selectedFragments.size() + " items");
         }
     }
 
-    private void doSummarizeAction(List<Integer> selectedIndices)
+    private void doSummarizeAction(List<ContextFragment> selectedFragments)
     {
         var ctx = currentContext();
-        if (selectedIndices.isEmpty()) {
+        if (selectedFragments.isEmpty()) {
             // Summarize all eligible
             var allFrags = ctx.getAllFragmentsInDisplayOrder().stream()
                     .filter(ContextFragment::isEligibleForAutoContext)
@@ -589,24 +563,17 @@ public class ContextManager implements IContextManager
                 chrome.toolErrorRaw("Failed to summarize classes");
             }
         } else {
-            var allFrags = ctx.getAllFragmentsInDisplayOrder();
-            var selectedFrags = new HashSet<ContextFragment>();
-            for (var idx : selectedIndices) {
-                if (idx >= 0 && idx < allFrags.size()) {
-                    selectedFrags.add(allFrags.get(idx));
-                }
-            }
-            if (selectedFrags.isEmpty()) {
+            if (selectedFragments.isEmpty()) {
                 chrome.toolErrorRaw("No items to summarize");
                 return;
             }
             var sources = new HashSet<CodeUnit>();
-            for (var frag : selectedFrags) {
+            for (var frag : selectedFragments) {
                 sources.addAll(frag.sources(getAnalyzer()));
             }
             var success = summarizeClasses(sources);
             if (success) {
-                chrome.toolOutput("Summarized from " + selectedFrags.size() + " fragments");
+                chrome.toolOutput("Summarized from " + selectedFragments.size() + " fragments");
             } else {
                 chrome.toolErrorRaw("Failed to summarize classes");
             }
@@ -1006,32 +973,27 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Return the set of files for the given fragment index
+     * Return the set of files for the given fragment
      */
-    public Set<RepoFile> getFilesFromFragmentIndex(int index)
+    public Set<RepoFile> getFilesFromFragment(ContextFragment fragment)
     {
-        var ctx = currentContext();
-        var fragment = ctx.toFragment(index);
-        if (fragment == null) {
-            throw new IllegalArgumentException("No fragment at position " + index);
-        }
         var classnames = fragment.sources(getAnalyzer());
         var files = classnames.stream()
                 .map(cu -> getAnalyzer().pathOf(cu))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        if (files.isEmpty()) {
-            throw new IllegalArgumentException("No files found for fragment at position " + index);
+
+        // If it's a PathFragment, make sure to include its file
+        if (fragment instanceof ContextFragment.PathFragment pf && pf.file() instanceof RepoFile rf) {
+            files.add(rf);
         }
+
         return files;
     }
 
     private String formattedOrNull(ContextFragment fragment)
     {
         try {
-            if (fragment instanceof ContextFragment.VirtualFragment vf) {
-                return vf.format(currentContext());
-            }
             return fragment.format();
         } catch (IOException e) {
             removeBadFragment(fragment, e);

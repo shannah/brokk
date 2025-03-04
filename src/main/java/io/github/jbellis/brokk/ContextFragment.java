@@ -1,11 +1,8 @@
 package io.github.jbellis.brokk;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.Objects;
-import java.util.stream.Collectors;
 import java.util.concurrent.Future;
 
 public interface ContextFragment {
@@ -20,14 +17,6 @@ public interface ContextFragment {
     Set<CodeUnit> sources(Analyzer analyzer);
     /** should classes found in this fragment be included in AutoContext? */
     boolean isEligibleForAutoContext();
-
-    /**
-     * Returns the position of this fragment in its containing context.
-     * This is computed dynamically by the Context when needed.
-     */
-    default int position(Context context) {
-        return context.getPositionOfFragment(this);
-    }
 
     sealed interface PathFragment extends ContextFragment 
         permits RepoPathFragment, ExternalPathFragment
@@ -136,15 +125,11 @@ public interface ContextFragment {
     abstract class VirtualFragment implements ContextFragment {
         @Override
         public String format() throws IOException {
-            throw new UnsupportedOperationException();
-        }
-        
-        public String format(Context context) throws IOException {
             return """
-            <fragment id="%d" description="%s">
+            <fragment description="%s">
             %s
             </fragment>
-            """.formatted(position(context), description(), text()).stripIndent();
+            """.formatted(description(), text()).stripIndent();
         }
 
         @Override

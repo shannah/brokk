@@ -184,7 +184,7 @@ public class LLM {
 
         var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
         var failedApplyMessage = handleFailedBlocks(suggestions, blocks.size() - failedBlocks.size());
-        io.toolErrorRaw(failedApplyMessage);
+        io.shellOutput(failedApplyMessage);
         reflectionMsg.append(failedApplyMessage);
 
         return reflectionMsg.toString();

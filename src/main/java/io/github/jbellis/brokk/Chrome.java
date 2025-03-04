@@ -40,6 +40,7 @@ import java.util.concurrent.Future;
 public class Chrome implements AutoCloseable, IConsoleIO
 {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
+    private final int FRAGMENT_COLUMN = 3;
 
     // Dependencies:
     private ContextManager contextManager;
@@ -83,6 +84,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
     // Track the currently running user-driven future (Go/Ask/Search)
     private volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
+    private int CHECKBOX_COLUMN = 2;
 
     /**
      * Default constructor sets up the UI.
@@ -469,22 +471,28 @@ public class Chrome implements AutoCloseable, IConsoleIO
         ));
 
         contextTable = new JTable(new DefaultTableModel(
-                new Object[]{"ID", "LOC", "Description", "Select"}, 0)
+                new Object[]{"LOC", "Description", "Select", "Fragment"}, 0)
         {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return column == 3; // Only the checkbox column
+                return column == CHECKBOX_COLUMN;
             }
 
             @Override
             public Class<?> getColumnClass(int columnIndex) {
-                return (columnIndex == 3) ? Boolean.class : Object.class;
+                return switch (columnIndex) {
+                    case 0 -> Integer.class;
+                    case 1 -> String.class;
+                    case 2 -> Boolean.class;
+                    case 3 -> ContextFragment.class;
+                    default -> Object.class;
+                };
             }
         });
         contextTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
         // Add custom cell renderer for the description column to show italics for editable files
-        contextTable.getColumnModel().getColumn(2).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
+        contextTable.getColumnModel().getColumn(1).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
             @Override
             public java.awt.Component getTableCellRendererComponent(
                     JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
@@ -508,20 +516,20 @@ public class Chrome implements AutoCloseable, IConsoleIO
         tableHeader.setResizingAllowed(true);
         tableHeader.setFont(new Font(Font.DIALOG, Font.BOLD, 12));
 
-        // Hide the header for the "Select" column
-        contextTable.getColumnModel().getColumn(3).setHeaderValue("");
-        contextTable.getColumnModel().getColumn(3).setMaxWidth(60);
+        // Hide the header for the "Select" and "Fragment" columns
+        contextTable.getColumnModel().getColumn(CHECKBOX_COLUMN).setHeaderValue("");
+        contextTable.getColumnModel().getColumn(CHECKBOX_COLUMN).setMaxWidth(60);
+        contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setMinWidth(0);
+        contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setMaxWidth(0);
+        contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setWidth(0);
 
         contextTable.setIntercellSpacing(new Dimension(10,1));
 
         // column widths
-        contextTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-        contextTable.getColumnModel().getColumn(1).setPreferredWidth(50);
-        contextTable.getColumnModel().getColumn(2).setPreferredWidth(450);
-        contextTable.getColumnModel().getColumn(3).setPreferredWidth(50);
-
+        contextTable.getColumnModel().getColumn(0).setPreferredWidth(50);
+        contextTable.getColumnModel().getColumn(1).setPreferredWidth(480);
         ((DefaultTableModel) contextTable.getModel()).addTableModelListener(e -> {
-            if (e.getColumn() == 3) { // checkbox column changed
+            if (e.getColumn() == CHECKBOX_COLUMN) {
                 updateContextButtons();
             }
         });
@@ -571,41 +579,41 @@ public class Chrome implements AutoCloseable, IConsoleIO
         if (editButton == null) {
             editButton = new JButton("Edit All");
             editButton.addActionListener(e -> {
-                var selectedIndices = getSelectedFragmentIndices();
-                currentUserTask = contextManager.performContextActionAsync("edit", selectedIndices);
+                var selectedFragments = getSelectedFragments();
+                currentUserTask = contextManager.performContextActionAsync("edit", selectedFragments);
             });
         }
 
         if (readOnlyButton == null) {
             readOnlyButton = new JButton("Read All");
             readOnlyButton.addActionListener(e -> {
-                var selectedIndices = getSelectedFragmentIndices();
-                currentUserTask = contextManager.performContextActionAsync("read", selectedIndices);
+                var selectedFragments = getSelectedFragments();
+                currentUserTask = contextManager.performContextActionAsync("read", selectedFragments);
             });
         }
 
         if (summarizeButton == null) {
             summarizeButton = new JButton("Summarize All");
             summarizeButton.addActionListener(e -> {
-                var selectedIndices = getSelectedFragmentIndices();
-                currentUserTask = contextManager.performContextActionAsync("summarize", selectedIndices);
+                var selectedFragments = getSelectedFragments();
+                currentUserTask = contextManager.performContextActionAsync("summarize", selectedFragments);
             });
         }
 
         if (dropButton == null) {
             dropButton = new JButton("Drop All");
             dropButton.addActionListener(e -> {
-                var selectedIndices = getSelectedFragmentIndices();
                 disableContextActionButtons();
-                currentUserTask = contextManager.performContextActionAsync("drop", selectedIndices);
+                var selectedFragments = getSelectedFragments();
+                currentUserTask = contextManager.performContextActionAsync("drop", selectedFragments);
             });
         }
 
         if (copyButton == null) {
             copyButton = new JButton("Copy All");
             copyButton.addActionListener(e -> {
-                var selectedIndices = getSelectedFragmentIndices();
-                currentUserTask = contextManager.performContextActionAsync("copy", selectedIndices);
+                var selectedFragments = getSelectedFragments();
+                currentUserTask = contextManager.performContextActionAsync("copy", selectedFragments);
             });
         }
 
@@ -693,7 +701,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
         }
         var tableModel = (DefaultTableModel) contextTable.getModel();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 3))) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, CHECKBOX_COLUMN))) {
                 return true;
             }
         }
@@ -701,18 +709,18 @@ public class Chrome implements AutoCloseable, IConsoleIO
     }
 
     /**
-     * Get the list of selected fragment indices
+     * Get the list of selected fragments
      */
-    private List<Integer> getSelectedFragmentIndices()
+    private List<ContextFragment> getSelectedFragments()
     {
-        var indices = new ArrayList<Integer>();
+        var fragments = new ArrayList<ContextFragment>();
         var tableModel = (DefaultTableModel) contextTable.getModel();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 3))) {
-                indices.add(Integer.parseInt(tableModel.getValueAt(i, 0).toString()));
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, CHECKBOX_COLUMN))) {
+                fragments.add((ContextFragment)tableModel.getValueAt(i, FRAGMENT_COLUMN));
             }
         }
-        return indices;
+        return fragments;
     }
 
     /**
@@ -1201,7 +1209,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             var allFragments = context.getAllFragmentsInDisplayOrder();
             int totalLines = 0;
             for (var frag : allFragments) {
-                var id = context.getPositionOfFragment(frag);
                 var loc = countLinesSafe(frag);
                 totalLines += loc;
                 var desc = frag.description();
@@ -1209,12 +1216,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
                         && context.editableFiles().anyMatch(e -> e == frag);
 
-                // Create a custom cell renderer for italicizing editable entries
                 if (isEditable) {
                     desc = "✏️ " + desc;  // Add pencil icon to editable files
                 }
 
-                tableModel.addRow(new Object[]{id, loc, desc, false});
+                tableModel.addRow(new Object[]{loc, desc, false, frag});
             }
 
             var fullText = "";  // no large merges needed
@@ -1240,14 +1246,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             toolErrorRaw("Error reading fragment: " + e.getMessage());
             return 0;
         }
-    }
-
-    /**
-     * Outputs shell command results to the LLM stream area
-     */
-    public void shellOutput(String st)
-    {
-        llmOutput("\n" + st);
     }
 
     @Override
