@@ -246,9 +246,7 @@ public class EditBlock {
             content = "";
         }
 
-        if (content == null) {
-            return null;
-        }
+        assert content != null;
 
         // Strip any surrounding triple-backticks, optional filename line, etc.
         beforeText = stripQuotedWrapping(beforeText, file == null ? null : file.toString(), fence);
@@ -282,14 +280,14 @@ public class EditBlock {
      * Attempts perfect/whitespace replacements, then tries "...", then fuzzy.
      * Returns null if no match found.
      */
-    static String replaceMostSimilarChunk(String whole, String part, String replace) {
+    static String replaceMostSimilarChunk(String content, String part, String replace) {
         // 1) prep for line-based matching
-        ContentLines wholeCL = prep(whole);
+        ContentLines originalCL = prep(content);
         ContentLines partCL = prep(part);
         ContentLines replaceCL = prep(replace);
 
         // 2) perfect or whitespace approach
-        String attempt = perfectOrWhitespace(wholeCL.lines, partCL.lines, replaceCL.lines);
+        String attempt = perfectOrWhitespace(originalCL.lines, partCL.lines, replaceCL.lines);
         if (attempt != null) {
             return attempt;
         }
@@ -307,7 +305,7 @@ public class EditBlock {
             int limit = Math.min(i, replaceLeadingBlanks);
             String[] truncatedReplace = Arrays.copyOfRange(replaceCL.lines, limit, replaceCL.lines.length);
 
-            attempt = perfectOrWhitespace(wholeCL.lines, truncatedPart, truncatedReplace);
+            attempt = perfectOrWhitespace(originalCL.lines, truncatedPart, truncatedReplace);
             if (attempt != null) {
                 return attempt;
             }
@@ -315,7 +313,7 @@ public class EditBlock {
 
         // 3) handle triple-dot expansions
         try {
-            attempt = tryDotdotdots(whole, part, replace);
+            attempt = tryDotdotdots(content, part, replace);
             if (attempt != null) {
                 return attempt;
             }
@@ -329,13 +327,13 @@ public class EditBlock {
             String[] splicedPart = Arrays.copyOfRange(partCL.lines, 1, partCL.lines.length);
             String[] splicedReplace = Arrays.copyOfRange(replaceCL.lines, 1, replaceCL.lines.length);
 
-            attempt = perfectOrWhitespace(wholeCL.lines, splicedPart, splicedReplace);
+            attempt = perfectOrWhitespace(originalCL.lines, splicedPart, splicedReplace);
             if (attempt != null) {
                 return attempt;
             }
 
             // try triple-dot expansions on the spliced block if needed.
-            return tryDotdotdots(whole, String.join("", splicedPart), String.join("", splicedReplace));
+            return tryDotdotdots(content, String.join("", splicedPart), String.join("", splicedReplace));
         }
 
         return null;
@@ -398,41 +396,41 @@ public class EditBlock {
     /**
      * Tries perfect replace first, then leading-whitespace-insensitive.
      */
-    public static String perfectOrWhitespace(String[] wholeLines,
+    public static String perfectOrWhitespace(String[] originalLines,
                                              String[] partLines,
                                              String[] replaceLines) {
-        String perfect = perfectReplace(wholeLines, partLines, replaceLines);
+        String perfect = perfectReplace(originalLines, partLines, replaceLines);
         if (perfect != null) {
             return perfect;
         }
-        return replacePartWithMissingLeadingWhitespace(wholeLines, partLines, replaceLines);
+        return replacePartWithMissingLeadingWhitespace(originalLines, partLines, replaceLines);
     }
 
     /**
      * Tries exact line-by-line match.
      */
-    public static String perfectReplace(String[] wholeLines,
+    public static String perfectReplace(String[] originalLines,
                                         String[] partLines,
                                         String[] replaceLines) {
         if (partLines.length == 0) {
             return null;
         }
         outer:
-        for (int i = 0; i <= wholeLines.length - partLines.length; i++) {
+        for (int i = 0; i <= originalLines.length - partLines.length; i++) {
             for (int j = 0; j < partLines.length; j++) {
-                if (!Objects.equals(wholeLines[i + j], partLines[j])) {
+                if (!Objects.equals(originalLines[i + j], partLines[j])) {
                     continue outer;
                 }
             }
             // found match
-            List<String> newFile = new ArrayList<>();
+            List<String> newLines = new ArrayList<>();
             // everything before the match
-            newFile.addAll(Arrays.asList(wholeLines).subList(0, i));
+            newLines.addAll(Arrays.asList(originalLines).subList(0, i));
             // add replacement
-            newFile.addAll(Arrays.asList(replaceLines));
+            newLines.addAll(Arrays.asList(replaceLines));
             // everything after the match
-            newFile.addAll(Arrays.asList(wholeLines).subList(i + partLines.length, wholeLines.length));
-            return String.join("", newFile);
+            newLines.addAll(Arrays.asList(originalLines).subList(i + partLines.length, originalLines.length));
+            return String.join("", newLines);
         }
         return null;
     }
@@ -442,7 +440,7 @@ public class EditBlock {
      * slice by adjusting each replacement line's indentation to preserve the relative
      * indentation from the 'search' lines.
      */
-    static String replacePartWithMissingLeadingWhitespace(String[] wholeLines,
+    static String replacePartWithMissingLeadingWhitespace(String[] originalLines,
                                                           String[] partLines,
                                                           String[] replaceLines) {
         // Skip leading blank lines in the 'search'
@@ -473,19 +471,19 @@ public class EditBlock {
             return null;
         }
 
-        // Attempt to find a slice in wholeLines that matches ignoring leading spaces.
+        // Attempt to find a slice in originalLines that matches ignoring leading spaces.
         int needed = truncatedPart.length;
-        for (int start = 0; start <= wholeLines.length - needed; start++) {
-            if (!matchesIgnoringLeading(wholeLines, start, truncatedPart)) {
+        for (int start = 0; start <= originalLines.length - needed; start++) {
+            if (!matchesIgnoringLeading(originalLines, start, truncatedPart)) {
                 continue;
             }
 
             // Found a match - rebuild the filename around it
             // everything before the match
-            List<String> newFile = new ArrayList<>(Arrays.asList(wholeLines).subList(0, start));
+            List<String> newFile = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
             // add replacement lines with adjusted indentation
             for (int i = 0; i < needed && i < truncatedReplace.length; i++) {
-                int sliceLeading = countLeadingSpaces(wholeLines[start + i]);
+                int sliceLeading = countLeadingSpaces(originalLines[start + i]);
                 int partLeading  = countLeadingSpaces(truncatedPart[i]);
                 int difference = partLeading - sliceLeading;
 
@@ -499,18 +497,18 @@ public class EditBlock {
                 );
             }
             // everything after the match
-            newFile.addAll(Arrays.asList(wholeLines).subList(start + needed, wholeLines.length));
+            newFile.addAll(Arrays.asList(originalLines).subList(start + needed, originalLines.length));
             return String.join("", newFile);
         }
         return null;
     }
 
-    static boolean matchesIgnoringLeading(String[] wholeLines, int start, String[] partLines) {
-        if (start + partLines.length > wholeLines.length) {
+    static boolean matchesIgnoringLeading(String[] originalLines, int start, String[] partLines) {
+        if (start + partLines.length > originalLines.length) {
             return false;
         }
         for (int i = 0; i < partLines.length; i++) {
-            if (!wholeLines[start + i].stripLeading().equals(partLines[i].stripLeading())) {
+            if (!originalLines[start + i].stripLeading().equals(partLines[i].stripLeading())) {
                 return false;
             }
         }
@@ -703,9 +701,7 @@ public class EditBlock {
     }
 
     private static ContentLines prep(String content) {
-        if (content == null) {
-            content = "";
-        }
+        assert content != null;
         // ensure it ends with newline
         if (!content.isEmpty() && !content.endsWith("\n")) {
             content += "\n";
