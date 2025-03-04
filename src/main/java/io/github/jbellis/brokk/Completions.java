@@ -178,7 +178,7 @@ public class Completions {
         return nameMatches;
     }
 
-    static String extractCapitals(String base) {
+    public static String extractCapitals(String base) {
         StringBuilder capitals = new StringBuilder();
         for (char c : base.toCharArray()) {
             if (Character.isUpperCase(c)) {
