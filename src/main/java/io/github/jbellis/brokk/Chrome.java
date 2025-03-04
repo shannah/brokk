@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.gui.FileSelectionDialog;
+import io.github.jbellis.brokk.ContextManager.OperationResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;
@@ -58,6 +60,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JTable readOnlyTable;
     private JTable editableTable;
     private JLabel locSummaryLabel;
+    
+    // Context action buttons:
+    private JButton editButton;
+    private JButton readOnlyButton;
+    private JButton summarizeButton;
+    private JButton dropButton;
 
     // History:
     private final List<String> commandHistory = new ArrayList<>();
@@ -72,12 +80,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * but before calling .resolveCircularReferences(...).
      */
     public Chrome() {
-        // 1) Set Look & Feel (JGoodies Plastic or any modern LAF)
+        // 1) Set FlatLaf Look & Feel
         try {
-            // For JGoodies Plastic 3D, for example:
-            // UIManager.setLookAndFeel("com.jgoodies.looks.plastic.Plastic3DLookAndFeel");
-            // or FlatLaf:
-            // com.formdev.flatlaf.FlatLightLaf.setup();
+            com.formdev.flatlaf.FlatLightLaf.setup();
         } catch (Exception e) {
             logger.warn("Failed to set LAF, using default", e);
         }
@@ -85,7 +90,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 2) Build main window
         frame = new JFrame("Brokk - Swing Edition");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(1200, 800);
+        frame.setSize(800, 1200);  // Taller than wide
         frame.setLayout(new BorderLayout());
 
         // 3) Main panel (top area + bottom area)
@@ -125,43 +130,47 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * This layout matches the old Lanterna ConsoleIO vertical arrangement.
      */
     private JPanel buildMainPanel() {
-        // Create a main panel with vertical layout (like Lanterna)
+        // Create a main panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
         
-        // Create a vertical box to contain all components in order from top to bottom
-        Box verticalBox = Box.createVerticalBox();
+        // Create a panel with GridBagLayout for precise control
+        JPanel contentPanel = new JPanel(new GridBagLayout());
+                GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0;
+        gbc.gridx = 0;
+        gbc.insets = new Insets(2, 2, 2, 2);
         
         // 1. LLM streaming area (takes most of the space)
-        JScrollPane llmScrollPane = buildLLMStreamScrollPane();
-        // Make it expand to fill available space
-        llmScrollPane.setMinimumSize(new Dimension(400, 300));
-        llmScrollPane.setPreferredSize(new Dimension(800, 500));
-        verticalBox.add(llmScrollPane);
+                JScrollPane llmScrollPane = buildLLMStreamScrollPane();
+        gbc.weighty = 1.0;
+        gbc.gridy = 0;
+        contentPanel.add(llmScrollPane, gbc);
         
-        // 2. Command result label
+                // 2. Command result label
         JComponent resultLabel = buildCommandResultLabel();
-        resultLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        verticalBox.add(resultLabel);
+        gbc.weighty = 0.0;
+        gbc.gridy = 1;
+        contentPanel.add(resultLabel, gbc);
         
         // 3. Command input with prompt
         JPanel commandPanel = buildCommandInputPanel();
-        commandPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        verticalBox.add(commandPanel);
+        gbc.gridy = 2;
+        contentPanel.add(commandPanel, gbc);
         
         // 4. Context panel (with border title)
         JPanel ctxPanel = buildContextPanel();
-        ctxPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        // Fixed height to prevent it from taking too much space
-        ctxPanel.setPreferredSize(new Dimension(800, 150));
-        ctxPanel.setMaximumSize(new Dimension(Short.MAX_VALUE, 150));
-        verticalBox.add(ctxPanel);
+                gbc.weighty = 0.2;
+        gbc.gridy = 3;
+        contentPanel.add(ctxPanel, gbc);
         
         // 5. Background status label at the very bottom
-        JComponent statusLabel = buildBackgroundStatusLabel();
-        statusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        verticalBox.add(statusLabel);
+                JComponent statusLabel = buildBackgroundStatusLabel();
+        gbc.weighty = 0.0;
+        gbc.gridy = 4;
+        contentPanel.add(statusLabel, gbc);
         
-        panel.add(verticalBox, BorderLayout.CENTER);
+        panel.add(contentPanel, BorderLayout.CENTER);
         return panel;
     }
 
@@ -225,16 +234,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JPanel buildCommandInputPanel() {
         // Use BorderLayout to make the text field expand horizontally
         JPanel panel = new JPanel(new BorderLayout());
-        
+
         // Create a prompt label with fixed width
         JLabel promptLabel = new JLabel("> ");
         promptLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         promptLabel.setBorder(new EmptyBorder(2, 5, 2, 0));
-        
+
         // Command input field takes remaining width
         commandInputField = new JTextField();
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        
+
         // Match the Lanterna look with a border
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(Color.GRAY),
@@ -252,15 +261,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        // Add components to the panel
+        // Add components to the panel - ensuring full width
         panel.add(promptLabel, BorderLayout.WEST);
         panel.add(commandInputField, BorderLayout.CENTER);
-        
+
         // Create a wrapper panel with some padding
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBorder(new EmptyBorder(5, 5, 5, 5));
         wrapper.add(panel, BorderLayout.CENTER);
-        
+
         return wrapper;
     }
 
@@ -534,26 +543,24 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Create main context panel with border
         contextPanel = new JPanel(new BorderLayout());
         contextPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), 
-            "Context", 
-            javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-            javax.swing.border.TitledBorder.DEFAULT_POSITION,
-            new Font(Font.DIALOG, Font.BOLD, 12)
+                BorderFactory.createEtchedBorder(),
+                "Context",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        
-        // Create inner panel with grid layout for the tables
-        JPanel tablesPanel = new JPanel(new GridLayout(2, 1, 0, 5));
-        
-        // Read-only panel with label and table
-        JPanel readOnlyPanel = new JPanel(new BorderLayout());
-        JLabel roLabel = new JLabel("Read-only");
-        roLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        roLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-        
-        // Configure read-only table with monospaced font
-        readOnlyTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Description"}, 0) {
-            @Override public boolean isCellEditable(int row, int column) {
-                return false;
+
+        // Initialize the tables even though they may not be shown initially
+        // Configure read-only table with monospaced font and checkbox column
+        readOnlyTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Description", "Select"}, 0) {
+            @Override 
+            public boolean isCellEditable(int row, int column) {
+                return column == 3; // Only checkbox column is editable
+            }
+            
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return columnIndex == 3 ? Boolean.class : Object.class;
             }
         });
         readOnlyTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -563,21 +570,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Column widths similar to Lanterna layout
         readOnlyTable.getColumnModel().getColumn(0).setPreferredWidth(30);
         readOnlyTable.getColumnModel().getColumn(1).setPreferredWidth(50);
-        readOnlyTable.getColumnModel().getColumn(2).setPreferredWidth(500);
-        
-        readOnlyPanel.add(roLabel, BorderLayout.NORTH);
-        readOnlyPanel.add(new JScrollPane(readOnlyTable), BorderLayout.CENTER);
-        
-        // Editable panel with label and table
-        JPanel editablePanel = new JPanel(new BorderLayout());
-        JLabel edLabel = new JLabel("Editable");
-        edLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        edLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-        
-        // Configure editable table with monospaced font
-        editableTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Description"}, 0) {
-            @Override public boolean isCellEditable(int row, int column) {
-                return false;
+        readOnlyTable.getColumnModel().getColumn(2).setPreferredWidth(450);
+        readOnlyTable.getColumnModel().getColumn(3).setPreferredWidth(50);
+
+        // Configure editable table with monospaced font and checkbox column
+        editableTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Description", "Select"}, 0) {
+            @Override 
+            public boolean isCellEditable(int row, int column) {
+                return column == 3; // Only checkbox column is editable
+            }
+            
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return columnIndex == 3 ? Boolean.class : Object.class;
             }
         });
         editableTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -587,30 +592,73 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Column widths similar to Lanterna layout
         editableTable.getColumnModel().getColumn(0).setPreferredWidth(30);
         editableTable.getColumnModel().getColumn(1).setPreferredWidth(50);
-        editableTable.getColumnModel().getColumn(2).setPreferredWidth(500);
+        editableTable.getColumnModel().getColumn(2).setPreferredWidth(450);
+        editableTable.getColumnModel().getColumn(3).setPreferredWidth(50);
         
-        editablePanel.add(edLabel, BorderLayout.NORTH);
-        editablePanel.add(new JScrollPane(editableTable), BorderLayout.CENTER);
+        // Add listeners to checkbox changes to update button states
+        ((DefaultTableModel)readOnlyTable.getModel()).addTableModelListener(e -> {
+            if (e.getColumn() == 3) { // Checkbox column
+                updateContextButtonLabels();
+            }
+        });
         
-        // Add both panels to the tables panel
-        tablesPanel.add(readOnlyPanel);
-        tablesPanel.add(editablePanel);
-        
+        ((DefaultTableModel)editableTable.getModel()).addTableModelListener(e -> {
+            if (e.getColumn() == 3) { // Checkbox column
+                updateContextButtonLabels();
+            }
+        });
+
         // Create the summary label for LOC/tokens with monospaced font
         locSummaryLabel = new JLabel(" ");
         locSummaryLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         locSummaryLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
         
-        // Add components to main context panel
+        // Buttons will be created by createContextButtonsPanel()
+
+        // Set up initial tables with scroll panes (even if empty)
+        JPanel tablesPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+
+        // Read-only panel with label and table
+        JPanel readOnlyPanel = new JPanel(new BorderLayout());
+        JLabel roLabel = new JLabel("Read-only");
+                roLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
+        roLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
+                readOnlyPanel.add(roLabel, BorderLayout.NORTH);
+        readOnlyPanel.add(new JScrollPane(readOnlyTable), BorderLayout.CENTER);
+
+        // Editable panel with label and table
+        JPanel editablePanel = new JPanel(new BorderLayout());
+        JLabel edLabel = new JLabel("Editable");
+        edLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
+        edLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
+        editablePanel.add(edLabel, BorderLayout.NORTH);
+        editablePanel.add(new JScrollPane(editableTable), BorderLayout.CENTER);
+
+        // Add both panels to the tables panel
+        tablesPanel.add(readOnlyPanel);
+        tablesPanel.add(editablePanel);
+
+        // Add the buttons panel to the right side
+        JPanel buttonsPanel = createContextButtonsPanel();
+        
+        // Set up initial layout with tables and buttons
+        contextPanel.setLayout(new BorderLayout());
         contextPanel.add(tablesPanel, BorderLayout.CENTER);
+        contextPanel.add(buttonsPanel, BorderLayout.EAST);
         contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
         
+        // Initially disable drop button since we have no context
+        dropButton.setEnabled(false);
+        
+        // Set initial message in summary label
+        locSummaryLabel.setText("No context - use Edit new files or Read new files buttons to add content");
+
         return contextPanel;
     }
 
     /**
-     * Builds the menu bar with items for add/read/drops etc.
-     * You can replace slash-commands with direct menu items.
+     * Builds the menu bar with items for application actions.
+     * Context manipulation is now handled by direct buttons in the context panel.
      */
     private JMenuBar buildMenuBar() {
         JMenuBar menuBar = new JMenuBar();
@@ -623,16 +671,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         addItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, InputEvent.ALT_DOWN_MASK));
         addItem.addActionListener(e -> doAddContext());
         fileMenu.add(addItem);
-
-        JMenuItem readItem = new JMenuItem("Read-only context");
-        readItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.ALT_DOWN_MASK));
-        readItem.addActionListener(e -> doReadContext());
-        fileMenu.add(readItem);
-
-        JMenuItem dropItem = new JMenuItem("Drop all context");
-        dropItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.ALT_DOWN_MASK));
-        dropItem.addActionListener(e -> doDropAll());
-        fileMenu.add(dropItem);
 
         menuBar.add(fileMenu);
 
@@ -683,6 +721,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return menuBar;
     }
 
+    private List<RepoFile> showFileSelectionDialog(String title) {
+        var dialog = new FileSelectionDialog(frame, contextManager.getRoot(), title);
+        dialog.setVisible(true);
+        if (dialog.isConfirmed()) {
+            return dialog.getSelectedFiles();
+        }
+        return List.of();
+    }
+
     /**
      * Simplistic example that pops up a file chooser to add files to the context manager.
      */
@@ -691,22 +738,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Cannot add context, no manager");
             return;
         }
-        JFileChooser chooser = new JFileChooser(contextManager.getRoot().toFile());
-        chooser.setMultiSelectionEnabled(true);
-        int result = chooser.showOpenDialog(frame);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            var files = chooser.getSelectedFiles();
-            if (files.length == 0) {
-                toolOutput("No files selected");
-                return;
-            }
-            var repoFiles = new ArrayList<RepoFile>();
-            for (var f : files) {
-                var rel = contextManager.getRoot().relativize(f.toPath()).toString();
-                repoFiles.add(contextManager.toFile(rel));
-            }
-            contextManager.addFiles(repoFiles);
-            toolOutput("Added " + repoFiles);
+        var files = showFileSelectionDialog("Add Context");
+        if (!files.isEmpty()) {
+            contextManager.addFiles(files);
+            toolOutput("Added: " + files);
         }
     }
 
@@ -821,11 +856,65 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Repopulate the readOnlyTable / editableTable from the given context.
      */
     public void updateContextTable(Context context) {
+        // Reset the contextPanel
+        contextPanel.removeAll();
+        
+        // Create tables panel (even for empty context)
+        JPanel tablesPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+
+        // Read-only panel with label and table
+        JPanel readOnlyPanel = new JPanel(new BorderLayout());
+        JLabel roLabel = new JLabel("Read-only");
+        roLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
+        roLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
+                    readOnlyPanel.add(roLabel, BorderLayout.NORTH);
+        readOnlyPanel.add(new JScrollPane(readOnlyTable), BorderLayout.CENTER);
+
+        // Editable panel with label and table
+                    JPanel editablePanel = new JPanel(new BorderLayout());
+        JLabel edLabel = new JLabel("Editable");
+        edLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
+        edLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
+        editablePanel.add(edLabel, BorderLayout.NORTH);
+        editablePanel.add(new JScrollPane(editableTable), BorderLayout.CENTER);
+
+        // Add both panels to the tables panel
+        tablesPanel.add(readOnlyPanel);
+        tablesPanel.add(editablePanel);
+
+        // Create buttons panel
+        JPanel buttonsPanel = createContextButtonsPanel();
+
+        // Set up layout
+        contextPanel.setLayout(new BorderLayout());
+        contextPanel.add(tablesPanel, BorderLayout.CENTER);
+        contextPanel.add(buttonsPanel, BorderLayout.EAST);
+        contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
+
+        // Clear the tables
         var roModel = (DefaultTableModel) readOnlyTable.getModel();
         var edModel = (DefaultTableModel) editableTable.getModel();
         roModel.setRowCount(0);
         edModel.setRowCount(0);
 
+        // Update button states based on empty context
+        dropButton.setEnabled(!context.isEmpty());
+        updateContextButtonLabels();
+
+        // If context is empty, show message in summary label and return
+        if (context.isEmpty()) {
+            locSummaryLabel.setText("No context - use Edit new files or Read new files buttons to add content");
+            
+            // Refresh the UI
+            contextPanel.revalidate();
+            contextPanel.repaint();
+            return;
+        }
+        
+        // Enable drop button since we have context
+        dropButton.setEnabled(true);
+
+        // Populate the tables
         var allFragments = context.getAllFragmentsInDisplayOrder();
         int totalLines = 0;
         for (ContextFragment frag : allFragments) {
@@ -838,9 +927,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     && context.editableFiles().anyMatch(e -> e == frag);
 
             if (isEditable) {
-                edModel.addRow(new Object[]{id, loc, desc});
+                edModel.addRow(new Object[]{id, loc, desc, false});
             } else {
-                roModel.addRow(new Object[]{id, loc, desc});
+                roModel.addRow(new Object[]{id, loc, desc, false});
             }
         }
 
@@ -852,6 +941,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         int approxTokens = Models.getApproximateTokens(fullText);
 
         locSummaryLabel.setText("Total LOC: " + totalLines + ", or about " + (approxTokens/1000) + "k tokens");
+        
+        // Refresh the UI
+        contextPanel.revalidate();
+        contextPanel.repaint();
     }
 
     /**
@@ -865,6 +958,256 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         } catch (Exception e) {
             toolErrorRaw("Error reading fragment: " + e.getMessage());
             return 0;
+        }
+    }
+
+    /**
+     * Updates button labels based on whether items are selected in the tables
+     * and whether we have context
+     */
+    private void updateContextButtonLabels() {
+                boolean hasSelection = hasSelectedItems();
+        boolean hasContext = contextManager != null && !contextManager.currentContext().isEmpty();
+
+        if (hasContext) {
+            editButton.setText(hasSelection ? "Edit Selected" : "Edit All");
+            readOnlyButton.setText(hasSelection ? "Read Selected" : "Read All");
+            summarizeButton.setText(hasSelection ? "Summarize Selected" : "Summarize All");
+            dropButton.setText(hasSelection ? "Drop Selected" : "Drop All");
+        } else {
+            editButton.setText("Edit new files");
+            readOnlyButton.setText("Read new files");
+            summarizeButton.setText("Summarize new files");
+            dropButton.setText("Drop All");
+        }
+    }
+    
+    /**
+     * Creates the panel with context action buttons
+     */
+    private JPanel createContextButtonsPanel() {
+        JPanel buttonsPanel = new JPanel(new GridLayout(4, 1, 5, 5));
+        buttonsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
+
+        // Initialize buttons if they don't exist yet
+        if (editButton == null) {
+            editButton = new JButton("Edit All");
+            editButton.setMnemonic(KeyEvent.VK_E);
+            editButton.addActionListener(e -> performContextAction("edit"));
+                }
+        
+        if (readOnlyButton == null) {
+            readOnlyButton = new JButton("Read All");
+            readOnlyButton.setMnemonic(KeyEvent.VK_R);
+            readOnlyButton.addActionListener(e -> performContextAction("read"));
+        }
+        
+        if (summarizeButton == null) {
+            summarizeButton = new JButton("Summarize All");
+            summarizeButton.setMnemonic(KeyEvent.VK_S);
+            summarizeButton.addActionListener(e -> performContextAction("summarize"));
+        }
+        
+        if (dropButton == null) {
+            dropButton = new JButton("Drop All");
+            dropButton.setMnemonic(KeyEvent.VK_D);
+            dropButton.addActionListener(e -> performContextAction("drop"));
+        }
+
+        // Add buttons to panel
+        buttonsPanel.add(editButton);
+        buttonsPanel.add(readOnlyButton);
+        buttonsPanel.add(summarizeButton);
+        buttonsPanel.add(dropButton);
+
+        return buttonsPanel;
+    }
+    
+    /**
+     * Check if any items are selected in either table
+     */
+    private boolean hasSelectedItems() {
+        if (readOnlyTable.getModel().getRowCount() == 0 && editableTable.getModel().getRowCount() == 0) {
+            return false;
+        }
+        
+        // Check for any true value in checkbox column of either table
+        DefaultTableModel roModel = (DefaultTableModel) readOnlyTable.getModel();
+        DefaultTableModel edModel = (DefaultTableModel) editableTable.getModel();
+        
+        for (int i = 0; i < roModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(roModel.getValueAt(i, 3))) {
+                return true;
+            }
+        }
+        
+        for (int i = 0; i < edModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(edModel.getValueAt(i, 3))) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get the list of selected fragment indices from both tables
+     */
+    private List<Integer> getSelectedFragmentIndices() {
+        List<Integer> indices = new ArrayList<>();
+        
+        DefaultTableModel roModel = (DefaultTableModel) readOnlyTable.getModel();
+        DefaultTableModel edModel = (DefaultTableModel) editableTable.getModel();
+        
+        // Collect indices from read-only table
+        for (int i = 0; i < roModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(roModel.getValueAt(i, 3))) {
+                indices.add(Integer.parseInt(roModel.getValueAt(i, 0).toString()));
+            }
+        }
+        
+        // Collect indices from editable table
+        for (int i = 0; i < edModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(edModel.getValueAt(i, 3))) {
+                indices.add(Integer.parseInt(edModel.getValueAt(i, 0).toString()));
+            }
+        }
+        
+        return indices;
+    }
+    
+    /**
+     * Perform the requested action on selected context items (or all if none selected)
+     */
+    private void performContextAction(String action) {
+        if (contextManager == null) {
+            toolErrorRaw("Context manager not ready");
+            return;
+        }
+        
+        List<Integer> selectedIndices = getSelectedFragmentIndices();
+        ContextManager.OperationResult result = null;
+        
+        if (selectedIndices.isEmpty()) {
+            // Act on all context or new files
+            switch (action) {
+                case "edit" -> doAddContext();
+                case "read" -> doReadContext();
+                case "drop" -> {
+                    if (contextManager.currentContext().isEmpty()) {
+                        result = ContextManager.OperationResult.error("No context to drop");
+                    } else {
+                        result = contextManager.dropAll();
+                    }
+                }
+                case "summarize" -> {
+                    // Summarize all eligible files in context
+                    var context = contextManager.currentContext();
+                    var fragments = context.getAllFragmentsInDisplayOrder().stream()
+                        .filter(ContextFragment::isEligibleForAutoContext)
+                        .collect(java.util.stream.Collectors.toSet());
+                    
+                    if (fragments.isEmpty()) {
+                        result = ContextManager.OperationResult.error("No eligible items to summarize");
+                    } else {
+                        var sources = new java.util.HashSet<CodeUnit>();
+                        for (var frag : fragments) {
+                            sources.addAll(frag.sources(contextManager.getAnalyzer()));
+                        }
+                        
+                        boolean success = contextManager.summarizeClasses(sources);
+                        result = success ? 
+                            ContextManager.OperationResult.success("Summarized " + sources.size() + " classes") : 
+                            ContextManager.OperationResult.error("Failed to summarize classes");
+                    }
+                }
+            }
+        } else {
+            // Act on selected items
+            switch (action) {
+                case "edit" -> {
+                    try {
+                        var files = new java.util.HashSet<RepoFile>();
+                        for (int idx : selectedIndices) {
+                            var resolved = contextManager.getFilesFromFragmentIndex(idx);
+                            files.addAll(resolved);
+                        }
+                        contextManager.addFiles(files);
+                        result = ContextManager.OperationResult.success("Converted " + files.size() + " files to editable");
+                    } catch (Exception e) {
+                        result = ContextManager.OperationResult.error("Error: " + e.getMessage());
+                    }
+                }
+                case "read" -> {
+                    try {
+                        var files = new java.util.HashSet<RepoFile>();
+                        for (int idx : selectedIndices) {
+                            var resolved = contextManager.getFilesFromFragmentIndex(idx);
+                            files.addAll(resolved);
+                        }
+                        contextManager.addReadOnlyFiles(files);
+                        result = ContextManager.OperationResult.success("Added " + files.size() + " read-only files");
+                    } catch (Exception e) {
+                        result = ContextManager.OperationResult.error("Error: " + e.getMessage());
+                    }
+                }
+                case "drop" -> {
+                    // Build the command args string from indices
+                    var indices = selectedIndices.stream()
+                        .map(Object::toString)
+                        .collect(java.util.stream.Collectors.joining(" "));
+                    
+                    // Convert to fraglist and drop them
+                    var context = contextManager.currentContext();
+                    var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
+                    var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
+                    
+                    for (int idx : selectedIndices) {
+                        var allFrags = context.getAllFragmentsInDisplayOrder();
+                        if (idx >= 0 && idx < allFrags.size()) {
+                            var frag = allFrags.get(idx);
+                            if (frag instanceof ContextFragment.PathFragment pf) {
+                                pathFragsToRemove.add(pf);
+                            } else if (frag instanceof ContextFragment.VirtualFragment vf) {
+                                virtualToRemove.add(vf);
+                            }
+                        }
+                    }
+                    
+                    contextManager.drop(pathFragsToRemove, virtualToRemove);
+                    result = ContextManager.OperationResult.success("Dropped " + selectedIndices.size() + " items");
+                }
+                case "summarize" -> {
+                    // Get fragment at each index
+                    var fragments = new java.util.HashSet<ContextFragment>();
+                    var context = contextManager.currentContext();
+                    var allFrags = context.getAllFragmentsInDisplayOrder();
+                    
+                    for (int idx : selectedIndices) {
+                        if (idx >= 0 && idx < allFrags.size()) {
+                            fragments.add(allFrags.get(idx));
+                        }
+                    }
+                    
+                    if (fragments.isEmpty()) {
+                        result = ContextManager.OperationResult.error("No items to summarize");
+                    } else {
+                        var sources = new java.util.HashSet<CodeUnit>();
+                        for (var frag : fragments) {
+                            sources.addAll(frag.sources(contextManager.getAnalyzer()));
+                        }
+                        
+                        boolean success = contextManager.summarizeClasses(sources);
+                        result = success ? 
+                            ContextManager.OperationResult.success("Summarized from " + fragments.size() + " fragments") : 
+                            ContextManager.OperationResult.error("Failed to summarize classes");
+                    }
+                }
+            }
+        }
+        
+        if (result != null) {
+            showOperationResult(result);
         }
     }
 

@@ -202,7 +202,7 @@ public class Completions {
     /**
      * Expand paths that may contain wildcards (*, ?), returning all matches.
      */
-    static List<? extends BrokkFile> expandPath(Path root, String pattern) {
+    public static List<? extends BrokkFile> expandPath(Path root, String pattern) {
         // First check if this is a single file
         var file = maybeExternalFile(root, pattern);
         if (file.exists()) {
