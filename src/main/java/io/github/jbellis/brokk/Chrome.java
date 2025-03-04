@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+
 import dev.langchain4j.data.message.UserMessage;
 
 /**
@@ -103,7 +104,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 5) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
-        
+
         // 6) Show window
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
@@ -250,12 +251,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 ),
                 new EmptyBorder(5, 5, 5, 5)
         ));
-        
+
         // Command input field takes remaining width
         commandInputField = new JTextField();
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-                // Match the Lanterna look with a border
+        // Match the Lanterna look with a border
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
@@ -268,8 +269,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 if (frame != null && frame.getRootPane() != null) {
                     // Find the Go button to set as default
                     for (Component c : frame.getContentPane().getComponents()) {
-                        if (c instanceof JButton && "Go".equals(((JButton)c).getText())) {
-                            frame.getRootPane().setDefaultButton((JButton)c);
+                        if (c instanceof JButton && "Go".equals(((JButton) c).getText())) {
+                            frame.getRootPane().setDefaultButton((JButton) c);
                             break;
                         }
                     }
@@ -289,7 +290,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
 
         // Create a buttons panel for Go, Ask, Search - right-justified
-                JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 
         // Create and add the Go button
         JButton goButton = new JButton("Go");
@@ -298,29 +299,29 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             if (text != null && !text.isBlank()) {
                 onUserCommand(text);
             }
-                });
+        });
 
         // Create and add the Ask button
         JButton askButton = new JButton("Ask");
         askButton.addActionListener(e -> {
             String text = commandInputField.getText();
             showOperationResult(cmdAsk(text));
-                });
+        });
 
         // Create and add the Search button
         JButton searchButton = new JButton("Search");
         searchButton.addActionListener(e -> {
             String text = commandInputField.getText();
             showOperationResult(cmdSearch(text));
-                });
+        });
 
         // Add buttons to the panel
         buttonsPanel.add(goButton);
         buttonsPanel.add(askButton);
-                buttonsPanel.add(searchButton);
+        buttonsPanel.add(searchButton);
 
         // Set Go as the default button
-                frame.getRootPane().setDefaultButton(goButton);
+        frame.getRootPane().setDefaultButton(goButton);
 
         // Add text field and buttons to the wrapper panel
         wrapper.add(commandInputField, BorderLayout.CENTER);
@@ -543,7 +544,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void registerGlobalKeyboardShortcuts() {
         // Get the root pane from our frame
         JRootPane rootPane = frame.getRootPane();
-        
+
         // Register Ctrl+Z for undo
         KeyStroke undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
@@ -553,10 +554,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 showOperationResult(contextManager.undoContext());
             }
         });
-        
+
         // Register Ctrl+Shift+Z for redo
-        KeyStroke redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, 
-                                                        InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
+        KeyStroke redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                                                         InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
         rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
@@ -565,7 +566,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
     }
-    
+
     /**
      * Builds the menu bar with items for application actions.
      * Context manipulation is now handled by direct buttons in the context panel.
@@ -581,7 +582,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         addItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, InputEvent.ALT_DOWN_MASK));
         addItem.addActionListener(e -> doAddContext());
         fileMenu.add(addItem);
-        
+
         JMenuItem editKeysItem = new JMenuItem("Edit secret keys");
         editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK));
         editKeysItem.addActionListener(e -> showSecretKeysDialog());
@@ -635,7 +636,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     1      // step
             ));
             panel.add(spinner, BorderLayout.CENTER);
-            
+
             // Add button panel with OK and Cancel
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             JButton okButton = new JButton("OK");
@@ -656,12 +657,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             // Set OK as the default button
             dialog.getRootPane().setDefaultButton(okButton);
-            
+
             // Add escape key handler to cancel
             dialog.getRootPane().registerKeyboardAction(
-                event -> dialog.dispose(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                JComponent.WHEN_IN_FOCUSED_WINDOW
+                    event -> dialog.dispose(),
+                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                    JComponent.WHEN_IN_FOCUSED_WINDOW
             );
 
             dialog.add(panel);
@@ -701,7 +702,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private List<RepoFile> showFileSelectionDialog(String title) {
         var dialog = new FileSelectionDialog(frame, contextManager.getRoot(), title);
         // Size the dialog to 90% of main window width
-        dialog.setSize((int)(frame.getWidth() * 0.9), dialog.getHeight());
+        dialog.setSize((int) (frame.getWidth() * 0.9), dialog.getHeight());
         dialog.setLocationRelativeTo(frame);
         dialog.setVisible(true);
         if (dialog.isConfirmed()) {
@@ -1274,7 +1275,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             frame.dispose();
         }
     }
-    
+
     /**
      * Ask the LLM a specific question about the codebase
      */
@@ -1316,7 +1317,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextManager.addSearchFragment(result);
         return OperationResult.success();
     }
-    
+
     /**
      * Helper to wrap text for display
      */
@@ -1337,7 +1338,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // auto-scroll to bottom
         llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
     }
-    
+
     /**
      * Shows a dialog for editing LLM API secret keys.
      * Uses the Models.defaultKeyNames for suggestions and saves to ~/.brokk/config/keys.properties.
@@ -1347,28 +1348,28 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Project not available");
             return;
         }
-        
+
         // Create the dialog
         JDialog dialog = new JDialog(frame, "Edit LLM API Keys", true);
         dialog.setLayout(new BorderLayout());
-        
+
         // Create main panel with padding
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
-        
+
         // Get existing keys
         Map<String, String> existingKeys = project.getLlmKeys();
-        
+
         // Create a panel to hold the key-value pairs with vertical BoxLayout
         JPanel keysPanel = new JPanel();
         keysPanel.setLayout(new BoxLayout(keysPanel, BoxLayout.Y_AXIS));
-        
+
         // Set up a list to track the row components for adding/removing
         List<KeyValueRowPanel> keyRows = new ArrayList<>();
-        
+
         // Get default key name suggestions from Models
         String[] defaultKeyNames = coder.models.defaultKeyNames;
-        
+
         // Add existing keys (or at least one empty row if no keys exist)
         if (existingKeys.isEmpty()) {
             // Add one empty row
@@ -1383,18 +1384,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 keysPanel.add(row);
             }
         }
-        
+
         // Create scrollable panel for keys
         JScrollPane scrollPane = new JScrollPane(keysPanel);
         // Set preferred size to 90% of parent window width
         scrollPane.setPreferredSize(new Dimension(
-                        (int)(frame.getWidth() * 0.9),
+                (int) (frame.getWidth() * 0.9),
                 250));
         mainPanel.add(scrollPane, BorderLayout.CENTER);
 
         // Create buttons panel for Add/Remove keys
         JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        
+
         JButton addButton = new JButton("Add Key");
         addButton.addActionListener(e -> {
             KeyValueRowPanel newRow = new KeyValueRowPanel(defaultKeyNames);
@@ -1403,7 +1404,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             keysPanel.revalidate();
             keysPanel.repaint();
         });
-        
+
         JButton removeButton = new JButton("Remove Last Key");
         removeButton.addActionListener(e -> {
             if (!keyRows.isEmpty()) {
@@ -1413,72 +1414,72 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 keysPanel.repaint();
             }
         });
-        
+
         buttonsPanel.add(addButton);
         buttonsPanel.add(removeButton);
         mainPanel.add(buttonsPanel, BorderLayout.NORTH);
-        
+
         // Create OK/Cancel buttons panel
         JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        
+
         JButton okButton = new JButton("OK");
         okButton.addActionListener(e -> {
             // Collect all key-value pairs
             Map<String, String> newKeys = new HashMap<>();
             boolean hasEmptyKey = false;
-            
+
             for (KeyValueRowPanel row : keyRows) {
                 String key = row.getKeyName();
                 String value = row.getKeyValue();
-                
+
                 // Skip empty rows
                 if (key.isBlank() && value.isBlank()) {
                     continue;
                 }
-                
+
                 // Warn about empty keys
                 if (key.isBlank()) {
                     hasEmptyKey = true;
                     continue;
                 }
-                
+
                 // Add to map
                 newKeys.put(key, value);
             }
-            
+
             if (hasEmptyKey) {
-                JOptionPane.showMessageDialog(dialog, 
-                        "Some keys have empty names and will be skipped.", 
-                        "Warning", 
-                        JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(dialog,
+                                              "Some keys have empty names and will be skipped.",
+                                              "Warning",
+                                              JOptionPane.WARNING_MESSAGE);
             }
-            
+
             // Save keys
             project.saveLlmKeys(newKeys);
             toolOutput("Saved " + newKeys.size() + " API keys");
             dialog.dispose();
         });
-        
+
         JButton cancelButton = new JButton("Cancel");
         cancelButton.addActionListener(e -> dialog.dispose());
-        
+
         actionButtonsPanel.add(okButton);
         actionButtonsPanel.add(cancelButton);
         mainPanel.add(actionButtonsPanel, BorderLayout.SOUTH);
-        
+
         // Add the main panel to the dialog
         dialog.add(mainPanel);
-        
+
         // Set OK as the default button
         dialog.getRootPane().setDefaultButton(okButton);
-        
+
         // Add escape key handler to cancel
         dialog.getRootPane().registerKeyboardAction(
-            event -> dialog.dispose(),
-            KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-            JComponent.WHEN_IN_FOCUSED_WINDOW
+                event -> dialog.dispose(),
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW
         );
-        
+
         // Size and show the dialog
         dialog.pack();
         // Center the dialog relative to frame
@@ -1486,26 +1487,26 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Make sure it's visible
         dialog.setVisible(true);
     }
-    
+
     /**
      * Inner class for key-value row panels in the secrets dialog
      */
     private static class KeyValueRowPanel extends JPanel {
         private final JComboBox<String> keyNameCombo;
         private final JTextField keyValueField;
-        
+
         public KeyValueRowPanel(String[] defaultKeyNames) {
             this(defaultKeyNames, "", "");
         }
-        
+
         public KeyValueRowPanel(String[] defaultKeyNames, String initialKey, String initialValue) {
             setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
             setBorder(new EmptyBorder(5, 0, 5, 0));
-            
+
             // Create combobox with editable capabilities
             keyNameCombo = new JComboBox<>(defaultKeyNames);
             keyNameCombo.setEditable(true);
-            
+
             // If initialKey is not empty, set it
             if (!initialKey.isEmpty()) {
                 // Check if it's in the default keys first
@@ -1517,24 +1518,24 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         break;
                     }
                 }
-                
+
                 // If not found, add it as custom item
                 if (!found) {
                     keyNameCombo.setSelectedItem(initialKey);
                 }
             }
-            
+
             // Create value field
             keyValueField = new JTextField(initialValue);
-            
+
             // Set preferred sizes
             keyNameCombo.setPreferredSize(new Dimension(150, 25));
             keyValueField.setPreferredSize(new Dimension(250, 25));
-            
+
             // Set maximum sizes to maintain proportions
             keyNameCombo.setMaximumSize(new Dimension(150, 25));
             keyValueField.setMaximumSize(new Dimension(Short.MAX_VALUE, 25));
-            
+
             // Add to panel with labels
             add(new JLabel("Key: "));
             add(keyNameCombo);
@@ -1542,12 +1543,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             add(new JLabel("Value: "));
             add(keyValueField);
         }
-        
+
         public String getKeyName() {
             Object selected = keyNameCombo.getSelectedItem();
             return selected != null ? selected.toString().trim() : "";
         }
-        
+
         public String getKeyValue() {
             return keyValueField.getText().trim();
         }
