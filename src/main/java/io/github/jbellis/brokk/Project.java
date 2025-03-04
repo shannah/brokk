@@ -1,8 +1,12 @@
 package io.github.jbellis.brokk;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 public class Project {
@@ -115,5 +119,51 @@ public class Project {
      */
     public Path getHistoryFilePath() {
         return historyFilePath;
+    }
+    
+    /**
+     * Returns the LLM API keys stored in ~/.brokk/config/keys.properties
+     * @return Map of key names to values, or empty map if file doesn't exist
+     */
+    public Map<String, String> getLlmKeys() {
+        Map<String, String> keys = new HashMap<>();
+        var keysPath = getLlmKeysPath();
+
+        if (Files.exists(keysPath)) {
+            try (var reader = Files.newBufferedReader(keysPath)) {
+                Properties keyProps = new Properties();
+                keyProps.load(reader);
+                for (String name : keyProps.stringPropertyNames()) {
+                    keys.put(name, keyProps.getProperty(name));
+                }
+            } catch (IOException e) {
+                io.toolErrorRaw("Error loading LLM keys: " + e.getMessage());
+            }
+        }
+        
+        return keys;
+    }
+
+    public static Path getLlmKeysPath() {
+        return Path.of(System.getProperty("user.home"), ".config", "brokk", "keys.properties");
+    }
+
+    /**
+     * @param keys Map of key names to values
+     */
+    public void saveLlmKeys(Map<String, String> keys) {
+        var keysPath = getLlmKeysPath();
+
+        try {
+            Files.createDirectories(keysPath.getParent());
+            Properties keyProps = new Properties();
+            keys.forEach(keyProps::setProperty);
+            
+            try (var writer = Files.newBufferedWriter(keysPath)) {
+                keyProps.store(writer, "Brokk LLM API keys");
+            }
+        } catch (IOException e) {
+            io.toolErrorRaw("Error saving LLM keys: " + e.getMessage());
+        }
     }
 }
