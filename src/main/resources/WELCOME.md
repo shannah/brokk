@@ -1,3 +1,5 @@
+Welcome to Brokk!
+
 Brokk is code intelligence for AI.
 
 Check out the README at https://github.com/jbellis/brokk, but

@@ -80,13 +80,6 @@ public class Brokk {
                 version = "[unknown]";
             }
 
-            // Output initial info to the command result area
-            io.shellOutput("Brokk %s".formatted(version));
-            io.shellOutput("Editor model: " + models.editModelName());
-            io.shellOutput("Apply model: " + models.applyModelName());
-            io.shellOutput("Quick model: " + models.quickModelName());
-            io.shellOutput("Git repo found at %s with %d files".formatted(sourceRoot, GitRepo.instance.getTrackedFiles().size()));
-
             // Show welcome message
             try (var welcomeStream = Brokk.class.getResourceAsStream("/WELCOME.md")) {
                 if (welcomeStream != null) {
@@ -95,6 +88,14 @@ public class Brokk {
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+
+            // Output initial info to the command result area
+            io.shellOutput("\nEnvironment:");
+            io.shellOutput("Brokk %s".formatted(version));
+            io.shellOutput("Editor model: " + models.editModelName());
+            io.shellOutput("Apply model: " + models.applyModelName());
+            io.shellOutput("Quick model: " + models.quickModelName());
+            io.shellOutput("Git repo at %s with %d files".formatted(sourceRoot, GitRepo.instance.getTrackedFiles().size()));
         });
     }
 }
