@@ -196,7 +196,30 @@ public class Chrome implements AutoCloseable, IConsoleIO
         llmStreamArea.setWrapStyleWord(true);
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-        return new JScrollPane(llmStreamArea);
+        JScrollPane scrollPane = new JScrollPane(llmStreamArea);
+        
+        // Add scroll listener to detect manual scrolling
+        scrollPane.getVerticalScrollBar().addAdjustmentListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                return;
+            }
+            
+            // Check if we're at the bottom
+            JScrollBar scrollBar = scrollPane.getVerticalScrollBar();
+            int value = scrollBar.getValue();
+            int extent = scrollBar.getModel().getExtent();
+            int maximum = scrollBar.getMaximum();
+            
+            if (value + extent >= maximum) {
+                // User scrolled to bottom, so we should auto-scroll from now on
+                userHasManuallyScrolled = false;
+            } else {
+                // User has scrolled somewhere else, so don't auto-scroll
+                userHasManuallyScrolled = true;
+            }
+        });
+
+        return scrollPane;
     }
 
     /**
@@ -358,6 +381,9 @@ public class Chrome implements AutoCloseable, IConsoleIO
             goButton.setEnabled(false);
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
+            stopButton.setEnabled(true);
+            // Reset scroll tracking when starting a new command
+            userHasManuallyScrolled = false;
         });
     }
 
@@ -370,6 +396,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
             goButton.setEnabled(true);
             askButton.setEnabled(true);
             searchButton.setEnabled(true);
+            stopButton.setEnabled(false);
         });
     }
 
@@ -999,12 +1026,30 @@ public class Chrome implements AutoCloseable, IConsoleIO
         });
     }
 
+    // Track if user has manually scrolled
+    private boolean userHasManuallyScrolled = false;
+    
     @Override
     public void llmOutput(String token)
     {
         SwingUtilities.invokeLater(() -> {
+            // Get current view position before appending text
+            JScrollPane scrollPane = (JScrollPane) llmStreamArea.getParent().getParent();
+            JViewport viewport = scrollPane.getViewport();
+            Point viewPosition = viewport.getViewPosition();
+            int viewHeight = viewport.getHeight();
+            int textHeight = llmStreamArea.getHeight();
+            
+            // Check if we're near the bottom
+            boolean wasAtBottom = (viewPosition.y + viewHeight) >= (textHeight - 5);
+            
+            // Append the text
             llmStreamArea.append(token);
-            llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
+            
+            // Only auto-scroll if we were already at the bottom or user hasn't scrolled manually
+            if (wasAtBottom || !userHasManuallyScrolled) {
+                llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
+            }
         });
     }
 
@@ -1097,55 +1142,43 @@ public class Chrome implements AutoCloseable, IConsoleIO
     public void updateContextTable(Context context)
     {
         SwingUtilities.invokeLater(() -> {
-            contextPanel.removeAll();
-
-            // Table panel
-            var tablePanel = new JPanel(new BorderLayout());
-            tablePanel.add(new JScrollPane(contextTable), BorderLayout.CENTER);
-
-            var buttonsPanel = createContextButtonsPanel();
-
-            contextPanel.setLayout(new BorderLayout());
-            contextPanel.add(tablePanel, BorderLayout.CENTER);
-            contextPanel.add(buttonsPanel, BorderLayout.EAST);
-            contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
-
-            // Clear table model
+            // Clear the existing table rows
             var tableModel = (DefaultTableModel) contextTable.getModel();
             tableModel.setRowCount(0);
 
-            updateContextButtons();  // reset button states
-
+            updateContextButtons();
+            
             if (context.isEmpty()) {
                 locSummaryLabel.setText("No context - use Edit or Read or Summarize to add content");
                 contextPanel.revalidate();
                 contextPanel.repaint();
                 return;
             }
-
-            // Fill
+            
+            // Fill the table with new data
             var allFragments = context.getAllFragmentsInDisplayOrder();
-            var totalLines = 0;
+            int totalLines = 0;
             for (var frag : allFragments) {
                 var id = context.getPositionOfFragment(frag);
                 var loc = countLinesSafe(frag);
                 totalLines += loc;
                 var desc = frag.description();
-
+                
                 var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
                         && context.editableFiles().anyMatch(e -> e == frag);
                 var type = isEditable ? "✏️ Editable" : "📄 Read-only";
-
+                
                 tableModel.addRow(new Object[]{id, loc, type, desc, false});
             }
-
+            
             var fullText = "";  // no large merges needed
             var approxTokens = Models.getApproximateTokens(fullText);
-
+            
             locSummaryLabel.setText(
                     "Total LOC: %,d, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
             );
-
+            
+            // Just revalidate/repaint the panel to reflect the new rows
             contextPanel.revalidate();
             contextPanel.repaint();
         });
