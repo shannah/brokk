@@ -743,106 +743,46 @@ public class Chrome implements AutoCloseable, IConsoleIO
     {
         var rootPane = frame.getRootPane();
 
-        // Register global keyboard shortcuts using KeyboardFocusManager
-        // This approach handles events even when input components have focus
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
-            // Only process PRESSED events to avoid duplicates
-            if (e.getID() != KeyEvent.KEY_PRESSED) {
-                return false;
-            }
-
-            // Check for Ctrl+V (paste)
-            if (e.isControlDown() && !e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_V) {
-                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                // Only intercept if not already in a text component
-                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
-                    if (contextManager != null) {
-                        currentUserTask = contextManager.performContextActionAsync("paste", List.of());
-                        return true; // Consume the event
-                    }
-                }
-            }
-
-            // Check for Ctrl+Z (undo)
-            else if (e.isControlDown() && !e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_Z) {
-                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                // Only intercept if not in a text component
-                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
-                    if (contextManager != null) {
-                        disableUserActionButtons();
-                        disableContextActionButtons();
-                        currentUserTask = contextManager.undoContextAsync();
-                        return true; // Consume the event
-                    }
-                }
-            }
-
-            // Check for Ctrl+Shift+Z (redo)
-            else if (e.isControlDown() && e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_Z) {
-                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                // Only intercept if not in a text component
-                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
-                    if (contextManager != null) {
-                        disableUserActionButtons();
-                        disableContextActionButtons();
-                        currentUserTask = contextManager.redoContextAsync();
-                        return true; // Consume the event
-                    }
-                }
-            }
-
-            return false; // Let other components handle the event
-        });
-
-        // Also keep the menu shortcuts working by registering them normally
-        // These will work when menu items are focused
-
-        // Ctrl+V => paste (for menus)
-        var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
-        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
-        rootPane.getActionMap().put("globalPaste", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
-                    if (contextManager != null) {
-                        currentUserTask = contextManager.performContextActionAsync("paste", List.of());
-                    }
-                }
-            }
-        });
-
-        // Ctrl+Z => undo (for menus)
+        // Ctrl+Z => undo
         var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
-        rootPane.getActionMap().put("globalUndo", new AbstractAction() {
+        rootPane.getActionMap().put("globalUndo", new AbstractAction()
+        {
             @Override
             public void actionPerformed(ActionEvent e) {
-                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
-                    if (contextManager != null) {
-                        disableUserActionButtons();
-                        disableContextActionButtons();
-                        currentUserTask = contextManager.undoContextAsync();
-                    }
+                if (contextManager != null) {
+                    disableUserActionButtons();
+                    disableContextActionButtons();
+                    currentUserTask = contextManager.undoContextAsync();
                 }
             }
         });
 
-        // Ctrl+Shift+Z => redo (for menus)
+        // Ctrl+Shift+Z => redo
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
                                                    InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
-        rootPane.getActionMap().put("globalRedo", new AbstractAction() {
+        rootPane.getActionMap().put("globalRedo", new AbstractAction()
+        {
             @Override
             public void actionPerformed(ActionEvent e) {
-                Component focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                if (!(focused instanceof JTextField) && !(focused instanceof RSyntaxTextArea)) {
-                    if (contextManager != null) {
-                        disableUserActionButtons();
-                        disableContextActionButtons();
-                        currentUserTask = contextManager.redoContextAsync();
-                    }
+                if (contextManager != null) {
+                    disableUserActionButtons();
+                    disableContextActionButtons();
+                    currentUserTask = contextManager.redoContextAsync();
+                }
+            }
+        });
+        
+        // Ctrl+V => paste
+        var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
+        rootPane.getActionMap().put("globalPaste", new AbstractAction()
+        {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (contextManager != null) {
+                    currentUserTask = contextManager.performContextActionAsync("paste", List.of());
                 }
             }
         });
