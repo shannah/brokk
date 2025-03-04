@@ -558,7 +558,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         editMenu.add(undoItem);
 
         JMenuItem redoItem = new JMenuItem("Redo");
-        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK));
+        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                                                       InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
         redoItem.addActionListener(e -> showOperationResult(contextManager.redoContext()));
         editMenu.add(redoItem);
 
