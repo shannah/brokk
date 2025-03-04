@@ -82,6 +82,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
     // Track the currently running user-driven future (Go/Ask/Search)
     private volatile Future<?> currentUserTask;
+    private JScrollPane llmScrollPane;
 
     /**
      * Default constructor sets up the UI.
@@ -154,7 +155,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
         gbc.insets = new Insets(2,2,2,2);
 
         // 1. LLM streaming area
-        var llmScrollPane = buildLLMStreamScrollPane();
+        llmScrollPane = buildLLMStreamScrollPane();
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(llmScrollPane, gbc);
@@ -201,21 +202,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
         llmStreamArea.setWrapStyleWord(true);
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-        JScrollPane scrollPane = new JScrollPane(llmStreamArea);
-        
-        // Add scroll listener to detect manual scrolling
-        scrollPane.getVerticalScrollBar().addAdjustmentListener(e -> {
-            JScrollBar sb = scrollPane.getVerticalScrollBar();
-            int value = sb.getValue();
-            int extent = sb.getModel().getExtent();
-            int max = sb.getMaximum();
-
-            // If the user is near the bottom, re-enable autoscroll. Otherwise disable it.
-            userHasManuallyScrolled = (value + extent < max - 1);
-            System.out.println("Manually scrolled: " + userHasManuallyScrolled);
-        });
-
-        return scrollPane;
+        return new JScrollPane(llmStreamArea);
     }
 
     /**
@@ -378,8 +365,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
             stopButton.setEnabled(true);
-            // Reset scroll tracking when starting a new command
-            userHasManuallyScrolled = false;
         });
     }
 
@@ -482,7 +467,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        
+
         contextTable = new JTable(new DefaultTableModel(
                 new Object[]{"ID", "LOC", "Description", "Select"}, 0)
         {
@@ -497,21 +482,21 @@ public class Chrome implements AutoCloseable, IConsoleIO
             }
         });
         contextTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        
+
         // Add custom cell renderer for the description column to show italics for editable files
         contextTable.getColumnModel().getColumn(2).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
             @Override
             public java.awt.Component getTableCellRendererComponent(
                     JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-                
+
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                
+
                 if (value != null && value.toString().startsWith("✏️")) {
                     setFont(getFont().deriveFont(Font.ITALIC));
                 } else {
                     setFont(getFont().deriveFont(Font.PLAIN));
                 }
-                
+
                 return c;
             }
         });
@@ -547,7 +532,9 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
-        JScrollPane tableScrollPane = new JScrollPane(contextTable);
+        JScrollPane tableScrollPane = new JScrollPane(contextTable,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         // Set a preferred size to maintain height even when empty (almost works)
         tableScrollPane.setPreferredSize(new Dimension(600, 150));
         tablePanel.add(tableScrollPane, BorderLayout.CENTER);
@@ -783,7 +770,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 }
             }
         });
-        
+
         // Ctrl+V => paste
         var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
@@ -1085,13 +1072,19 @@ public class Chrome implements AutoCloseable, IConsoleIO
         });
     }
 
-    // Track if user has manually scrolled
-    private boolean userHasManuallyScrolled = false;
-    
     @Override
     public void llmOutput(String token)
     {
         SwingUtilities.invokeLater(() -> {
+            JScrollBar sb = llmScrollPane.getVerticalScrollBar();
+            int value = sb.getValue();
+            int extent = sb.getModel().getExtent();
+            int max = sb.getMaximum();
+
+            // If the user is near the bottom, scroll to stay there
+            var userHasManuallyScrolled = (value + extent < max - 1);
+            System.out.println("Manually scrolled: " + userHasManuallyScrolled);
+
             // Append the text
             llmStreamArea.append(token);
 
@@ -1196,14 +1189,14 @@ public class Chrome implements AutoCloseable, IConsoleIO
             tableModel.setRowCount(0);
 
             updateContextButtons();
-            
+
             if (context.isEmpty()) {
                 locSummaryLabel.setText("No context - use Edit or Read or Summarize to add content");
                 contextPanel.revalidate();
                 contextPanel.repaint();
                 return;
             }
-            
+
             // Fill the table with new data
             var allFragments = context.getAllFragmentsInDisplayOrder();
             int totalLines = 0;
@@ -1223,14 +1216,14 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
                 tableModel.addRow(new Object[]{id, loc, desc, false});
             }
-            
+
             var fullText = "";  // no large merges needed
             var approxTokens = Models.getApproximateTokens(fullText);
-            
+
             locSummaryLabel.setText(
                     "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
             );
-            
+
             // Just revalidate/repaint the panel to reflect the new rows
             contextPanel.revalidate();
             contextPanel.repaint();
@@ -1254,15 +1247,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
      */
     public void shellOutput(String st)
     {
-        SwingUtilities.invokeLater(() -> {
-            if (!llmStreamArea.getText().endsWith("\n\n")) {
-                llmStreamArea.append("\n");
-            }
-            llmStreamArea.append(st);
-            if (!userHasManuallyScrolled) {
-                llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
-            }
-        });
+        llmOutput("\n" + st);
     }
 
     @Override
