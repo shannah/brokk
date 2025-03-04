@@ -59,6 +59,20 @@ public class Project {
     
     public void saveProperties() {
         try {
+            // Check if properties file exists
+            if (Files.exists(propertiesFile)) {
+                // Load existing properties to compare
+                Properties existingProps = new Properties();
+                try (var reader = Files.newBufferedReader(propertiesFile)) {
+                    existingProps.load(reader);
+                }
+                
+                // Compare properties - only save if different
+                if (propsEqual(existingProps, props)) {
+                    return; // Skip saving if properties are identical
+                }
+            }
+            
             Files.createDirectories(propertiesFile.getParent());
             try (var writer = Files.newBufferedWriter(propertiesFile)) {
                 props.store(writer, "Brokk project configuration");
@@ -66,6 +80,24 @@ public class Project {
         } catch (IOException e) {
             io.toolErrorRaw("Error saving project properties: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Compares two Properties objects to see if they have the same key-value pairs
+     * @return true if properties are equal
+     */
+    @NotNull
+    private boolean propsEqual(Properties p1, Properties p2) {
+        if (p1.size() != p2.size()) {
+            return false;
+        }
+        
+        return p1.entrySet().stream()
+            .allMatch(e -> {
+                String key = (String) e.getKey();
+                String value = (String) e.getValue();
+                return value.equals(p2.getProperty(key));
+            });
     }
 
     public IConsoleIO getIo() {
