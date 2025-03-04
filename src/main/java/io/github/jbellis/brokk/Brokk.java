@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import javax.swing.*;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -86,27 +87,14 @@ public class Brokk {
             io.shellOutput("Quick model: " + models.quickModelName());
             io.shellOutput("Git repo found at %s with %d files".formatted(sourceRoot, GitRepo.instance.getTrackedFiles().size()));
 
-            // Show initial MOTD
-            maybeShowMotd();
-        });
-    }
-
-    private static void maybeShowMotd() {
-        Path configDir = Path.of(System.getProperty("user.home"), ".config", "brokk");
-        if (configDir.toFile().exists()) {
-            return;
-        }
-
-        try {
-            Files.createDirectories(configDir);
             // Show welcome message
             try (var welcomeStream = Brokk.class.getResourceAsStream("/WELCOME.md")) {
                 if (welcomeStream != null) {
                     io.shellOutput(new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8));
                 }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
-        } catch (IOException e) {
-            io.toolError("Failed to create config directory: " + e.getMessage());
-        }
+        });
     }
 }
