@@ -2,11 +2,9 @@ package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.ContextManager.OperationResult;
+import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.autocomplete.AutoCompletion;
-import org.fife.ui.autocomplete.CompletionProvider;
-import org.fife.ui.autocomplete.DefaultCompletionProvider;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
@@ -17,10 +15,8 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Arrays;
 
 /**
  * Chrome provides a Swing-based UI for Brokk, replacing the old Lanterna-based ConsoleIO.
@@ -59,12 +55,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JPanel contextPanel;
     private JTable contextTable;
     private JLabel locSummaryLabel;
-    
+
     // Context action buttons:
     private JButton editButton;
     private JButton readOnlyButton;
     private JButton summarizeButton;
     private JButton dropButton;
+    private JButton copyButton;
 
     // History:
     private final List<String> commandHistory = new ArrayList<>();
@@ -131,44 +128,44 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JPanel buildMainPanel() {
         // Create a main panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
-        
+
         // Create a panel with GridBagLayout for precise control
         JPanel contentPanel = new JPanel(new GridBagLayout());
-                GridBagConstraints gbc = new GridBagConstraints();
+        GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
         gbc.gridx = 0;
         gbc.insets = new Insets(2, 2, 2, 2);
-        
+
         // 1. LLM streaming area (takes most of the space)
-                JScrollPane llmScrollPane = buildLLMStreamScrollPane();
+        JScrollPane llmScrollPane = buildLLMStreamScrollPane();
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(llmScrollPane, gbc);
-        
-                // 2. Command result label
+
+        // 2. Command result label
         JComponent resultLabel = buildCommandResultLabel();
         gbc.weighty = 0.0;
         gbc.gridy = 1;
         contentPanel.add(resultLabel, gbc);
-        
+
         // 3. Command input with prompt
         JPanel commandPanel = buildCommandInputPanel();
         gbc.gridy = 2;
         contentPanel.add(commandPanel, gbc);
-        
+
         // 4. Context panel (with border title)
         JPanel ctxPanel = buildContextPanel();
-                gbc.weighty = 0.2;
+        gbc.weighty = 0.2;
         gbc.gridy = 3;
         contentPanel.add(ctxPanel, gbc);
-        
+
         // 5. Background status label at the very bottom
-                JComponent statusLabel = buildBackgroundStatusLabel();
+        JComponent statusLabel = buildBackgroundStatusLabel();
         gbc.weighty = 0.0;
         gbc.gridy = 4;
         contentPanel.add(statusLabel, gbc);
-        
+
         panel.add(contentPanel, BorderLayout.CENTER);
         return panel;
     }
@@ -185,10 +182,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         llmStreamArea.setAutoscrolls(true);
         llmStreamArea.setLineWrap(true); // Enable line wrapping like Lanterna
         llmStreamArea.setWrapStyleWord(true); // Wrap at word boundaries
-        
+
         // Use a monospaced font like Lanterna terminal
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        
+
         JScrollPane scrollPane = new JScrollPane(llmStreamArea);
         return scrollPane;
     }
@@ -220,8 +217,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         backgroundStatusLabel.setBackground(new Color(240, 240, 240));
         // Add a line border above to separate from other content
         backgroundStatusLabel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
-            new EmptyBorder(5, 10, 5, 10)
+                BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
+                new EmptyBorder(5, 10, 5, 10)
         ));
         return backgroundStatusLabel;
     }
@@ -245,8 +242,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Match the Lanterna look with a border
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(Color.GRAY),
-            BorderFactory.createEmptyBorder(2, 5, 2, 5)
+                BorderFactory.createLineBorder(Color.GRAY),
+                BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
 
         // Keybindings for Emacs-like shortcuts
@@ -574,9 +571,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextTable.getColumnModel().getColumn(4).setPreferredWidth(50);   // Select checkbox
 
         // Add listener to checkbox changes to update button states
-        ((DefaultTableModel)contextTable.getModel()).addTableModelListener(e -> {
+        ((DefaultTableModel) contextTable.getModel()).addTableModelListener(e -> {
             if (e.getColumn() == 4) { // Checkbox column
-                updateContextButtonLabels();
+                updateContextButtons();
             }
         });
 
@@ -584,29 +581,25 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         locSummaryLabel = new JLabel(" ");
         locSummaryLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         locSummaryLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
-        
+
         // Buttons will be created by createContextButtonsPanel()
 
         // Set up the table panel with a single unified table
         JPanel tablePanel = new JPanel(new BorderLayout());
-        JLabel contextLabel = new JLabel("Context Files");
-        contextLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        contextLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-        tablePanel.add(contextLabel, BorderLayout.NORTH);
         tablePanel.add(new JScrollPane(contextTable), BorderLayout.CENTER);
 
         // Add the buttons panel to the right side
         JPanel buttonsPanel = createContextButtonsPanel();
-        
+
         // Set up initial layout with table and buttons
         contextPanel.setLayout(new BorderLayout());
         contextPanel.add(tablePanel, BorderLayout.CENTER);
         contextPanel.add(buttonsPanel, BorderLayout.EAST);
         contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
-        
-        // Initially disable drop button since we have no context
-        dropButton.setEnabled(false);
-        
+
+        // initialize buttons to empty state
+        updateContextButtons();
+
         // Set initial message in summary label
         locSummaryLabel.setText("No context - use Edit new files or Read new files buttons to add content");
 
@@ -772,14 +765,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public char askOptions(String msg, String options) {
         // e.g. "Action for file X? (A)dd, (R)ead, (S)ummarize, (I)gnore"
         // Implement a simple input dialog or combo selection:
-        String[] optsArr = options.chars().mapToObj(c -> String.valueOf((char)c)).toArray(String[]::new);
+        String[] optsArr = options.chars().mapToObj(c -> String.valueOf((char) c)).toArray(String[]::new);
         String choice = (String) JOptionPane.showInputDialog(
                 frame, msg, "Choose Option",
                 JOptionPane.PLAIN_MESSAGE, null,
                 optsArr, optsArr.length > 0 ? optsArr[0] : null
         );
         if (choice == null || choice.isEmpty()) {
-            return options.toLowerCase().charAt(options.length()-1);
+            return options.toLowerCase().charAt(options.length() - 1);
         }
         return choice.toLowerCase().charAt(0);
     }
@@ -818,13 +811,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Create table panel (even for empty context)
         JPanel tablePanel = new JPanel(new BorderLayout());
-        JLabel contextLabel = new JLabel("Context Files");
-        contextLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        contextLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-        tablePanel.add(contextLabel, BorderLayout.NORTH);
         tablePanel.add(new JScrollPane(contextTable), BorderLayout.CENTER);
 
-        // Create buttons panel
+        // Create buttons panel with fixed width based on longest button label
         JPanel buttonsPanel = createContextButtonsPanel();
 
         // Set up layout
@@ -837,20 +826,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var tableModel = (DefaultTableModel) contextTable.getModel();
         tableModel.setRowCount(0);
 
-        // Update button states based on empty context
-        dropButton.setEnabled(!context.isEmpty());
-        updateContextButtonLabels();
+        // Update button states based on empty context - using updateButtonStates helper method
+        updateButtonStates(context);
 
         // If context is empty, show message in summary label and return
         if (context.isEmpty()) {
             locSummaryLabel.setText("No context - use Edit new files or Read new files buttons to add content");
-            
+
             // Refresh the UI
             contextPanel.revalidate();
             contextPanel.repaint();
             return;
         }
-        
+
         // Enable drop button since we have context
         dropButton.setEnabled(true);
 
@@ -867,7 +855,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     && context.editableFiles().anyMatch(e -> e == frag);
 
             String type = isEditable ? "✏️ Editable" : "📄 Read-only";
-            
+
             tableModel.addRow(new Object[]{id, loc, type, desc, false});
         }
 
@@ -878,8 +866,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // fullText = ...
         int approxTokens = Models.getApproximateTokens(fullText);
 
-        locSummaryLabel.setText("Total LOC: " + totalLines + ", or about " + (approxTokens/1000) + "k tokens");
-        
+        locSummaryLabel.setText("Total LOC: " + totalLines + ", or about " + (approxTokens / 1000) + "k tokens");
+
         // Refresh the UI
         contextPanel.revalidate();
         contextPanel.repaint();
@@ -903,27 +891,40 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates button labels based on whether items are selected in the tables
      * and whether we have context
      */
-    private void updateContextButtonLabels() {
+    private void updateContextButtons() {
         boolean hasSelection = hasSelectedItems();
-        boolean hasContext = contextManager != null && !contextManager.currentContext().isEmpty();
 
         // Update button labels based on selection and context state
         editButton.setText(hasSelection ? "Edit selected" : "Edit files");
         readOnlyButton.setText(hasSelection ? "Read selected" : "Read files");
         summarizeButton.setText(hasSelection ? "Summarize selected" : "Summarize files");
-        
-        // Drop button is special - always shows "Drop all" or "Drop selected"
+
+        // Drop and Copy buttons are special - always show "X all" or "X selected"
         dropButton.setText(hasSelection ? "Drop selected" : "Drop all");
-        
-        // Drop button is only enabled if there is context
-        dropButton.setEnabled(hasContext);
+        copyButton.setText(hasSelection ? "Copy selected" : "Copy all");
+
+        // Update the enabled state
+        updateButtonStates(contextManager == null ? null : contextManager.currentContext());
     }
-    
+
+    /**
+     * Updates button enabled states based on context
+     */
+    private void updateButtonStates(Context context) {
+        boolean hasContext = context != null && !context.isEmpty();
+
+        // Drop and Copy buttons are only enabled if there is context
+        dropButton.setEnabled(hasContext);
+        copyButton.setEnabled(hasContext);
+    }
+
     /**
      * Creates the panel with context action buttons
      */
     private JPanel createContextButtonsPanel() {
-        JPanel buttonsPanel = new JPanel(new GridLayout(4, 1, 5, 5));
+        // Use BoxLayout for natural button sizes stacked vertically
+        JPanel buttonsPanel = new JPanel();
+        buttonsPanel.setLayout(new BoxLayout(buttonsPanel, BoxLayout.Y_AXIS));
         buttonsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
         // Initialize buttons if they don't exist yet
@@ -931,35 +932,71 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             editButton = new JButton("Edit All");
             editButton.setMnemonic(KeyEvent.VK_E);
             editButton.addActionListener(e -> performContextAction("edit"));
-                }
-        
+        }
+
         if (readOnlyButton == null) {
             readOnlyButton = new JButton("Read All");
             readOnlyButton.setMnemonic(KeyEvent.VK_R);
             readOnlyButton.addActionListener(e -> performContextAction("read"));
         }
-        
+
         if (summarizeButton == null) {
             summarizeButton = new JButton("Summarize All");
             summarizeButton.setMnemonic(KeyEvent.VK_S);
             summarizeButton.addActionListener(e -> performContextAction("summarize"));
         }
-        
+
         if (dropButton == null) {
             dropButton = new JButton("Drop All");
             dropButton.setMnemonic(KeyEvent.VK_D);
             dropButton.addActionListener(e -> performContextAction("drop"));
         }
 
-        // Add buttons to panel
+        if (copyButton == null) {
+            copyButton = new JButton("Copy All");
+        }
+        copyButton.setMnemonic(KeyEvent.VK_C);
+        copyButton.addActionListener(e -> performContextAction("copy"));
+
+        // Create consistent button sizes based on the longest potential label text
+        // Using prototype strings that match the longest possible button text
+        JButton prototypeButton = new JButton("Summarize selected");
+        Dimension buttonSize = prototypeButton.getPreferredSize();
+
+        // Set fixed width based on prototype, but allow height to be determined by look & feel
+        Dimension preferredSize = new Dimension(
+                buttonSize.width,
+                editButton.getPreferredSize().height
+        );
+
+        // Apply the same fixed width to all buttons
+        editButton.setPreferredSize(preferredSize);
+        readOnlyButton.setPreferredSize(preferredSize);
+        summarizeButton.setPreferredSize(preferredSize);
+        dropButton.setPreferredSize(preferredSize);
+        copyButton.setPreferredSize(preferredSize);
+
+        // Also set maximum size to prevent stretching in BoxLayout
+        editButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        readOnlyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        summarizeButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        dropButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        copyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+
+        // Add buttons to panel with spacing between
         buttonsPanel.add(editButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(readOnlyButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(summarizeButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(dropButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        buttonsPanel.add(copyButton);
 
         return buttonsPanel;
     }
-    
+
     /**
      * Check if any items are selected in either table
      */
@@ -971,32 +1008,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Check for any true value in checkbox column
         DefaultTableModel tableModel = (DefaultTableModel) contextTable.getModel();
 
-                for (int i = 0; i < tableModel.getRowCount(); i++) {
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
             if (Boolean.TRUE.equals(tableModel.getValueAt(i, 4))) { // 4 is the checkbox column
                 return true;
             }
         }
 
-                return false;
+        return false;
     }
-    
+
     /**
      * Get the list of selected fragment indices from both tables
      */
     private List<Integer> getSelectedFragmentIndices() {
         List<Integer> indices = new ArrayList<>();
-                DefaultTableModel tableModel = (DefaultTableModel) contextTable.getModel();
+        DefaultTableModel tableModel = (DefaultTableModel) contextTable.getModel();
 
         // Collect indices from the unified table
-                for (int i = 0; i < tableModel.getRowCount(); i++) {
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
             if (Boolean.TRUE.equals(tableModel.getValueAt(i, 4))) { // 4 is the checkbox column
                 indices.add(Integer.parseInt(tableModel.getValueAt(i, 0).toString()));
             }
         }
 
         return indices;
-            }
-    
+    }
+
     /**
      * Perform the requested action on selected context items (or all if none selected)
      */
@@ -1005,10 +1042,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Context manager not ready");
             return;
         }
-        
+
         List<Integer> selectedIndices = getSelectedFragmentIndices();
         ContextManager.OperationResult result = null;
-        
+
         if (selectedIndices.isEmpty()) {
             // Act on all context or new files
             switch (action) {
@@ -1021,13 +1058,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         result = contextManager.dropAll();
                     }
                 }
+                case "copy" -> {
+                    // Copy all content
+                    if (contextManager.currentContext().isEmpty()) {
+                        result = ContextManager.OperationResult.error("No context to copy");
+                    } else {
+                        result = copyToClipboard(null);
+                    }
+                }
                 case "summarize" -> {
                     // Summarize all eligible files in context
                     var context = contextManager.currentContext();
                     var fragments = context.getAllFragmentsInDisplayOrder().stream()
-                        .filter(ContextFragment::isEligibleForAutoContext)
-                        .collect(java.util.stream.Collectors.toSet());
-                    
+                            .filter(ContextFragment::isEligibleForAutoContext)
+                            .collect(java.util.stream.Collectors.toSet());
+
                     if (fragments.isEmpty()) {
                         result = ContextManager.OperationResult.error("No eligible items to summarize");
                     } else {
@@ -1035,11 +1080,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         for (var frag : fragments) {
                             sources.addAll(frag.sources(contextManager.getAnalyzer()));
                         }
-                        
+
                         boolean success = contextManager.summarizeClasses(sources);
-                        result = success ? 
-                            ContextManager.OperationResult.success("Summarized " + sources.size() + " classes") : 
-                            ContextManager.OperationResult.error("Failed to summarize classes");
+                        result = success ?
+                                ContextManager.OperationResult.success("Summarized " + sources.size() + " classes") :
+                                ContextManager.OperationResult.error("Failed to summarize classes");
                     }
                 }
             }
@@ -1072,17 +1117,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         result = ContextManager.OperationResult.error("Error: " + e.getMessage());
                     }
                 }
+                case "copy" -> {
+                    // Copy selected fragments
+                    result = copyToClipboard(selectedIndices);
+                }
                 case "drop" -> {
                     // Build the command args string from indices
                     var indices = selectedIndices.stream()
-                        .map(Object::toString)
-                        .collect(java.util.stream.Collectors.joining(" "));
-                    
+                            .map(Object::toString)
+                            .collect(java.util.stream.Collectors.joining(" "));
+
                     // Convert to fraglist and drop them
                     var context = contextManager.currentContext();
                     var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
                     var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
-                    
+
                     for (int idx : selectedIndices) {
                         var allFrags = context.getAllFragmentsInDisplayOrder();
                         if (idx >= 0 && idx < allFrags.size()) {
@@ -1094,7 +1143,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                             }
                         }
                     }
-                    
+
                     contextManager.drop(pathFragsToRemove, virtualToRemove);
                     result = ContextManager.OperationResult.success("Dropped " + selectedIndices.size() + " items");
                 }
@@ -1103,13 +1152,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     var fragments = new java.util.HashSet<ContextFragment>();
                     var context = contextManager.currentContext();
                     var allFrags = context.getAllFragmentsInDisplayOrder();
-                    
+
                     for (int idx : selectedIndices) {
                         if (idx >= 0 && idx < allFrags.size()) {
                             fragments.add(allFrags.get(idx));
                         }
                     }
-                    
+
                     if (fragments.isEmpty()) {
                         result = ContextManager.OperationResult.error("No items to summarize");
                     } else {
@@ -1117,18 +1166,70 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         for (var frag : fragments) {
                             sources.addAll(frag.sources(contextManager.getAnalyzer()));
                         }
-                        
+
                         boolean success = contextManager.summarizeClasses(sources);
-                        result = success ? 
-                            ContextManager.OperationResult.success("Summarized from " + fragments.size() + " fragments") : 
-                            ContextManager.OperationResult.error("Failed to summarize classes");
+                        result = success ?
+                                ContextManager.OperationResult.success("Summarized from " + fragments.size() + " fragments") :
+                                ContextManager.OperationResult.error("Failed to summarize classes");
                     }
                 }
             }
         }
-        
+
         if (result != null) {
             showOperationResult(result);
+        }
+    }
+
+    /**
+     * Copies content to the clipboard.
+     * If indices is null, copies all content, otherwise copies selected fragments.
+     */
+    private OperationResult copyToClipboard(List<Integer> indices) {
+        String content;
+
+        try {
+            if (indices == null || indices.isEmpty()) {
+                // Copy all content - get from context manager
+                var msgs = ArchitectPrompts.instance.collectMessages(contextManager);
+                var combined = new StringBuilder();
+                msgs.forEach(m -> {
+                    if (!(m instanceof dev.langchain4j.data.message.AiMessage)) {
+                        combined.append(Models.getText(m)).append("\n\n");
+                    }
+                });
+                combined.append("\n<goal>\n\n</goal>");
+                content = combined.toString();
+            } else {
+                // Copy selected fragments
+                var context = contextManager.currentContext();
+                var allFrags = context.getAllFragmentsInDisplayOrder();
+                var selectedContent = new StringBuilder();
+
+                for (int idx : indices) {
+                    if (idx >= 0 && idx < allFrags.size()) {
+                        var frag = allFrags.get(idx);
+                        try {
+                            selectedContent.append(frag.text()).append("\n\n");
+                        } catch (Exception e) {
+                            contextManager.removeBadFragment(frag, new java.io.IOException(e));
+                            return OperationResult.error("Error reading fragment: " + e.getMessage());
+                        }
+                    }
+                }
+                content = selectedContent.toString();
+            }
+
+            try {
+                var sel = new java.awt.datatransfer.StringSelection(content);
+                var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+                cb.setContents(sel, sel);
+                return OperationResult.success("Content copied to clipboard");
+            } catch (Exception e) {
+                return OperationResult.error("Failed to copy: " + e.getMessage());
+            }
+        } catch (Exception e) {
+            return OperationResult.error("Failed to gather content: " + e.getMessage());
         }
     }
 
@@ -1142,17 +1243,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (frame != null) {
             frame.dispose();
         }
-    }
-
-    // -------------- If you want a custom CompletionProvider ---------------
-    private CompletionProvider createCompletionProvider() {
-        // Example only. For commands:
-        var provider = new DefaultCompletionProvider();
-        // Just add some example completions:
-        provider.addCompletion(new org.fife.ui.autocomplete.BasicCompletion(provider, "/add"));
-        provider.addCompletion(new org.fife.ui.autocomplete.BasicCompletion(provider, "/read"));
-        // etc.
-        return provider;
     }
 
     /**
