@@ -88,18 +88,6 @@ public class EditBlock {
             }
 
             if (finalUpdated == null) {
-                // "Did you mean" + "already present?" suggestions
-                String fileContent;
-                try {
-                    fileContent = file.read();
-                } catch (IOException e) {
-                    io.toolError("Could not read files: " + e.getMessage());
-                    failed.add(new FailedBlock(block, EditBlockFailureReason.IO_ERROR
-                    ));
-                    continue;
-                }
-
-                // Build suggestions
                 var failedBlock = new FailedBlock(block, EditBlockFailureReason.NO_MATCH);
                 failed.add(failedBlock);
             } else {
@@ -117,7 +105,7 @@ public class EditBlock {
                     if (isCreateNew) {
                         try {
                             GitRepo.instance.add(file.toString());
-                            io.toolOutput("Added to git " + file);
+                            io.llmOutput("Added to git " + file);
                         } catch (IOException e) {
                             io.toolError("Failed to git add " + file + ": " + e.getMessage());
                         }
@@ -127,7 +115,7 @@ public class EditBlock {
         }
 
         if (!succeeded.isEmpty()) {
-            io.toolOutput(succeeded.size() + " SEARCH/REPLACE blocks applied.");
+            io.llmOutput(succeeded.size() + " SEARCH/REPLACE blocks applied.");
         }
         return new EditResult(changedFiles, failed);
     }

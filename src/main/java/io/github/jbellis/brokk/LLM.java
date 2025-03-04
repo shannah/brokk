@@ -203,6 +203,7 @@ public class LLM {
         io.toolOutput("Running " + cmd);
         var result = Environment.instance.captureShellCommand(cmd);
         if (result.error() == null) {
+            io.toolOutput("Build successful");
             buildErrors.clear(); // Reset on successful build
             return "";
         }
