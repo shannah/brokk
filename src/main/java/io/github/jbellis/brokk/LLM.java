@@ -202,14 +202,13 @@ public class LLM {
 
         io.toolOutput("Running " + cmd);
         var result = Environment.instance.captureShellCommand(cmd);
-        if (result.status() == ContextManager.OperationStatus.SUCCESS) {
+        if (result.error() == null) {
             buildErrors.clear(); // Reset on successful build
             return "";
         }
 
-        assert result.status() == ContextManager.OperationStatus.ERROR;
-        io.toolError(result.message());
-        buildErrors.add(result.message());
+        io.toolError(result.error());
+        buildErrors.add(result.error() + "\n\n" + result.output());
 
         StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
         for (int i = 0; i < buildErrors.size(); i++) {
