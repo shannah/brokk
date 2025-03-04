@@ -336,10 +336,14 @@ public class ContextManager implements IContextManager
             dialog.setLocationRelativeTo(chrome.getFrame());
             dialog.setVisible(true);
         });
-        if (dialog.isConfirmed()) {
-            return dialog.getSelectedFiles();
+        try {
+            if (dialog.isConfirmed()) {
+                return dialog.getSelectedFiles();
+            }
+            return List.of();
+        } finally {
+            chrome.focusInput();
         }
-        return List.of();
     }
 
     /**
@@ -1057,7 +1061,7 @@ public class ContextManager implements IContextManager
         var loadedCommand = project.getBuildCommand();
         if (loadedCommand != null) {
             buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
-            chrome.llmOutput("\nUsing saved build command: " + loadedCommand);
+            // TODO show this to user somehow
         } else {
             // do background inference
             var tracked = GitRepo.instance.getTrackedFiles();

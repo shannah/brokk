@@ -294,12 +294,15 @@ public class Chrome implements AutoCloseable, IConsoleIO
         // Left side: go/ask/search
         var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         goButton = new JButton("Go");
+        goButton.setMnemonic(KeyEvent.VK_G);
         goButton.addActionListener(e -> runGoCommand());
 
         askButton = new JButton("Ask");
+        askButton.setMnemonic(KeyEvent.VK_A);
         askButton.addActionListener(e -> runAskCommand());
 
         searchButton = new JButton("Search");
+        searchButton.setMnemonic(KeyEvent.VK_R);
         searchButton.addActionListener(e -> runSearchCommand());
 
         leftButtonsPanel.add(goButton);
@@ -616,6 +619,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         if (editButton == null) {
             editButton = new JButton("Edit All");
+            editButton.setMnemonic(KeyEvent.VK_D);
             editButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync("edit", selectedFragments);
@@ -624,6 +628,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         if (readOnlyButton == null) {
             readOnlyButton = new JButton("Read All");
+            readOnlyButton.setMnemonic(KeyEvent.VK_R);
             readOnlyButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync("read", selectedFragments);
@@ -632,6 +637,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         if (summarizeButton == null) {
             summarizeButton = new JButton("Summarize All");
+            summarizeButton.setMnemonic(KeyEvent.VK_S);
             summarizeButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync("summarize", selectedFragments);
@@ -640,6 +646,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         if (dropButton == null) {
             dropButton = new JButton("Drop All");
+            dropButton.setMnemonic(KeyEvent.VK_P);  // Changed from VK_D to VK_P
             dropButton.addActionListener(e -> {
                 disableContextActionButtons();
                 var selectedFragments = getSelectedFragments();
@@ -842,60 +849,13 @@ public class Chrome implements AutoCloseable, IConsoleIO
         var fileMenu = new JMenu("File");
         fileMenu.setMnemonic(KeyEvent.VK_F);
 
-        var addItem = new JMenuItem("Add context");
-        addItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, InputEvent.ALT_DOWN_MASK));
-        addItem.addActionListener(e -> {
-            disableContextActionButtons();
-            disableUserActionButtons();
-            currentUserTask = contextManager.addContextViaDialogAsync();
-        });
-        fileMenu.add(addItem);
-
         var editKeysItem = new JMenuItem("Edit secret keys");
         editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK));
         editKeysItem.addActionListener(e -> showSecretKeysDialog());
         fileMenu.add(editKeysItem);
-
-        menuBar.add(fileMenu);
-
-        // Edit menu
-        var editMenu = new JMenu("Edit");
-        editMenu.setMnemonic(KeyEvent.VK_E);
-
-        var undoItem = new JMenuItem("Undo");
-        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK));
-        undoItem.addActionListener(e -> {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            currentUserTask = contextManager.undoContextAsync();
-        });
-        editMenu.add(undoItem);
-
-        var redoItem = new JMenuItem("Redo");
-        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
-                                                       InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
-        redoItem.addActionListener(e -> {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            currentUserTask = contextManager.redoContextAsync();
-        });
-        editMenu.add(redoItem);
-
-        editMenu.addSeparator();
-
-        var pasteMenuItem = new JMenuItem("Paste");
-        pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK));
-        pasteMenuItem.addActionListener(e -> {
-            currentUserTask = contextManager.performContextActionAsync("paste", List.of());
-        });
-        editMenu.add(pasteMenuItem);
-
-        menuBar.add(editMenu);
-
-        // Actions menu
-        var actionsMenu = new JMenu("Actions");
-        actionsMenu.setMnemonic(KeyEvent.VK_T);
-
+        
+        fileMenu.addSeparator();
+        
         var setAutoContextItem = new JMenuItem("Set autocontext size");
         setAutoContextItem.addActionListener(e -> {
             // Simple spinner dialog
@@ -941,16 +901,59 @@ public class Chrome implements AutoCloseable, IConsoleIO
             dialog.setLocationRelativeTo(frame);
             dialog.setVisible(true);
         });
-        actionsMenu.add(setAutoContextItem);
+        fileMenu.add(setAutoContextItem);
 
         var refreshItem = new JMenuItem("Refresh Code Intelligence");
         refreshItem.addActionListener(e -> {
             contextManager.requestRebuild();
             toolOutput("Code intelligence will refresh in the background");
         });
-        actionsMenu.add(refreshItem);
+        fileMenu.add(refreshItem);
 
-        menuBar.add(actionsMenu);
+        menuBar.add(fileMenu);
+
+        // Edit menu
+        var editMenu = new JMenu("Edit");
+        editMenu.setMnemonic(KeyEvent.VK_E);
+
+        var undoItem = new JMenuItem("Undo");
+        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK));
+        undoItem.addActionListener(e -> {
+            disableUserActionButtons();
+            disableContextActionButtons();
+            currentUserTask = contextManager.undoContextAsync();
+        });
+        editMenu.add(undoItem);
+
+        var redoItem = new JMenuItem("Redo");
+        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                                                       InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        redoItem.addActionListener(e -> {
+            disableUserActionButtons();
+            disableContextActionButtons();
+            currentUserTask = contextManager.redoContextAsync();
+        });
+        editMenu.add(redoItem);
+
+        editMenu.addSeparator();
+
+        var copyMenuItem = new JMenuItem("Copy");
+        copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
+        copyMenuItem.addActionListener(e -> {
+            var selectedFragments = getSelectedFragments();
+            currentUserTask = contextManager.performContextActionAsync("copy", selectedFragments);
+        });
+        editMenu.add(copyMenuItem);
+
+        var pasteMenuItem = new JMenuItem("Paste");
+        pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK));
+        pasteMenuItem.addActionListener(e -> {
+            currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+        });
+        editMenu.add(pasteMenuItem);
+
+        menuBar.add(editMenu);
+
 
         // Help menu
         var helpMenu = new JMenu("Help");
@@ -1438,6 +1441,12 @@ public class Chrome implements AutoCloseable, IConsoleIO
     JFrame getFrame() {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
         return frame;
+    }
+
+    public void focusInput() {
+        SwingUtilities.invokeLater(() -> {
+            this.commandInputField.requestFocus();
+        });
     }
 
     /**
