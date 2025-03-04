@@ -15,6 +15,8 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -113,6 +115,13 @@ public class FileSelectionDialog extends JDialog {
         setContentPane(mainPanel);
         pack();
         setLocationRelativeTo(parent);
+        // Make the autocomplete popup match the width of the dialog
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowOpened(WindowEvent e) {
+                autoCompletion.setChoicesWindowSize((int) (mainPanel.getWidth() * 0.9), 300);
+            }
+        });
     }
 
     /**
