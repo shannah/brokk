@@ -97,7 +97,7 @@ public class ContextManager implements IContextManager
         contextHistory.add(newContext);
 
         ensureStyleGuide();
-        ensureBuildCommand(chrome, coder);
+        ensureBuildCommand(coder);
     }
 
     /**
@@ -505,6 +505,15 @@ public class ContextManager implements IContextManager
         } else {
             var ctx = currentContext();
             var allFrags = ctx.getAllFragmentsInDisplayOrder();
+            
+            // Special case: If only the autocontext (index 0) is selected, set autocontext size to 0
+            if (selectedIndices.size() == 1 && selectedIndices.get(0) == 0) {
+                assert allFrags.get(0) == ctx.getAutoContext() : allFrags.get(0);
+                setAutoContextFiles(0);
+                return;
+            }
+            
+            // Regular drop behavior for other fragments
             var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
             var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
 
@@ -821,6 +830,7 @@ public class ContextManager implements IContextManager
     public void setAutoContextFiles(int fileCount)
     {
         pushContext(ctx -> ctx.setAutoContextFiles(fileCount));
+        chrome.toolOutput("Auto-context size set to " + fileCount);
     }
 
     public List<ChatMessage> getHistoryMessages()
@@ -1037,12 +1047,12 @@ public class ContextManager implements IContextManager
         }
     }
 
-    private void ensureBuildCommand(Chrome io, Coder coder)
+    private void ensureBuildCommand(Coder coder)
     {
         var loadedCommand = project.getBuildCommand();
         if (loadedCommand != null) {
             buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
-            io.llmOutput("\nUsing saved build command: " + loadedCommand);
+            chrome.llmOutput("\nUsing saved build command: " + loadedCommand);
         } else {
             // do background inference
             var tracked = GitRepo.instance.getTrackedFiles();
@@ -1075,7 +1085,7 @@ public class ContextManager implements IContextManager
                 }
                 var inferred = response.trim();
                 project.setBuildCommand(inferred);
-                io.toolOutput("Inferred build command: " + inferred);
+                chrome.toolOutput("Inferred build command: " + inferred);
                 return BuildCommand.success(inferred);
             });
         }

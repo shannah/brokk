@@ -845,7 +845,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             okButton.addActionListener(okEvent -> {
                 var newSize = (int) spinner.getValue();
                 contextManager.setAutoContextFiles(newSize);
-                toolOutput("Auto-context size set to " + newSize);
                 dialog.dispose();
             });
 
