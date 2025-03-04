@@ -393,6 +393,7 @@ public class ContextManager implements IContextManager
                     case "copy" -> doCopyAction(selectedIndices);
                     case "drop" -> doDropAction(selectedIndices);
                     case "summarize" -> doSummarizeAction(selectedIndices);
+                    case "paste" -> doPasteAction();
                     default -> chrome.toolErrorRaw("Unknown action: " + action);
                 }
             } catch (CancellationException cex) {
@@ -491,6 +492,39 @@ public class ContextManager implements IContextManager
         } catch (Exception e) {
             chrome.toolErrorRaw("Failed to copy: " + e.getMessage());
         }
+    }
+
+    private void doPasteAction()
+    {
+        // Get text from clipboard
+        String clipboardText;
+        try {
+            var clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+            var contents = clipboard.getContents(null);
+            if (contents == null || !contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
+                chrome.toolErrorRaw("No text on clipboard");
+                return;
+            }
+            clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
+            if (clipboardText.isBlank()) {
+                chrome.toolErrorRaw("Clipboard is empty");
+                return;
+            }
+        } catch (Exception e) {
+            chrome.toolErrorRaw("Failed to read clipboard: " + e.getMessage());
+            return;
+        }
+
+        // First try to parse as stacktrace
+        var stacktrace = StackTrace.parse(clipboardText);
+        if (stacktrace != null) {
+            addStacktraceFragment(clipboardText);
+            return;
+        }
+
+        // If not a stacktrace, add as string fragment
+        addStringFragment("Pasted text", clipboardText);
+        chrome.toolOutput("Clipboard content added as text");
     }
 
     private void doDropAction(List<Integer> selectedIndices)
@@ -757,7 +791,7 @@ public class ContextManager implements IContextManager
     }
 
     /** parse stacktrace */
-    public void parseStacktrace(String stacktraceText)
+    public void addStacktraceFragment(String stacktraceText)
     {
         try {
             var stacktrace = StackTrace.parse(stacktraceText);

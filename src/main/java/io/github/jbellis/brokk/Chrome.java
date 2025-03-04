@@ -62,6 +62,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
     private JButton summarizeButton;
     private JButton dropButton;
     private JButton copyButton;
+    private JButton pasteButton;
 
     // Buttons for the command input panel:
     private JButton goButton;
@@ -570,7 +571,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             editButton = new JButton("Edit All");
             editButton.addActionListener(e -> {
                 var selectedIndices = getSelectedFragmentIndices();
-                disableContextActionButtons();
                 currentUserTask = contextManager.performContextActionAsync("edit", selectedIndices);
             });
         }
@@ -579,7 +579,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             readOnlyButton = new JButton("Read All");
             readOnlyButton.addActionListener(e -> {
                 var selectedIndices = getSelectedFragmentIndices();
-                disableContextActionButtons();
                 currentUserTask = contextManager.performContextActionAsync("read", selectedIndices);
             });
         }
@@ -588,7 +587,6 @@ public class Chrome implements AutoCloseable, IConsoleIO
             summarizeButton = new JButton("Summarize All");
             summarizeButton.addActionListener(e -> {
                 var selectedIndices = getSelectedFragmentIndices();
-                disableContextActionButtons();
                 currentUserTask = contextManager.performContextActionAsync("summarize", selectedIndices);
             });
         }
@@ -606,8 +604,14 @@ public class Chrome implements AutoCloseable, IConsoleIO
             copyButton = new JButton("Copy All");
             copyButton.addActionListener(e -> {
                 var selectedIndices = getSelectedFragmentIndices();
-                disableContextActionButtons();
                 currentUserTask = contextManager.performContextActionAsync("copy", selectedIndices);
+            });
+        }
+
+        if (pasteButton == null) {
+            pasteButton = new JButton("Paste");
+            pasteButton.addActionListener(e -> {
+                currentUserTask = contextManager.performContextActionAsync("paste", List.of());
             });
         }
 
@@ -622,12 +626,14 @@ public class Chrome implements AutoCloseable, IConsoleIO
         summarizeButton.setPreferredSize(preferredSize);
         dropButton.setPreferredSize(preferredSize);
         copyButton.setPreferredSize(preferredSize);
+        pasteButton.setPreferredSize(preferredSize);
 
         editButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         readOnlyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         summarizeButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         dropButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         copyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        pasteButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
 
         buttonsPanel.add(editButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
@@ -636,8 +642,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
         buttonsPanel.add(summarizeButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
         buttonsPanel.add(dropButton);
+        buttonsPanel.add(Box.createVerticalGlue());  // Push remaining buttons to bottom
         buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
         buttonsPanel.add(copyButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
+        buttonsPanel.add(pasteButton);
 
         return buttonsPanel;
     }
@@ -653,6 +662,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
             summarizeButton.setEnabled(false);
             dropButton.setEnabled(false);
             copyButton.setEnabled(false);
+            pasteButton.setEnabled(false);
         });
     }
 
@@ -667,6 +677,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
             summarizeButton.setEnabled(true);
             dropButton.setEnabled(true);
             copyButton.setEnabled(true);
+            pasteButton.setEnabled(true);
             updateContextButtons();
         });
     }
