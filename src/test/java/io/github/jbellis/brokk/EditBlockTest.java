@@ -240,18 +240,24 @@ class EditBlockTest {
     }
 
     @Test
-    void testReplaceIgnoringLeadingWhitespace() {
+    void testReplaceIgnoringWhitespace() {
         String original = """
                 line1
                     line2
                     line3
                 """.stripIndent();
-        String search = "line2\n    line3\n";
-        String replace = "new_line2\n    new_line3\n";
+        String search = """
+                line2
+                    line3
+                """;
+        String replace = """
+                new_line2
+                    new_line3
+                """;
         String expected = """
                 line1
                     new_line2
-                    new_line3
+                        new_line3
                 """.stripIndent();
 
         String updated = fuzzyReplace(original, search, replace);
@@ -405,8 +411,14 @@ class EditBlockTest {
                     line3
                 """.stripIndent();
         // Insert a blank line in the beforeText, plus incomplete indentation
-        String search = "\n  line2\n";
-        String replace = "\n  replaced_line2\n";
+        String search = """
+                
+                  line2
+                """;
+        String replace = """
+                
+                  replaced_line2
+                """;
 
         String updated = fuzzyReplace(original, search, replace);
 
@@ -418,6 +430,54 @@ class EditBlockTest {
                     line3
                 """.stripIndent();
 
+        assertEquals(expected, updated);
+    }
+
+    @Test
+    void testReplaceIgnoringTrailingWhitespace() {
+        String original = """
+                line1
+                    line2  
+                    line3
+                """.stripIndent();
+        // Insert a blank line in the beforeText, plus incomplete indentation
+        String search = """
+                  line2
+                """;
+        String replace = """
+                  replaced_line2
+                """;
+
+        String updated = fuzzyReplace(original, search, replace);
+        String expected = """
+                line1
+                    replaced_line2
+                    line3
+                """.stripIndent();
+        assertEquals(expected, updated);
+    }
+
+    @Test
+    void testReplaceIgnoringInternalWhitespace() {
+        String original = """
+                line1
+                    a   b 
+                    line3
+                """.stripIndent();
+        // Insert a blank line in the beforeText, plus incomplete indentation
+        String search = """
+                  a b
+                """;
+        String replace = """
+                  replaced_line2
+                """;
+
+        String updated = fuzzyReplace(original, search, replace);
+        String expected = """
+                line1
+                    replaced_line2
+                    line3
+                """.stripIndent();
         assertEquals(expected, updated);
     }
 

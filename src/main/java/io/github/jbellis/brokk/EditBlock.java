@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import com.google.common.annotations.VisibleForTesting;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
@@ -8,6 +9,8 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static java.lang.Math.min;
 
 /**
  * Utility for extracting and applying before/after search-replace blocks in content
@@ -214,7 +217,7 @@ public class EditBlock {
 
                 } catch (Exception e) {
                     // Provide partial context in the error
-                    String partial = String.join("\n", Arrays.copyOfRange(lines, 0, Math.min(lines.length, i + 1)));
+                    String partial = String.join("\n", Arrays.copyOfRange(lines, 0, min(lines.length, i + 1)));
                     return new ParseResult(null, partial + "\n^^^ " + e.getMessage());
                 }
             }
@@ -417,58 +420,36 @@ public class EditBlock {
     }
 
     /**
-     * Attempt a line-for-line match ignoring leading whitespace. If found, replace that
+     * Attempt a line-for-line match ignoring whitespace. If found, replace that
      * slice by adjusting each replacement line's indentation to preserve the relative
      * indentation from the 'search' lines.
      */
-    static String replaceIgnoringWhitespace(String[] originalLines,
-                                            String[] targetLines,
-                                            String[] replaceLines) {
-        // Skip leading blank lines in the 'search'
-        int pStart = 0;
-        while (pStart < targetLines.length && targetLines[pStart].trim().isEmpty()) {
-            pStart++;
-        }
-        // Skip trailing blank lines in the search block
-        int pEnd = targetLines.length;
-        while (pEnd > pStart && targetLines[pEnd - 1].trim().isEmpty()) {
-            pEnd--;
-        }
-        String[] truncatedTarget = Arrays.copyOfRange(targetLines, pStart, pEnd);
-
-        // Do the same for the 'replace'
-        int rStart = 0;
-        while (rStart < replaceLines.length && replaceLines[rStart].trim().isEmpty()) {
-            rStart++;
-        }
-        int rEnd = replaceLines.length;
-        while (rEnd > rStart && replaceLines[rEnd - 1].trim().isEmpty()) {
-            rEnd--;
-        }
-        String[] truncatedReplace = Arrays.copyOfRange(replaceLines, rStart, rEnd);
+    static String replaceIgnoringWhitespace(String[] originalLines, String[] targetLines, String[] replaceLines) {
+        // Skip leading blank lines in the target and replacement
+        var truncatedTarget = removeLeadingTrailingEmptyLines(targetLines);
+        var truncatedReplace = removeLeadingTrailingEmptyLines(replaceLines);
 
         if (truncatedTarget.length == 0) {
             // No actual lines to match
             return null;
         }
 
-        // Attempt to find a slice in originalLines that matches ignoring leading spaces.
+        // Attempt to find a slice in originalLines that matches ignoring whitespace.
         int needed = truncatedTarget.length;
         for (int start = 0; start <= originalLines.length - needed; start++) {
-            if (!matchesIgnoringLeading(originalLines, start, truncatedTarget)) {
+            if (!matchesIgnoringWhitespace(originalLines, start, truncatedTarget)) {
                 continue;
             }
 
-            // Found a match - rebuild the filename around it
+            // Found a match - rebuild the file around it
             // everything before the match
             List<String> newLines = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
+            // compute indentation difference.  we assume that the original target was indented ~correctly and use that as a baseline
+            var targetWhitespace = getLeadingWhitespace(originalLines[start]);
+            var replaceWhitespace = getLeadingWhitespace(truncatedTarget[0]);
             // add replacement lines with adjusted indentation
             for (int i = 0; i < needed && i < truncatedReplace.length; i++) {
-                int sliceLeading = countLeadingSpaces(originalLines[start + i]);
-                int targetLeading  = countLeadingSpaces(truncatedTarget[i]);
-                int difference = targetLeading - sliceLeading;
-
-                String adjusted = adjustIndentation(truncatedReplace[i], difference);
+                String adjusted = adjustIndentation(truncatedReplace[i], targetWhitespace, replaceWhitespace);
                 newLines.add(adjusted);
             }
             // if the replacement is longer, add leftover lines
@@ -484,53 +465,86 @@ public class EditBlock {
         return null;
     }
 
-    static boolean matchesIgnoringLeading(String[] originalLines, int start, String[] targetLines) {
+    private static String[] removeLeadingTrailingEmptyLines(String[] targetLines) {
+        int pStart = 0;
+        while (pStart < targetLines.length && targetLines[pStart].trim().isEmpty()) {
+            pStart++;
+        }
+        // Skip trailing blank lines in the search block
+        int pEnd = targetLines.length;
+        while (pEnd > pStart && targetLines[pEnd - 1].trim().isEmpty()) {
+            pEnd--;
+        }
+        return Arrays.copyOfRange(targetLines, pStart, pEnd);
+    }
+
+    /**
+     * return true if the targetLines match the originalLines starting at 'start', ignoring whitespace.
+     */
+    static boolean matchesIgnoringWhitespace(String[] originalLines, int start, String[] targetLines) {
         if (start + targetLines.length > originalLines.length) {
             return false;
         }
         for (int i = 0; i < targetLines.length; i++) {
-            if (!originalLines[start + i].stripLeading().equals(targetLines[i].stripLeading())) {
+            if (!nonWhitespace(originalLines[start + i]).equals(nonWhitespace(targetLines[i]))) {
                 return false;
             }
         }
         return true;
     }
 
-    static int countLeadingSpaces(String line) {
-        int count = 0;
+    /**
+     * @return the non-whitespace characters in `line`
+     */
+    private static String nonWhitespace(String line) {
+        StringBuilder result = new StringBuilder();
         for (int i = 0; i < line.length(); i++) {
-            if (line.charAt(i) == ' ') {
+            char c = line.charAt(i);
+            if (!Character.isWhitespace(c)) {
+                result.append(c);
+            }
+        }
+        return result.toString();
+    }
+
+    /**
+     * @return the whitespace prefix in this line.
+     */
+    static String getLeadingWhitespace(String line) {
+        assert line.endsWith("\n");
+        int count = 0;
+        for (int i = 0; i < line.length() - 1; i++) { // -1 because we threw newline onto everything
+            if (Character.isWhitespace(line.charAt(i))) {
                 count++;
             } else {
                 break;
             }
         }
-        return count;
+        return line.substring(0, count);
     }
 
-    static String adjustIndentation(String line, int delta) {
-        if (line.isBlank() || delta == 0) {
-            return line;
+    /**
+     * Align the replacement line to the original target content, based on the prefixes from the first matched lines
+     */
+    static String adjustIndentation(String line, String targetPrefix, String replacePrefix) {
+        if (replacePrefix.isEmpty()) {
+            return targetPrefix + line;
         }
-        int current = countLeadingSpaces(line);
 
-        int newCount;
+        if (line.startsWith(replacePrefix)) {
+            return line.replaceFirst(replacePrefix, targetPrefix);
+        }
+
+        // no prefix match, either we have inconsistent whitespace in the replacement
+        // or (more likely) we have a replacement block that ends at a lower level of indentation
+        // than where it begins.  we'll do our best by counting characters
+        int delta = replacePrefix.length() - targetPrefix.length();
         if (delta > 0) {
             // remove up to `delta` spaces
-            int remove = Math.min(current, delta);
-            newCount = current - remove;
-        } else {
-            // delta < 0 => add -delta
-            newCount = current + (-delta);
+            delta = min(delta, getLeadingWhitespace(line).length());
+            return line.substring(delta);
         }
-
-        // never go below zero
-        if (newCount < 0) {
-            newCount = 0;
-        }
-
-        String stripped = line.stripLeading();
-        return " ".repeat(newCount) + stripped;
+        return replacePrefix.substring(0, -delta) + line;
     }
 
     /**
@@ -722,7 +736,7 @@ public class EditBlock {
 
         // return the chunk plus a bit of surrounding context
         int start = Math.max(0, bestIdx - 3);
-        int end = Math.min(contentLines.length, bestIdx + searchLen + 3);
+        int end = min(contentLines.length, bestIdx + searchLen + 3);
         String[] snippet = Arrays.copyOfRange(contentLines, start, end);
         return String.join("\n", snippet);
     }
