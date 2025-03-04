@@ -1,16 +1,26 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Completions;
-import io.github.jbellis.brokk.RepoFile;
 import io.github.jbellis.brokk.GitRepo;
-import org.fife.ui.autocomplete.*;
+import io.github.jbellis.brokk.RepoFile;
+import org.fife.ui.autocomplete.AutoCompletion;
+import org.fife.ui.autocomplete.CompletionProvider;
+
 import javax.swing.*;
-import javax.swing.tree.*;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.TreePath;
+import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A file selection dialog that presents a tree view and a text input with autocomplete.
@@ -24,8 +34,8 @@ public class FileSelectionDialog extends JDialog {
     private final JButton okButton;
     private final JButton cancelButton;
 
-    // The set of files selected from the tree or typed in
-    private final Set<RepoFile> selectedFiles = new HashSet<>();
+    // The selected file
+    private RepoFile selectedFile = null;
 
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
@@ -37,13 +47,7 @@ public class FileSelectionDialog extends JDialog {
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // Build the file tree on the left
-        fileTree = buildFileTree();
-        JScrollPane treeScrollPane = new JScrollPane(fileTree);
-        treeScrollPane.setPreferredSize(new Dimension(250, 400));
-        mainPanel.add(treeScrollPane, BorderLayout.WEST);
-
-        // Build text input with autocomplete on the right
+        // Build text input with autocomplete at the top
         fileInput = new JTextField(30);
         var provider = createFileCompletionProvider();
         autoCompletion = new AutoCompletion(provider);
@@ -54,9 +58,30 @@ public class FileSelectionDialog extends JDialog {
         autoCompletion.install(fileInput);
 
         JPanel inputPanel = new JPanel(new BorderLayout());
-        inputPanel.setBorder(BorderFactory.createTitledBorder("Type filename (press Ctrl+Space)"));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         inputPanel.add(fileInput, BorderLayout.CENTER);
-        mainPanel.add(inputPanel, BorderLayout.CENTER);
+        inputPanel.add(new JLabel("Ctrl-space to autocomplete filenames"), BorderLayout.SOUTH);
+        mainPanel.add(inputPanel, BorderLayout.NORTH);
+
+        // Build the file tree in the center
+        fileTree = buildFileTree();
+        JScrollPane treeScrollPane = new JScrollPane(fileTree);
+        treeScrollPane.setPreferredSize(new Dimension(400, 400));
+        mainPanel.add(treeScrollPane, BorderLayout.CENTER);
+
+        // Make tree selection update the text field
+        fileTree.addTreeSelectionListener(e -> {
+            TreePath path = e.getPath();
+            if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
+                StringBuilder rel = new StringBuilder();
+                for (int i = 1; i < path.getPathCount(); i++) {
+                    String seg = path.getPathComponent(i).toString();
+                    if (i > 1) rel.append("/");
+                    rel.append(seg);
+                }
+                fileInput.setText(rel.toString());
+            }
+        });
 
         // Buttons at the bottom
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -70,6 +95,20 @@ public class FileSelectionDialog extends JDialog {
         buttonPanel.add(okButton);
         buttonPanel.add(cancelButton);
         mainPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Handle escape key to close dialog
+        KeyStroke escapeKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
+        getRootPane().registerKeyboardAction(e -> {
+            confirmed = false;
+            selectedFile = null;
+            dispose();
+        }, escapeKeyStroke, JComponent.WHEN_IN_FOCUSED_WINDOW);
+
+        // Set OK as the default button (responds to Enter key)
+        getRootPane().setDefaultButton(okButton);
+
+        // Add a tooltip to indicate Enter key functionality
+        fileInput.setToolTipText("Enter a filename and press Enter to confirm");
 
         setContentPane(mainPanel);
         pack();
@@ -108,7 +147,22 @@ public class FileSelectionDialog extends JDialog {
         JTree tree = new JTree(rootNode);
         tree.setRootVisible(true);
         tree.setShowsRootHandles(true);
-        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
+        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+
+        // Add double-click handler to select and confirm
+        tree.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
+                    if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
+                        tree.setSelectionPath(path);
+                        doOk();
+                    }
+                }
+            }
+        });
+
         return tree;
     }
 
@@ -121,37 +175,19 @@ public class FileSelectionDialog extends JDialog {
     }
 
     /**
-     * When OK is pressed, collect selections from the tree and text input.
+     * When OK is pressed, get the file from the text input.
      */
     private void doOk() {
         confirmed = true;
-        selectedFiles.clear();
+        selectedFile = null;
 
-        // Gather selections from the tree
-        TreePath[] selectionPaths = fileTree.getSelectionPaths();
-        if (selectionPaths != null) {
-            for (TreePath path : selectionPaths) {
-                Object lastComp = path.getLastPathComponent();
-                if (lastComp instanceof DefaultMutableTreeNode node && node.isLeaf()) {
-                    StringBuilder rel = new StringBuilder();
-                    for (int i = 1; i < path.getPathCount(); i++) {
-                        String seg = path.getPathComponent(i).toString();
-                        if (i > 1) rel.append("/");
-                        rel.append(seg);
-                    }
-                    RepoFile r = new RepoFile(rootPath, rel.toString());
-                    selectedFiles.add(r);
-                }
-            }
-        }
-
-        // Also add any file from the text input
         String typed = fileInput.getText().trim();
         if (!typed.isEmpty()) {
             var expanded = Completions.expandPath(rootPath, typed);
             for (var bf : expanded) {
                 if (bf instanceof RepoFile rf) {
-                    selectedFiles.add(rf);
+                    selectedFile = rf;
+                    break;
                 }
             }
         }
@@ -166,9 +202,17 @@ public class FileSelectionDialog extends JDialog {
     }
 
     /**
-     * Return the list of selected RepoFiles.
+     * Return the selected RepoFile or null if none.
+     */
+    public RepoFile getSelectedFile() {
+        return selectedFile;
+    }
+
+    /**
+     * Return a list containing the selected file, or empty list if none.
+     * This maintains backward compatibility.
      */
     public List<RepoFile> getSelectedFiles() {
-        return new ArrayList<>(selectedFiles);
+        return selectedFile != null ? List.of(selectedFile) : List.of();
     }
 }
