@@ -55,10 +55,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JTextField commandInputField;
     private JLabel backgroundStatusLabel;
 
-    // Context Panel & tables:
+    // Context Panel & table:
     private JPanel contextPanel;
-    private JTable readOnlyTable;
-    private JTable editableTable;
+    private JTable contextTable;
     private JLabel locSummaryLabel;
     
     // Context action buttons:
@@ -550,60 +549,33 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
 
-        // Initialize the tables even though they may not be shown initially
-        // Configure read-only table with monospaced font and checkbox column
-        readOnlyTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Description", "Select"}, 0) {
-            @Override 
-            public boolean isCellEditable(int row, int column) {
-                return column == 3; // Only checkbox column is editable
-            }
-            
+        // Initialize the unified context table
+        contextTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Type", "Description", "Select"}, 0) {
             @Override
-            public Class<?> getColumnClass(int columnIndex) {
-                return columnIndex == 3 ? Boolean.class : Object.class;
+            public boolean isCellEditable(int row, int column) {
+                return column == 4; // Only checkbox column is editable
             }
-        });
-        readOnlyTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        readOnlyTable.setRowHeight(18);
-        readOnlyTable.setTableHeader(null);
-        readOnlyTable.setIntercellSpacing(new Dimension(10, 1));
-        // Column widths similar to Lanterna layout
-        readOnlyTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-        readOnlyTable.getColumnModel().getColumn(1).setPreferredWidth(50);
-        readOnlyTable.getColumnModel().getColumn(2).setPreferredWidth(450);
-        readOnlyTable.getColumnModel().getColumn(3).setPreferredWidth(50);
 
-        // Configure editable table with monospaced font and checkbox column
-        editableTable = new JTable(new DefaultTableModel(new Object[]{"ID", "LOC", "Description", "Select"}, 0) {
-            @Override 
-            public boolean isCellEditable(int row, int column) {
-                return column == 3; // Only checkbox column is editable
-            }
-            
             @Override
             public Class<?> getColumnClass(int columnIndex) {
-                return columnIndex == 3 ? Boolean.class : Object.class;
+                return columnIndex == 4 ? Boolean.class : Object.class;
             }
         });
-        editableTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        editableTable.setRowHeight(18);
-        editableTable.setTableHeader(null);
-        editableTable.setIntercellSpacing(new Dimension(10, 1));
+        contextTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        contextTable.setRowHeight(18);
+        contextTable.setTableHeader(null);
+        contextTable.setIntercellSpacing(new Dimension(10, 1));
+
         // Column widths similar to Lanterna layout
-        editableTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-        editableTable.getColumnModel().getColumn(1).setPreferredWidth(50);
-        editableTable.getColumnModel().getColumn(2).setPreferredWidth(450);
-        editableTable.getColumnModel().getColumn(3).setPreferredWidth(50);
-        
-        // Add listeners to checkbox changes to update button states
-        ((DefaultTableModel)readOnlyTable.getModel()).addTableModelListener(e -> {
-            if (e.getColumn() == 3) { // Checkbox column
-                updateContextButtonLabels();
-            }
-        });
-        
-        ((DefaultTableModel)editableTable.getModel()).addTableModelListener(e -> {
-            if (e.getColumn() == 3) { // Checkbox column
+        contextTable.getColumnModel().getColumn(0).setPreferredWidth(30);   // ID
+        contextTable.getColumnModel().getColumn(1).setPreferredWidth(50);   // LOC
+        contextTable.getColumnModel().getColumn(2).setPreferredWidth(80);   // Type (editable/read-only)
+        contextTable.getColumnModel().getColumn(3).setPreferredWidth(370);  // Description
+        contextTable.getColumnModel().getColumn(4).setPreferredWidth(50);   // Select checkbox
+
+        // Add listener to checkbox changes to update button states
+        ((DefaultTableModel)contextTable.getModel()).addTableModelListener(e -> {
+            if (e.getColumn() == 4) { // Checkbox column
                 updateContextButtonLabels();
             }
         });
@@ -615,35 +587,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         
         // Buttons will be created by createContextButtonsPanel()
 
-        // Set up initial tables with scroll panes (even if empty)
-        JPanel tablesPanel = new JPanel(new GridLayout(2, 1, 0, 5));
-
-        // Read-only panel with label and table
-        JPanel readOnlyPanel = new JPanel(new BorderLayout());
-        JLabel roLabel = new JLabel("Read-only");
-                roLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        roLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-                readOnlyPanel.add(roLabel, BorderLayout.NORTH);
-        readOnlyPanel.add(new JScrollPane(readOnlyTable), BorderLayout.CENTER);
-
-        // Editable panel with label and table
-        JPanel editablePanel = new JPanel(new BorderLayout());
-        JLabel edLabel = new JLabel("Editable");
-        edLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        edLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-        editablePanel.add(edLabel, BorderLayout.NORTH);
-        editablePanel.add(new JScrollPane(editableTable), BorderLayout.CENTER);
-
-        // Add both panels to the tables panel
-        tablesPanel.add(readOnlyPanel);
-        tablesPanel.add(editablePanel);
+        // Set up the table panel with a single unified table
+        JPanel tablePanel = new JPanel(new BorderLayout());
+        JLabel contextLabel = new JLabel("Context Files");
+        contextLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
+        contextLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
+        tablePanel.add(contextLabel, BorderLayout.NORTH);
+        tablePanel.add(new JScrollPane(contextTable), BorderLayout.CENTER);
 
         // Add the buttons panel to the right side
         JPanel buttonsPanel = createContextButtonsPanel();
         
-        // Set up initial layout with tables and buttons
+        // Set up initial layout with table and buttons
         contextPanel.setLayout(new BorderLayout());
-        contextPanel.add(tablesPanel, BorderLayout.CENTER);
+        contextPanel.add(tablePanel, BorderLayout.CENTER);
         contextPanel.add(buttonsPanel, BorderLayout.EAST);
         contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
         
@@ -853,49 +810,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Repopulate the readOnlyTable / editableTable from the given context.
+     * Repopulate the unified context table from the given context.
      */
     public void updateContextTable(Context context) {
         // Reset the contextPanel
         contextPanel.removeAll();
-        
-        // Create tables panel (even for empty context)
-        JPanel tablesPanel = new JPanel(new GridLayout(2, 1, 0, 5));
 
-        // Read-only panel with label and table
-        JPanel readOnlyPanel = new JPanel(new BorderLayout());
-        JLabel roLabel = new JLabel("Read-only");
-        roLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        roLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-                    readOnlyPanel.add(roLabel, BorderLayout.NORTH);
-        readOnlyPanel.add(new JScrollPane(readOnlyTable), BorderLayout.CENTER);
-
-        // Editable panel with label and table
-                    JPanel editablePanel = new JPanel(new BorderLayout());
-        JLabel edLabel = new JLabel("Editable");
-        edLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
-        edLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
-        editablePanel.add(edLabel, BorderLayout.NORTH);
-        editablePanel.add(new JScrollPane(editableTable), BorderLayout.CENTER);
-
-        // Add both panels to the tables panel
-        tablesPanel.add(readOnlyPanel);
-        tablesPanel.add(editablePanel);
+        // Create table panel (even for empty context)
+        JPanel tablePanel = new JPanel(new BorderLayout());
+        JLabel contextLabel = new JLabel("Context Files");
+        contextLabel.setBorder(new EmptyBorder(2, 0, 2, 0));
+        contextLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 11));
+        tablePanel.add(contextLabel, BorderLayout.NORTH);
+        tablePanel.add(new JScrollPane(contextTable), BorderLayout.CENTER);
 
         // Create buttons panel
         JPanel buttonsPanel = createContextButtonsPanel();
 
         // Set up layout
         contextPanel.setLayout(new BorderLayout());
-        contextPanel.add(tablesPanel, BorderLayout.CENTER);
+        contextPanel.add(tablePanel, BorderLayout.CENTER);
         contextPanel.add(buttonsPanel, BorderLayout.EAST);
         contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
 
-        // Clear the tables
-        var roModel = (DefaultTableModel) readOnlyTable.getModel();
-        var edModel = (DefaultTableModel) editableTable.getModel();
-        roModel.setRowCount(0);
-        edModel.setRowCount(0);
+        // Clear the table
+        var tableModel = (DefaultTableModel) contextTable.getModel();
+        tableModel.setRowCount(0);
 
         // Update button states based on empty context
         dropButton.setEnabled(!context.isEmpty());
@@ -914,7 +854,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Enable drop button since we have context
         dropButton.setEnabled(true);
 
-        // Populate the tables
+        // Populate the table
         var allFragments = context.getAllFragmentsInDisplayOrder();
         int totalLines = 0;
         for (ContextFragment frag : allFragments) {
@@ -926,11 +866,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             boolean isEditable = (frag instanceof ContextFragment.RepoPathFragment)
                     && context.editableFiles().anyMatch(e -> e == frag);
 
-            if (isEditable) {
-                edModel.addRow(new Object[]{id, loc, desc, false});
-            } else {
-                roModel.addRow(new Object[]{id, loc, desc, false});
-            }
+            String type = isEditable ? "✏️ Editable" : "📄 Read-only";
+            
+            tableModel.addRow(new Object[]{id, loc, type, desc, false});
         }
 
         // approximate token count
@@ -966,20 +904,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * and whether we have context
      */
     private void updateContextButtonLabels() {
-                boolean hasSelection = hasSelectedItems();
+        boolean hasSelection = hasSelectedItems();
         boolean hasContext = contextManager != null && !contextManager.currentContext().isEmpty();
 
-        if (hasContext) {
-            editButton.setText(hasSelection ? "Edit Selected" : "Edit All");
-            readOnlyButton.setText(hasSelection ? "Read Selected" : "Read All");
-            summarizeButton.setText(hasSelection ? "Summarize Selected" : "Summarize All");
-            dropButton.setText(hasSelection ? "Drop Selected" : "Drop All");
-        } else {
-            editButton.setText("Edit new files");
-            readOnlyButton.setText("Read new files");
-            summarizeButton.setText("Summarize new files");
-            dropButton.setText("Drop All");
-        }
+        // Update button labels based on selection and context state
+        editButton.setText(hasSelection ? "Edit selected" : "Edit files");
+        readOnlyButton.setText(hasSelection ? "Read selected" : "Read files");
+        summarizeButton.setText(hasSelection ? "Summarize selected" : "Summarize files");
+        
+        // Drop button is special - always shows "Drop all" or "Drop selected"
+        dropButton.setText(hasSelection ? "Drop selected" : "Drop all");
+        
+        // Drop button is only enabled if there is context
+        dropButton.setEnabled(hasContext);
     }
     
     /**
@@ -1027,27 +964,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Check if any items are selected in either table
      */
     private boolean hasSelectedItems() {
-        if (readOnlyTable.getModel().getRowCount() == 0 && editableTable.getModel().getRowCount() == 0) {
+        if (contextTable.getModel().getRowCount() == 0) {
             return false;
         }
-        
-        // Check for any true value in checkbox column of either table
-        DefaultTableModel roModel = (DefaultTableModel) readOnlyTable.getModel();
-        DefaultTableModel edModel = (DefaultTableModel) editableTable.getModel();
-        
-        for (int i = 0; i < roModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(roModel.getValueAt(i, 3))) {
+
+        // Check for any true value in checkbox column
+        DefaultTableModel tableModel = (DefaultTableModel) contextTable.getModel();
+
+                for (int i = 0; i < tableModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 4))) { // 4 is the checkbox column
                 return true;
             }
         }
-        
-        for (int i = 0; i < edModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(edModel.getValueAt(i, 3))) {
-                return true;
-            }
-        }
-        
-        return false;
+
+                return false;
     }
     
     /**
@@ -1055,26 +985,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private List<Integer> getSelectedFragmentIndices() {
         List<Integer> indices = new ArrayList<>();
-        
-        DefaultTableModel roModel = (DefaultTableModel) readOnlyTable.getModel();
-        DefaultTableModel edModel = (DefaultTableModel) editableTable.getModel();
-        
-        // Collect indices from read-only table
-        for (int i = 0; i < roModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(roModel.getValueAt(i, 3))) {
-                indices.add(Integer.parseInt(roModel.getValueAt(i, 0).toString()));
+                DefaultTableModel tableModel = (DefaultTableModel) contextTable.getModel();
+
+        // Collect indices from the unified table
+                for (int i = 0; i < tableModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 4))) { // 4 is the checkbox column
+                indices.add(Integer.parseInt(tableModel.getValueAt(i, 0).toString()));
             }
         }
-        
-        // Collect indices from editable table
-        for (int i = 0; i < edModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(edModel.getValueAt(i, 3))) {
-                indices.add(Integer.parseInt(edModel.getValueAt(i, 0).toString()));
-            }
-        }
-        
+
         return indices;
-    }
+            }
     
     /**
      * Perform the requested action on selected context items (or all if none selected)
