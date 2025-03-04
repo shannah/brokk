@@ -200,17 +200,14 @@ public class Chrome implements AutoCloseable, IConsoleIO
         
         // Add scroll listener to detect manual scrolling
         scrollPane.getVerticalScrollBar().addAdjustmentListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                return;
-            }
-            
             // Check if we're at the bottom
             JScrollBar scrollBar = scrollPane.getVerticalScrollBar();
             int value = scrollBar.getValue();
             int extent = scrollBar.getModel().getExtent();
             int maximum = scrollBar.getMaximum();
-            
-            if (value + extent >= maximum) {
+
+            // If we're at (or very near) the bottom, re-enable auto-scroll
+            if (value + extent >= maximum - 1) {
                 // User scrolled to bottom, so we should auto-scroll from now on
                 userHasManuallyScrolled = false;
             } else {
@@ -1049,21 +1046,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
     public void llmOutput(String token)
     {
         SwingUtilities.invokeLater(() -> {
-            // Get current view position before appending text
-            JScrollPane scrollPane = (JScrollPane) llmStreamArea.getParent().getParent();
-            JViewport viewport = scrollPane.getViewport();
-            Point viewPosition = viewport.getViewPosition();
-            int viewHeight = viewport.getHeight();
-            int textHeight = llmStreamArea.getHeight();
-            
-            // Check if we're near the bottom
-            boolean wasAtBottom = (viewPosition.y + viewHeight) >= (textHeight - 5);
-            
             // Append the text
             llmStreamArea.append(token);
-            
-            // Only auto-scroll if we were already at the bottom or user hasn't scrolled manually
-            if (wasAtBottom || !userHasManuallyScrolled) {
+
+            // Only auto-scroll if user hasn't scrolled manually
+            if (!userHasManuallyScrolled) {
                 llmStreamArea.setCaretPosition(llmStreamArea.getDocument().getLength());
             }
         });
