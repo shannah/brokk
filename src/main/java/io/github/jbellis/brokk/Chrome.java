@@ -488,19 +488,37 @@ public class Chrome implements AutoCloseable, IConsoleIO
         ));
 
         contextTable = new JTable(new DefaultTableModel(
-                new Object[]{"ID", "LOC", "Type", "Description", "Select"}, 0)
+                new Object[]{"ID", "LOC", "Description", "Select"}, 0)
         {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return column == 4; // Only the checkbox column
+                return column == 3; // Only the checkbox column
             }
 
             @Override
             public Class<?> getColumnClass(int columnIndex) {
-                return (columnIndex == 4) ? Boolean.class : Object.class;
+                return (columnIndex == 3) ? Boolean.class : Object.class;
             }
         });
         contextTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        
+        // Add custom cell renderer for the description column to show italics for editable files
+        contextTable.getColumnModel().getColumn(2).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
+            @Override
+            public java.awt.Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                
+                if (value != null && value.toString().startsWith("✏️")) {
+                    setFont(getFont().deriveFont(Font.ITALIC));
+                } else {
+                    setFont(getFont().deriveFont(Font.PLAIN));
+                }
+                
+                return c;
+            }
+        });
         contextTable.setRowHeight(18);
         contextTable.setTableHeader(null);
         contextTable.setIntercellSpacing(new Dimension(10,1));
@@ -508,12 +526,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
         // column widths
         contextTable.getColumnModel().getColumn(0).setPreferredWidth(30);
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(50);
-        contextTable.getColumnModel().getColumn(2).setPreferredWidth(80);
-        contextTable.getColumnModel().getColumn(3).setPreferredWidth(370);
-        contextTable.getColumnModel().getColumn(4).setPreferredWidth(50);
+        contextTable.getColumnModel().getColumn(2).setPreferredWidth(450);
+        contextTable.getColumnModel().getColumn(3).setPreferredWidth(50);
 
         ((DefaultTableModel) contextTable.getModel()).addTableModelListener(e -> {
-            if (e.getColumn() == 4) { // checkbox column changed
+            if (e.getColumn() == 3) { // checkbox column changed
                 updateContextButtons();
             }
         });
@@ -667,7 +684,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
         }
         var tableModel = (DefaultTableModel) contextTable.getModel();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 4))) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 3))) {
                 return true;
             }
         }
@@ -682,7 +699,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
         var indices = new ArrayList<Integer>();
         var tableModel = (DefaultTableModel) contextTable.getModel();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 4))) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 3))) {
                 indices.add(Integer.parseInt(tableModel.getValueAt(i, 0).toString()));
             }
         }
@@ -695,11 +712,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
     private void updateContextButtons()
     {
         var hasSelection = hasSelectedItems();
-        editButton.setText(hasSelection ? "Edit selected" : "Edit files");
-        readOnlyButton.setText(hasSelection ? "Read selected" : "Read files");
-        summarizeButton.setText(hasSelection ? "Summarize selected" : "Summarize files");
-        dropButton.setText(hasSelection ? "Drop selected" : "Drop all");
-        copyButton.setText(hasSelection ? "Copy selected" : "Copy all");
+        editButton.setText(hasSelection ? "Edit Selected" : "Edit Files");
+        readOnlyButton.setText(hasSelection ? "Read Selected" : "Read Files");
+        summarizeButton.setText(hasSelection ? "Summarize Selected" : "Summarize Files");
+        dropButton.setText(hasSelection ? "Drop Selected" : "Drop All");
+        copyButton.setText(hasSelection ? "Copy Selected" : "Copy All");
 
         var ctx = (contextManager == null) ? null : contextManager.currentContext();
         var hasContext = (ctx != null && !ctx.isEmpty());
@@ -1163,19 +1180,23 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 var loc = countLinesSafe(frag);
                 totalLines += loc;
                 var desc = frag.description();
-                
+
                 var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
                         && context.editableFiles().anyMatch(e -> e == frag);
-                var type = isEditable ? "✏️ Editable" : "📄 Read-only";
-                
-                tableModel.addRow(new Object[]{id, loc, type, desc, false});
+
+                // Create a custom cell renderer for italicizing editable entries
+                if (isEditable) {
+                    desc = "✏️ " + desc;  // Add pencil icon to editable files
+                }
+
+                tableModel.addRow(new Object[]{id, loc, desc, false});
             }
             
             var fullText = "";  // no large merges needed
             var approxTokens = Models.getApproximateTokens(fullText);
             
             locSummaryLabel.setText(
-                    "Total LOC: %,d, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
+                    "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
             );
             
             // Just revalidate/repaint the panel to reflect the new rows
