@@ -18,6 +18,8 @@ public class Project {
     private final Path historyFilePath;
 
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
+    private static final int DEFAULT_WINDOW_WIDTH = 800;
+    private static final int DEFAULT_WINDOW_HEIGHT = 1200;
 
     public Project(Path root, IConsoleIO io) {
         this.root = root;
@@ -39,6 +41,10 @@ public class Project {
         // Set defaults on missing or error
         if (props.isEmpty()) {
             props.setProperty("autoContextFileCount", String.valueOf(DEFAULT_AUTO_CONTEXT_FILE_COUNT));
+            props.setProperty("windowWidth", String.valueOf(DEFAULT_WINDOW_WIDTH));
+            props.setProperty("windowHeight", String.valueOf(DEFAULT_WINDOW_HEIGHT));
+            props.setProperty("windowX", "-1");  // -1 means center the window
+            props.setProperty("windowY", "-1");
         }
     }
 
@@ -51,7 +57,7 @@ public class Project {
         saveProperties();
     }
     
-    private void saveProperties() {
+    public void saveProperties() {
         try {
             Files.createDirectories(propertiesFile.getParent());
             try (var writer = Files.newBufferedWriter(propertiesFile)) {
@@ -151,6 +157,66 @@ public class Project {
     /**
      * @param keys Map of key names to values
      */
+    /**
+     * Gets the saved window X position
+     */
+    public int getWindowX() {
+        return Integer.parseInt(props.getProperty("windowX", "-1"));
+    }
+    
+    /**
+     * Gets the saved window Y position
+     */
+    public int getWindowY() {
+        return Integer.parseInt(props.getProperty("windowY", "-1"));
+    }
+    
+    /**
+     * Gets the saved window width
+     */
+    public int getWindowWidth() {
+        return Integer.parseInt(props.getProperty("windowWidth", String.valueOf(DEFAULT_WINDOW_WIDTH)));
+    }
+    
+    /**
+     * Gets the saved window height
+     */
+    public int getWindowHeight() {
+        return Integer.parseInt(props.getProperty("windowHeight", String.valueOf(DEFAULT_WINDOW_HEIGHT)));
+    }
+    
+    /**
+     * Sets the window X position
+     */
+    public void setWindowX(int x) {
+        props.setProperty("windowX", String.valueOf(x));
+        saveProperties();
+    }
+    
+    /**
+     * Sets the window Y position
+     */
+    public void setWindowY(int y) {
+        props.setProperty("windowY", String.valueOf(y));
+        saveProperties();
+    }
+    
+    /**
+     * Sets the window width
+     */
+    public void setWindowWidth(int width) {
+        props.setProperty("windowWidth", String.valueOf(width));
+        saveProperties();
+    }
+    
+    /**
+     * Sets the window height
+     */
+    public void setWindowHeight(int height) {
+        props.setProperty("windowHeight", String.valueOf(height));
+        saveProperties();
+    }
+    
     public void saveLlmKeys(Map<String, String> keys) {
         var keysPath = getLlmKeysPath();
 
@@ -158,7 +224,7 @@ public class Project {
             Files.createDirectories(keysPath.getParent());
             Properties keyProps = new Properties();
             keys.forEach(keyProps::setProperty);
-            
+
             try (var writer = Files.newBufferedWriter(keysPath)) {
                 keyProps.store(writer, "Brokk LLM API keys");
             }

@@ -116,9 +116,21 @@ public class Chrome implements AutoCloseable, IConsoleIO
         // 5) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
 
-        // 6) Show window
-        frame.setLocationRelativeTo(null);
+        // 6) Load saved window size and position, then show window
         frame.setVisible(true);
+        
+        // Add listener to save window size and position when they change
+        frame.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                saveWindowSizeAndPosition();
+            }
+            
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e) {
+                saveWindowSizeAndPosition();
+            }
+        });
     }
 
     /**
@@ -129,6 +141,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
         this.contextManager = contextManager;
         this.coder = coder;
         this.project = contextManager.getProject();
+        loadWindowSizeAndPosition();
         this.commands = new Commands(contextManager);
 
         // Now, also tell the commands object to use this as IConsoleIO:
@@ -1241,6 +1254,69 @@ public class Chrome implements AutoCloseable, IConsoleIO
         logger.info("Closing Chrome UI");
         if (frame != null) {
             frame.dispose();
+        }
+    }
+
+    /**
+     * Saves the current window size and position to project properties
+     */
+    private void saveWindowSizeAndPosition() {
+        if (project != null && frame != null && frame.isDisplayable()) {
+            // Only save position if the window is in a non-iconified state
+            if (frame.getExtendedState() == JFrame.NORMAL) {
+                project.setWindowX(frame.getX());
+                project.setWindowY(frame.getY());
+                project.setWindowWidth(frame.getWidth());
+                project.setWindowHeight(frame.getHeight());
+                
+                // Immediately save properties to ensure they're persisted
+                project.saveProperties();
+            }
+        }
+    }
+    
+    /**
+     * Loads window size and position from project properties
+     */
+    private void loadWindowSizeAndPosition() {
+        assert project != null;
+        int x = project.getWindowX();
+        int y = project.getWindowY();
+        int width = project.getWindowWidth();
+        int height = project.getWindowHeight();
+
+        // Only apply saved values if they're valid
+        if (width > 0 && height > 0) {
+            frame.setSize(width, height);
+
+            // Only use the position if it was actually set (not -1)
+            if (x >= 0 && y >= 0) {
+                // Check if the saved position is on a visible screen
+                boolean validPosition = false;
+                for (var screen : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+                    for (var config : screen.getConfigurations()) {
+                        var bounds = config.getBounds();
+                        if (bounds.contains(x, y)) {
+                            validPosition = true;
+                            break;
+                        }
+                    }
+                    if (validPosition) break;
+                }
+
+                if (validPosition) {
+                    frame.setLocation(x, y);
+                } else {
+                    // If not on a visible screen, center the window
+                    frame.setLocationRelativeTo(null);
+                }
+            } else {
+                // If position wasn't saved, center the window
+                frame.setLocationRelativeTo(null);
+            }
+        } else {
+            // If no valid size is saved, center the window
+            frame.setLocationRelativeTo(null);
         }
     }
 
