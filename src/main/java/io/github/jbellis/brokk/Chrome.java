@@ -226,28 +226,33 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Creates a horizontal panel with a prompt and a single-line text field for commands.
-     * This matches the command input area in Lanterna.
+     * Creates a panel with a single-line text field for commands and action buttons.
+     * The panel is titled "Instructions".
      */
     private JPanel buildCommandInputPanel() {
-        // Use BorderLayout to make the text field expand horizontally
-        JPanel panel = new JPanel(new BorderLayout());
-
-        // Create a prompt label with fixed width
-        JLabel promptLabel = new JLabel("> ");
-        promptLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        promptLabel.setBorder(new EmptyBorder(2, 5, 2, 0));
-
+        // Create a panel with titled border
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder(
+                        BorderFactory.createEtchedBorder(),
+                        "Instructions",
+                        javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                        javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                        new Font(Font.DIALOG, Font.BOLD, 12)
+                ),
+                new EmptyBorder(5, 5, 5, 5)
+        ));
+        
         // Command input field takes remaining width
         commandInputField = new JTextField();
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-        // Match the Lanterna look with a border
+                // Match the Lanterna look with a border
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
-        
+
         // When input field gets focus, ensure Go is the default button
         commandInputField.addFocusListener(new java.awt.event.FocusAdapter() {
             @Override
@@ -275,13 +280,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        // Add components to the panel - ensuring full width
-        panel.add(promptLabel, BorderLayout.WEST);
-        panel.add(commandInputField, BorderLayout.CENTER);
-
         // Create a buttons panel for Go, Ask, Search - right-justified
-        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        
+                JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+
         // Create and add the Go button
         JButton goButton = new JButton("Go");
         goButton.addActionListener(e -> {
@@ -289,35 +290,33 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             if (text != null && !text.isBlank()) {
                 onUserCommand(text);
             }
-        });
-        
+                });
+
         // Create and add the Ask button
         JButton askButton = new JButton("Ask");
         askButton.addActionListener(e -> {
             String text = commandInputField.getText();
             showOperationResult(cmdAsk(text));
-        });
-        
+                });
+
         // Create and add the Search button
         JButton searchButton = new JButton("Search");
         searchButton.addActionListener(e -> {
             String text = commandInputField.getText();
             showOperationResult(cmdSearch(text));
-        });
-        
+                });
+
         // Add buttons to the panel
         buttonsPanel.add(goButton);
         buttonsPanel.add(askButton);
-        buttonsPanel.add(searchButton);
-        
+                buttonsPanel.add(searchButton);
+
         // Set Go as the default button
-        frame.getRootPane().setDefaultButton(goButton);
-        
-        // Create a wrapper panel for both input and buttons
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.setBorder(new EmptyBorder(5, 5, 5, 5));
-        wrapper.add(panel, BorderLayout.NORTH);
-        wrapper.add(buttonsPanel, BorderLayout.CENTER);
+                frame.getRootPane().setDefaultButton(goButton);
+
+        // Add text field and buttons to the wrapper panel
+        wrapper.add(commandInputField, BorderLayout.CENTER);
+        wrapper.add(buttonsPanel, BorderLayout.SOUTH);
 
         return wrapper;
     }
@@ -756,7 +755,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // If context is empty, show message in summary label and return
         if (context.isEmpty()) {
-            locSummaryLabel.setText("No context - use Edit new files or Read new files buttons to add content");
+            locSummaryLabel.setText("No context - use Edit, Read, or Summarize buttons to add content");
 
             // Refresh the UI
             contextPanel.revalidate();
