@@ -87,24 +87,6 @@ class EditBlockTest {
     }
 
     
-    // ----------------------------------------------------
-    // Helper methods
-    // ----------------------------------------------------
-    private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
-        var files = validFilenames.stream().map(f -> new RepoFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
-        var blocks = EditBlock.findOriginalUpdateBlocks(fullResponse, files).blocks();
-        return blocks.toArray(new EditBlock.SearchReplaceBlock[0]);
-    }
-
-    private String fuzzyReplace(String original, String search, String replace) {
-        return EditBlock.doReplace(original, search, replace);
-    }
-
-
-    // ----------------------------------------------------
-    // Original tests from the question snippet
-    // ----------------------------------------------------
-
     @Test
     void testFindOriginalUpdateBlocksSimple() {
         String edit = """
@@ -234,7 +216,7 @@ class EditBlockTest {
         String search = "Another line\n";
         String replace = "Changed line\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         String expected = "This is a sample text.\nChanged line\nYet another line.\n";
         assertEquals(expected, updated);
     }
@@ -260,7 +242,7 @@ class EditBlockTest {
                         new_line3
                 """.stripIndent();
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
     }
 
@@ -281,7 +263,7 @@ class EditBlockTest {
                 line3
                 """;
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
     }
 
@@ -293,7 +275,7 @@ class EditBlockTest {
         String replace = "new content\n";
         String expected = "one\ntwo\nnew content\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
     }
 
@@ -358,11 +340,6 @@ class EditBlockTest {
         assertNotEquals(List.of(), result.blocks());
     }
 
-
-    // ----------------------------------------------------
-    // Additional Tests (cover corner cases from Python)
-    // ----------------------------------------------------
-
     /**
      * Test partial or fuzzy leading whitespace issues with multiple lines,
      * verifying that indentation differences are handled.
@@ -420,7 +397,7 @@ class EditBlockTest {
                   replaced_line2
                 """;
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
 
         // The beforeText block basically tries to match line2 ignoring some whitespace and skipping a blank line
         // We expect line2 -> replaced_line2, with same leading indentation as original (4 spaces).
@@ -448,7 +425,7 @@ class EditBlockTest {
                   replaced_line2
                 """;
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         String expected = """
                 line1
                     replaced_line2
@@ -472,7 +449,7 @@ class EditBlockTest {
                   replaced_line2
                 """;
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         String expected = """
                 line1
                     replaced_line2
@@ -572,7 +549,7 @@ class EditBlockTest {
         String search = "line2\n";
         String replace = "line2\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         // We expect no change
         assertEquals(original, updated);
     }
@@ -634,7 +611,16 @@ class EditBlockTest {
         String search = "";  // empty
         String replace = "initial content\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals("initial content\n", updated);
+    }
+
+    // ----------------------------------------------------
+    // Helper methods
+    // ----------------------------------------------------
+    private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
+        var files = validFilenames.stream().map(f -> new RepoFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
+        var blocks = EditBlock.findOriginalUpdateBlocks(fullResponse, files).blocks();
+        return blocks.toArray(new EditBlock.SearchReplaceBlock[0]);
     }
 }
