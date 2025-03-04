@@ -24,7 +24,7 @@ import java.util.List;
  *
  * It sets up a main JFrame with:
  *   1) A top RSyntaxTextArea for LLM output & shell output
- *   2) A single-line command input field with Emacs-style keybindings
+ *   2) A single-line command input field
  *   3) A context panel showing read-only and editable files
  *   4) A command result label for showing success/error messages
  *   5) A background status label at the bottom to show spinners or tasks
@@ -273,62 +273,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Binds basic Emacs/readline-like keys to the given text field.
      */
     private void bindEmacsKeys(JTextField field) {
-        // Example: ctrl-A => move cursor to start
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_A, InputEvent.CTRL_DOWN_MASK), "moveHome");
-        field.getActionMap().put("moveHome", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                field.setCaretPosition(0);
-            }
-        });
-
-        // Similarly: ctrl-E => move cursor to end
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_E, InputEvent.CTRL_DOWN_MASK), "moveEnd");
-        field.getActionMap().put("moveEnd", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                field.setCaretPosition(field.getText().length());
-            }
-        });
-
-        // ctrl-B => move backward
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK), "moveLeft");
-        field.getActionMap().put("moveLeft", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int pos = field.getCaretPosition();
-                if (pos > 0) {
-                    field.setCaretPosition(pos - 1);
-                }
-            }
-        });
-
-        // ctrl-F => move forward
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "moveRight");
-        field.getActionMap().put("moveRight", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int pos = field.getCaretPosition();
-                if (pos < field.getText().length()) {
-                    field.setCaretPosition(pos + 1);
-                }
-            }
-        });
-
-        // ctrl-D => delete char at cursor
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK), "delChar");
-        field.getActionMap().put("delChar", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int pos = field.getCaretPosition();
-                String text = field.getText();
-                if (pos < text.length()) {
-                    field.setText(text.substring(0, pos) + text.substring(pos + 1));
-                    field.setCaretPosition(pos);
-                }
-            }
-        });
-
         // ctrl-K => kill to end of line
         field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.CTRL_DOWN_MASK), "killLine");
         field.getActionMap().put("killLine", new AbstractAction() {
@@ -369,79 +313,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     String text = field.getText();
                     field.setText(text.substring(0, pos) + killBuffer + text.substring(pos));
                     field.setCaretPosition(pos + killBuffer.length());
-                }
-            }
-        });
-
-        // ctrl-L => clear LLM area
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.CTRL_DOWN_MASK), "clearLLM");
-        field.getActionMap().put("clearLLM", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                llmStreamArea.setText("");
-            }
-        });
-
-        // ctrl-P => previous item in history
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_P, InputEvent.CTRL_DOWN_MASK), "histPrev");
-        field.getActionMap().put("histPrev", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                navigateHistory(-1);
-            }
-        });
-
-        // ctrl-N => next item in history
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_N, InputEvent.CTRL_DOWN_MASK), "histNext");
-        field.getActionMap().put("histNext", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                navigateHistory(1);
-            }
-        });
-
-        // alt-B => move back one word
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.ALT_DOWN_MASK), "moveLeftWord");
-        field.getActionMap().put("moveLeftWord", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int pos = field.getCaretPosition();
-                String text = field.getText();
-                while (pos > 0 && !Character.isWhitespace(text.charAt(pos - 1))) {
-                    pos--;
-                }
-                field.setCaretPosition(pos);
-            }
-        });
-
-        // alt-F => move forward one word
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.ALT_DOWN_MASK), "moveRightWord");
-        field.getActionMap().put("moveRightWord", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int pos = field.getCaretPosition();
-                String text = field.getText();
-                while (pos < text.length() && !Character.isWhitespace(text.charAt(pos))) {
-                    pos++;
-                }
-                field.setCaretPosition(pos);
-            }
-        });
-
-        // alt-D => delete word forward
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.ALT_DOWN_MASK), "delWord");
-        field.getActionMap().put("delWord", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int pos = field.getCaretPosition();
-                String text = field.getText();
-                int start = pos;
-                while (pos < text.length() && !Character.isWhitespace(text.charAt(pos))) {
-                    pos++;
-                }
-                if (pos > start) {
-                    field.setText(text.substring(0, start) + text.substring(pos));
-                    field.setCaretPosition(start);
                 }
             }
         });
@@ -866,7 +737,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // fullText = ...
         int approxTokens = Models.getApproximateTokens(fullText);
 
-        locSummaryLabel.setText("Total LOC: " + totalLines + ", or about " + (approxTokens / 1000) + "k tokens");
+        locSummaryLabel.setText("Total LOC: %,d, or about %,dk tokens".formatted(totalLines, approxTokens / 1000));
 
         // Refresh the UI
         contextPanel.revalidate();
