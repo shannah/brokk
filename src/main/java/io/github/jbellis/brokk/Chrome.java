@@ -97,7 +97,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 4) Build menu
         frame.setJMenuBar(buildMenuBar());
 
-        // 5) Show window
+        // 5) Register global keyboard shortcuts
+        registerGlobalKeyboardShortcuts();
+        
+        // 6) Show window
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
     }
@@ -530,6 +533,35 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
+     * Registers global keyboard shortcuts for undo/redo that work from anywhere in the application
+     */
+    private void registerGlobalKeyboardShortcuts() {
+        // Get the root pane from our frame
+        JRootPane rootPane = frame.getRootPane();
+        
+        // Register Ctrl+Z for undo
+        KeyStroke undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
+        rootPane.getActionMap().put("globalUndo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                showOperationResult(contextManager.undoContext());
+            }
+        });
+        
+        // Register Ctrl+Shift+Z for redo
+        KeyStroke redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, 
+                                                        InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
+        rootPane.getActionMap().put("globalRedo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                showOperationResult(contextManager.redoContext());
+            }
+        });
+    }
+    
+    /**
      * Builds the menu bar with items for application actions.
      * Context manipulation is now handled by direct buttons in the context panel.
      */
@@ -554,12 +586,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         JMenuItem undoItem = new JMenuItem("Undo");
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK));
         undoItem.addActionListener(e -> showOperationResult(contextManager.undoContext()));
+        // Add a tooltip to show keyboard shortcut
+        undoItem.setToolTipText("Undo (Ctrl+Z)");
         editMenu.add(undoItem);
 
         JMenuItem redoItem = new JMenuItem("Redo");
         redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
                                                        InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
         redoItem.addActionListener(e -> showOperationResult(contextManager.redoContext()));
+        // Add a tooltip to show keyboard shortcut
+        redoItem.setToolTipText("Redo (Ctrl+Shift+Z)");
         editMenu.add(redoItem);
 
         menuBar.add(editMenu);
