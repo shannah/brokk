@@ -280,21 +280,21 @@ public class EditBlock {
      * Attempts perfect/whitespace replacements, then tries "...", then fuzzy.
      * Returns null if no match found.
      */
-    static String replaceMostSimilarChunk(String content, String part, String replace) {
+    static String replaceMostSimilarChunk(String content, String target, String replace) {
         // 1) prep for line-based matching
         ContentLines originalCL = prep(content);
-        ContentLines partCL = prep(part);
+        ContentLines targetCl = prep(target);
         ContentLines replaceCL = prep(replace);
 
         // 2) perfect or whitespace approach
-        String attempt = perfectOrWhitespace(originalCL.lines, partCL.lines, replaceCL.lines);
+        String attempt = perfectOrWhitespace(originalCL.lines, targetCl.lines, replaceCL.lines);
         if (attempt != null) {
             return attempt;
         }
 
         // 3) handle triple-dot expansions
         try {
-            attempt = tryDotdotdots(content, part, replace);
+            attempt = tryDotdotdots(content, target, replace);
             if (attempt != null) {
                 return attempt;
             }
@@ -303,18 +303,18 @@ public class EditBlock {
         }
 
         // 3a) If that failed, attempt dropping a spurious leading blank line from the "search" block:
-        if (partCL.lines.length > 2 && partCL.lines[0].trim().isEmpty()) {
-            // drop the first line from partCL
-            String[] splicedPart = Arrays.copyOfRange(partCL.lines, 1, partCL.lines.length);
+        if (targetCl.lines.length > 2 && targetCl.lines[0].trim().isEmpty()) {
+            // drop the first line from targetCl
+            String[] splicedTarget = Arrays.copyOfRange(targetCl.lines, 1, targetCl.lines.length);
             String[] splicedReplace = Arrays.copyOfRange(replaceCL.lines, 1, replaceCL.lines.length);
 
-            attempt = perfectOrWhitespace(originalCL.lines, splicedPart, splicedReplace);
+            attempt = perfectOrWhitespace(originalCL.lines, splicedTarget, splicedReplace);
             if (attempt != null) {
                 return attempt;
             }
 
             // try triple-dot expansions on the spliced block if needed.
-            return tryDotdotdots(content, String.join("", splicedPart), String.join("", splicedReplace));
+            return tryDotdotdots(content, String.join("", splicedTarget), String.join("", splicedReplace));
         }
 
         return null;
@@ -336,24 +336,24 @@ public class EditBlock {
     /**
      * If the search/replace has lines of "..." as placeholders, do naive partial replacements.
      */
-    public static String tryDotdotdots(String whole, String part, String replace) {
-        // If there's no "..." in part or whole, skip
-        if (!part.contains("...") && !whole.contains("...")) {
+    public static String tryDotdotdots(String whole, String target, String replace) {
+        // If there's no "..." in target or whole, skip
+        if (!target.contains("...") && !whole.contains("...")) {
             return null;
         }
         // splits on lines of "..."
         Pattern dotsRe = Pattern.compile("(?m)^\\s*\\.\\.\\.\\s*$");
 
-        String[] partPieces = dotsRe.split(part);
+        String[] targetPieces = dotsRe.split(target);
         String[] replacePieces = dotsRe.split(replace);
 
-        if (partPieces.length != replacePieces.length) {
+        if (targetPieces.length != replacePieces.length) {
             throw new IllegalArgumentException("Unpaired ... usage in search/replace");
         }
 
         String result = whole;
-        for (int i = 0; i < partPieces.length; i++) {
-            String pp = partPieces[i];
+        for (int i = 0; i < targetPieces.length; i++) {
+            String pp = targetPieces[i];
             String rp = replacePieces[i];
 
             if (pp.isEmpty() && rp.isEmpty()) {
@@ -367,7 +367,7 @@ public class EditBlock {
                 // replace only the first occurrence
                 result = result.replaceFirst(Pattern.quote(pp), Matcher.quoteReplacement(rp));
             } else {
-                // part piece empty, but replace piece is not -> just append
+                // target piece empty, but replace piece is not -> just append
                 result += rp;
             }
         }
@@ -378,28 +378,28 @@ public class EditBlock {
      * Tries perfect replace first, then leading-whitespace-insensitive.
      */
     public static String perfectOrWhitespace(String[] originalLines,
-                                             String[] partLines,
+                                             String[] targetLines,
                                              String[] replaceLines) {
-        String perfect = perfectReplace(originalLines, partLines, replaceLines);
+        String perfect = perfectReplace(originalLines, targetLines, replaceLines);
         if (perfect != null) {
             return perfect;
         }
-        return replaceIgnoringWhitespace(originalLines, partLines, replaceLines);
+        return replaceIgnoringWhitespace(originalLines, targetLines, replaceLines);
     }
 
     /**
      * Tries exact line-by-line match.
      */
     public static String perfectReplace(String[] originalLines,
-                                        String[] partLines,
+                                        String[] targetLines,
                                         String[] replaceLines) {
-        if (partLines.length == 0) {
+        if (targetLines.length == 0) {
             return null;
         }
         outer:
-        for (int i = 0; i <= originalLines.length - partLines.length; i++) {
-            for (int j = 0; j < partLines.length; j++) {
-                if (!Objects.equals(originalLines[i + j], partLines[j])) {
+        for (int i = 0; i <= originalLines.length - targetLines.length; i++) {
+            for (int j = 0; j < targetLines.length; j++) {
+                if (!Objects.equals(originalLines[i + j], targetLines[j])) {
                     continue outer;
                 }
             }
@@ -410,7 +410,7 @@ public class EditBlock {
             // add replacement
             newLines.addAll(Arrays.asList(replaceLines));
             // everything after the match
-            newLines.addAll(Arrays.asList(originalLines).subList(i + partLines.length, originalLines.length));
+            newLines.addAll(Arrays.asList(originalLines).subList(i + targetLines.length, originalLines.length));
             return String.join("", newLines);
         }
         return null;
@@ -422,19 +422,19 @@ public class EditBlock {
      * indentation from the 'search' lines.
      */
     static String replaceIgnoringWhitespace(String[] originalLines,
-                                            String[] partLines,
+                                            String[] targetLines,
                                             String[] replaceLines) {
         // Skip leading blank lines in the 'search'
         int pStart = 0;
-        while (pStart < partLines.length && partLines[pStart].trim().isEmpty()) {
+        while (pStart < targetLines.length && targetLines[pStart].trim().isEmpty()) {
             pStart++;
         }
         // Skip trailing blank lines in the search block
-        int pEnd = partLines.length;
-        while (pEnd > pStart && partLines[pEnd - 1].trim().isEmpty()) {
+        int pEnd = targetLines.length;
+        while (pEnd > pStart && targetLines[pEnd - 1].trim().isEmpty()) {
             pEnd--;
         }
-        String[] truncatedPart = Arrays.copyOfRange(partLines, pStart, pEnd);
+        String[] truncatedTarget = Arrays.copyOfRange(targetLines, pStart, pEnd);
 
         // Do the same for the 'replace'
         int rStart = 0;
@@ -447,49 +447,49 @@ public class EditBlock {
         }
         String[] truncatedReplace = Arrays.copyOfRange(replaceLines, rStart, rEnd);
 
-        if (truncatedPart.length == 0) {
+        if (truncatedTarget.length == 0) {
             // No actual lines to match
             return null;
         }
 
         // Attempt to find a slice in originalLines that matches ignoring leading spaces.
-        int needed = truncatedPart.length;
+        int needed = truncatedTarget.length;
         for (int start = 0; start <= originalLines.length - needed; start++) {
-            if (!matchesIgnoringLeading(originalLines, start, truncatedPart)) {
+            if (!matchesIgnoringLeading(originalLines, start, truncatedTarget)) {
                 continue;
             }
 
             // Found a match - rebuild the filename around it
             // everything before the match
-            List<String> newFile = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
+            List<String> newLines = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
             // add replacement lines with adjusted indentation
             for (int i = 0; i < needed && i < truncatedReplace.length; i++) {
                 int sliceLeading = countLeadingSpaces(originalLines[start + i]);
-                int partLeading  = countLeadingSpaces(truncatedPart[i]);
-                int difference = partLeading - sliceLeading;
+                int targetLeading  = countLeadingSpaces(truncatedTarget[i]);
+                int difference = targetLeading - sliceLeading;
 
                 String adjusted = adjustIndentation(truncatedReplace[i], difference);
-                newFile.add(adjusted);
+                newLines.add(adjusted);
             }
             // if the replacement is longer, add leftover lines
             if (needed < truncatedReplace.length) {
-                newFile.addAll(
+                newLines.addAll(
                     Arrays.asList(truncatedReplace).subList(needed, truncatedReplace.length)
                 );
             }
             // everything after the match
-            newFile.addAll(Arrays.asList(originalLines).subList(start + needed, originalLines.length));
-            return String.join("", newFile);
+            newLines.addAll(Arrays.asList(originalLines).subList(start + needed, originalLines.length));
+            return String.join("", newLines);
         }
         return null;
     }
 
-    static boolean matchesIgnoringLeading(String[] originalLines, int start, String[] partLines) {
-        if (start + partLines.length > originalLines.length) {
+    static boolean matchesIgnoringLeading(String[] originalLines, int start, String[] targetLines) {
+        if (start + targetLines.length > originalLines.length) {
             return false;
         }
-        for (int i = 0; i < partLines.length; i++) {
-            if (!originalLines[start + i].stripLeading().equals(partLines[i].stripLeading())) {
+        for (int i = 0; i < targetLines.length; i++) {
+            if (!originalLines[start + i].stripLeading().equals(targetLines[i].stripLeading())) {
                 return false;
             }
         }
