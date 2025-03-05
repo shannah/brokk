@@ -135,7 +135,31 @@ public class EditBlock {
      * corresponds to shell code that should be executed, not applied to a filename.
      */
     public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) {
-
+        @Override
+        public String toString() {
+            if (shellCommand != null) {
+                return "```shell\n" + shellCommand + "\n```";
+            }
+            
+            StringBuilder sb = new StringBuilder();
+            sb.append("```");
+            if (filename != null) {
+                sb.append("\n").append(filename);
+            }
+            sb.append("\n<<<<<<< SEARCH\n");
+            sb.append(beforeText);
+            if (!beforeText.endsWith("\n")) {
+                sb.append("\n");
+            }
+            sb.append("=======\n");
+            sb.append(afterText);
+            if (!afterText.endsWith("\n")) {
+                sb.append("\n");
+            }
+            sb.append(">>>>>>> REPLACE\n```");
+            
+            return sb.toString();
+        }
     }
 
     public record ParseResult(List<SearchReplaceBlock> blocks, String parseError) { }

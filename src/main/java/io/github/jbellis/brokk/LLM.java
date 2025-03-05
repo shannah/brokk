@@ -39,7 +39,8 @@ public class LLM {
         // Reflection loop state tracking
         int parseErrorAttempts = 0;
         List<String> buildErrors = new ArrayList<>();
-        
+        List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>();
+
         while (true) {
             messages.add(requestMsg);
 
@@ -70,6 +71,8 @@ public class LLM {
 
             // Gather all edit blocks in the reply
             var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, coder.contextManager.getEditableFiles());
+            logger.debug("Parsed {} blocks", blocks.size());
+            blocks.addAll(parseResult.blocks());
             if (parseResult.parseError() != null) {
                 if (parseResult.blocks().isEmpty()) {
                     requestMsg = new UserMessage(parseResult.parseError());
@@ -80,15 +83,16 @@ public class LLM {
                     <block>
                     %s
                     </block>
+                    Please continue from there (WITHOUT repeating that one).
                     """.stripIndent().formatted(parseResult.blocks().getLast());
+                    requestMsg = new UserMessage(msg);
+                    io.toolOutput("Incomplete response after %d blocks parsed; retrying".formatted(parseResult.blocks().size()));
                 }
                 continue;
             }
 
-            var blocks = parseResult.blocks();
-            logger.debug("Parsed {} blocks", blocks.size());
-
-            // Check for interruption before asking user about files
+            logger.debug("{} total blocks", blocks.size());
+            // Check for interruption before proceeding to edit files
             if (Thread.currentThread().isInterrupted()) {
                 io.toolOutput("Session interrupted");
                 break;
@@ -107,16 +111,7 @@ public class LLM {
                 io.shellOutput("Editing additional files " + filesToAdd);
                 coder.contextManager.addFiles(filesToAdd);
             }
-            if (blocks.isEmpty()) {
-                break;
-            }
 
-            // Check for interruption before applying edits
-            if (Thread.currentThread().isInterrupted()) {
-                io.toolOutput("Session interrupted");
-                break;
-            }
-            
             // Attempt to apply any code edits from the LLM
             var editResult = EditBlock.applyEditBlocks(coder.contextManager, io, blocks);
             editResult.originalContents().forEach(originalContents::putIfAbsent);
