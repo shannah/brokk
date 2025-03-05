@@ -205,6 +205,9 @@ public abstract class DefaultPrompts {
 
                If the user just says something like "ok" or "go ahead" or "do that,"
                they likely want you to produce the *SEARCH/REPLACE* blocks for your proposed code changes.
+               
+               NEVER use smart quotes in your *SEARCH/REPLACE* blocks, not even in comments.  ALWAYS
+               use vanilla ascii single and double quotes.
 
                You are diligent and tireless!
                You ALWAYS follow the existing code style!
