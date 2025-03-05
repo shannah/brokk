@@ -30,8 +30,9 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
                Study the change request and the current code.
                Describe how to modify the code to complete the request.
                The junior engineer will rely solely on your instructions, so make them unambiguous and complete.
-               Do not skip steps or leave out corner cases.
-               Do not leave code changes to the junior engineer's discretion.
+               DO spell out each change to be made instead of giving one example and expecting him to generalize.
+               DO NOT skip steps or leave out corner cases.
+               DO NOT give multiple options for solving a problem; pick the best one every time!
                """.stripIndent();
     }
 }
