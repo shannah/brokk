@@ -68,11 +68,6 @@ class EditBlockTest {
         }
 
         @Override
-        public boolean confirmAsk(String msg) {
-            return false;
-        }
-
-        @Override
         public void llmOutput(String token) {
             // not needed for these tests
         }

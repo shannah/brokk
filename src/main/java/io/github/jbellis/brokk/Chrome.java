@@ -1181,27 +1181,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     @Override
-    public boolean confirmAsk(String msg) {
-        // Must block on EDT, so we use invokeAndWait
-        final boolean[] result = new boolean[1];
-        try {
-            if (SwingUtilities.isEventDispatchThread()) {
-                int resp = JOptionPane.showConfirmDialog(frame, msg, "Confirm", JOptionPane.YES_NO_OPTION);
-                result[0] = (resp == JOptionPane.YES_OPTION);
-            } else {
-                SwingUtilities.invokeAndWait(() -> {
-                    int resp = JOptionPane.showConfirmDialog(frame, msg, "Confirm", JOptionPane.YES_NO_OPTION);
-                    result[0] = (resp == JOptionPane.YES_OPTION);
-                });
-            }
-        } catch (Exception e) {
-            logger.error("confirmAsk error", e);
-            return false;
-        }
-        return result[0];
-    }
-
-    @Override
     public char askOptions(String msg, String options) {
         // e.g. (A)dd, (R)ead, etc.
         final char[] selected = new char[1];

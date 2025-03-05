@@ -9,8 +9,6 @@ public interface IConsoleIO {
 
     void toolErrorRaw(String msg);
 
-    boolean confirmAsk(String msg);
-
     void llmOutput(String token);
 
     default void spin(String s) {

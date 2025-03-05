@@ -85,32 +85,19 @@ public class LLM {
                 break;
             }
             
-            // ask user if they want to add any files referenced in search/replace blocks that are not editable
-            var blocksNotEditable = blocks.stream()
+            // auto-add files referenced in search/replace blocks that are not already editable
+            var filesToAdd = blocks.stream()
                     .filter(block -> block.filename() != null)
                     .filter(block -> !coder.contextManager.getEditableFiles().contains(coder.contextManager.toFile(block.filename())))
-                    .toList();
-            var uniqueFilenames = blocksNotEditable.stream()
-                    .map(EditBlock.SearchReplaceBlock::filename)
                     .distinct()
-                    .toList();
-            var confirmedFilenames = uniqueFilenames.stream()
-                    .filter(filename -> io.confirmAsk("Add as editable %s?".formatted(filename)))
-                    .toList();
-            var blocksToAdd = blocksNotEditable.stream()
-                    .filter(block -> confirmedFilenames.contains(block.filename()))
-                    .toList();
-            var filesToAdd = confirmedFilenames.stream()
+                    .map(EditBlock.SearchReplaceBlock::filename)
                     .map(coder.contextManager::toFile)
                     .toList();
-            logger.debug("files to add: {}", filesToAdd);
+            logger.debug("Auto-adding as editable: {}", filesToAdd);
+            io.shellOutput("Editing additional files " + filesToAdd);
             if (!filesToAdd.isEmpty()) {
                 coder.contextManager.addFiles(filesToAdd);
             }
-            // Filter out blocks that the user declined adding
-            blocks = blocks.stream()
-                    .filter(block -> !blocksNotEditable.contains(block) || blocksToAdd.contains(block))
-                    .toList();
             if (blocks.isEmpty()) {
                 break;
             }
