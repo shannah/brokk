@@ -134,7 +134,9 @@ public class EditBlock {
      * search/replace. If {@code shellCommand} is non-null, then this block
      * corresponds to shell code that should be executed, not applied to a filename.
      */
-    public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) { }
+    public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) {
+
+    }
 
     public record ParseResult(List<SearchReplaceBlock> blocks, String parseError) { }
 
@@ -182,7 +184,7 @@ public class EditBlock {
                         i++;
                     }
                     if (i >= lines.length) {
-                        return new ParseResult(null, "Expected ======= divider after <<<<<<< SEARCH");
+                        return new ParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
                     }
 
                     // gather "after" lines until >>>>>>> REPLACE or another divider
@@ -195,7 +197,7 @@ public class EditBlock {
                         i++;
                     }
                     if (i >= lines.length) {
-                        return new ParseResult(null, "Expected >>>>>>> REPLACE or =======");
+                        return new ParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
                     }
 
                     var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines), currentFilename, fence);

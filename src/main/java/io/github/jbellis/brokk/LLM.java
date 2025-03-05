@@ -71,8 +71,17 @@ public class LLM {
             // Gather all edit blocks in the reply
             var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, coder.contextManager.getEditableFiles());
             if (parseResult.parseError() != null) {
-                io.toolErrorRaw(parseResult.parseError());
-                requestMsg = new UserMessage(parseResult.parseError());
+                if (parseResult.blocks().isEmpty()) {
+                    requestMsg = new UserMessage(parseResult.parseError());
+                    io.toolOutput("Failed to parse LLM response; retrying");
+                } else {
+                    var msg = """
+                    It looks like we got cut off.  The last block I successfully parsed was
+                    <block>
+                    %s
+                    </block>
+                    """.stripIndent().formatted(parseResult.blocks().getLast());
+                }
                 continue;
             }
 
