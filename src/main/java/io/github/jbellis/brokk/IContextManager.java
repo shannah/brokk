@@ -10,13 +10,18 @@ import java.util.Set;
 public interface IContextManager {
     RepoFile toFile(String relName);
 
-    void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents);
-
     Set<RepoFile> getEditableFiles();
 
-    void addFiles(Collection<RepoFile> path);
+    default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents) {
+    }
 
-    Set<RepoFile> findMissingFileMentions(String text);
+    default void addFiles(Collection<RepoFile> path) {
+        throw new UnsupportedOperationException();
+    }
+
+    default Set<RepoFile> findMissingFileMentions(String text) {
+        return Set.of();
+    }
 
     default Project getProject() {
         return null;

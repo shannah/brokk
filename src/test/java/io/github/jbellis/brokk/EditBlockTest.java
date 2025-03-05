@@ -36,21 +36,6 @@ class EditBlockTest {
         public Set<RepoFile> getEditableFiles() {
             return validFiles;
         }
-
-        @Override
-        public void addFiles(Collection<RepoFile> path) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Set<RepoFile> findMissingFileMentions(String text) {
-            throw new UnsupportedOperationException();
-        }
     }
 
     static class TestConsoleIO implements IConsoleIO {
@@ -234,7 +219,7 @@ class EditBlockTest {
         String expected = """
                 line1
                     new_line2
-                        new_line3
+                    new_line3
                 """.stripIndent();
 
         String updated = EditBlock.doReplace(original, search, replace);
@@ -336,16 +321,14 @@ class EditBlockTest {
     }
 
     /**
-     * Test partial or fuzzy leading whitespace issues with multiple lines,
-     * verifying that indentation differences are handled.
-     * (Similar to python's test_replace_part_with_missing_varied_leading_whitespace)
+     * LLM likes to start blocks without the leading whitespace sometimes
      */
     @Test
-    void testReplacePartWithMissingVariedLeadingWhitespace() {
+    void testReplacePartWithMissingLeadingWhitespace() {
         String original = """
                 line1
                     line2
-                        line3
+                    line3
                 line4
                 """.stripIndent();
 
@@ -364,7 +347,7 @@ class EditBlockTest {
         String expected = """
                 line1
                     NEW_line2
-                        NEW_line3
+                    NEW_line3
                 line4
                 """.stripIndent();
 

@@ -1,19 +1,27 @@
 package io.github.jbellis.brokk;
 
 import com.google.common.annotations.VisibleForTesting;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Scanner;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static java.lang.Math.min;
 
 /**
- * Utility for extracting and applying before/after search-replace blocks in content
+ * Utility for extracting and applying before/after search-replace blocks in content.
  */
 public class EditBlock {
     public enum EditBlockFailureReason {
@@ -36,7 +44,7 @@ public class EditBlock {
         // Track which blocks succeed or fail during application
         List<FailedBlock> failed = new ArrayList<>();
         List<SearchReplaceBlock> succeeded = new ArrayList<>();
-        
+
         // Track original file contents before any changes
         Map<RepoFile, String> changedFiles = new HashMap<>();
 
@@ -432,20 +440,19 @@ public class EditBlock {
             // Found a match - rebuild the file around it
             // everything before the match
             List<String> newLines = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
-            // compute indentation difference.  we assume that the original target was indented ~correctly and use that as a baseline
-            var targetWhitespace = getLeadingWhitespace(originalLines[start]);
-            var replaceWhitespace = getLeadingWhitespace(truncatedTarget[0]);
-            // add replacement lines with adjusted indentation
-            for (int i = 0; i < needed && i < truncatedReplace.length; i++) {
-                String adjusted = adjustIndentation(truncatedReplace[i], targetWhitespace, replaceWhitespace);
+            {
+                // for the very first replacement line, handle the case where the LLM omitted whitespace in its target, e.g.
+                // Original:
+                //   L1
+                //   L2
+                // Target:
+                // L1
+                //   L2
+                var adjusted = getLeadingWhitespace(originalLines[start]) + truncatedReplace[0].trim() + "\n";
                 newLines.add(adjusted);
             }
-            // if the replacement is longer, add leftover lines
-            if (needed < truncatedReplace.length) {
-                newLines.addAll(
-                    Arrays.asList(truncatedReplace).subList(needed, truncatedReplace.length)
-                );
-            }
+            // add the rest of the replacement lines assuming that whitespace is correct
+            newLines.addAll(Arrays.asList(truncatedReplace).subList(1, truncatedReplace.length));
             // everything after the match
             newLines.addAll(Arrays.asList(originalLines).subList(start + needed, originalLines.length));
             return String.join("", newLines);
@@ -670,10 +677,7 @@ public class EditBlock {
      */
     private static String stripFilename(String line, String[] fence) {
         String s = line.trim();
-        if (s.equals("...")) {
-            return null;
-        }
-        if (s.startsWith(fence[0])) {
+        if (s.equals("...") || s.equals(fence[0])) {
             return null;
         }
         // remove trailing colons, leading #, etc.
@@ -741,10 +745,10 @@ public class EditBlock {
      */
     public static Map<FailedBlock, String> collectSuggestions(List<FailedBlock> failedBlocks, IContextManager cm) {
         Map<FailedBlock, String> suggestions = new HashMap<>();
-        
+
         for (var failedBlock : failedBlocks) {
             if (failedBlock.block().filename() == null) continue;
-            
+
             try {
                 String fileContent = cm.toFile(failedBlock.block().filename()).read();
                 String snippet = findSimilarLines(failedBlock.block().beforeText(), fileContent, 0.6);
