@@ -42,23 +42,6 @@ public class Commands {
     // Command handler methods (invoked directly via menu actions)
     // ------------------------------------------------------------------
 
-    public void cmdClear() {
-        io.clear();
-        cm.clearHistory();
-    }
-
-//    public OperationResult cmdCommit() {
-//        var messages = CommitPrompts.instance.collectMessages(cm);
-//        if (messages.isEmpty()) {
-//            return OperationResult.error("Nothing to commit");
-//        }
-//        String commitMsg = coder.sendMessage("Inferring commit suggestion", messages);
-//        if (commitMsg.isEmpty()) {
-//            return OperationResult.error("LLM did not provide a commit message");
-//        }
-//        return OperationResult.prefill("$git commit -a -m \"" + commitMsg + "\"");
-//    }
-
 //    public OperationResult cmdMode(String args) {
 //        var modeArg = args.trim().toUpperCase();
 //        if ("EDIT".equals(modeArg)) {
@@ -72,45 +55,10 @@ public class Commands {
 //        }
 //    }
 
-//    public OperationResult cmdRefresh() {
-//        GitRepo.instance.refresh();
-//        cm.requestRebuild();
-//        io.toolOutput("Code intelligence refreshing in background");
-//        return OperationResult.skipShow();
-//    }
-
 //    public OperationResult cmdUsage(String symbol) {
 //        if (symbol.isBlank()) {
 //            return OperationResult.error("Please provide a symbol name");
 //        }
 //        return cm.usageForIdentifier(symbol.trim());
-//    }
-
-//    private void confirmAddRequestedFiles(java.util.Set<RepoFile> missing) {
-//        if (missing.isEmpty()) return;
-//        var toAdd = new java.util.HashSet<RepoFile>();
-//        var toRead = new java.util.HashSet<RepoFile>();
-//        var toSummarize = new java.util.HashSet<RepoFile>();
-//        boolean keepAsking = true;
-//        for (var file : missing) {
-//            if (!keepAsking) break;
-//            char choice = io.askOptions("Action for " + file + "?", "(A)dd, (R)ead, (S)ummarize, (I)gnore, ig(N)ore all");
-//            switch (choice) {
-//                case 'a' -> toAdd.add(file);
-//                case 'r' -> toRead.add(file);
-//                case 's' -> toSummarize.add(file);
-//                case 'n' -> keepAsking = false;
-//                default -> { }
-//            }
-//        }
-//        if (!toAdd.isEmpty()) {
-//            cm.addFiles(toAdd);
-//        }
-//        if (!toRead.isEmpty()) {
-//            cm.addReadOnlyFiles(toRead);
-//        }
-//        for (var file : toSummarize) {
-//            // summarize(file.toString());
-//        }
 //    }
 }
