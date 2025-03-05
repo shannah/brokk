@@ -796,7 +796,6 @@ public class EditBlock {
     }
 
     /**
-        System.out.printlnintln();""Potential files are  + candidates);din.
      * Parses blocks and attempts to apply them, reporting errors to stdout.
      */
     public static void main(String[] args) throws IOException {

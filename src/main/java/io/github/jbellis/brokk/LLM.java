@@ -196,11 +196,9 @@ public class LLM {
             return "";
         }
 
-        System.out.println("Running " + cmd);
         io.toolOutput("Running " + cmd);
         var result = Environment.instance.captureShellCommand(cmd);
         logger.debug("Build command result: {}", result);
-        System.out.println("Build result: " + result);
         if (result.error() == null) {
             io.shellOutput("Build successful");
             buildErrors.clear(); // Reset on successful build

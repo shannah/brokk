@@ -471,9 +471,7 @@ public class ContextManager implements IContextManager
 
     private void doCopyAction(List<ContextFragment> selectedFragments) {
         String content;
-        System.out.println(1);
         if (selectedFragments.isEmpty()) {
-            System.out.println(2);
             // gather entire context
             var msgs = ArchitectPrompts.instance.collectMessages(this);
             var combined = new StringBuilder();
@@ -482,7 +480,6 @@ public class ContextManager implements IContextManager
                     combined.append(Models.getText(m)).append("\n\n");
                 }
             }
-            System.out.println(3);
             combined.append("\n<goal>\n\n</goal>");
             content = combined.toString();
         } else {
@@ -499,13 +496,9 @@ public class ContextManager implements IContextManager
             content = sb.toString();
         }
 
-        System.out.println(4);
         var sel = new java.awt.datatransfer.StringSelection(content);
-        System.out.println(5);
         var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-        System.out.println(6);
         cb.setContents(sel, sel);
-        System.out.println(7);
         chrome.toolOutput("Content copied to clipboard");
     }
 

@@ -19,7 +19,6 @@ public class Environment {
     public ProcessResultInternal runShellCommand(String command) throws IOException {
         Process process = null;
         try {
-            System.out.println("Starting process: " + command);
             process = createProcessBuilder("/bin/sh", "-c", command).start();
 
             var out = new StringBuilder();
@@ -36,11 +35,9 @@ public class Environment {
             }
 
             int exitCode = process.waitFor();
-            System.out.println("Process completed with exit code: " + exitCode);
             return new ProcessResultInternal(exitCode, out.toString(), err.toString());
         } catch (InterruptedException e) {
             process.destroy();
-            System.out.println("Process interrupted");
             return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
         }
     }
@@ -61,10 +58,8 @@ public class Environment {
     public ProcessResult captureShellCommand(String command) {
         ProcessResultInternal result;
         try {
-            System.out.println("Running shell command: " + command);
             result = runShellCommand(command);
         } catch (Exception e) {
-            System.out.println("Command failed with exception: " + e.getMessage());
             return new ProcessResult(e.getMessage(), "");
         }
 
@@ -87,10 +82,8 @@ public class Environment {
         var output = combinedOut.toString();
 
         if (result.status() > 0) {
-            System.out.println("Command returned error code: " + result.status());
             return new ProcessResult("`%s` returned code %d".formatted(command, result.status()), output);
         }
-        System.out.println("Command completed successfully");
         return new ProcessResult(null, output);
     }
 
