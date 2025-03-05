@@ -60,8 +60,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Context Panel & table:
     private JPanel contextPanel;
     private JTable contextTable;
-    private JLabel locSummaryLabel;
-    private JLabel uncommittedFilesLabel;
+    private JPanel locSummaryLabel;
+    private JTable uncommittedFilesTable;
     private JButton suggestCommitButton;
 
     // Context action buttons:
@@ -118,6 +118,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 6) Load saved window size and position, then show window
         frame.setVisible(true);
+        
+        // Set focus to command input field on startup
+        commandInputField.requestFocusInWindow();
 
         // Add listener to save window size and position when they change
         frame.addComponentListener(new java.awt.event.ComponentAdapter() {
@@ -577,20 +580,44 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Panel for context summary information at bottom
         var contextSummaryPanel = new JPanel();
-        contextSummaryPanel.setLayout(new BoxLayout(contextSummaryPanel, BoxLayout.Y_AXIS));
+        contextSummaryPanel.setLayout(new BorderLayout());
 
-        locSummaryLabel = new JLabel(" ");
-        locSummaryLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        locSummaryLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
-        locSummaryLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        locSummaryLabel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JLabel innerLabel = new JLabel(" ");
+        innerLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        innerLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
+        locSummaryLabel.add(innerLabel);
+        locSummaryLabel.setBorder(BorderFactory.createEmptyBorder());
 
-        // Add label for uncommitted files
-        uncommittedFilesLabel = new JLabel(" ");
-        uncommittedFilesLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        uncommittedFilesLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
-        uncommittedFilesLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Create panel for uncommitted changes with a suggest commit button to the right
+        var uncommittedPanel = new JPanel(new BorderLayout(10, 0));
+        uncommittedPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Uncommitted Changes",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
+        ));
 
-        // Add suggest commit button
+        // Create table for uncommitted files - fixed to 3 rows with scrollbar
+        uncommittedFilesTable = new JTable(new DefaultTableModel(
+                new Object[]{"Filename", "Path"}, 0));
+        uncommittedFilesTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        uncommittedFilesTable.setRowHeight(18);
+
+        // Set column widths
+        uncommittedFilesTable.getColumnModel().getColumn(0).setPreferredWidth(150);
+        uncommittedFilesTable.getColumnModel().getColumn(1).setPreferredWidth(450);
+
+        // Create a scroll pane with fixed height of 3 rows plus header and scrollbar
+        JScrollPane uncommittedScrollPane = new JScrollPane(uncommittedFilesTable);
+        int tableRowHeight = uncommittedFilesTable.getRowHeight();
+        int headerHeight = 22; // Approximate header height
+        int scrollbarHeight = 3; // Extra padding for scrollbar
+        uncommittedScrollPane.setPreferredSize(new Dimension(600, (tableRowHeight * 3) + headerHeight + scrollbarHeight));
+        
+        // Create the suggest commit button panel on the right
+        var commitButtonPanel = new JPanel(new BorderLayout());
         suggestCommitButton = new JButton("Suggest Commit");
         suggestCommitButton.setEnabled(false);
         suggestCommitButton.setMnemonic(KeyEvent.VK_C);
@@ -598,11 +625,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             disableUserActionButtons();
             currentUserTask = contextManager.performCommitActionAsync();
         });
-        suggestCommitButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-
+        
+        // Make the button the same width as context panel buttons
+        // We'll set this after we have the preferred size from the context buttons
+        commitButtonPanel.add(suggestCommitButton, BorderLayout.NORTH);
+        
+        // Add table and button to the panel
+        uncommittedPanel.add(uncommittedScrollPane, BorderLayout.CENTER);
+        uncommittedPanel.add(commitButtonPanel, BorderLayout.EAST);
+        
         contextSummaryPanel.add(locSummaryLabel, BorderLayout.NORTH);
-        contextSummaryPanel.add(uncommittedFilesLabel);
-        contextSummaryPanel.add(suggestCommitButton);
+        contextSummaryPanel.add(uncommittedPanel, BorderLayout.CENTER);
 
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
@@ -627,7 +660,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        locSummaryLabel.setText("No context - use Edit or Read or Summarize to add content");
+        ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
 
         return contextPanel;
     }
@@ -724,6 +757,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         buttonsPanel.add(copyButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(pasteButton);
+        
+        // Set the suggestCommitButton to match the width of these context buttons
+        if (suggestCommitButton != null) {
+            suggestCommitButton.setPreferredSize(preferredSize);
+            suggestCommitButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        }
 
         return buttonsPanel;
     }
@@ -807,7 +846,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Updates the uncommitted files label and the state of the suggest commit button
+     * Updates the uncommitted files table and the state of the suggest commit button
      */
     private void updateSuggestCommitButton() {
         assert contextManager != null;
@@ -815,11 +854,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             List<String> uncommittedFiles = GitRepo.instance.getUncommittedFileNames();
             SwingUtilities.invokeLater(() -> {
+                DefaultTableModel model = (DefaultTableModel) uncommittedFilesTable.getModel();
+                model.setRowCount(0);
+                
                 if (uncommittedFiles.isEmpty()) {
-                    uncommittedFilesLabel.setText("No uncommitted changes");
                     suggestCommitButton.setEnabled(false);
                 } else {
-                    uncommittedFilesLabel.setText("Uncommitted files: " + String.join(", ", uncommittedFiles));
+                    for (String filePath : uncommittedFiles) {
+                        // Split into filename and path
+                        int lastSlash = filePath.lastIndexOf('/');
+                        String filename = (lastSlash >= 0) ? filePath.substring(lastSlash + 1) : filePath;
+                        String path = (lastSlash >= 0) ? filePath.substring(0, lastSlash) : "";
+
+                        model.addRow(new Object[]{filename, path});
+                    }
                     suggestCommitButton.setEnabled(true);
                 }
             });
@@ -1228,7 +1276,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             updateContextButtons();
 
             if (context.isEmpty()) {
-                locSummaryLabel.setText("No context - use Edit or Read or Summarize to add content");
+                ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
                 contextPanel.revalidate();
                 contextPanel.repaint();
                 return;
@@ -1255,7 +1303,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             var fullText = "";  // no large merges needed
             var approxTokens = Models.getApproximateTokens(fullText);
 
-            locSummaryLabel.setText(
+            ((JLabel)locSummaryLabel.getComponent(0)).setText(
                     "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
             );
 

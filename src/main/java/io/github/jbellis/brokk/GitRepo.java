@@ -189,7 +189,8 @@ public class GitRepo implements Closeable {
     }
 
     /**
-     * Gets a list of uncommitted file names (just the filename, not the full path)
+     * Gets a list of uncommitted file paths
+     * @return List of file paths relative to git root
      */
     public List<String> getUncommittedFileNames() {
         String diffSt = diff();
@@ -197,21 +198,20 @@ public class GitRepo implements Closeable {
             return List.of();
         }
 
-        // Simple parsing to extract filenames from git diff output
-        Set<String> fileNames = new HashSet<>();
+        // Simple parsing to extract filepaths from git diff output
+        Set<String> filePaths = new HashSet<>();
         for (String line : diffSt.split("\n")) {
             line = line.trim();
             if (line.startsWith("diff --git")) {
-                // Extract just the filename (not full path) from diff --git a/path/to/file b/path/to/file
+                // Extract full path from diff --git a/path/to/file b/path/to/file
                 String[] parts = line.split(" ");
                 if (parts.length >= 4) {
                     String path = parts[3].substring(2); // skip "b/"
-                    String fileName = new File(path).getName();
-                    fileNames.add(fileName);
+                    filePaths.add(path);
                 }
             }
         }
-        return new ArrayList<>(fileNames);
+        return new ArrayList<>(filePaths);
     }
 
     @Override
