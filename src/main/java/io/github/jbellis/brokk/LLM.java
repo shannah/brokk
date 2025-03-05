@@ -101,7 +101,7 @@ public class LLM {
                 io.toolOutput("Session interrupted");
                 break;
             }
-            
+
             // auto-add files referenced in search/replace blocks that are not already editable
             var filesToAdd = blocks.stream()
                     .filter(block -> block.filename() != null)
@@ -119,10 +119,10 @@ public class LLM {
             // Attempt to apply any code edits from the LLM
             var editResult = EditBlock.applyEditBlocks(coder.contextManager, io, blocks);
             editResult.originalContents().forEach(originalContents::putIfAbsent);
-            logger.debug("Failed blocks: {}", editResult.blocks());
+            logger.debug("Failed blocks: {}", editResult.failedBlocks());
 
             // Check for parse/match failures first
-            var parseReflection = getParseReflection(editResult.blocks(), blocks, coder.contextManager, io);
+            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
             blocks.clear(); // don't re-apply on the next loop
             if (!parseReflection.isEmpty()) {
                 io.toolOutput("Attempting to fix parse/match errors...");
@@ -139,18 +139,18 @@ public class LLM {
                 io.toolOutput("Session interrupted");
                 break;
             }
-            
+
             // If parsing succeeded, check build
             var buildReflection = getBuildReflection(coder.contextManager, io, buildErrors);
             if (buildReflection.isEmpty()) {
                 break;
             }
-            
+
             // Check if we should continue trying
             if (!shouldContinue(coder, parseErrorAttempts, buildErrors, io)) {
                 break;
             }
-            
+
             io.toolOutput("Attempting to fix build errors...");
             // Use EDIT model (smarter) for build fixes
             model = coder.models.editModel();
@@ -162,12 +162,12 @@ public class LLM {
             coder.contextManager.addToHistory(pendingHistory, originalContents);
         }
     }
-    
+
     /**
      * Generates a reflection message based on parse errors from failed edit blocks
      */
-    private static String getParseReflection(List<EditBlock.FailedBlock> failedBlocks, 
-                                            List<EditBlock.SearchReplaceBlock> blocks, 
+    private static String getParseReflection(List<EditBlock.FailedBlock> failedBlocks,
+                                            List<EditBlock.SearchReplaceBlock> blocks,
                                             IContextManager contextManager,
                                             IConsoleIO io) {
         assert !blocks.isEmpty();
@@ -216,7 +216,7 @@ public class LLM {
         query.append("Please fix these build errors.");
         return query.toString();
     }
-    
+
     /**
      * Determines whether to continue with reflection passes
      */
@@ -241,7 +241,7 @@ public class LLM {
 
         return true;
     }
-    
+
     /**
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
      */

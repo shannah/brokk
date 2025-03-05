@@ -31,7 +31,7 @@ public class EditBlock {
         IO_ERROR
     }
 
-    public record EditResult(Map<RepoFile, String> originalContents, List<FailedBlock> blocks) { }
+    public record EditResult(Map<RepoFile, String> originalContents, List<FailedBlock> failedBlocks) { }
 
     public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
 
@@ -883,11 +883,11 @@ public class EditBlock {
         var editResult = applyEditBlocks(contextManager, io, blocks);
 
         // Report any failures
-        if (!editResult.blocks().isEmpty()) {
-            io.toolError(editResult.blocks().size() + " blocks failed to apply:");
-            var suggestions = collectSuggestions(editResult.blocks(), contextManager);
+        if (!editResult.failedBlocks().isEmpty()) {
+            io.toolError(editResult.failedBlocks().size() + " blocks failed to apply:");
+            var suggestions = collectSuggestions(editResult.failedBlocks(), contextManager);
 
-            for (var failed : editResult.blocks()) {
+            for (var failed : editResult.failedBlocks()) {
                 io.toolError("Failed to apply block for file: " +
                                      (failed.block().filename() == null ? "(none)" : failed.block().filename()) +
                                      " Reason: " + failed.reason());

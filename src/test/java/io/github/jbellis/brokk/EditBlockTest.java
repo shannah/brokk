@@ -1,15 +1,12 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -317,7 +314,7 @@ class EditBlockTest {
         var blocks = EditBlock.findOriginalUpdateBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
-        assertNotEquals(List.of(), result.blocks());
+        assertNotEquals(List.of(), result.failedBlocks());
     }
 
     /**
@@ -483,7 +480,7 @@ class EditBlockTest {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of());
         var blocks = EditBlock.findOriginalUpdateBlocks(edit, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
-        assertNotEquals(List.of(), result.blocks());
+        assertNotEquals(List.of(), result.failedBlocks());
     }
 
     /**
@@ -551,7 +548,7 @@ class EditBlockTest {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
         var blocks = EditBlock.findOriginalUpdateBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
-        assertNotEquals(List.of(), result.blocks());
+        assertNotEquals(List.of(), result.failedBlocks());
     }
 
     @Test
