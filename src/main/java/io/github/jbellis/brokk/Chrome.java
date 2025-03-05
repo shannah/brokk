@@ -54,7 +54,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JFrame frame;
     private RSyntaxTextArea llmStreamArea;
     private JLabel commandResultLabel;
-    private JTextField commandInputField;
+    private JTextArea commandInputField;
     private JLabel backgroundStatusLabel;
 
     // Context Panel & table:
@@ -82,9 +82,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // History:
     private final List<String> commandHistory = new ArrayList<>();
     private int historyIndex = -1;
-
-    // For implementing "kill" / "yank" (Emacs-like)
-    private String killBuffer = "";
 
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     private volatile Future<?> currentUserTask;
@@ -286,18 +283,48 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new EmptyBorder(5, 5, 5, 5)
         ));
 
-        commandInputField = new JTextField();
+        commandInputField = new JTextArea(3, 40);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
+        commandInputField.setLineWrap(true);
+        commandInputField.setWrapStyleWord(true);
+        commandInputField.setRows(3);
+        commandInputField.setMinimumSize(new Dimension(100, 80));
 
-        // Basic approach: pressing Enter runs "Code"
-        commandInputField.addActionListener(e -> runCodeCommand());
+        // Create a JScrollPane for the text area
+        JScrollPane commandScrollPane = new JScrollPane(commandInputField);
+        commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Set preferred height for 3 lines
+        commandScrollPane.setMinimumSize(new Dimension(100, 80));
+
+        // Handle Enter key for command submission
+        commandInputField.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "runCode");
+        commandInputField.getActionMap().put("runCode", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                runCodeCommand();
+            }
+        });
+
+        // Allow Shift+Enter for new line
+        commandInputField.getInputMap().put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK), "insert-break");
+        commandInputField.getActionMap().put("insert-break", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                commandInputField.replaceSelection("\n");
+            }
+        });
+
+        // Allow Ctrl+Enter for new line
+        commandInputField.getInputMap().put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK), "insert-break");
 
         // Emacs-like keybindings
-        bindEmacsKeys(commandInputField);
+        wrapper.add(commandScrollPane, BorderLayout.CENTER);
 
         // Left side: code/ask/search/run
         var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -333,8 +360,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         buttonsHolder.add(leftButtonsPanel, BorderLayout.WEST);
         buttonsHolder.add(rightButtonsPanel, BorderLayout.EAST);
 
-        // Add text field at top, buttons panel below
-        wrapper.add(commandInputField, BorderLayout.CENTER);
+        // Add text area at top, buttons panel below
+        wrapper.add(commandScrollPane, BorderLayout.CENTER);
         wrapper.add(buttonsHolder, BorderLayout.SOUTH);
 
         // Set "Go" as default
@@ -442,52 +469,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (currentUserTask != null && !currentUserTask.isDone()) {
             currentUserTask.cancel(true);
         }
-    }
-
-    /**
-     * Binds Emacs/readline-like keys to the given text field.
-     */
-    private void bindEmacsKeys(JTextField field) {
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.CTRL_DOWN_MASK), "killLine");
-        field.getActionMap().put("killLine", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                var pos = field.getCaretPosition();
-                var text = field.getText();
-                if (pos < text.length()) {
-                    killBuffer = text.substring(pos);
-                    field.setText(text.substring(0, pos));
-                } else {
-                    killBuffer = "";
-                }
-            }
-        });
-
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_U, InputEvent.CTRL_DOWN_MASK), "killToStart");
-        field.getActionMap().put("killToStart", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                var pos = field.getCaretPosition();
-                if (pos > 0) {
-                    killBuffer = field.getText().substring(0, pos);
-                    field.setText(field.getText().substring(pos));
-                    field.setCaretPosition(0);
-                }
-            }
-        });
-
-        field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), "yank");
-        field.getActionMap().put("yank", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (killBuffer != null && !killBuffer.isEmpty()) {
-                    var pos = field.getCaretPosition();
-                    var text = field.getText();
-                    field.setText(text.substring(0, pos) + killBuffer + text.substring(pos));
-                    field.setCaretPosition(pos + killBuffer.length());
-                }
-            }
-        });
     }
 
     /**
