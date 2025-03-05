@@ -20,28 +20,14 @@ public abstract class CommitPrompts extends DefaultPrompts {
             return List.of(new SystemMessage("No changes to commit."));
         }
 
-        boolean hasMessages = false;
-        String context = cm.getHistoryMessages().stream()
-                .filter(m -> m instanceof UserMessage)
-                .map(Models::getText)
-                .collect(Collectors.joining("\n\n"));
-        if (!context.isEmpty()) {
-            hasMessages = true;
-            context += "\n\n";
-        }
-
-        context += """
+        var context = """
         <diff>
         %s
         </diff>
         """.formatted(diffTxt);
 
         String instructionsRaw;
-        if (hasMessages) {
-            instructionsRaw = "Here are my changes, please give me a concise commit message.";
-        } else {
-            instructionsRaw = "Here is my diff, please give me a concise commit message.";
-        }
+        instructionsRaw = "Here is my diff, please give me a concise commit message.";
         var instructions = """
         <goal>
         %s

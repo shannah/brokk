@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
+import io.github.jbellis.brokk.prompts.CommitPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -411,6 +412,26 @@ public class ContextManager implements IContextManager
             }
         });
     }
+    
+    /**
+     * Asynchronous action for suggesting a commit message
+     */
+    public Future<?> performCommitActionAsync()
+    {
+        return userActionExecutor.submit(() -> {
+            try {
+                doCommitAction();
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Commit action canceled.");
+            } catch (Exception e) {
+                logger.error("Error in commit action", e);
+                chrome.toolErrorRaw("Error in commit action: " + e.getMessage());
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
 
     private void doEditAction(List<ContextFragment> selectedFragments)
     {
@@ -556,6 +577,38 @@ public class ContextManager implements IContextManager
         }
     }
 
+    /**
+     * Generate a commit message using the LLM and prefill the command input
+     */
+    private void doCommitAction() {
+        var messages = CommitPrompts.instance.collectMessages(this);
+        if (messages.isEmpty()) {
+            chrome.toolErrorRaw("Nothing to commit");
+            return;
+        }
+
+        chrome.spin("Inferring commit message");
+        try {
+            String commitMsg = coder.sendMessage(messages);
+            if (commitMsg.isEmpty()) {
+                chrome.toolErrorRaw("LLM did not provide a commit message");
+                return;
+            }
+            
+            // Escape quotes in the commit message
+            commitMsg = commitMsg.replace("\"", "\\\"");
+            
+            // Prefill the command input field
+            String finalCommitMsg = commitMsg;
+            SwingUtilities.invokeLater(() -> {
+                chrome.prefillCommand("$git commit -a -m \"" + finalCommitMsg + "\"");
+            });
+            chrome.toolOutput("Commit message suggested");
+        } finally {
+            chrome.spinComplete();
+        }
+    }
+    
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
         HashSet<CodeUnit> sources = new HashSet<>();
         String sourceDescription;

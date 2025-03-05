@@ -62,6 +62,8 @@ public class Chrome implements AutoCloseable, IConsoleIO
     private JPanel contextPanel;
     private JTable contextTable;
     private JLabel locSummaryLabel;
+    private JLabel uncommittedFilesLabel;
+    private JButton suggestCommitButton;
 
     // Context action buttons:
     private JButton editButton;
@@ -72,9 +74,10 @@ public class Chrome implements AutoCloseable, IConsoleIO
     private JButton pasteButton;
 
     // Buttons for the command input panel:
-    private JButton goButton;
-    private JButton askButton;
-    private JButton searchButton;
+private JButton codeButton;  // renamed from goButton
+private JButton askButton;
+private JButton searchButton;
+private JButton runButton;
     private JButton stopButton;  // cancels the current user-driven task
 
     // History:
@@ -84,7 +87,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
     // For implementing "kill" / "yank" (Emacs-like)
     private String killBuffer = "";
 
-    // Track the currently running user-driven future (Go/Ask/Search)
+    // Track the currently running user-driven future (Code/Ask/Search/Run)
     private volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
     private int CHECKBOX_COLUMN = 2;
@@ -177,10 +180,22 @@ public class Chrome implements AutoCloseable, IConsoleIO
         gbc.insets = new Insets(2,2,2,2);
 
         // 1. LLM streaming area
+        // LLM streaming area in titled panel
+        var outputPanel = new JPanel(new BorderLayout());
+        outputPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Output",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
+        ));
+        
         llmScrollPane = buildLLMStreamScrollPane();
+        outputPanel.add(llmScrollPane, BorderLayout.CENTER);
+        
         gbc.weighty = 1.0;
         gbc.gridy = 0;
-        contentPanel.add(llmScrollPane, gbc);
+        contentPanel.add(outputPanel, gbc);
 
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
@@ -285,29 +300,34 @@ public class Chrome implements AutoCloseable, IConsoleIO
                 BorderFactory.createEmptyBorder(2,5,2,5)
         ));
 
-        // Basic approach: pressing Enter runs "Go"
+        // Basic approach: pressing Enter runs "Code"
         commandInputField.addActionListener(e -> runGoCommand());
 
         // Emacs-like keybindings
         bindEmacsKeys(commandInputField);
 
-        // Left side: go/ask/search
+        // Left side: code/ask/search/run
         var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        goButton = new JButton("Go");
-        goButton.setMnemonic(KeyEvent.VK_G);
-        goButton.addActionListener(e -> runGoCommand());
+        codeButton = new JButton("Code");
+        codeButton.setMnemonic(KeyEvent.VK_C);
+        codeButton.addActionListener(e -> runGoCommand());
 
         askButton = new JButton("Ask");
         askButton.setMnemonic(KeyEvent.VK_A);
         askButton.addActionListener(e -> runAskCommand());
 
         searchButton = new JButton("Search");
-        searchButton.setMnemonic(KeyEvent.VK_R);
+        searchButton.setMnemonic(KeyEvent.VK_S);
         searchButton.addActionListener(e -> runSearchCommand());
+        
+        runButton = new JButton("Run");
+        runButton.setMnemonic(KeyEvent.VK_R);
+        runButton.addActionListener(e -> runRunCommand());
 
-        leftButtonsPanel.add(goButton);
+        leftButtonsPanel.add(codeButton);
         leftButtonsPanel.add(askButton);
         leftButtonsPanel.add(searchButton);
+        leftButtonsPanel.add(runButton);
 
         // Right side: stop
         var rightButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -325,13 +345,13 @@ public class Chrome implements AutoCloseable, IConsoleIO
         wrapper.add(buttonsHolder, BorderLayout.SOUTH);
 
         // Set "Go" as default
-        frame.getRootPane().setDefaultButton(goButton);
+        frame.getRootPane().setDefaultButton(codeButton);
 
         return wrapper;
     }
 
     /**
-     * Invoked on "Go" button or pressing Enter in the command input field.
+     * Invoked on "Code" button or pressing Enter in the command input field.
      */
     private void runGoCommand()
     {
@@ -345,6 +365,25 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         disableUserActionButtons();
         // schedule in ContextManager
+        currentUserTask = contextManager.runGoCommandAsync(input);
+    }
+    
+    /**
+     * Invoked on "Run" button
+     */
+    private void runRunCommand()
+    {
+        var input = commandInputField.getText();
+        if (input.isBlank()) {
+            input = "$./gradlew build"; // Default command if none provided
+        } else if (!input.startsWith("$")) {
+            input = "$" + input; // Add $ prefix if missing
+        }
+        
+        addToHistory(input);
+        commandInputField.setText("");
+
+        disableUserActionButtons();
         currentUserTask = contextManager.runGoCommandAsync(input);
     }
 
@@ -388,10 +427,12 @@ public class Chrome implements AutoCloseable, IConsoleIO
     private void disableUserActionButtons()
     {
         SwingUtilities.invokeLater(() -> {
-            goButton.setEnabled(false);
+            codeButton.setEnabled(false);
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
+            runButton.setEnabled(false);
             stopButton.setEnabled(true);
+            suggestCommitButton.setEnabled(false);
         });
     }
 
@@ -401,10 +442,12 @@ public class Chrome implements AutoCloseable, IConsoleIO
     public void enableUserActionButtons()
     {
         SwingUtilities.invokeLater(() -> {
-            goButton.setEnabled(true);
+            codeButton.setEnabled(true);
             askButton.setEnabled(true);
             searchButton.setEnabled(true);
+            runButton.setEnabled(true);
             stopButton.setEnabled(false);
+            updateSuggestCommitButton();
         });
     }
 
@@ -552,6 +595,7 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         // column widths
         contextTable.getColumnModel().getColumn(0).setPreferredWidth(50);
+        contextTable.getColumnModel().getColumn(0).setMaxWidth(100);
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(480);
         
         // Add double-click listener to open fragment preview
@@ -575,9 +619,33 @@ public class Chrome implements AutoCloseable, IConsoleIO
             }
         });
 
+        // Panel for context summary information at bottom
+        var contextSummaryPanel = new JPanel();
+        contextSummaryPanel.setLayout(new BoxLayout(contextSummaryPanel, BoxLayout.Y_AXIS));
+        
         locSummaryLabel = new JLabel(" ");
         locSummaryLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         locSummaryLabel.setBorder(new EmptyBorder(5,5,5,5));
+        locSummaryLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        // Add label for uncommitted files
+        uncommittedFilesLabel = new JLabel(" ");
+        uncommittedFilesLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        uncommittedFilesLabel.setBorder(new EmptyBorder(5,5,5,5));
+        uncommittedFilesLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        // Add suggest commit button
+        suggestCommitButton = new JButton("Suggest Commit");
+        suggestCommitButton.setEnabled(false);
+        suggestCommitButton.addActionListener(e -> {
+            disableUserActionButtons();
+            currentUserTask = contextManager.performCommitActionAsync();
+        });
+        suggestCommitButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        contextSummaryPanel.add(locSummaryLabel, BorderLayout.NORTH);
+        contextSummaryPanel.add(uncommittedFilesLabel);
+        contextSummaryPanel.add(suggestCommitButton);
 
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
@@ -590,11 +658,11 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
         // Buttons panel
         var buttonsPanel = createContextButtonsPanel();
-
+        
         contextPanel.setLayout(new BorderLayout());
         contextPanel.add(tablePanel, BorderLayout.CENTER);
         contextPanel.add(buttonsPanel, BorderLayout.EAST);
-        contextPanel.add(locSummaryLabel, BorderLayout.SOUTH);
+        contextPanel.add(contextSummaryPanel, BorderLayout.SOUTH);
         contextPanel.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -784,6 +852,35 @@ public class Chrome implements AutoCloseable, IConsoleIO
         var hasContext = (ctx != null && !ctx.isEmpty());
         dropButton.setEnabled(hasContext);
         copyButton.setEnabled(hasContext);
+        
+        updateSuggestCommitButton();
+    }
+    
+    /**
+     * Updates the uncommitted files label and the state of the suggest commit button
+     */
+    private void updateSuggestCommitButton() {
+        if (contextManager == null) return;
+        
+        SwingUtilities.invokeLater(() -> {
+            contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
+                try {
+                    List<String> uncommittedFiles = GitRepo.instance.getUncommittedFileNames();
+                    SwingUtilities.invokeLater(() -> {
+                        if (uncommittedFiles.isEmpty()) {
+                            uncommittedFilesLabel.setText("No uncommitted changes");
+                            suggestCommitButton.setEnabled(false);
+                        } else {
+                            uncommittedFilesLabel.setText("Uncommitted files: " + String.join(", ", uncommittedFiles));
+                            suggestCommitButton.setEnabled(true);
+                        }
+                    });
+                } catch (Exception e) {
+                    logger.error("Error checking uncommitted files", e);
+                }
+                return null;
+            });
+        });
     }
 
     /**
@@ -1445,6 +1542,16 @@ public class Chrome implements AutoCloseable, IConsoleIO
 
     public void focusInput() {
         SwingUtilities.invokeLater(() -> {
+            this.commandInputField.requestFocus();
+        });
+    }
+    
+    /**
+     * Prefills the command input field with the given text
+     */
+    public void prefillCommand(String command) {
+        SwingUtilities.invokeLater(() -> {
+            this.commandInputField.setText(command);
             this.commandInputField.requestFocus();
         });
     }
