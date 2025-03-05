@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -46,15 +47,41 @@ public class ContextManager implements IContextManager
     private Chrome chrome; // for UI feedback
     private Coder coder;
 
+    // Common uncaught exception handler for executors
+    private final Thread.UncaughtExceptionHandler uncaughtExceptionHandler = (thread, throwable) -> {
+        logger.error("Uncaught exception in thread {}", thread.getName(), throwable);
+        if (chrome != null) {
+            chrome.shellOutput("Uncaught exception in thread " + thread.getName() + ". This shouldn't happen, please report a bug!\n" +
+                               getStackTraceAsString(throwable));
+        }
+    };
+
+    // Convert a throwable to a string with full stack trace
+    private String getStackTraceAsString(Throwable throwable) {
+        var sw = new java.io.StringWriter();
+        var pw = new java.io.PrintWriter(sw);
+        throwable.printStackTrace(pw);
+        return sw.toString();
+    }
+
+    // Create thread factory with exception handling
+    private ThreadFactory createExceptionHandlingThreadFactory(String namePrefix) {
+        var threadNumber = new AtomicInteger(1);
+        return r -> {
+            var thread = new Thread(r, namePrefix + "-" + threadNumber.getAndIncrement());
+            thread.setDaemon(true);
+            thread.setUncaughtExceptionHandler(uncaughtExceptionHandler);
+            return thread;
+        };
+    }
+
     // Run user-driven tasks in background
-    private final ExecutorService userActionExecutor = Executors.newSingleThreadExecutor(r -> {
-        var t = new Thread(r, "UserActionThread");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ExecutorService userActionExecutor = 
+        Executors.newSingleThreadExecutor(createExceptionHandlingThreadFactory("UserActionThread"));
 
     // Internal background tasks
-    private final ExecutorService backgroundTasks = Executors.newFixedThreadPool(2);
+    private final ExecutorService backgroundTasks = 
+        Executors.newFixedThreadPool(2, createExceptionHandlingThreadFactory("BackgroundTask"));
 
     private Project project;
     private final Path root;
