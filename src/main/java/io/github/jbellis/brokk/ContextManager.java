@@ -502,6 +502,15 @@ public class ContextManager implements IContextManager
             }
             content = sb.toString();
         }
+
+        try {
+            var sel = new java.awt.datatransfer.StringSelection(content);
+            var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+            cb.setContents(sel, sel);
+            chrome.toolOutput("Content copied to clipboard");
+        } catch (Exception e) {
+            chrome.toolErrorRaw("Failed to copy: " + e.getMessage());
+        }
     }
 
     private void doPasteAction()

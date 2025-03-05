@@ -40,8 +40,7 @@ import java.util.concurrent.Future;
  *   - Make sure all Swing updates happen in invokeLater calls,
  *   - Remove OperationResult usage entirely.
  */
-public class Chrome implements AutoCloseable, IConsoleIO
-{
+public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
     private final int FRAGMENT_COLUMN = 3;
 
@@ -74,10 +73,10 @@ public class Chrome implements AutoCloseable, IConsoleIO
     private JButton pasteButton;
 
     // Buttons for the command input panel:
-private JButton codeButton;  // renamed from goButton
-private JButton askButton;
-private JButton searchButton;
-private JButton runButton;
+    private JButton codeButton;  // renamed from goButton
+    private JButton askButton;
+    private JButton searchButton;
+    private JButton runButton;
     private JButton stopButton;  // cancels the current user-driven task
 
     // History:
@@ -97,8 +96,7 @@ private JButton runButton;
      * We call this from Brokk after creating contextManager, commands, etc.,
      * but before calling .resolveCircularReferences(...).
      */
-    public Chrome()
-    {
+    public Chrome() {
         // 1) Set FlatLaf Look & Feel
         try {
             com.formdev.flatlaf.FlatLightLaf.setup();
@@ -123,7 +121,7 @@ private JButton runButton;
 
         // 6) Load saved window size and position, then show window
         frame.setVisible(true);
-        
+
         // Add listener to save window size and position when they change
         frame.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
@@ -145,8 +143,7 @@ private JButton runButton;
     /**
      * Finish wiring references to contextManager, commands, coder, etc.
      */
-    public void resolveCircularReferences(ContextManager contextManager, Coder coder)
-    {
+    public void resolveCircularReferences(ContextManager contextManager, Coder coder) {
         this.contextManager = contextManager;
         this.coder = coder;
         this.project = contextManager.getProject();
@@ -168,8 +165,7 @@ private JButton runButton;
      *  - the context panel
      *  - the background status label at bottom
      */
-    private JPanel buildMainPanel()
-    {
+    private JPanel buildMainPanel() {
         var panel = new JPanel(new BorderLayout());
 
         var contentPanel = new JPanel(new GridBagLayout());
@@ -177,7 +173,7 @@ private JButton runButton;
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
         gbc.gridx = 0;
-        gbc.insets = new Insets(2,2,2,2);
+        gbc.insets = new Insets(2, 2, 2, 2);
 
         // 1. LLM streaming area
         // LLM streaming area in titled panel
@@ -189,10 +185,10 @@ private JButton runButton;
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        
+
         llmScrollPane = buildLLMStreamScrollPane();
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
-        
+
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(outputPanel, gbc);
@@ -227,8 +223,7 @@ private JButton runButton;
     /**
      * Creates the RSyntaxTextArea for the LLM stream, wrapped in a JScrollPane.
      */
-    private JScrollPane buildLLMStreamScrollPane()
-    {
+    private JScrollPane buildLLMStreamScrollPane() {
         llmStreamArea = new RSyntaxTextArea();
         llmStreamArea.setEditable(false);
         // We'll treat the content as plain text
@@ -247,30 +242,28 @@ private JButton runButton;
     /**
      * Creates the command result label used to display messages.
      */
-    private JComponent buildCommandResultLabel()
-    {
+    private JComponent buildCommandResultLabel() {
         commandResultLabel = new JLabel(" ");
         commandResultLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        commandResultLabel.setBorder(new EmptyBorder(5,10,5,10));
+        commandResultLabel.setBorder(new EmptyBorder(5, 10, 5, 10));
         commandResultLabel.setOpaque(true);
-        commandResultLabel.setBackground(new Color(245,245,245));
+        commandResultLabel.setBackground(new Color(245, 245, 245));
         return commandResultLabel;
     }
 
     /**
      * Creates the bottom-most background status label that shows "Working on: ..." or is blank when idle.
      */
-    private JComponent buildBackgroundStatusLabel()
-    {
+    private JComponent buildBackgroundStatusLabel() {
         backgroundStatusLabel = new JLabel(" ");
         backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        backgroundStatusLabel.setBorder(new EmptyBorder(3,10,3,10));
+        backgroundStatusLabel.setBorder(new EmptyBorder(3, 10, 3, 10));
         backgroundStatusLabel.setOpaque(true);
-        backgroundStatusLabel.setBackground(new Color(240,240,240));
+        backgroundStatusLabel.setBackground(new Color(240, 240, 240));
         // Add a line border above
         backgroundStatusLabel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1,0,0,0,Color.LIGHT_GRAY),
-                new EmptyBorder(5,10,5,10)
+                BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
+                new EmptyBorder(5, 10, 5, 10)
         ));
         return backgroundStatusLabel;
     }
@@ -279,8 +272,7 @@ private JButton runButton;
      * Creates a panel with a single-line text field for commands, plus “Go / Ask / Search” on the left and a “Stop” button on the right.
      * The panel is titled "Instructions".
      */
-    private JPanel buildCommandInputPanel()
-    {
+    private JPanel buildCommandInputPanel() {
         var wrapper = new JPanel(new BorderLayout());
         wrapper.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createTitledBorder(
@@ -290,14 +282,14 @@ private JButton runButton;
                         javax.swing.border.TitledBorder.DEFAULT_POSITION,
                         new Font(Font.DIALOG, Font.BOLD, 12)
                 ),
-                new EmptyBorder(5,5,5,5)
+                new EmptyBorder(5, 5, 5, 5)
         ));
 
         commandInputField = new JTextField();
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
-                BorderFactory.createEmptyBorder(2,5,2,5)
+                BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
 
         // Basic approach: pressing Enter runs "Code"
@@ -319,7 +311,7 @@ private JButton runButton;
         searchButton = new JButton("Search");
         searchButton.setMnemonic(KeyEvent.VK_S);
         searchButton.addActionListener(e -> runSearchCommand());
-        
+
         runButton = new JButton("Run");
         runButton.setMnemonic(KeyEvent.VK_R);
         runButton.addActionListener(e -> runRunCommand());
@@ -353,8 +345,7 @@ private JButton runButton;
     /**
      * Invoked on "Code" button or pressing Enter in the command input field.
      */
-    private void runGoCommand()
-    {
+    private void runGoCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
             toolErrorRaw("Please enter a command or text");
@@ -367,19 +358,18 @@ private JButton runButton;
         // schedule in ContextManager
         currentUserTask = contextManager.runGoCommandAsync(input);
     }
-    
+
     /**
      * Invoked on "Run" button
      */
-    private void runRunCommand()
-    {
+    private void runRunCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
             input = "$./gradlew build"; // Default command if none provided
         } else if (!input.startsWith("$")) {
             input = "$" + input; // Add $ prefix if missing
         }
-        
+
         addToHistory(input);
         commandInputField.setText("");
 
@@ -390,8 +380,7 @@ private JButton runButton;
     /**
      * Invoked on "Ask" button
      */
-    private void runAskCommand()
-    {
+    private void runAskCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
             toolErrorRaw("Please enter a question");
@@ -407,8 +396,7 @@ private JButton runButton;
     /**
      * Invoked on "Search" button
      */
-    private void runSearchCommand()
-    {
+    private void runSearchCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
             toolErrorRaw("Please provide a search query");
@@ -424,8 +412,7 @@ private JButton runButton;
     /**
      * Disables “Go/Ask/Search” to prevent overlapping tasks, until re-enabled
      */
-    private void disableUserActionButtons()
-    {
+    private void disableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
             codeButton.setEnabled(false);
             askButton.setEnabled(false);
@@ -439,8 +426,7 @@ private JButton runButton;
     /**
      * Re-enables “Go/Ask/Search” when the task completes or is canceled
      */
-    public void enableUserActionButtons()
-    {
+    public void enableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
             codeButton.setEnabled(true);
             askButton.setEnabled(true);
@@ -454,8 +440,7 @@ private JButton runButton;
     /**
      * Cancels the currently running user-driven Future (Go/Ask/Search), if any
      */
-    private void stopCurrentUserTask()
-    {
+    private void stopCurrentUserTask() {
         if (currentUserTask != null && !currentUserTask.isDone()) {
             currentUserTask.cancel(true);
         }
@@ -464,11 +449,9 @@ private JButton runButton;
     /**
      * Binds Emacs/readline-like keys to the given text field.
      */
-    private void bindEmacsKeys(JTextField field)
-    {
+    private void bindEmacsKeys(JTextField field) {
         field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.CTRL_DOWN_MASK), "killLine");
-        field.getActionMap().put("killLine", new AbstractAction()
-        {
+        field.getActionMap().put("killLine", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 var pos = field.getCaretPosition();
@@ -483,8 +466,7 @@ private JButton runButton;
         });
 
         field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_U, InputEvent.CTRL_DOWN_MASK), "killToStart");
-        field.getActionMap().put("killToStart", new AbstractAction()
-        {
+        field.getActionMap().put("killToStart", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 var pos = field.getCaretPosition();
@@ -497,8 +479,7 @@ private JButton runButton;
         });
 
         field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), "yank");
-        field.getActionMap().put("yank", new AbstractAction()
-        {
+        field.getActionMap().put("yank", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (killBuffer != null && !killBuffer.isEmpty()) {
@@ -514,11 +495,9 @@ private JButton runButton;
     /**
      * Adds the command to history if not duplicate of last
      */
-    private void addToHistory(String command)
-    {
+    private void addToHistory(String command) {
         if (commandHistory.isEmpty() ||
-                !command.equals(commandHistory.get(commandHistory.size() - 1)))
-        {
+                !command.equals(commandHistory.get(commandHistory.size() - 1))) {
             commandHistory.add(command);
         }
         historyIndex = commandHistory.size();
@@ -527,8 +506,7 @@ private JButton runButton;
     /**
      * Build the context panel (unified table + action buttons).
      */
-    private JPanel buildContextPanel()
-    {
+    private JPanel buildContextPanel() {
         contextPanel = new JPanel(new BorderLayout());
         contextPanel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
@@ -539,8 +517,7 @@ private JButton runButton;
         ));
 
         contextTable = new JTable(new DefaultTableModel(
-                new Object[]{"LOC", "Description", "Select", "Fragment"}, 0)
-        {
+                new Object[]{"LOC", "Description", "Select", "Fragment"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return column == CHECKBOX_COLUMN;
@@ -591,13 +568,13 @@ private JButton runButton;
         contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setMaxWidth(0);
         contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setWidth(0);
 
-        contextTable.setIntercellSpacing(new Dimension(10,1));
+        contextTable.setIntercellSpacing(new Dimension(10, 1));
 
         // column widths
         contextTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         contextTable.getColumnModel().getColumn(0).setMaxWidth(100);
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(480);
-        
+
         // Add double-click listener to open fragment preview
         contextTable.addMouseListener(new MouseAdapter() {
             @Override
@@ -622,18 +599,18 @@ private JButton runButton;
         // Panel for context summary information at bottom
         var contextSummaryPanel = new JPanel();
         contextSummaryPanel.setLayout(new BoxLayout(contextSummaryPanel, BoxLayout.Y_AXIS));
-        
+
         locSummaryLabel = new JLabel(" ");
         locSummaryLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        locSummaryLabel.setBorder(new EmptyBorder(5,5,5,5));
+        locSummaryLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
         locSummaryLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        
+
         // Add label for uncommitted files
         uncommittedFilesLabel = new JLabel(" ");
         uncommittedFilesLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        uncommittedFilesLabel.setBorder(new EmptyBorder(5,5,5,5));
+        uncommittedFilesLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
         uncommittedFilesLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        
+
         // Add suggest commit button
         suggestCommitButton = new JButton("Suggest Commit");
         suggestCommitButton.setEnabled(false);
@@ -650,15 +627,15 @@ private JButton runButton;
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
         JScrollPane tableScrollPane = new JScrollPane(contextTable,
-                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+                                                      JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                                                      JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         // Set a preferred size to maintain height even when empty (almost works)
         tableScrollPane.setPreferredSize(new Dimension(600, 150));
         tablePanel.add(tableScrollPane, BorderLayout.CENTER);
 
         // Buttons panel
         var buttonsPanel = createContextButtonsPanel();
-        
+
         contextPanel.setLayout(new BorderLayout());
         contextPanel.add(tablePanel, BorderLayout.CENTER);
         contextPanel.add(buttonsPanel, BorderLayout.EAST);
@@ -679,11 +656,10 @@ private JButton runButton;
     /**
      * Creates the panel with context action buttons: edit/read/summarize/drop/copy
      */
-    private JPanel createContextButtonsPanel()
-    {
+    private JPanel createContextButtonsPanel() {
         var buttonsPanel = new JPanel();
         buttonsPanel.setLayout(new BoxLayout(buttonsPanel, BoxLayout.Y_AXIS));
-        buttonsPanel.setBorder(new EmptyBorder(5,5,5,5));
+        buttonsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
         if (editButton == null) {
             editButton = new JButton("Edit All");
@@ -758,16 +734,16 @@ private JButton runButton;
         pasteButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
 
         buttonsPanel.add(editButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(readOnlyButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(summarizeButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(dropButton);
         buttonsPanel.add(Box.createVerticalGlue());  // Push remaining buttons to bottom
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(copyButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0,5)));
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(pasteButton);
 
         return buttonsPanel;
@@ -776,8 +752,7 @@ private JButton runButton;
     /**
      * Disables the context action buttons while an action is in progress
      */
-    private void disableContextActionButtons()
-    {
+    private void disableContextActionButtons() {
         SwingUtilities.invokeLater(() -> {
             editButton.setEnabled(false);
             readOnlyButton.setEnabled(false);
@@ -791,8 +766,7 @@ private JButton runButton;
     /**
      * Re-enables context action buttons
      */
-    public void enableContextActionButtons()
-    {
+    public void enableContextActionButtons() {
         SwingUtilities.invokeLater(() -> {
             editButton.setEnabled(true);
             readOnlyButton.setEnabled(true);
@@ -807,8 +781,7 @@ private JButton runButton;
     /**
      * Check if any items are selected
      */
-    private boolean hasSelectedItems()
-    {
+    private boolean hasSelectedItems() {
         if (contextTable.getModel().getRowCount() == 0) {
             return false;
         }
@@ -824,13 +797,12 @@ private JButton runButton;
     /**
      * Get the list of selected fragments
      */
-    private List<ContextFragment> getSelectedFragments()
-    {
+    private List<ContextFragment> getSelectedFragments() {
         var fragments = new ArrayList<ContextFragment>();
         var tableModel = (DefaultTableModel) contextTable.getModel();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
             if (Boolean.TRUE.equals(tableModel.getValueAt(i, CHECKBOX_COLUMN))) {
-                fragments.add((ContextFragment)tableModel.getValueAt(i, FRAGMENT_COLUMN));
+                fragments.add((ContextFragment) tableModel.getValueAt(i, FRAGMENT_COLUMN));
             }
         }
         return fragments;
@@ -839,8 +811,7 @@ private JButton runButton;
     /**
      * Update context action button labels
      */
-    private void updateContextButtons()
-    {
+    private void updateContextButtons() {
         var hasSelection = hasSelectedItems();
         editButton.setText(hasSelection ? "Edit Selected" : "Edit Files");
         readOnlyButton.setText(hasSelection ? "Read Selected" : "Read Files");
@@ -852,16 +823,16 @@ private JButton runButton;
         var hasContext = (ctx != null && !ctx.isEmpty());
         dropButton.setEnabled(hasContext);
         copyButton.setEnabled(hasContext);
-        
+
         updateSuggestCommitButton();
     }
-    
+
     /**
      * Updates the uncommitted files label and the state of the suggest commit button
      */
     private void updateSuggestCommitButton() {
         if (contextManager == null) return;
-        
+
         SwingUtilities.invokeLater(() -> {
             contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
                 try {
@@ -886,15 +857,13 @@ private JButton runButton;
     /**
      * Registers global keyboard shortcuts for undo/redo
      */
-    private void registerGlobalKeyboardShortcuts()
-    {
+    private void registerGlobalKeyboardShortcuts() {
         var rootPane = frame.getRootPane();
 
         // Ctrl+Z => undo
         var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
-        rootPane.getActionMap().put("globalUndo", new AbstractAction()
-        {
+        rootPane.getActionMap().put("globalUndo", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (contextManager != null) {
@@ -909,8 +878,7 @@ private JButton runButton;
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
                                                    InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
-        rootPane.getActionMap().put("globalRedo", new AbstractAction()
-        {
+        rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (contextManager != null) {
@@ -924,8 +892,7 @@ private JButton runButton;
         // Ctrl+V => paste
         var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
-        rootPane.getActionMap().put("globalPaste", new AbstractAction()
-        {
+        rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (contextManager != null) {
@@ -938,8 +905,7 @@ private JButton runButton;
     /**
      * Builds the menu bar
      */
-    private JMenuBar buildMenuBar()
-    {
+    private JMenuBar buildMenuBar() {
         var menuBar = new JMenuBar();
 
         // File menu
@@ -950,9 +916,9 @@ private JButton runButton;
         editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK));
         editKeysItem.addActionListener(e -> showSecretKeysDialog());
         fileMenu.add(editKeysItem);
-        
+
         fileMenu.addSeparator();
-        
+
         var setAutoContextItem = new JMenuItem("Set autocontext size");
         setAutoContextItem.addActionListener(e -> {
             // Simple spinner dialog
@@ -960,7 +926,7 @@ private JButton runButton;
             dialog.setLayout(new BorderLayout());
 
             var panel = new JPanel(new BorderLayout());
-            panel.setBorder(new EmptyBorder(10,10,10,10));
+            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
             var label = new JLabel("Enter autocontext size (0-100):");
             panel.add(label, BorderLayout.NORTH);
@@ -989,7 +955,7 @@ private JButton runButton;
             dialog.getRootPane().setDefaultButton(okButton);
             dialog.getRootPane().registerKeyboardAction(
                     evt -> dialog.dispose(),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE,0),
+                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                     JComponent.WHEN_IN_FOCUSED_WINDOW
             );
 
@@ -1073,8 +1039,7 @@ private JButton runButton;
     /**
      * Shows a dialog for editing LLM API secret keys.
      */
-    private void showSecretKeysDialog()
-    {
+    private void showSecretKeysDialog() {
         if (project == null) {
             toolErrorRaw("Project not available");
             return;
@@ -1087,7 +1052,7 @@ private JButton runButton;
 
         // main panel
         JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.setBorder(new EmptyBorder(10,10,10,10));
+        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
         var existingKeys = project.getLlmKeys();
         List<KeyValueRowPanel> keyRows = new ArrayList<>();
@@ -1118,7 +1083,7 @@ private JButton runButton;
         }
 
         var scrollPane = new JScrollPane(keysPanel);
-        scrollPane.setPreferredSize(new Dimension((int)(frame.getWidth()*0.9), 250));
+        scrollPane.setPreferredSize(new Dimension((int) (frame.getWidth() * 0.9), 250));
         mainPanel.add(scrollPane, BorderLayout.CENTER);
 
         // Add/Remove
@@ -1151,7 +1116,7 @@ private JButton runButton;
         var cancelButton = new JButton("Cancel");
 
         okButton.addActionListener(ev -> {
-            var newKeys = new java.util.HashMap<String,String>();
+            var newKeys = new java.util.HashMap<String, String>();
             boolean hasEmptyKey = false;
 
             for (var row : keyRows) {
@@ -1201,8 +1166,7 @@ private JButton runButton;
      * For the IConsoleIO interface, sets the text in commandResultLabel. Safe to call from any thread.
      */
     @Override
-    public void toolOutput(String msg)
-    {
+    public void toolOutput(String msg) {
         SwingUtilities.invokeLater(() -> {
             commandResultLabel.setText(msg);
             logger.info(msg);
@@ -1210,8 +1174,7 @@ private JButton runButton;
     }
 
     @Override
-    public void toolErrorRaw(String msg)
-    {
+    public void toolErrorRaw(String msg) {
         SwingUtilities.invokeLater(() -> {
             commandResultLabel.setText("[ERROR] " + msg);
             logger.warn(msg);
@@ -1226,8 +1189,7 @@ private JButton runButton;
     }
 
     @Override
-    public boolean confirmAsk(String msg)
-    {
+    public boolean confirmAsk(String msg) {
         // Must block on EDT, so we use invokeAndWait
         final boolean[] result = new boolean[1];
         try {
@@ -1248,8 +1210,7 @@ private JButton runButton;
     }
 
     @Override
-    public char askOptions(String msg, String options)
-    {
+    public char askOptions(String msg, String options) {
         // e.g. (A)dd, (R)ead, etc.
         final char[] selected = new char[1];
         try {
@@ -1262,46 +1223,41 @@ private JButton runButton;
             }
         } catch (Exception e) {
             logger.error("askOptions error", e);
-            return options.toLowerCase().charAt(options.length()-1);
+            return options.toLowerCase().charAt(options.length() - 1);
         }
         return selected[0];
     }
 
-    private char internalAskOptions(String msg, String options)
-    {
-        var optsArr = options.chars().mapToObj(c -> String.valueOf((char)c)).toArray(String[]::new);
+    private char internalAskOptions(String msg, String options) {
+        var optsArr = options.chars().mapToObj(c -> String.valueOf((char) c)).toArray(String[]::new);
         var choice = (String) JOptionPane.showInputDialog(
                 frame, msg, "Choose Option",
                 JOptionPane.PLAIN_MESSAGE, null,
                 optsArr, (optsArr.length > 0) ? optsArr[0] : null
         );
         if (choice == null || choice.isEmpty()) {
-            return options.toLowerCase().charAt(options.length()-1);
+            return options.toLowerCase().charAt(options.length() - 1);
         }
         return choice.toLowerCase().charAt(0);
     }
 
     @Override
-    public void spin(String message)
-    {
+    public void spin(String message) {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText("Working on: " + message));
     }
 
     @Override
-    public void spinComplete()
-    {
+    public void spinComplete() {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(""));
     }
 
     @Override
-    public boolean isSpinning()
-    {
+    public boolean isSpinning() {
         return !backgroundStatusLabel.getText().isBlank();
     }
 
     @Override
-    public void clear()
-    {
+    public void clear() {
         SwingUtilities.invokeLater(() -> {
             llmStreamArea.setText("");
             commandResultLabel.setText("");
@@ -1311,8 +1267,7 @@ private JButton runButton;
     /**
      * Repopulate the unified context table from the given context.
      */
-    public void updateContextTable(Context context)
-    {
+    public void updateContextTable(Context context) {
         SwingUtilities.invokeLater(() -> {
             // Clear the existing table rows
             var tableModel = (DefaultTableModel) contextTable.getModel();
@@ -1358,8 +1313,7 @@ private JButton runButton;
         });
     }
 
-    private int countLinesSafe(ContextFragment fragment)
-    {
+    private int countLinesSafe(ContextFragment fragment) {
         try {
             var text = fragment.text();
             if (text.isEmpty()) return 0;
@@ -1371,15 +1325,14 @@ private JButton runButton;
     }
 
     @Override
-    public void close()
-    {
+    public void close() {
         logger.info("Closing Chrome UI");
         if (frame != null) {
             frame.dispose();
         }
     }
 
-    
+
     /**
      * Opens a preview window for a context fragment
      * @param fragment The fragment to preview
@@ -1396,39 +1349,39 @@ private JButton runButton;
             // Create a new window
             var previewFrame = new JFrame(fragment.description());
             previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-            
+
             // Create syntax text area
             var textArea = new RSyntaxTextArea();
             textArea.setText(text);
             textArea.setEditable(false);
             textArea.setCodeFoldingEnabled(true);
             textArea.setSyntaxEditingStyle(getSyntaxStyleForFragment(fragment));
-            
+
             try {
                 Theme.load(getClass().getResourceAsStream(
-                    "/org/fife/ui/rsyntaxtextarea/themes/default.xml"))
-                    .apply(textArea);
+                                "/org/fife/ui/rsyntaxtextarea/themes/default.xml"))
+                        .apply(textArea);
             } catch (Exception e) {
                 logger.warn("Could not load theme for preview", e);
             }
-            
+
             var scrollPane = new JScrollPane(textArea);
             previewFrame.add(scrollPane);
-            
+
             // Ensure text area starts scrolled to the top
             textArea.setCaretPosition(0);
-            
+
             // Set window size from saved properties
             Rectangle bounds = project.getPreviewWindowBounds();
             previewFrame.setSize(bounds.width, bounds.height);
-            
+
             // Position the window, checking if position is valid
             if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
                 previewFrame.setLocation(bounds.x, bounds.y);
             } else {
                 previewFrame.setLocationRelativeTo(frame);
             }
-            
+
             // Add component listener to save position
             previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
                 @Override
@@ -1441,29 +1394,29 @@ private JButton runButton;
                     project.savePreviewWindowBounds(previewFrame);
                 }
             });
-            
+
             // Add Escape key to close
             previewFrame.getRootPane().registerKeyboardAction(
-                e -> previewFrame.dispose(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                JComponent.WHEN_IN_FOCUSED_WINDOW
+                    e -> previewFrame.dispose(),
+                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                    JComponent.WHEN_IN_FOCUSED_WINDOW
             );
-            
+
             previewFrame.setVisible(true);
         });
     }
-    
+
     /**
      * Determines the appropriate syntax style for a fragment
      */
     private String getSyntaxStyleForFragment(ContextFragment fragment) {
         // Default to Java
         var style = SyntaxConstants.SYNTAX_STYLE_JAVA;
-        
+
         // Check fragment path if it's a file
         if (fragment instanceof ContextFragment.RepoPathFragment) {
             var path = ((ContextFragment.RepoPathFragment) fragment).file().getFileName().toLowerCase();
-            
+
             if (path.endsWith(".md") || path.endsWith(".markdown")) {
                 style = SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
             } else if (path.endsWith(".py")) {
@@ -1484,8 +1437,8 @@ private JButton runButton;
                 style = SyntaxConstants.SYNTAX_STYLE_UNIX_SHELL;
             } else if (path.endsWith(".c") || path.endsWith(".h")) {
                 style = SyntaxConstants.SYNTAX_STYLE_C;
-            } else if (path.endsWith(".cpp") || path.endsWith(".hpp") || 
-                       path.endsWith(".cc") || path.endsWith(".hh")) {
+            } else if (path.endsWith(".cpp") || path.endsWith(".hpp") ||
+                    path.endsWith(".cc") || path.endsWith(".hh")) {
                 style = SyntaxConstants.SYNTAX_STYLE_CPLUSPLUS;
             } else if (path.endsWith(".properties")) {
                 style = SyntaxConstants.SYNTAX_STYLE_PROPERTIES_FILE;
@@ -1493,17 +1446,17 @@ private JButton runButton;
                 style = SyntaxConstants.SYNTAX_STYLE_KOTLIN;
             }
         }
-        
+
         return style;
     }
-    
+
     /**
      * Loads window size and position from project properties
      */
     private void loadWindowSizeAndPosition() {
         assert project != null;
         Rectangle bounds = project.getMainWindowBounds();
-        
+
         // Only apply saved values if they're valid
         if (bounds.width > 0 && bounds.height > 0) {
             frame.setSize(bounds.width, bounds.height);
@@ -1520,7 +1473,7 @@ private JButton runButton;
             frame.setLocationRelativeTo(null);
         }
     }
-    
+
     /**
      * Checks if a position is on any available screen
      */
@@ -1545,7 +1498,7 @@ private JButton runButton;
             this.commandInputField.requestFocus();
         });
     }
-    
+
     /**
      * Prefills the command input field with the given text
      */
@@ -1559,20 +1512,17 @@ private JButton runButton;
     /**
      * Helper row panel for editing secret keys in a single row
      */
-    private static class KeyValueRowPanel extends JPanel
-    {
+    private static class KeyValueRowPanel extends JPanel {
         private final JComboBox<String> keyNameCombo;
         private final JTextField keyValueField;
 
-        public KeyValueRowPanel(String[] defaultKeyNames)
-        {
+        public KeyValueRowPanel(String[] defaultKeyNames) {
             this(defaultKeyNames, "", "");
         }
 
-        public KeyValueRowPanel(String[] defaultKeyNames, String initialKey, String initialValue)
-        {
+        public KeyValueRowPanel(String[] defaultKeyNames, String initialKey, String initialValue) {
             setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
-            setBorder(new EmptyBorder(5,0,5,0));
+            setBorder(new EmptyBorder(5, 0, 5, 0));
 
             keyNameCombo = new JComboBox<>(defaultKeyNames);
             keyNameCombo.setEditable(true);
@@ -1593,15 +1543,15 @@ private JButton runButton;
 
             keyValueField = new JTextField(initialValue);
 
-            keyNameCombo.setPreferredSize(new Dimension(150,25));
-            keyValueField.setPreferredSize(new Dimension(250,25));
+            keyNameCombo.setPreferredSize(new Dimension(150, 25));
+            keyValueField.setPreferredSize(new Dimension(250, 25));
 
-            keyNameCombo.setMaximumSize(new Dimension(150,25));
-            keyValueField.setMaximumSize(new Dimension(Short.MAX_VALUE,25));
+            keyNameCombo.setMaximumSize(new Dimension(150, 25));
+            keyValueField.setMaximumSize(new Dimension(Short.MAX_VALUE, 25));
 
             add(new JLabel("Key: "));
             add(keyNameCombo);
-            add(Box.createRigidArea(new Dimension(10,0)));
+            add(Box.createRigidArea(new Dimension(10, 0)));
             add(new JLabel("Value: "));
             add(keyValueField);
         }
