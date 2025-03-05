@@ -466,7 +466,7 @@ public class EditBlock {
             // Found a match - rebuild the file around it
             // everything before the match
             List<String> newLines = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
-            {
+            if (truncatedReplace.length > 0) {
                 // for the very first replacement line, handle the case where the LLM omitted whitespace in its target, e.g.
                 // Original:
                 //   L1
@@ -476,9 +476,9 @@ public class EditBlock {
                 //   L2
                 var adjusted = getLeadingWhitespace(originalLines[start]) + truncatedReplace[0].trim() + "\n";
                 newLines.add(adjusted);
+                // add the rest of the replacement lines assuming that whitespace is correct
+                newLines.addAll(Arrays.asList(truncatedReplace).subList(1, truncatedReplace.length));
             }
-            // add the rest of the replacement lines assuming that whitespace is correct
-            newLines.addAll(Arrays.asList(truncatedReplace).subList(1, truncatedReplace.length));
             // everything after the match
             newLines.addAll(Arrays.asList(originalLines).subList(start + needed, originalLines.length));
             return String.join("", newLines);

@@ -63,7 +63,6 @@ class EditBlockTest {
         }
     }
 
-    
     @Test
     void testFindOriginalUpdateBlocksSimple() {
         String edit = """
@@ -221,6 +220,32 @@ class EditBlockTest {
 
         String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
+    }
+
+    @Test
+    void testDeletionIgnoringWhitespace() {
+        String original = """
+                One
+                  Two
+                """.stripIndent();
+        String edit = """
+                Here's the change:
+
+                ```
+                foo.txt
+                <<<<<<< SEARCH
+                Two
+                =======
+                >>>>>>> REPLACE
+                ```
+
+                Hope you like it!
+                """;
+
+        EditBlock.SearchReplaceBlock[] blocks = parseBlocks(edit, Set.of("foo.txt"));
+        assertEquals(1, blocks.length);
+        String updated = EditBlock.doReplace(original, blocks[0].beforeText(), blocks[0].afterText());
+        assertEquals("One\n", updated);
     }
 
     @Test
