@@ -768,4 +768,108 @@ public class EditBlock {
         }
         return suggestions;
     }
+
+    /**
+        System.out.printlnintln();""Potential files are  + candidates);din.
+     * Parses blocks and attempts to apply them, reporting errors to stdout.
+     */
+    public static void main(String[] args) throws IOException {
+        // Create a simple console IO for output
+        var io = new IConsoleIO() {
+            @Override
+            public void shellOutput(String message) {
+                System.out.println(message);
+            }
+
+            @Override
+            public void llmOutput(String message) {
+                System.out.println(message);
+            }
+
+            @Override
+            public void toolOutput(String message) {
+                System.out.println(message);
+            }
+
+            @Override
+            public void toolError(String message) {
+                System.err.println("ERROR: " + message);
+            }
+
+            @Override
+            public void toolErrorRaw(String message) {
+                System.err.println(message);
+            }
+        };
+
+        // Read input from testblocks.txt
+        Path testBlocksPath = Path.of("testblocks.txt");
+        var content = new StringBuilder();
+        Path cwd = Path.of("").toAbsolutePath();
+        Set<RepoFile> potentialFiles = new HashSet<>();
+
+        // Collect lines while scanning for potential file paths
+        try (var scanner = new Scanner(testBlocksPath)) {
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                content.append(line).append("\n");
+
+                // Identify lines that look like file paths starting with src/
+                if (line.trim().startsWith("src/")) {
+                    potentialFiles.add(new RepoFile(cwd, line.trim()));
+                }
+            }
+        } catch (IOException e) {
+            io.toolError("Failed to read testblocks.txt: " + e.getMessage());
+            System.exit(1);
+        }
+        System.out.println("Potential files are " + potentialFiles);
+
+        // Get the context manager from Environment if available, or create one with potential files
+        IContextManager contextManager = new IContextManager() {
+                @Override
+                public Set<RepoFile> getEditableFiles() {
+                    return potentialFiles;
+                }
+
+                @Override
+                public RepoFile toFile(String path) {
+                    return new RepoFile(cwd, path);
+                }
+            };
+
+        // Parse the input for SEARCH/REPLACE blocks
+        var parseResult = findOriginalUpdateBlocks(content.toString(), contextManager.getEditableFiles());
+        if (parseResult.parseError() != null) {
+            io.toolErrorRaw(parseResult.parseError());
+            System.exit(1);
+        }
+
+        var blocks = parseResult.blocks();
+        if (blocks.isEmpty()) {
+            io.toolOutput("No SEARCH/REPLACE blocks found in input");
+            System.exit(0);
+        }
+
+        io.toolOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
+
+        // Apply the edit blocks
+        var editResult = applyEditBlocks(contextManager, io, blocks);
+
+        // Report any failures
+        if (!editResult.blocks().isEmpty()) {
+            io.toolError(editResult.blocks().size() + " blocks failed to apply:");
+            var suggestions = collectSuggestions(editResult.blocks(), contextManager);
+
+            for (var failed : editResult.blocks()) {
+                io.toolError("Failed to apply block for file: " +
+                                     (failed.block().filename() == null ? "(none)" : failed.block().filename()) +
+                                     " Reason: " + failed.reason());
+
+                if (suggestions.containsKey(failed)) {
+                    io.toolOutput(suggestions.get(failed));
+                }
+            }
+        }
+    }
 }
