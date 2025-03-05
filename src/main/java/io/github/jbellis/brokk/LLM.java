@@ -41,6 +41,10 @@ public class LLM {
         List<String> buildErrors = new ArrayList<>();
         List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>();
 
+        // give user some feedback -- this isn't in the main loop because after the first iteration
+        // we give more specific feedback when we need to make another request
+        io.toolOutput("Request sent");
+
         while (true) {
             messages.add(requestMsg);
 
@@ -119,6 +123,7 @@ public class LLM {
 
             // Check for parse/match failures first
             var parseReflection = getParseReflection(editResult.blocks(), blocks, coder.contextManager, io);
+            blocks.clear(); // don't re-apply on the next loop
             if (!parseReflection.isEmpty()) {
                 io.toolOutput("Attempting to fix parse/match errors...");
                 model = coder.models.applyModel();

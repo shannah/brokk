@@ -206,6 +206,7 @@ public class ContextManager implements IContextManager
                 messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
                 // stream from coder
+                chrome.toolOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response != null) {
                     addToHistory(List.of(messages.getLast(), response.aiMessage()));

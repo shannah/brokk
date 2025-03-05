@@ -65,10 +65,6 @@ public class Coder {
      * @return The final response from the LLM as a string
      */
     public ChatResponse sendStreaming(StreamingChatLanguageModel model, List<ChatMessage> messages, boolean echo) {
-        if (echo) {
-            io.toolOutput("Request sent");
-        }
-
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         // locking for cancellation -- we don't want to show any output after cancellation
