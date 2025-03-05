@@ -69,9 +69,6 @@ public class ContextManager implements IContextManager
     // Possibly store an inferred buildCommand
     private Future<BuildCommand> buildCommand;
 
-    // Shell output
-    private String lastShellOutput;
-
     // The message we might pass directly to LLM next
     private String constructedMessage;
 
@@ -165,47 +162,26 @@ public class ContextManager implements IContextManager
         return root;
     }
 
-    /**
-     * Asynchronous “Go” command:
-     *   - If it starts with ‘$$’, run shell + capture into snippet
-     *   - Else if it starts with ‘$’, run shell + show output
-     *   - Else if it starts with ‘/’, show error
-     *   - Else treat as user request to LLM
-     */
-    public Future<?> runGoCommandAsync(String input)
+    public Future<?> runRunCommandAsync(String input)
     {
         assert chrome != null;
         return userActionExecutor.submit(() -> {
             try {
-                if (input.startsWith("$$")) {
-                    var command = input.substring(2).trim();
-                    chrome.toolOutput("Executing: " + command);
-                    var result = Environment.instance.captureShellCommand(command);
-                    if (!result.output().isBlank()) {
-                        addStringFragment(command, result.output());
-                    }
-                    // show output in LLM area
-                    chrome.shellOutput(result.output().isBlank() ? "[operation completed with no output]" : result.output());
-                }
-                else if (input.startsWith("$")) {
-                    var command = input.substring(1).trim();
-                    chrome.toolOutput("Executing: " + command);
-                    var result = Environment.instance.captureShellCommand(command);
-                    lastShellOutput = result.output().isBlank() ? null : result.output();
-                    chrome.shellOutput(result.output().isBlank() ? "[operation completed with no output]" : result.output());
-                }
-                else if (input.startsWith("/")) {
-                    chrome.toolErrorRaw("Slash commands are disabled. Please use the menu options instead.");
-                }
-                else {
-                    // treat as user request to LLM
-                    runSessionWithLLM(input);
-                }
-            } catch (CancellationException cex) {
-                chrome.toolOutput("Go command canceled.");
-            } catch (Exception e) {
-                logger.error("Error in Go command", e);
-                chrome.toolErrorRaw("Error in Go command: " + e.getMessage());
+                chrome.toolOutput("Executing: " + input);
+                var result = Environment.instance.captureShellCommand(input);
+                chrome.shellOutput(result.output().isBlank() ? "[operation completed with no output]" : result.output());
+            } finally {
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    public Future<?> runCodeCommandAsync(String input)
+    {
+        assert chrome != null;
+        return userActionExecutor.submit(() -> {
+            try {
+                runSessionWithLLM(input);
             } finally {
                 chrome.enableUserActionButtons();
             }
@@ -1011,15 +987,6 @@ public class ContextManager implements IContextManager
     public void setConstructedMessage(String msg)
     {
         this.constructedMessage = msg;
-    }
-
-    public String getLastShellOutput()
-    {
-        return lastShellOutput;
-    }
-    public void setLastShellOutput(String s)
-    {
-        lastShellOutput = s;
     }
 
     /**

@@ -294,7 +294,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         ));
 
         // Basic approach: pressing Enter runs "Code"
-        commandInputField.addActionListener(e -> runGoCommand());
+        commandInputField.addActionListener(e -> runCodeCommand());
 
         // Emacs-like keybindings
         bindEmacsKeys(commandInputField);
@@ -303,7 +303,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
-        codeButton.addActionListener(e -> runGoCommand());
+        codeButton.addActionListener(e -> runCodeCommand());
 
         askButton = new JButton("Ask");
         askButton.setMnemonic(KeyEvent.VK_A);
@@ -346,18 +346,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Invoked on "Code" button or pressing Enter in the command input field.
      */
-    private void runGoCommand() {
+    private void runCodeCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
             toolErrorRaw("Please enter a command or text");
             return;
         }
-        addToHistory(input);
+        addToHistory("Code: " + input);
         commandInputField.setText("");
 
         disableUserActionButtons();
         // schedule in ContextManager
-        currentUserTask = contextManager.runGoCommandAsync(input);
+        currentUserTask = contextManager.runCodeCommandAsync(input);
     }
 
     /**
@@ -366,16 +366,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void runRunCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
-            input = "$./gradlew build"; // Default command if none provided
-        } else if (!input.startsWith("$")) {
-            input = "$" + input; // Add $ prefix if missing
+            toolError("Please enter a command to run");
         }
 
-        addToHistory(input);
+        addToHistory("Run: " + input);
         commandInputField.setText("");
 
         disableUserActionButtons();
-        currentUserTask = contextManager.runGoCommandAsync(input);
+        currentUserTask = contextManager.runRunCommandAsync(input);
     }
 
     /**
@@ -387,7 +385,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a question");
             return;
         }
-        addToHistory(input);
+        addToHistory("Ask: " + input);
         commandInputField.setText("");
 
         disableUserActionButtons();
@@ -403,7 +401,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please provide a search query");
             return;
         }
-        addToHistory(input);
+        addToHistory("Search: " + input);
         commandInputField.setText("");
 
         disableUserActionButtons();
