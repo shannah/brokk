@@ -46,11 +46,11 @@ public class AnalyzerWrapper {
     /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
-    public AnalyzerWrapper(Project project, ExecutorService analyzerExecutor) {
+    public AnalyzerWrapper(Project project, IConsoleIO io, ExecutorService analyzerExecutor) {
         this.project = project;
         this.analyzerExecutor = analyzerExecutor;
-        this.io = project.getIo();
         this.root = project.getRoot();
+        this.io = io;
 
         // build the initial Analyzer
         future = analyzerExecutor.submit(this::loadOrCreateAnalyzer);

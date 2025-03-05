@@ -114,10 +114,6 @@ public class Project {
             });
     }
 
-    public IConsoleIO getIo() {
-        return io;
-    }
-
     public Path getRoot() {
         return root;
     }

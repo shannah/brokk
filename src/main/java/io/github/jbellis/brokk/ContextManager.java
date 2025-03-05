@@ -101,6 +101,7 @@ public class ContextManager implements IContextManager
     public ContextManager(Path root)
     {
         this.root = root.toAbsolutePath();
+        this.project = new Project(root);
     }
 
     /**
@@ -110,12 +111,10 @@ public class ContextManager implements IContextManager
     {
         this.chrome = chrome;
         this.coder = coder;
-        this.project = new Project(root);
-        this.analyzerWrapper = new AnalyzerWrapper(project, backgroundTasks);
-
-        // Start with blank context
-        var newContext = new Context(this.analyzerWrapper, 5);
-        contextHistory.add(newContext);
+        this.analyzerWrapper = new AnalyzerWrapper(project, chrome, backgroundTasks);
+        // Context's analyzer reference is retained for the whole chain so wait until we have that ready
+        // before adding the Context sentinel to history
+        contextHistory.add(new Context(analyzerWrapper, 5));
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
