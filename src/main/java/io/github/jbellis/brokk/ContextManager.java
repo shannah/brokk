@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -1043,34 +1044,31 @@ public class ContextManager implements IContextManager
         pushContext(c -> c.removeBadFragment(f));
     }
 
+    private final AtomicInteger activeTaskCount = new AtomicInteger(0);
+
     /**
      * Submits a background task to the internal background executor (non-user actions).
      */
-    public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task)
-    {
+    public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
+        // Increment counter before submitting
+        activeTaskCount.incrementAndGet();
+
         return backgroundTasks.submit(() -> {
             try {
                 chrome.spin(taskDescription);
                 return task.call();
             } finally {
-                updateBackgroundStatus();
+                // Decrement counter when done
+                int remaining = activeTaskCount.decrementAndGet();
+                SwingUtilities.invokeLater(() -> {
+                    if (remaining <= 0) {
+                        chrome.spinComplete();
+                    } else {
+                        chrome.spin("Tasks running: " + remaining);
+                    }
+                });
             }
         });
-    }
-
-    /**
-     * Called to refresh the spinning status in Chrome
-     */
-    private void updateBackgroundStatus()
-    {
-        // For simplicity, we gather the active count:
-        var activeCount = ((ThreadPoolExecutor)backgroundTasks).getActiveCount()
-                + ((ThreadPoolExecutor)userActionExecutor).getActiveCount();
-        if (activeCount <= 0) {
-            chrome.spinComplete();
-        } else {
-            chrome.spin("Tasks running: " + activeCount);
-        }
     }
 
     private void ensureBuildCommand(Coder coder)
