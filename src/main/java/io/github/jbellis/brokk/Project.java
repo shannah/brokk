@@ -2,6 +2,8 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -15,7 +17,6 @@ import java.util.Properties;
 public class Project {
     private final Path propertiesFile;
     private final Path root;
-    private final IConsoleIO io;
     private final Properties props;
     private final Path styleGuidePath;
     private final Path historyFilePath;
@@ -25,20 +26,20 @@ public class Project {
     private static final int DEFAULT_WINDOW_HEIGHT = 1200;
     
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final Logger logger = LogManager.getLogger(Project.class);
 
-    public Project(Path root, IConsoleIO io) {
+    public Project(Path root) {
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
         this.historyFilePath = root.resolve(".brokk").resolve("linereader.txt");
-        this.io = io;
         this.props = new Properties();
 
         if (Files.exists(propertiesFile)) {
             try (var reader = Files.newBufferedReader(propertiesFile)) {
                 props.load(reader);
             } catch (Exception e) {
-                io.toolErrorRaw("Error loading project properties: " + e.getMessage());
+                logger.error("Error loading project properties: {}", e.getMessage());
                 props.clear();
             }
         }
@@ -56,7 +57,7 @@ public class Project {
             try {
                 props.setProperty("mainFrame", objectMapper.writeValueAsString(mainFrame));
             } catch (Exception e) {
-                io.toolErrorRaw("Error creating default window settings: " + e.getMessage());
+                logger.error("Error creating default window settings: {}", e.getMessage());
             }
         }
     }
@@ -91,7 +92,7 @@ public class Project {
                 props.store(writer, "Brokk project configuration");
             }
         } catch (IOException e) {
-            io.toolErrorRaw("Error saving project properties: " + e.getMessage());
+            logger.error("Error saving project properties: {}", e.getMessage());
         }
     }
     
@@ -151,7 +152,7 @@ public class Project {
                 return Files.readString(styleGuidePath);
             }
         } catch (IOException e) {
-            io.toolErrorRaw("Error reading style guide: " + e.getMessage());
+            logger.error("Error reading style guide: {}", e.getMessage());
         }
         return null;
     }
@@ -161,7 +162,7 @@ public class Project {
             Files.createDirectories(styleGuidePath.getParent());
             Files.writeString(styleGuidePath, styleGuide);
         } catch (IOException e) {
-            io.toolErrorRaw("Error saving style guide: " + e.getMessage());
+            logger.error("Error saving style guide: {}", e.getMessage());
         }
     }
     
@@ -188,7 +189,7 @@ public class Project {
                     keys.put(name, keyProps.getProperty(name));
                 }
             } catch (IOException e) {
-                io.toolErrorRaw("Error loading LLM keys: " + e.getMessage());
+                logger.error("Error loading LLM keys: {}", e.getMessage());
             }
         }
         
@@ -223,7 +224,7 @@ public class Project {
             props.setProperty(key, objectMapper.writeValueAsString(node));
             saveProperties();
         } catch (Exception e) {
-            io.toolErrorRaw("Error saving window bounds: " + e.getMessage());
+            logger.error("Error saving window bounds: {}", e.getMessage());
         }
     }
     
@@ -253,7 +254,7 @@ public class Project {
                 }
             }
         } catch (Exception e) {
-            io.toolErrorRaw("Error reading window bounds: " + e.getMessage());
+            logger.error("Error reading window bounds: {}", e.getMessage());
         }
         
         return result;
@@ -299,7 +300,7 @@ public class Project {
                 keyProps.store(writer, "Brokk LLM API keys");
             }
         } catch (IOException e) {
-            io.toolErrorRaw("Error saving LLM keys: " + e.getMessage());
+            logger.error("Error saving LLM keys: {}", e.getMessage());
         }
     }
 }

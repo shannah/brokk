@@ -110,7 +110,7 @@ public class ContextManager implements IContextManager
     {
         this.chrome = chrome;
         this.coder = coder;
-        this.project = new Project(root, chrome);
+        this.project = new Project(root);
         this.analyzerWrapper = new AnalyzerWrapper(project, backgroundTasks);
 
         // Start with blank context

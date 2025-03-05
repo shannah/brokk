@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import java.lang.reflect.InvocationTargetException;
@@ -10,7 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 public class SwingUtil {
-    private static final Logger logger = LoggerFactory.getLogger(SwingUtil.class);
+    private static final Logger logger = LogManager.getLogger(SwingUtil.class);
 
     /**
      * Executes a task on the EDT and handles exceptions properly
