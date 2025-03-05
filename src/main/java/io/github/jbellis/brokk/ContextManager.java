@@ -9,6 +9,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
@@ -25,7 +26,6 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -47,15 +47,6 @@ public class ContextManager implements IContextManager
     private Chrome chrome; // for UI feedback
     private Coder coder;
 
-    // Common uncaught exception handler for executors
-    private final Thread.UncaughtExceptionHandler uncaughtExceptionHandler = (thread, throwable) -> {
-        logger.error("Uncaught exception in thread {}", thread.getName(), throwable);
-        if (chrome != null) {
-            chrome.shellOutput("Uncaught exception in thread " + thread.getName() + ". This shouldn't happen, please report a bug!\n" +
-                               getStackTraceAsString(throwable));
-        }
-    };
-
     // Convert a throwable to a string with full stack trace
     private String getStackTraceAsString(Throwable throwable) {
         var sw = new java.io.StringWriter();
@@ -64,30 +55,28 @@ public class ContextManager implements IContextManager
         return sw.toString();
     }
 
-    // Create thread factory with exception handling
-    private ThreadFactory createExceptionHandlingThreadFactory(String namePrefix) {
-        var threadNumber = new AtomicInteger(1);
-        return r -> {
-            var thread = new Thread(r, namePrefix + "-" + threadNumber.getAndIncrement());
-            thread.setDaemon(true);
-            thread.setUncaughtExceptionHandler(uncaughtExceptionHandler);
-            return thread;
-        };
-    }
-
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
-    private final ExecutorService userActionExecutor =
-        Executors.newSingleThreadExecutor(createExceptionHandlingThreadFactory("UserActionThread"));
+    private final ExecutorService userActionExecutor = createLoggingExecutorService(Executors.newSingleThreadExecutor());
+
+    @NotNull
+    private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {
+        return new LoggingExecutorService(toWrap, th -> {
+           var thread = Thread.currentThread();
+           logger.error("Uncaught exception in thread {}", thread.getName(), th);
+           if (chrome != null) {
+               chrome.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
+                                          .formatted(thread.getName(), getStackTraceAsString(th)));
+           }
+       });
+    }
 
     // Context modification tasks (Edit/Read/Summarize/Drop/etc)
     // Multiple of these can run concurrently
-    private final ExecutorService contextActionExecutor =
-        Executors.newFixedThreadPool(2, createExceptionHandlingThreadFactory("ContextActionThread"));
+    private final ExecutorService contextActionExecutor = createLoggingExecutorService(Executors.newFixedThreadPool(2));
 
     // Internal background tasks (unrelated to user actions)
-    private final ExecutorService backgroundTasks =
-        Executors.newFixedThreadPool(2, createExceptionHandlingThreadFactory("BackgroundTask"));
+    private final ExecutorService backgroundTasks = createLoggingExecutorService(Executors.newFixedThreadPool(2));
 
     private Project project;
     private final Path root;
@@ -1059,9 +1048,9 @@ public class ContextManager implements IContextManager
         }
     }
 
-    public void removeBadFragment(ContextFragment f, IOException e)
+    public void removeBadFragment(ContextFragment f, IOException th)
     {
-        logger.warn("Removing unreadable fragment {}", f.description(), e);
+        logger.warn("Removing unreadable fragment {}", f.description(), th);
         chrome.toolErrorRaw("Removing unreadable fragment " + f.description());
         pushContext(c -> c.removeBadFragment(f));
     }
