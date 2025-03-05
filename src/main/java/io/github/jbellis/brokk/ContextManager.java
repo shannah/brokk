@@ -75,12 +75,18 @@ public class ContextManager implements IContextManager
         };
     }
 
-    // Run user-driven tasks in background
-    private final ExecutorService userActionExecutor = 
+    // Run main user-driven tasks in background (Code/Ask/Search/Run)
+    // Only one of these can run at a time
+    private final ExecutorService userActionExecutor =
         Executors.newSingleThreadExecutor(createExceptionHandlingThreadFactory("UserActionThread"));
 
-    // Internal background tasks
-    private final ExecutorService backgroundTasks = 
+    // Context modification tasks (Edit/Read/Summarize/Drop/etc)
+    // Multiple of these can run concurrently
+    private final ExecutorService contextActionExecutor =
+        Executors.newFixedThreadPool(2, createExceptionHandlingThreadFactory("ContextActionThread"));
+
+    // Internal background tasks (unrelated to user actions)
+    private final ExecutorService backgroundTasks =
         Executors.newFixedThreadPool(2, createExceptionHandlingThreadFactory("BackgroundTask"));
 
     private Project project;
@@ -310,7 +316,7 @@ public class ContextManager implements IContextManager
     public Future<?> addContextViaDialogAsync()
     {
         assert chrome != null;
-        return userActionExecutor.submit(() -> {
+        return contextActionExecutor.submit(() -> {
             try {
                 var files = showFileSelectionDialog("Add Context");
                 if (!files.isEmpty()) {
@@ -358,7 +364,7 @@ public class ContextManager implements IContextManager
      */
     public Future<?> readContextViaDialogAsync()
     {
-        return userActionExecutor.submit(() -> {
+        return contextActionExecutor.submit(() -> {
             try {
                 if (chrome == null) return;
                 SwingUtilities.invokeLater(() -> {
@@ -395,7 +401,7 @@ public class ContextManager implements IContextManager
      */
     public Future<?> performContextActionAsync(String action, List<ContextFragment> selectedFragments)
     {
-        return userActionExecutor.submit(() -> {
+        return contextActionExecutor.submit(() -> {
             try {
                 switch (action) {
                     case "edit" -> doEditAction(selectedFragments);
@@ -408,9 +414,6 @@ public class ContextManager implements IContextManager
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput(action + " canceled.");
-            } catch (Exception e) {
-                logger.error("Error in " + action + " action", e);
-                chrome.toolErrorRaw("Error in " + action + " action: " + e.getMessage());
             } finally {
                 chrome.enableContextActionButtons();
                 chrome.enableUserActionButtons();
@@ -423,14 +426,11 @@ public class ContextManager implements IContextManager
      */
     public Future<?> performCommitActionAsync()
     {
-        return userActionExecutor.submit(() -> {
+        return contextActionExecutor.submit(() -> {
             try {
                 doCommitAction();
             } catch (CancellationException cex) {
                 chrome.toolOutput("Commit action canceled.");
-            } catch (Exception e) {
-                logger.error("Error in commit action", e);
-                chrome.toolErrorRaw("Error in commit action: " + e.getMessage());
             } finally {
                 chrome.enableContextActionButtons();
                 chrome.enableUserActionButtons();
@@ -481,7 +481,6 @@ public class ContextManager implements IContextManager
     }
 
     private void doCopyAction(List<ContextFragment> selectedFragments) {
-        // If none are selected, copy ALL
         String content;
         if (selectedFragments.isEmpty()) {
             // gather entire context
@@ -508,14 +507,10 @@ public class ContextManager implements IContextManager
             content = sb.toString();
         }
 
-        try {
-            var sel = new java.awt.datatransfer.StringSelection(content);
-            var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-            cb.setContents(sel, sel);
-            chrome.toolOutput("Content copied to clipboard");
-        } catch (Exception e) {
-            chrome.toolErrorRaw("Failed to copy: " + e.getMessage());
-        }
+        var sel = new java.awt.datatransfer.StringSelection(content);
+        var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        cb.setContents(sel, sel);
+        chrome.toolOutput("Content copied to clipboard");
     }
 
     private void doPasteAction()
@@ -703,7 +698,7 @@ public class ContextManager implements IContextManager
     /** undo last context change */
     public Future<?> undoContextAsync()
     {
-        return userActionExecutor.submit(() -> {
+        return contextActionExecutor.submit(() -> {
             try {
                 if (contextHistory.size() <= 1) {
                     chrome.toolErrorRaw("no undo state available");
@@ -716,9 +711,6 @@ public class ContextManager implements IContextManager
                 chrome.toolOutput("Undo!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Undo canceled.");
-            } catch (Exception e) {
-                logger.error("Error in undo", e);
-                chrome.toolErrorRaw("Error in undo: " + e.getMessage());
             } finally {
                 chrome.enableContextActionButtons();
                 chrome.enableUserActionButtons();
@@ -729,7 +721,7 @@ public class ContextManager implements IContextManager
     /** redo last undone context */
     public Future<?> redoContextAsync()
     {
-        return userActionExecutor.submit(() -> {
+        return contextActionExecutor.submit(() -> {
             try {
                 if (redoHistory.isEmpty()) {
                     chrome.toolErrorRaw("no redo state available");
@@ -742,9 +734,6 @@ public class ContextManager implements IContextManager
                 chrome.toolOutput("Redo!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Redo canceled.");
-            } catch (Exception e) {
-                logger.error("Error in redo", e);
-                chrome.toolErrorRaw("Error in redo: " + e.getMessage());
             } finally {
                 chrome.enableContextActionButtons();
                 chrome.enableUserActionButtons();
@@ -809,62 +798,51 @@ public class ContextManager implements IContextManager
     /** usage for identifier */
     public void usageForIdentifier(String identifier)
     {
-        // no longer returns OperationResult; it calls UI directly
-        try {
-            var uses = getAnalyzer().getUses(identifier);
-            if (uses.isEmpty()) {
-                chrome.toolOutput("No uses found for " + identifier);
-                return;
-            }
-            var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
-            if (result.code().isEmpty()) {
-                chrome.toolOutput("No relevant uses found for " + identifier);
-                return;
-            }
-            var combined = result.code();
-            pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
-            chrome.toolOutput("Usage references added for " + identifier);
-        } catch (Exception e) {
-            logger.error("usageForIdentifier error", e);
-            chrome.toolErrorRaw(e.getMessage());
+        var uses = getAnalyzer().getUses(identifier);
+        if (uses.isEmpty()) {
+            chrome.toolOutput("No uses found for " + identifier);
+            return;
         }
+        var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
+        if (result.code().isEmpty()) {
+            chrome.toolOutput("No relevant uses found for " + identifier);
+            return;
+        }
+        var combined = result.code();
+        pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
+        chrome.toolOutput("Usage references added for " + identifier);
     }
 
     /** parse stacktrace */
     public void addStacktraceFragment(String stacktraceText)
     {
-        try {
-            var stacktrace = StackTrace.parse(stacktraceText);
-            if (stacktrace == null) {
-                chrome.toolErrorRaw("unable to parse stacktrace");
-                return;
-            }
-            var exception = stacktrace.getExceptionType();
-            var content = new StringBuilder();
-            var sources = new HashSet<CodeUnit>();
-
-            for (var element : stacktrace.getFrames()) {
-                var methodFullName = element.getClassName() + "." + element.getMethodName();
-                var methodSource = getAnalyzer().getMethodSource(methodFullName);
-                if (methodSource.isDefined()) {
-                    sources.add(CodeUnit.cls(ContextFragment.toClassname(methodFullName)));
-                    content.append(methodFullName).append(":\n");
-                    content.append(methodSource.get()).append("\n\n");
-                }
-            }
-            if (content.isEmpty()) {
-                chrome.toolErrorRaw("no relevant methods found in stacktrace");
-                return;
-            }
-            pushContext(ctx -> {
-                var fragment = new ContextFragment.StacktraceFragment(sources, stacktraceText, exception, content.toString());
-                return ctx.addVirtualFragment(fragment);
-            });
-            chrome.toolOutput("Stacktrace parsed, relevant frames added");
-        } catch (Exception e) {
-            logger.error("Failed to parse stacktrace", e);
-            chrome.toolErrorRaw("Failed to parse stacktrace: " + e.getMessage());
+        var stacktrace = StackTrace.parse(stacktraceText);
+        if (stacktrace == null) {
+            chrome.toolErrorRaw("unable to parse stacktrace");
+            return;
         }
+        var exception = stacktrace.getExceptionType();
+        var content = new StringBuilder();
+        var sources = new HashSet<CodeUnit>();
+
+        for (var element : stacktrace.getFrames()) {
+            var methodFullName = element.getClassName() + "." + element.getMethodName();
+            var methodSource = getAnalyzer().getMethodSource(methodFullName);
+            if (methodSource.isDefined()) {
+                sources.add(CodeUnit.cls(ContextFragment.toClassname(methodFullName)));
+                content.append(methodFullName).append(":\n");
+                content.append(methodSource.get()).append("\n\n");
+            }
+        }
+        if (content.isEmpty()) {
+            chrome.toolErrorRaw("no relevant methods found in stacktrace");
+            return;
+        }
+        pushContext(ctx -> {
+            var fragment = new ContextFragment.StacktraceFragment(sources, stacktraceText, exception, content.toString());
+            return ctx.addVirtualFragment(fragment);
+        });
+        chrome.toolOutput("Stacktrace parsed, relevant frames added");
     }
 
     /** Summarize classes => adds skeleton fragments */
@@ -910,6 +888,15 @@ public class ContextManager implements IContextManager
     public List<ChatMessage> getHistoryMessages()
     {
         return currentContext().getHistory();
+    }
+    
+    /**
+     * Shutdown all executors
+     */
+    public void shutdown() {
+        userActionExecutor.shutdown();
+        contextActionExecutor.shutdown();
+        backgroundTasks.shutdown();
     }
 
     public List<ChatMessage> getReadOnlyMessages()

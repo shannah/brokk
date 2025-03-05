@@ -1197,7 +1197,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void toolErrorRaw(String msg) {
         SwingUtilities.invokeLater(() -> {
-            commandResultLabel.setText("[ERROR] " + msg);
+            commandResultLabel.setText(msg);
             logger.warn(msg);
         });
     }
@@ -1243,7 +1243,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void spin(String message) {
-        SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText("Working on: " + message));
+        SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(message));
     }
 
     @Override
@@ -1327,6 +1327,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void close() {
         logger.info("Closing Chrome UI");
+        if (contextManager != null) {
+            contextManager.shutdown();
+        }
         if (frame != null) {
             frame.dispose();
         }
