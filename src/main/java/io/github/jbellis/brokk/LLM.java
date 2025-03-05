@@ -94,8 +94,8 @@ public class LLM {
                     .map(coder.contextManager::toFile)
                     .toList();
             logger.debug("Auto-adding as editable: {}", filesToAdd);
-            io.shellOutput("Editing additional files " + filesToAdd);
             if (!filesToAdd.isEmpty()) {
+                io.shellOutput("Editing additional files " + filesToAdd);
                 coder.contextManager.addFiles(filesToAdd);
             }
             if (blocks.isEmpty()) {
