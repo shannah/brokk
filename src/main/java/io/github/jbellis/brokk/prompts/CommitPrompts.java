@@ -17,7 +17,7 @@ public abstract class CommitPrompts extends DefaultPrompts {
     public List<ChatMessage> collectMessages(ContextManager cm) {
         var diffTxt = GitRepo.instance.diff();
         if (diffTxt.isEmpty()) {
-            return List.of(new SystemMessage("No changes to commit."));
+            return List.of();
         }
 
         var context = """
