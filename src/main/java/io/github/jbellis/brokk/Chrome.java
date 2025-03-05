@@ -148,6 +148,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         this.coder = coder;
         this.project = contextManager.getProject();
         loadWindowSizeAndPosition();
+        updateContextButtons();
         this.commands = new Commands(contextManager);
 
         // Now, also tell the commands object to use this as IConsoleIO:
@@ -419,7 +420,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
-            suggestCommitButton.setEnabled(false);
         });
     }
 
@@ -614,6 +614,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add suggest commit button
         suggestCommitButton = new JButton("Suggest Commit");
         suggestCommitButton.setEnabled(false);
+        suggestCommitButton.setMnemonic(KeyEvent.VK_C);
         suggestCommitButton.addActionListener(e -> {
             disableUserActionButtons();
             currentUserTask = contextManager.performCommitActionAsync();
@@ -647,7 +648,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        updateContextButtons();  // initialize
         locSummaryLabel.setText("No context - use Edit or Read or Summarize to add content");
 
         return contextPanel;
@@ -831,26 +831,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates the uncommitted files label and the state of the suggest commit button
      */
     private void updateSuggestCommitButton() {
-        if (contextManager == null) return;
+        assert contextManager != null;
 
-        SwingUtilities.invokeLater(() -> {
-            contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
-                try {
-                    List<String> uncommittedFiles = GitRepo.instance.getUncommittedFileNames();
-                    SwingUtilities.invokeLater(() -> {
-                        if (uncommittedFiles.isEmpty()) {
-                            uncommittedFilesLabel.setText("No uncommitted changes");
-                            suggestCommitButton.setEnabled(false);
-                        } else {
-                            uncommittedFilesLabel.setText("Uncommitted files: " + String.join(", ", uncommittedFiles));
-                            suggestCommitButton.setEnabled(true);
-                        }
-                    });
-                } catch (Exception e) {
-                    logger.error("Error checking uncommitted files", e);
+        contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
+            List<String> uncommittedFiles = GitRepo.instance.getUncommittedFileNames();
+            SwingUtilities.invokeLater(() -> {
+                if (uncommittedFiles.isEmpty()) {
+                    uncommittedFilesLabel.setText("No uncommitted changes");
+                    suggestCommitButton.setEnabled(false);
+                } else {
+                    uncommittedFilesLabel.setText("Uncommitted files: " + String.join(", ", uncommittedFiles));
+                    suggestCommitButton.setEnabled(true);
                 }
-                return null;
             });
+            return null;
         });
     }
 
@@ -1504,8 +1498,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void prefillCommand(String command) {
         SwingUtilities.invokeLater(() -> {
-            this.commandInputField.setText(command);
-            this.commandInputField.requestFocus();
+            commandInputField.setText(command);
+            runButton.requestFocus();
         });
     }
 

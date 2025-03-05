@@ -596,26 +596,19 @@ public class ContextManager implements IContextManager
             return;
         }
 
-        chrome.spin("Inferring commit message");
-        try {
-            String commitMsg = coder.sendMessage(messages);
-            if (commitMsg.isEmpty()) {
-                chrome.toolErrorRaw("LLM did not provide a commit message");
-                return;
-            }
-            
-            // Escape quotes in the commit message
-            commitMsg = commitMsg.replace("\"", "\\\"");
-            
-            // Prefill the command input field
-            String finalCommitMsg = commitMsg;
-            SwingUtilities.invokeLater(() -> {
-                chrome.prefillCommand("$git commit -a -m \"" + finalCommitMsg + "\"");
-            });
-            chrome.toolOutput("Commit message suggested");
-        } finally {
-            chrome.spinComplete();
+        chrome.toolOutput("Inferring commit message");
+        String commitMsg = coder.sendMessage(messages);
+        if (commitMsg.isEmpty()) {
+            chrome.toolErrorRaw("LLM did not provide a commit message");
+            return;
         }
+
+        // Escape quotes in the commit message
+        commitMsg = commitMsg.replace("\"", "\\\"");
+
+        // Prefill the command input field
+        String finalCommitMsg = commitMsg;
+        chrome.prefillCommand("git commit -a -m \"" + finalCommitMsg + "\"");
     }
     
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
@@ -1088,19 +1081,14 @@ public class ContextManager implements IContextManager
      */
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task)
     {
-        var callable = new Callable<T>()
-        {
-            @Override
-            public T call() throws Exception {
-                try {
-                    updateBackgroundStatus();
-                    return task.call();
-                } finally {
-                    updateBackgroundStatus();
-                }
+        return backgroundTasks.submit(() -> {
+            try {
+                chrome.spin(taskDescription);
+                return task.call();
+            } finally {
+                updateBackgroundStatus();
             }
-        };
-        return backgroundTasks.submit(callable);
+        });
     }
 
     /**
