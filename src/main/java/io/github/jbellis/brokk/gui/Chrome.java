@@ -54,6 +54,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JTable contextHistoryTable;
     private DefaultTableModel contextHistoryModel;
     
+    // Track the horizontal split that holds the history panel
+    private JSplitPane historySplitPane;
+
     // Capture panel buttons
     private JButton captureTextButton;
     private JButton editFilesButton;
@@ -185,20 +188,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // We'll do this after we know the button size
         var contextHistoryPanel = buildContextHistoryPanel();
 
-        // Create a split pane to hold output and history
-        var outputSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        outputSplitPane.setLeftComponent(outputPanel);
-        outputSplitPane.setRightComponent(contextHistoryPanel);
-        outputSplitPane.setResizeWeight(0.8); // 80% to output, 20% to history
+        // Store this horizontal split in our class field
+        this.historySplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        historySplitPane.setLeftComponent(outputPanel);
+        historySplitPane.setRightComponent(contextHistoryPanel);
+        historySplitPane.setResizeWeight(0.8); // 80% to output, 20% to history
 
         gbc.weighty = 1.0;
         gbc.gridy = 0;
-        contentPanel.add(outputSplitPane, gbc);
+        contentPanel.add(historySplitPane, gbc);
 
-        // Ensure the history panel width is correct immediately
-        SwingUtilities.invokeLater(() -> {
-            setInitialHistoryPanelWidth();
-        });
+        // We will size the history panel after the frame is actually displayed
+        SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
 
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
@@ -369,10 +370,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         splitPane.setResizeWeight(0.7); // 70% to history, 30% to capture
 
         parentPanel.add(splitPane, BorderLayout.CENTER);
-        
-        // Make sure we call setInitialHistoryPanelWidth after adding to the UI
-        SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
-        
+
         return parentPanel;
     }
     
@@ -1729,32 +1727,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     
     private void setInitialHistoryPanelWidth()
     {
-        Container historyPanel = contextHistoryTable.getParent();
-        while (historyPanel != null && !(historyPanel instanceof JPanel)) {
-            historyPanel = historyPanel.getParent();
+        // Safety checks
+        if (editButton == null || historySplitPane == null) {
+            return;
         }
 
-        // Only proceed if we find the panel and the editButton is available
-        if (historyPanel != null && editButton != null) {
-            int buttonWidth = editButton.getPreferredSize().width;
-            int newWidth = buttonWidth + 30; // Add padding
+        // We measure the edit button's width and add padding
+        int buttonWidth = editButton.getPreferredSize().width;
+        int newWidth = buttonWidth + 30;
 
-            // Set the panel's preferred width
-            historyPanel.setPreferredSize(new Dimension(newWidth, historyPanel.getPreferredSize().height));
+        // Now set the divider location on the horizontal split
+        // so that the right side is newWidth.
+        // Frame width minus newWidth minus the divider size => 
+        // left side gets the remainder, right side is about newWidth.
 
-            // Force the split pane divider location
-            Container parent = historyPanel.getParent();
-            while (parent != null && !(parent instanceof JSplitPane)) {
-                parent = parent.getParent();
-            }
-            if (parent instanceof JSplitPane splitPane) {
-                splitPane.setResizeWeight(0.8);
-                splitPane.setDividerLocation(frame.getWidth() - newWidth - splitPane.getDividerSize());
-            }
-
-            historyPanel.revalidate();
-            historyPanel.repaint();
+        int dividerPos = frame.getWidth() - newWidth - historySplitPane.getDividerSize();
+        // If the frame isn't shown, or is smaller than newWidth, we clamp to a min of e.g. 100
+        if (dividerPos < 100) {
+            dividerPos = 100;
         }
+
+        historySplitPane.setResizeWeight(0.0); // left side can shrink/grow
+        historySplitPane.setDividerLocation(dividerPos);
+
+        // Re-validate to ensure the UI picks up changes
+        historySplitPane.revalidate();
+        historySplitPane.repaint();
     }
 
     public JFrame getFrame() {
