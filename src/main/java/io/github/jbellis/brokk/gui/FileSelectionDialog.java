@@ -4,9 +4,13 @@ import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.RepoFile;
 import org.fife.ui.autocomplete.AutoCompletion;
+import org.fife.ui.autocomplete.BasicCompletion;
+import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionProvider;
+import org.fife.ui.autocomplete.DefaultCompletionProvider;
 
 import javax.swing.*;
+import javax.swing.text.JTextComponent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
@@ -207,33 +211,7 @@ public class FileSelectionDialog extends JDialog {
     private CompletionProvider createFileCompletionProvider()
     {
         Collection<RepoFile> tracked = GitRepo.instance.getTrackedFiles();
-        return new FileCompletionProvider(tracked)
-        {
-            @Override
-            public String getAlreadyEnteredText(javax.swing.text.JTextComponent comp)
-            {
-                // Get the word under cursor (which can be blank if on whitespace).
-                String text = comp.getText();
-                int caretPos = comp.getCaretPosition();
-
-                // Search backward for whitespace
-                int start = caretPos;
-                while (start > 0 && !Character.isWhitespace(text.charAt(start - 1))) {
-                    start--;
-                }
-
-                // Search forward for whitespace
-                int end = caretPos;
-                while (end < text.length() && !Character.isWhitespace(text.charAt(end))) {
-                    end++;
-                }
-
-                if (start == end) {
-                    return "";
-                }
-                return text.substring(start, end);
-            }
-        };
+        return new FileCompletionProvider(tracked);
     }
 
     /**
@@ -283,5 +261,84 @@ public class FileSelectionDialog extends JDialog {
      */
     public List<RepoFile> getSelectedFiles() {
         return new ArrayList<>(selectedFiles);
+    }
+
+    /**
+     * Custom CompletionProvider for files that replicates the old logic.
+     */
+    public static class FileCompletionProvider extends DefaultCompletionProvider {
+
+        private final Collection<RepoFile> repoFiles;
+
+        public FileCompletionProvider(Collection<RepoFile> repoFiles) {
+            super();
+            this.repoFiles = repoFiles;
+        }
+
+        @Override
+        public String getAlreadyEnteredText(javax.swing.text.JTextComponent comp)
+        {
+            // Get the word under cursor (which can be blank if on whitespace).
+            String text = comp.getText();
+            int caretPos = comp.getCaretPosition();
+
+            // Search backward for whitespace
+            int start = caretPos;
+            while (start > 0 && !Character.isWhitespace(text.charAt(start - 1))) {
+                start--;
+            }
+
+            // Search forward for whitespace
+            int end = caretPos;
+            while (end < text.length() && !Character.isWhitespace(text.charAt(end))) {
+                end++;
+            }
+
+            if (start == end) {
+                return "";
+            }
+            return text.substring(start, end);
+        }
+
+        @Override
+        public List<Completion> getCompletions(JTextComponent tc) {
+            var input = getAlreadyEnteredText(tc);
+            String partialLower = input.toLowerCase();
+            Map<String, RepoFile> baseToFullPath = new HashMap<>();
+            List<Completion> completions = new ArrayList<>();
+
+            for (RepoFile p : repoFiles) {
+                baseToFullPath.put(p.getFileName(), p);
+            }
+
+            // Matching base filenames
+            baseToFullPath.forEach((base, path) -> {
+                if (base.toLowerCase().startsWith(partialLower)) {
+                    completions.add(createCompletion(path));
+                }
+            });
+
+            // Camel-case completions
+            baseToFullPath.forEach((base, path) -> {
+                String capitals = Completions.extractCapitals(base);
+                if (capitals.toLowerCase().startsWith(partialLower)) {
+                    completions.add(createCompletion(path));
+                }
+            });
+
+            // Matching full paths
+            for (RepoFile p : repoFiles) {
+                if (p.toString().toLowerCase().startsWith(partialLower)) {
+                    completions.add(createCompletion(p));
+                }
+            }
+
+            return completions;
+        }
+
+        private Completion createCompletion(RepoFile file) {
+            String replacement = file.toString() + " ";
+            return new BasicCompletion(this, replacement, file.getFileName(), file.toString());
+        }
     }
 }
