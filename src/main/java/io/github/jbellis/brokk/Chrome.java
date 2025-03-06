@@ -23,7 +23,10 @@ import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 /**
  * Chrome provides a Swing-based UI for Brokk, replacing the old Lanterna-based ConsoleIO.
@@ -62,6 +65,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Context History Panel
     private JTable contextHistoryTable;
     private DefaultTableModel contextHistoryModel;
+    
+    // Capture panel buttons
+    private JButton captureTextButton;
+    private JButton editFilesButton;
 
     // Context Panel & table:
     private JPanel contextPanel;
@@ -90,6 +97,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
     private final int CHECKBOX_COLUMN = 2;
+    private JLabel captureDescriptionLabel;
 
     /**
      * Default constructor sets up the UI.
@@ -230,6 +238,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Builds the Context History panel that shows past contexts
      */
     private JPanel buildContextHistoryPanel() {
+        // Create a parent panel to contain both history and capture panels
+        var parentPanel = new JPanel(new BorderLayout());
+        
+        // Create history panel
         var panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
@@ -351,7 +363,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.add(scrollPane, BorderLayout.CENTER);
         panel.add(buttonPanel, BorderLayout.SOUTH);
 
-        return panel;
+        // Create capture output panel
+        var capturePanel = buildCaptureOutputPanel();
+
+        // Add both panels to parent with a vertical split
+        var splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        splitPane.setTopComponent(panel);
+        splitPane.setBottomComponent(capturePanel);
+        splitPane.setResizeWeight(0.7); // 70% to history, 30% to capture
+
+        parentPanel.add(splitPane, BorderLayout.CENTER);
+        
+        // Make sure we call setInitialHistoryPanelWidth after adding to the UI
+        SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
+        
+        return parentPanel;
     }
     
     /**
@@ -1735,6 +1761,136 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Sets the initial width of the history panel based on the context buttons width
      */
+    /**
+     * Builds the Capture Output panel for capturing textarea content
+     */
+    private JPanel buildCaptureOutputPanel() {
+        var panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Capture Output",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
+        ));
+
+        // Create buttons panel with vertical layout
+        var buttonPanel = new JPanel(new GridLayout(2, 1, 5, 5));
+
+        // Capture Text button
+        captureTextButton = new JButton("Capture Text");
+        captureTextButton.addActionListener(e -> captureTextFromTextarea());
+        
+        // Edit Files button
+        editFilesButton = new JButton("Edit Files");
+        editFilesButton.addActionListener(e -> editFilesFromTextarea());
+        editFilesButton.setEnabled(false); // Disabled by default
+
+        buttonPanel.add(captureTextButton);
+        buttonPanel.add(editFilesButton);
+
+        // Add description label at top that will show files
+        captureDescriptionLabel = new JLabel("Files referenced: None");
+        captureDescriptionLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
+
+        panel.add(captureDescriptionLabel, BorderLayout.NORTH);
+        panel.add(buttonPanel, BorderLayout.CENTER);
+        
+        // Update button state when textarea changes
+        llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+        });
+        
+        return panel;
+    }
+    
+    /**
+     * Updates the state of capture buttons based on textarea content
+     */
+    private void updateCaptureButtons() {
+        String text = llmStreamArea.getText();
+        boolean hasText = !text.isBlank();
+
+        SwingUtilities.invokeLater(() -> {
+            captureTextButton.setEnabled(hasText);
+
+            // Check for sources only if there's text
+            if (hasText) {
+                // Use the sources method directly instead of a static method
+                var fragment = new ContextFragment.StringFragment(text, "temp");
+                Set<CodeUnit> sources = fragment.sources(contextManager.getAnalyzer());
+                editFilesButton.setEnabled(!sources.isEmpty());
+                
+                // Update description with file names
+                updateFilesDescriptionLabel(sources);
+            } else {
+                editFilesButton.setEnabled(false);
+                updateFilesDescriptionLabel(Set.of());
+            }
+        });
+    }
+    
+    /**
+     * Updates the description label with file names
+     */
+    private void updateFilesDescriptionLabel(Set<CodeUnit> sources) {
+        if (sources.isEmpty()) {
+            captureDescriptionLabel.setText("Files referenced: None");
+            return;
+        }
+        
+        Set<String> fileNames = sources.stream()
+            .map(cu -> contextManager.getAnalyzer().pathOf(cu))
+            .filter(Objects::nonNull)
+            .map(file -> file.getFileName().toString())
+            .collect(Collectors.toSet());
+            
+        String filesText = "Files referenced: " + String.join(", ", fileNames);
+        captureDescriptionLabel.setText(filesText);
+    }
+    
+    /**
+     * Captures the current text from textarea as a StringFragment
+     */
+    private void captureTextFromTextarea() {
+        String text = llmStreamArea.getText();
+        if (!text.isBlank()) {
+            String description = "Captured text from " + new java.util.Date();
+            contextManager.addStringFragment(description, text);
+            // Clear the textarea after capturing
+            SwingUtilities.invokeLater(() -> llmStreamArea.setText(""));
+        }
+    }
+
+    /**
+     * Edits files referenced in the textarea content
+     */
+    private void editFilesFromTextarea() {
+        String text = llmStreamArea.getText();
+        if (!text.isBlank()) {
+            // Use the sources method directly instead of a static method
+            var fragment = new ContextFragment.StringFragment(text, "temp");
+            Set<CodeUnit> sources = fragment.sources(contextManager.getAnalyzer());
+            if (!sources.isEmpty()) {
+                Set<RepoFile> files = sources.stream()
+                    .map(cu -> contextManager.getAnalyzer().pathOf(cu))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+                if (!files.isEmpty()) {
+                    contextManager.addFiles(files);
+                    // Clear the textarea after adding files
+                    SwingUtilities.invokeLater(() -> llmStreamArea.setText(""));
+                }
+            }
+        }
+    }
+    
     private void setInitialHistoryPanelWidth()
     {
         Container historyPanel = contextHistoryTable.getParent();

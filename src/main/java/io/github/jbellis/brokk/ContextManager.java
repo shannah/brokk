@@ -338,43 +338,6 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Sub-action for reading files (pop up a standard JFileChooser).
-     * (Not used from “Read context” button in the final UI, but we keep it for reference.)
-     */
-    public Future<?> readContextViaDialogAsync()
-    {
-        return contextActionExecutor.submit(() -> {
-            try {
-                if (chrome == null) return;
-                SwingUtilities.invokeLater(() -> {
-                    var chooser = new JFileChooser(getRoot().toFile());
-                    chooser.setMultiSelectionEnabled(true);
-                    var result = chooser.showOpenDialog(null);
-                    if (result == JFileChooser.APPROVE_OPTION) {
-                        var files = chooser.getSelectedFiles();
-                        if (files.length == 0) {
-                            chrome.toolOutput("No files selected");
-                            return;
-                        }
-                        var repoFiles = new ArrayList<RepoFile>();
-                        for (var f : files) {
-                            var rel = getRoot().relativize(f.toPath()).toString();
-                            repoFiles.add(toFile(rel));
-                        }
-                        addReadOnlyFiles(repoFiles);
-                        chrome.toolOutput("Added read-only " + repoFiles);
-                    }
-                    chrome.enableContextActionButtons();
-                    chrome.enableUserActionButtons();
-                });
-            } catch (Exception e) {
-                logger.error("Error reading context", e);
-                chrome.toolErrorRaw("Error reading context: " + e.getMessage());
-            }
-        });
-    }
-
-    /**
      * Performed by the action buttons in the context panel: "edit / read / copy / drop / summarize"
      * If selectedFragments is empty, it means "All". We handle logic accordingly.
      */
@@ -985,9 +948,13 @@ public class ContextManager implements IContextManager
     
     /**
      * Gets the currently selected index in the history table, or -1 if none selected
+     * May be called on or off the Swing EDT
      */
     private int getSelectedHistoryIndex() {
         assert chrome != null;
+        if (SwingUtilities.isEventDispatchThread()) {
+            return chrome.getContextHistoryTable().getSelectedRow();
+        }
         return SwingUtil.runOnEDT(() -> chrome.getContextHistoryTable().getSelectedRow(), null);
     }
 

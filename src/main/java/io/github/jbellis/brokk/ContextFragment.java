@@ -184,6 +184,12 @@ public interface ContextFragment {
         }
 
         @Override
+        public String shortDescription() {
+            assert !description().isEmpty();
+            return description().substring(0, 1).toLowerCase() + description().substring(1);
+        }
+
+        @Override
         public boolean isEligibleForAutoContext() {
             return true;
         }
