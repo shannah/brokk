@@ -228,9 +228,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Creates the RSyntaxTextArea for the LLM stream, wrapped in a JScrollPane.
-     */
-    /**
      * Builds the Context History panel that shows past contexts
      */
     private JPanel buildContextHistoryPanel() {
@@ -1596,6 +1593,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return false;
     }
 
+    /**
+     * Builds the "Capture Output" panel with a 5-line references area
+     * and two full-width buttons stacked at the bottom.
+     */
     private JPanel buildCaptureOutputPanel() {
         var panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -1607,42 +1608,54 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
 
-        // Multiline references text area with room for at least 5 lines of text
-        captureDescriptionArea = new JTextArea("Files referenced: None", 5, 20);
+        // 1) Multiline references text area (5 rows).
+        //    Wrap it in a scroll pane so if references exceed 5 lines, a scrollbar appears.
+        captureDescriptionArea = new JTextArea("Files referenced: None", 5, 50);
         captureDescriptionArea.setEditable(false);
         captureDescriptionArea.setLineWrap(true);
         captureDescriptionArea.setWrapStyleWord(true);
         captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
 
-        var referencesScrollPane = new JScrollPane(captureDescriptionArea);
-        referencesTextAreaSizeAdjust(captureDescriptionArea);
-        referencesAreaPreferredSize(captureDescriptionArea, 5);
+        // Create scroll pane for references area
+        var referencesScrollPane = new JScrollPane(captureDescriptionArea,
+                                                   JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                                                   JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 
-        panel.add(captureDescriptionArea);
-        panel.add(Box.createVerticalStrut(10)); // spacing below the textarea
+        // Make it expand to full width
+        referencesScrollPane.setAlignmentX(Component.CENTER_ALIGNMENT);
+        referencesScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE,
+                                                          captureDescriptionArea.getPreferredSize().height));
 
-        // Buttons panel
-        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        // 2) Add the references area at the top
+        panel.add(referencesScrollPane);
 
+        // 3) Add "glue" so everything below is pushed to the bottom
+        panel.add(Box.createVerticalGlue());
+
+        // 4) "Capture Text" button, full width
         captureTextButton = new JButton("Capture Text");
         captureTextButton.addActionListener(e -> captureTextFromTextarea());
+        captureTextButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        captureTextButton.setMaximumSize(
+                new Dimension(Integer.MAX_VALUE, captureTextButton.getPreferredSize().height)
+        );
 
+        // 5) "Edit Files" button, full width
         editFilesButton = new JButton("Edit Files");
-        editFilesButton.addActionListener(e -> editFilesFromTextarea());
         editFilesButton.setEnabled(false);
+        editFilesButton.addActionListener(e -> editFilesFromTextarea());
+        editFilesButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        editFilesButton.setMaximumSize(
+                new Dimension(Integer.MAX_VALUE, editFilesButton.getPreferredSize().height)
+        );
 
-        buttonPanel.add(captureTextButton);
-        buttonPanel.add(editFilesButton);
+        // 6) Stack both buttons at the bottom
+        panel.add(captureTextButton);
+        panel.add(Box.createVerticalStrut(5));  // small gap
+        panel.add(editFilesButton);
 
-        // Explicitly set maximum size to avoid vertical stretching
-        buttonPanel.setMaximumSize(buttonPanel.getPreferredSize());
-
-        panel.add(captureDescriptionArea);
-        panel.add(Box.createVerticalStrut(10)); // vertical spacing
-        panel.add(buttonPanel);
-        panel.add(Box.createVerticalGlue()); // push everything upwards
-
-        // Document listener to update buttons based on textarea content
+        // 7) Add a DocumentListener to the main llmStreamArea so these buttons
+        //    update when that text changes
         llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             @Override
             public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
@@ -1654,7 +1667,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         return panel;
     }
-    
+
     /**
      * Updates the state of capture buttons based on textarea content
      */
