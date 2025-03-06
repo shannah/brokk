@@ -499,4 +499,8 @@ public class Context {
 
         return result;
     }
+
+    public String getTextAreaContents() {
+        return textarea;
+    }
 }

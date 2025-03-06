@@ -47,7 +47,7 @@ public class MultiLineCellRenderer extends JTextArea implements TableCellRendere
                     Object chromeObj = comp.getClientProperty("chrome");
                     if (chromeObj instanceof Chrome chrome && row < chrome.getContextManager().getContextHistory().size()) {
                         var ctx = chrome.getContextManager().getContextHistory().get(row);
-                        if (ctx.textarea != null) {
+                        if (ctx.getTextAreaContents() != null) {
                             // LLM conversation - use dark background
                             bg = new Color(50, 50, 50);
                             fg = new Color(220, 220, 220);
