@@ -10,8 +10,10 @@ import java.awt.*;
  * Multi-line cell renderer for the context history table
  */
 public class MultiLineCellRenderer extends JTextArea implements TableCellRenderer {
+    private final Chrome chrome;
 
-    public MultiLineCellRenderer() {
+    public MultiLineCellRenderer(Chrome chrome) {
+        this.chrome = chrome;
         setLineWrap(true);
         setWrapStyleWord(true);
         setOpaque(true);
@@ -39,17 +41,13 @@ public class MultiLineCellRenderer extends JTextArea implements TableCellRendere
                     && jt.getModel() instanceof DefaultTableModel model
                     && model.getRowCount() > row) {
 
-                // Look for an ancestor that supports client properties
-                Component ancestor = SwingUtilities.getAncestorOfClass(JComponent.class, table);
-                if (ancestor instanceof JComponent comp) {
-                    Object chromeObj = comp.getClientProperty("chrome");
-                    if (chromeObj instanceof Chrome chrome && row < chrome.getContextManager().getContextHistory().size()) {
-                        var ctx = chrome.getContextManager().getContextHistory().get(row);
-                        if (ctx.getTextAreaContents() != null) {
-                            // LLM conversation - use dark background
-                            bg = new Color(50, 50, 50);
-                            fg = new Color(220, 220, 220);
-                        }
+                // Check if the row is a valid index in the context history
+                if (chrome != null && row < chrome.getContextManager().getContextHistory().size()) {
+                    var ctx = chrome.getContextManager().getContextHistory().get(row);
+                    if (!ctx.getTextAreaContents().isBlank()) {
+                        // LLM conversation - use dark background
+                        bg = new Color(50, 50, 50);
+                        fg = new Color(220, 220, 220);
                     }
                 }
             }

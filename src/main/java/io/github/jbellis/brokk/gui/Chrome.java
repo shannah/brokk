@@ -262,7 +262,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable.setTableHeader(null);
         
         // Set up multi-line cell renderer for the first column
-        contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new MultiLineCellRenderer());
+        contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new MultiLineCellRenderer(this));
         
         // Set up column rendering for LLM conversation rows
         contextHistoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
