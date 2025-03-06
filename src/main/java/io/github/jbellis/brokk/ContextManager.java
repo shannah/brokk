@@ -246,8 +246,8 @@ public class ContextManager implements IContextManager
                 // stream from coder
                 chrome.toolOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
-                if (response != null) {
-                    addToHistory(List.of(messages.getLast(), response.aiMessage()), Map.of());
+                if (response.chatResponse() != null) {
+                    addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of());
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput("Ask command canceled.");

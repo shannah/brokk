@@ -64,13 +64,14 @@ public class Coder {
      * @param echo     Whether to echo LLM responses to the console
      * @return The final response from the LLM as a string
      */
-    public ChatResponse sendStreaming(StreamingChatLanguageModel model, List<ChatMessage> messages, boolean echo) {
+    public StreamingResult sendStreaming(StreamingChatLanguageModel model, List<ChatMessage> messages, boolean echo) {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         // locking for cancellation -- we don't want to show any output after cancellation
         var streamThread = Thread.currentThread();
         AtomicBoolean canceled = new AtomicBoolean(false);
         var lock = new ReentrantLock();
+        AtomicReference<Throwable> errorRef = new AtomicReference<>(null);
         Consumer<Runnable> ifNotCancelled = (r -> {
             lock.lock();
             try {
@@ -114,7 +115,9 @@ public class Coder {
                 ifNotCancelled.accept(() -> {
                     writeToHistory("Error", error.getClass() + ": " + error.getMessage());
                     io.toolErrorRaw("LLM error: " + error.getMessage());
-                    streamThread.interrupt();
+                    // Instead of interrupting, just record it so we can retry from the caller
+                    errorRef.set(error);
+                    latch.countDown();
                 });
             }
         });
@@ -125,9 +128,23 @@ public class Coder {
             lock.lock();
             canceled.set(true);
             lock.unlock();
-            return null;
+            // We were interrupted while waiting. That is cancellation.
+            return new StreamingResult(null, true, null);
         }
-        return atomicResponse.get();
+
+        if (Thread.currentThread().isInterrupted()) {
+            // Another chance to detect cancellation
+            return new StreamingResult(null, true, null);
+        }
+
+        Throwable streamingError = errorRef.get();
+        if (streamingError != null) {
+            // Return an error result
+            return new StreamingResult(null, false, streamingError);
+        }
+
+        // No error, not cancelled => success
+        return new StreamingResult(atomicResponse.get(), false, null);
     }
 
     /**
@@ -387,3 +404,11 @@ public class Coder {
         }
     }
 }
+
+// Represents the outcome of a streaming request.
+record StreamingResult
+(
+    ChatResponse chatResponse,
+    boolean cancelled,
+    Throwable error
+) {}
