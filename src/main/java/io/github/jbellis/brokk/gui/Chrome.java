@@ -1596,9 +1596,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return false;
     }
 
-    private JPanel buildCaptureOutputPanel()
-    {
-        // A top-level panel that stacks items vertically
+    private JPanel buildCaptureOutputPanel() {
         var panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createTitledBorder(
@@ -1609,49 +1607,49 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
 
-        // 1) A multiline text area for the references
-        captureDescriptionArea = new JTextArea(5, 40);
+        // Multiline references text area with room for at least 5 lines of text
+        captureDescriptionArea = new JTextArea("Files referenced: None", 5, 20);
         captureDescriptionArea.setEditable(false);
         captureDescriptionArea.setLineWrap(true);
         captureDescriptionArea.setWrapStyleWord(true);
         captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
-        captureDescriptionArea.setText("Files referenced: None");
-        captureDescriptionArea.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Optional: If you want to cap its maximum height at ~5 lines, do:
-        var lineHeight = captureDescriptionArea.getFontMetrics(
-                captureDescriptionArea.getFont()
-        ).getHeight();
-        captureDescriptionArea.setMaximumSize(
-                new Dimension(Integer.MAX_VALUE, lineHeight * 5 + 10)
-        );
+        var referencesScrollPane = new JScrollPane(captureDescriptionArea);
+        referencesTextAreaSizeAdjust(captureDescriptionArea);
+        referencesAreaPreferredSize(captureDescriptionArea, 5);
 
         panel.add(captureDescriptionArea);
-        panel.add(Box.createVerticalStrut(10)); // a bit of spacing below the text area
+        panel.add(Box.createVerticalStrut(10)); // spacing below the textarea
 
-        // 2) A button panel that does not expand
-        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        buttonPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Buttons panel
+        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
 
         captureTextButton = new JButton("Capture Text");
         captureTextButton.addActionListener(e -> captureTextFromTextarea());
-        buttonPanel.add(captureTextButton);
 
         editFilesButton = new JButton("Edit Files");
-        editFilesButton.setEnabled(false); // remains disabled until references are found
         editFilesButton.addActionListener(e -> editFilesFromTextarea());
+        editFilesButton.setEnabled(false);
+
+        buttonPanel.add(captureTextButton);
         buttonPanel.add(editFilesButton);
 
+        // Explicitly set maximum size to avoid vertical stretching
+        buttonPanel.setMaximumSize(buttonPanel.getPreferredSize());
+
+        panel.add(captureDescriptionArea);
+        panel.add(Box.createVerticalStrut(10)); // vertical spacing
         panel.add(buttonPanel);
+        panel.add(Box.createVerticalGlue()); // push everything upwards
 
-        // 3) Add “elastic” space at the bottom so buttons don’t stretch
-        panel.add(Box.createVerticalGlue());
-
-        // 4) Listen for LLM area changes (unchanged except for referencesTextArea):
+        // Document listener to update buttons based on textarea content
         llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
-            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
-            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
         });
 
         return panel;
