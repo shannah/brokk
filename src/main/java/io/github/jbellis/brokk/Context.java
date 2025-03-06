@@ -503,4 +503,19 @@ public class Context {
     public String getTextAreaContents() {
         return textarea;
     }
+
+    public Context withTextArea(String output, String action) {
+        return new Context(
+            analyzer,
+            editableFiles,
+            readonlyFiles,
+            virtualFragments,
+            autoContext,
+            autoContextFileCount,
+            historyMessages,
+            originalContents,
+            output,
+            action
+        );
+    }
 }

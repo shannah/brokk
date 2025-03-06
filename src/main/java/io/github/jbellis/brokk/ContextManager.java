@@ -193,8 +193,8 @@ public class ContextManager implements IContextManager
                 String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
                 chrome.shellOutput(output);
                 
-                // Store the command result as a StringFragment
-                actionFragment = new StringFragment(output, "Run " + input);
+                // Add to context history with the output text
+                pushContext(ctx -> ctx.withTextArea(output, "Run " + input));
             } finally {
                 chrome.enableUserActionButtons();
             }
