@@ -365,7 +365,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         assert ctx != null;
         
         // update the context panel display
-        updateContextTable(ctx);
+        setContext(ctx);
         
         // If there's textarea content, restore it to the LLM output area
         if (ctx.textarea != null) {
@@ -1417,7 +1417,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Repopulate the unified context table from the given context.
      */
-    public void updateContextTable(Context context) {
+    public void setContext(Context context) {
         SwingUtilities.invokeLater(() -> {
             // Clear the existing table rows
             var tableModel = (DefaultTableModel) contextTable.getModel();

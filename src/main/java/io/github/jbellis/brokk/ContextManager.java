@@ -115,7 +115,7 @@ public class ContextManager implements IContextManager
         // before adding the Context sentinel to history
         var initialContext = new Context(analyzerWrapper, 5);
         contextHistory.add(initialContext);
-        chrome.updateContextHistoryTable();
+        chrome.setContext(initialContext);
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
@@ -696,8 +696,7 @@ public class ContextManager implements IContextManager
                     redoHistory.add(redoContext);
                 }
                 
-                chrome.updateContextTable(currentContext());
-                chrome.updateContextHistoryTable();
+                chrome.setContext(currentContext());
                 chrome.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Undo canceled.");
@@ -720,8 +719,7 @@ public class ContextManager implements IContextManager
                 var popped = redoHistory.removeLast();
                 var undoContext = undoAndInvertChanges(popped);
                 contextHistory.add(undoContext);
-                chrome.updateContextTable(currentContext());
-                chrome.updateContextHistoryTable();
+                chrome.setContext(currentContext());
                 chrome.toolOutput("Redo!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Redo canceled.");
@@ -972,9 +970,8 @@ public class ContextManager implements IContextManager
             contextHistory.remove(0);
         }
         redoHistory.clear();
-        chrome.updateContextTable(newContext);
         chrome.toolOutput(newContext.getAction());
-        chrome.updateContextHistoryTable();
+        chrome.setContext(newContext);
     }
 
     /**
