@@ -43,6 +43,7 @@ import java.util.concurrent.Future;
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
     private final int FRAGMENT_COLUMN = 3;
+    private final String BGTASK_EMPTY = "[No background tasks]";
 
     // Dependencies:
     private ContextManager contextManager;
@@ -257,7 +258,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Creates the bottom-most background status label that shows "Working on: ..." or is blank when idle.
      */
     private JComponent buildBackgroundStatusLabel() {
-        backgroundStatusLabel = new JLabel(" ");
+        backgroundStatusLabel = new JLabel(BGTASK_EMPTY);
         backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         backgroundStatusLabel.setBorder(new EmptyBorder(3, 10, 3, 10));
         backgroundStatusLabel.setOpaque(true);
@@ -1242,12 +1243,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void spinComplete() {
-        SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(""));
+        SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(BGTASK_EMPTY));
     }
 
     @Override
     public boolean isSpinning() {
-        return !backgroundStatusLabel.getText().isBlank();
+        return !backgroundStatusLabel.getText().equals(BGTASK_EMPTY);
     }
 
     @Override
