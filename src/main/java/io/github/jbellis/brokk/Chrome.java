@@ -287,6 +287,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
+        // Add selection listener to preview context
+        contextHistoryTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int row = contextHistoryTable.getSelectedRow();
+                if (row >= 0 && contextManager != null && row < contextManager.contextHistory.size()) {
+                    var ctx = contextManager.contextHistory.get(row);
+                    previewContextFromHistory(ctx);
+                }
+            }
+        });
+        
         // Add double-click listener to restore context
         contextHistoryTable.addMouseListener(new MouseAdapter() {
             @Override
@@ -343,16 +354,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
     
     /**
-     * Restores a context from history by index
+     * Previews a context from history without fully restoring it
      */
-    private void restoreContextFromHistory(int index) {
-        if (contextManager == null || index < 0 || index >= contextManager.contextHistory.size()) {
-            return;
-        }
+    private void previewContextFromHistory(Context ctx) {
+        assert ctx != null;
         
-        var ctx = contextManager.contextHistory.get(index);
-        
-        // Update the context panel
+        // update the context panel display
         updateContextTable(ctx);
         
         // If there's textarea content, restore it to the LLM output area
@@ -362,8 +369,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 llmStreamArea.setCaretPosition(0);
             });
         }
-        
-        toolOutput("Restored context: " + ctx.getAction());
+    }
+
+    private void restoreContextFromHistory(int index) {
+        // TODO
     }
 
     /**
