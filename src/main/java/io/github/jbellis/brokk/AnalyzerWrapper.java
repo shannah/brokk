@@ -321,7 +321,8 @@ public class AnalyzerWrapper {
                 long fileMTime = Files.getLastModifiedTime(rf.absPath()).toMillis();
                 maxTrackedMTime = Math.max(maxTrackedMTime, fileMTime);
             } catch (IOException e) {
-                throw new RuntimeException("Error reading file timestamp", e);
+                // probable cause: file exists in git but is removed
+                logger.debug("Error reading analyzer file timestamp", e);
             }
         }
         if (cpgMTime > maxTrackedMTime) {

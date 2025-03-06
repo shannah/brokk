@@ -4,7 +4,6 @@ import javax.swing.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
@@ -15,7 +14,6 @@ public class Brokk {
     private static Chrome io;
     private static ContextManager contextManager;
     private static Coder coder;
-    private static Commands commands;
 
     public static void main(String[] args) {
         // Find the repository root
@@ -43,12 +41,8 @@ public class Brokk {
         // Create the ContextManager (holds chat context, code references, etc.)
         contextManager = new ContextManager(sourceRoot);
 
-        // Create Commands object and build command list
-        commands = new Commands(contextManager);
-
         SwingUtilities.invokeLater(() -> {
-            // Create Lanterna-based ConsoleIO
-            io = new Chrome();
+            io = new Chrome(contextManager);
 
             // Load models early
             Models models;
@@ -65,10 +59,6 @@ public class Brokk {
 
             // Resolve circular references
             contextManager.resolveCircularReferences(io, coder);
-            commands.resolveCircularReferences(io, coder);
-            io.resolveCircularReferences(contextManager, coder);
-
-            // No additional references needed for ConsoleIO
 
             // Get version info
             String version;

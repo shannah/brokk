@@ -94,9 +94,6 @@ public class ContextManager implements IContextManager
     // Possibly store an inferred buildCommand
     private Future<BuildCommand> buildCommand;
 
-    // The message we might pass directly to LLM next
-    private String constructedMessage;
-
     /**
      * Minimal constructor called from Brokk
      */
@@ -122,14 +119,6 @@ public class ContextManager implements IContextManager
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
-    }
-
-    /**
-     * Called immediately after Chrome is created, so it can pass itself in again if needed.
-     */
-    public void setChrome(Chrome chrome)
-    {
-        this.chrome = chrome;
     }
 
     /**
@@ -172,7 +161,7 @@ public class ContextManager implements IContextManager
      */
     public Context currentContext()
     {
-        return contextHistory.get(contextHistory.size() - 1);
+        return contextHistory.isEmpty() ? null : contextHistory.getLast();
     }
 
     /**

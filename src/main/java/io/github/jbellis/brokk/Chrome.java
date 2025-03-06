@@ -48,12 +48,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Dependencies:
     private ContextManager contextManager;
-    private Coder coder;
-    private Commands commands;
     private Project project;
 
     // Swing components:
-    private JFrame frame;
+    private final JFrame frame;
     private RSyntaxTextArea llmStreamArea;
     private JLabel commandResultLabel;
     private JTextArea commandInputField;
@@ -100,7 +98,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * We call this from Brokk after creating contextManager, commands, etc.,
      * but before calling .resolveCircularReferences(...).
      */
-    public Chrome() {
+    public Chrome(ContextManager contextManager) {
+        this.contextManager = contextManager;
+        this.project = contextManager.getProject();
+
         // 1) Set FlatLaf Look & Feel
         try {
             com.formdev.flatlaf.FlatLightLaf.setup();
@@ -124,6 +125,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         registerGlobalKeyboardShortcuts();
 
         // 6) Load saved window size and position, then show window
+        loadWindowSizeAndPosition();
+        updateContextButtons();
         frame.setVisible(true);
         
         // Set focus to command input field on startup
@@ -145,24 +148,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
             }
         });
-    }
-
-    /**
-     * Finish wiring references to contextManager, commands, coder, etc.
-     */
-    public void resolveCircularReferences(ContextManager contextManager, Coder coder) {
-        this.contextManager = contextManager;
-        this.coder = coder;
-        this.project = contextManager.getProject();
-        loadWindowSizeAndPosition();
-        updateContextButtons();
-        this.commands = new Commands(contextManager);
-
-        // Now, also tell the commands object to use this as IConsoleIO:
-        this.commands.resolveCircularReferences(this, coder);
-
-        // The contextManager also needs a reference to this Chrome
-        this.contextManager.setChrome(this);
     }
 
     /**
@@ -210,6 +195,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(outputSplitPane, gbc);
+
+        // Ensure the history panel width is correct immediately
+        SwingUtilities.invokeLater(() -> {
+            setInitialHistoryPanelWidth();
+        });
 
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
@@ -324,8 +314,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var scrollPane = new JScrollPane(contextHistoryTable);
 
         // Add undo/redo buttons at the bottom
-        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        
+        var buttonPanel = new JPanel();
+        buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.Y_AXIS));
+
         var undoButton = new JButton("Undo");
         undoButton.setMnemonic(KeyEvent.VK_Z);
         undoButton.addActionListener(e -> {
@@ -335,7 +326,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 currentUserTask = contextManager.undoContextAsync();
             }
         });
-        
+
         var redoButton = new JButton("Redo");
         redoButton.setMnemonic(KeyEvent.VK_Y);
         redoButton.addActionListener(e -> {
@@ -345,8 +336,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 currentUserTask = contextManager.redoContextAsync();
             }
         });
-        
+
         buttonPanel.add(undoButton);
+        buttonPanel.add(Box.createRigidArea(new Dimension(0, 5))); // vertical gap
         buttonPanel.add(redoButton);
         
         panel.add(scrollPane, BorderLayout.CENTER);
@@ -1241,11 +1233,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var existingKeys = project.getLlmKeys();
         List<KeyValueRowPanel> keyRows = new ArrayList<>();
 
-        var defaultKeyNames = coder.models.defaultKeyNames;
-
         // if empty, add one row
         if (existingKeys.isEmpty()) {
-            var row = new KeyValueRowPanel(defaultKeyNames);
+            var row = new KeyValueRowPanel(Models.defaultKeyNames);
             keyRows.add(row);
             mainPanel.add(row);
         }
@@ -1256,12 +1246,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         if (!existingKeys.isEmpty()) {
             for (var entry : existingKeys.entrySet()) {
-                var row = new KeyValueRowPanel(defaultKeyNames, entry.getKey(), entry.getValue());
+                var row = new KeyValueRowPanel(Models.defaultKeyNames, entry.getKey(), entry.getValue());
                 keyRows.add(row);
                 keysPanel.add(row);
             }
         } else {
-            var row = new KeyValueRowPanel(defaultKeyNames, "", "");
+            var row = new KeyValueRowPanel(Models.defaultKeyNames, "", "");
             keyRows.add(row);
             keysPanel.add(row);
         }
@@ -1274,7 +1264,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var addRemovePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         var addButton = new JButton("Add Key");
         addButton.addActionListener(ev -> {
-            var newRow = new KeyValueRowPanel(defaultKeyNames);
+            var newRow = new KeyValueRowPanel(Models.defaultKeyNames);
             keyRows.add(newRow);
             keysPanel.add(newRow);
             keysPanel.revalidate();
@@ -1644,63 +1634,31 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Checks if a position is on any available screen
-     */
-    /**
      * Updates the context history table with the current context history
      */
     public void updateContextHistoryTable() {
-        if (contextManager == null) return;
-
-        contextHistoryModel.setRowCount(0);
-
-        // Add rows for each context in history
-        for (var ctx : contextManager.contextHistory) {
-            contextHistoryModel.addRow(new Object[]{
-                ctx.getAction(),
-                ctx // We store the actual context object in hidden column
-            });
-        }
-
-        // Auto-select the latest context
-        if (contextHistoryModel.getRowCount() > 0) {
-            int lastRow = contextHistoryModel.getRowCount() - 1;
-            contextHistoryTable.setRowSelectionInterval(lastRow, lastRow);
-        }
-        
-        // Ensure history panel width matches context buttons width
         SwingUtilities.invokeLater(() -> {
-            if (editButton != null) {
-                Container historyPanel = contextHistoryTable.getParent();
-                while (historyPanel != null && !(historyPanel instanceof JPanel)) {
-                    historyPanel = historyPanel.getParent();
-                }
-                
-                if (historyPanel != null) {
-                    int buttonWidth = editButton.getPreferredSize().width;
-                    int newWidth = buttonWidth + 30; // Add padding
-                    
-                    // Set the panel's preferred size
-                    historyPanel.setPreferredSize(new Dimension(newWidth, historyPanel.getPreferredSize().height));
-                    
-                    // Force the split pane divider location
-                    Container parent = historyPanel.getParent();
-                    while (parent != null && !(parent instanceof JSplitPane)) {
-                        parent = parent.getParent();
-                    }
-                    
-                    if (parent instanceof JSplitPane splitPane) {
-                        splitPane.setResizeWeight(0.8);
-                        splitPane.setDividerLocation(frame.getWidth() - newWidth - splitPane.getDividerSize());
-                    }
-                    
-                    historyPanel.revalidate();
-                    historyPanel.repaint();
-                }
+            contextHistoryModel.setRowCount(0);
+
+            // Add rows for each context in history
+            for (var ctx : contextManager.contextHistory) {
+                contextHistoryModel.addRow(new Object[]{
+                        ctx.getAction(),
+                        ctx // We store the actual context object in hidden column
+                });
+            }
+
+            // Auto-select the latest context
+            if (contextHistoryModel.getRowCount() > 0) {
+                int lastRow = contextHistoryModel.getRowCount() - 1;
+                contextHistoryTable.setRowSelectionInterval(lastRow, lastRow);
             }
         });
     }
-    
+
+    /**
+     * Checks if a position is on any available screen
+     */
     private boolean isPositionOnScreen(int x, int y) {
         for (var screen : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
             for (var config : screen.getConfigurations()) {
@@ -1710,6 +1668,39 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         }
         return false;
+    }
+    
+    /**
+     * Sets the initial width of the history panel based on the context buttons width
+     */
+    private void setInitialHistoryPanelWidth()
+    {
+        Container historyPanel = contextHistoryTable.getParent();
+        while (historyPanel != null && !(historyPanel instanceof JPanel)) {
+            historyPanel = historyPanel.getParent();
+        }
+
+        // Only proceed if we find the panel and the editButton is available
+        if (historyPanel != null && editButton != null) {
+            int buttonWidth = editButton.getPreferredSize().width;
+            int newWidth = buttonWidth + 30; // Add padding
+
+            // Set the panel's preferred width
+            historyPanel.setPreferredSize(new Dimension(newWidth, historyPanel.getPreferredSize().height));
+
+            // Force the split pane divider location
+            Container parent = historyPanel.getParent();
+            while (parent != null && !(parent instanceof JSplitPane)) {
+                parent = parent.getParent();
+            }
+            if (parent instanceof JSplitPane splitPane) {
+                splitPane.setResizeWeight(0.8);
+                splitPane.setDividerLocation(frame.getWidth() - newWidth - splitPane.getDividerSize());
+            }
+
+            historyPanel.revalidate();
+            historyPanel.repaint();
+        }
     }
 
     JFrame getFrame() {
