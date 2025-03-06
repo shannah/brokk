@@ -394,51 +394,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void previewContextOnly(Context ctx) {
         assert ctx != null;
-        
+
         SwingUtilities.invokeLater(() -> {
-            // Update context table without updating history
-            // Clear the existing table rows
-            var tableModel = (DefaultTableModel) contextTable.getModel();
-            tableModel.setRowCount(0);
+            // Don't clear history selection when previewing
+            populateContextTable(ctx);
 
-            updateContextButtons();
-            
-            if (ctx.isEmpty()) {
-                ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
-                contextPanel.revalidate();
-                contextPanel.repaint();
-                return;
-            }
-
-            // Fill the table with new data
-            var allFragments = ctx.getAllFragmentsInDisplayOrder();
-            int totalLines = 0;
-            for (var frag : allFragments) {
-                var loc = countLinesSafe(frag);
-                totalLines += loc;
-                var desc = frag.description();
-
-                var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
-                        && ctx.editableFiles().anyMatch(e -> e == frag);
-
-                if (isEditable) {
-                    desc = "✏️ " + desc;  // Add pencil icon to editable files
-                }
-
-                tableModel.addRow(new Object[]{loc, desc, false, frag});
-            }
-
-            var fullText = "";  // no large merges needed
-            var approxTokens = Models.getApproximateTokens(fullText);
-
-            ((JLabel)locSummaryLabel.getComponent(0)).setText(
-                    "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
-            );
-
-            // revalidate/repaint the panel to reflect the new rows
-            contextPanel.revalidate();
-            contextPanel.repaint();
-            
             // If there's textarea content, restore it to the LLM output area
             if (ctx.textarea == null) {
                 llmStreamArea.setText("");
@@ -1480,50 +1440,65 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void setContext(Context context) {
         SwingUtilities.invokeLater(() -> {
-            // Clear the existing table rows
-            var tableModel = (DefaultTableModel) contextTable.getModel();
-            tableModel.setRowCount(0);
-
-            updateContextButtons();
+            populateContextTable(context);
+            clearContextHistorySelection();
             updateContextHistoryTable();
             updateSuggestCommitButton();
+        });
+    }
 
-            if (context.isEmpty()) {
-                ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
-                contextPanel.revalidate();
-                contextPanel.repaint();
-                return;
-            }
+    /**
+     * Populates the context table from a Context object.
+     * This centralized method is used by both previewContextOnly and setContext
+     * to avoid code duplication.
+     * 
+     * @param ctx The context to display in the table
+     */
+    private void populateContextTable(Context ctx) {
+        assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
+        assert ctx != null;
+        
+        // Clear the existing table rows
+        var tableModel = (DefaultTableModel) contextTable.getModel();
+        tableModel.setRowCount(0);
 
-            // Fill the table with new data
-            var allFragments = context.getAllFragmentsInDisplayOrder();
-            int totalLines = 0;
-            for (var frag : allFragments) {
-                var loc = countLinesSafe(frag);
-                totalLines += loc;
-                var desc = frag.description();
-
-                var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
-                        && context.editableFiles().anyMatch(e -> e == frag);
-
-                if (isEditable) {
-                    desc = "✏️ " + desc;  // Add pencil icon to editable files
-                }
-
-                tableModel.addRow(new Object[]{loc, desc, false, frag});
-            }
-
-            var fullText = "";  // no large merges needed
-            var approxTokens = Models.getApproximateTokens(fullText);
-
-            ((JLabel)locSummaryLabel.getComponent(0)).setText(
-                    "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
-            );
-
-            // revalidate/repaint the panel to reflect the new rows
+        updateContextButtons();
+        
+        if (ctx.isEmpty()) {
+            ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
             contextPanel.revalidate();
             contextPanel.repaint();
-        });
+            return;
+        }
+
+        // Fill the table with new data
+        var allFragments = ctx.getAllFragmentsInDisplayOrder();
+        int totalLines = 0;
+        for (var frag : allFragments) {
+            var loc = countLinesSafe(frag);
+            totalLines += loc;
+            var desc = frag.description();
+
+            var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
+                    && ctx.editableFiles().anyMatch(e -> e == frag);
+
+            if (isEditable) {
+                desc = "✏️ " + desc;  // Add pencil icon to editable files
+            }
+
+            tableModel.addRow(new Object[]{loc, desc, false, frag});
+        }
+
+        var fullText = "";  // no large merges needed
+        var approxTokens = Models.getApproximateTokens(fullText);
+
+        ((JLabel)locSummaryLabel.getComponent(0)).setText(
+                "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
+        );
+
+        // revalidate/repaint the panel to reflect the new rows
+        contextPanel.revalidate();
+        contextPanel.repaint();
     }
 
     private int countLinesSafe(ContextFragment fragment) {
