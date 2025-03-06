@@ -723,10 +723,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         ));
 
         contextTable = new JTable(new DefaultTableModel(
-                new Object[]{"LOC", "Description", "Select", "Fragment"}, 0) {
+                new Object[]{"LOC", "Description", "Fragment"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return column == CHECKBOX_COLUMN;
+                return false;
             }
 
             @Override
@@ -734,8 +734,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 return switch (columnIndex) {
                     case 0 -> Integer.class;
                     case 1 -> String.class;
-                    case 2 -> Boolean.class;
-                    case 3 -> ContextFragment.class;
+                    case 2 -> ContextFragment.class;
                     default -> Object.class;
                 };
             }
@@ -796,8 +795,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
             }
         });
-        contextTable.getModel().addTableModelListener(e -> {
-            if (e.getColumn() == CHECKBOX_COLUMN) {
+        // Set selection mode to allow multiple selection
+        contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        
+        // Add a selection listener to update the context buttons
+        contextTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
                 updateContextButtons();
             }
         });
@@ -1009,16 +1012,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Check if any items are selected
      */
     private boolean hasSelectedItems() {
-        if (contextTable.getModel().getRowCount() == 0) {
-            return false;
-        }
-        var tableModel = (DefaultTableModel) contextTable.getModel();
-        for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, CHECKBOX_COLUMN))) {
-                return true;
-            }
-        }
-        return false;
+        return contextTable.getSelectedRowCount() > 0;
     }
 
     /**
@@ -1026,11 +1020,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     List<ContextFragment> getSelectedFragments() {
         var fragments = new ArrayList<ContextFragment>();
+        int[] selectedRows = contextTable.getSelectedRows();
         var tableModel = (DefaultTableModel) contextTable.getModel();
-        for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, CHECKBOX_COLUMN))) {
-                fragments.add((ContextFragment) tableModel.getValueAt(i, FRAGMENT_COLUMN));
-            }
+        
+        for (int row : selectedRows) {
+            fragments.add((ContextFragment) tableModel.getValueAt(row, FRAGMENT_COLUMN));
         }
         return fragments;
     }
