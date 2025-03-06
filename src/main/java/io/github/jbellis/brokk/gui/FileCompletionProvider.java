@@ -2,20 +2,16 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.RepoFile;
-import io.github.jbellis.brokk.GitRepo;
-import org.fife.ui.autocomplete.*;
-import org.fife.ui.autocomplete.CompletionProvider;
+import org.fife.ui.autocomplete.BasicCompletion;
+import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
 
-import javax.swing.*;
-import javax.swing.tree.*;
 import javax.swing.text.JTextComponent;
-import java.awt.*;
-import java.awt.event.*;
-import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 /**
  * Custom CompletionProvider for files that replicates the old logic.
@@ -31,8 +27,7 @@ public class FileCompletionProvider extends DefaultCompletionProvider {
 
     @Override
     public List<Completion> getCompletions(JTextComponent tc) {
-        // Use the entire text as the partial string (you can refine this if needed)
-        String input = tc.getText().trim();
+        var input = getAlreadyEnteredText(tc);
         String partialLower = input.toLowerCase();
         Map<String, RepoFile> baseToFullPath = new HashMap<>();
         List<Completion> completions = new ArrayList<>();
@@ -67,10 +62,7 @@ public class FileCompletionProvider extends DefaultCompletionProvider {
     }
 
     private Completion createCompletion(RepoFile file) {
-        // The replacement text is the full path,
-        // summary is the base filename, and description is also the full path.
-        String replacement = file.toString();
-        String summary = file.getFileName();
-        return new BasicCompletion(this, replacement, summary, file.toString());
+        String replacement = file.toString() + " ";
+        return new BasicCompletion(this, replacement, file.getFileName(), file.toString());
     }
 }

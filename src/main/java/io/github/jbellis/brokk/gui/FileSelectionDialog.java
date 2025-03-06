@@ -31,13 +31,13 @@ public class FileSelectionDialog extends JDialog {
 
     private final Path rootPath;
     private final JTree fileTree;
-    private final JTextField fileInput;
+    private final JTextArea fileInput;
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
     private final JButton cancelButton;
 
-    // The selected file
-    private RepoFile selectedFile = null;
+    // The selected files
+    private List<RepoFile> selectedFiles = new ArrayList<>();
 
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
@@ -50,7 +50,9 @@ public class FileSelectionDialog extends JDialog {
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         // Build text input with autocomplete at the top
-        fileInput = new JTextField(30);
+        fileInput = new JTextArea(3, 30);
+        fileInput.setLineWrap(true);
+        fileInput.setWrapStyleWord(true);
         var provider = createFileCompletionProvider();
         autoCompletion = new AutoCompletion(provider);
         // Trigger with Ctrl+Space
@@ -61,7 +63,7 @@ public class FileSelectionDialog extends JDialog {
 
         JPanel inputPanel = new JPanel(new BorderLayout());
         inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-        inputPanel.add(fileInput, BorderLayout.CENTER);
+        inputPanel.add(new JScrollPane(fileInput), BorderLayout.CENTER);
         inputPanel.add(new JLabel("Ctrl-space to autocomplete filenames"), BorderLayout.SOUTH);
         mainPanel.add(inputPanel, BorderLayout.NORTH);
 
@@ -81,7 +83,8 @@ public class FileSelectionDialog extends JDialog {
                     if (i > 1) rel.append("/");
                     rel.append(seg);
                 }
-                fileInput.setText(rel.toString());
+                // Get current text and add the new filename with a space separator
+                appendFilenameToInput(rel.toString());
             }
         });
 
@@ -102,7 +105,7 @@ public class FileSelectionDialog extends JDialog {
         KeyStroke escapeKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
         getRootPane().registerKeyboardAction(e -> {
             confirmed = false;
-            selectedFile = null;
+            selectedFiles.clear();
             dispose();
         }, escapeKeyStroke, JComponent.WHEN_IN_FOCUSED_WINDOW);
 
@@ -166,7 +169,15 @@ public class FileSelectionDialog extends JDialog {
                     TreePath path = tree.getPathForLocation(e.getX(), e.getY());
                     if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
                         tree.setSelectionPath(path);
-                        doOk();
+                        // Build the relative path string
+                        StringBuilder rel = new StringBuilder();
+                        for (int i = 1; i < path.getPathCount(); i++) {
+                            String seg = path.getPathComponent(i).toString();
+                            if (i > 1) rel.append("/");
+                            rel.append(seg);
+                        }
+                        // Append to the input area instead of closing dialog
+                        appendFilenameToInput(rel.toString());
                     }
                 }
             }
@@ -176,27 +187,76 @@ public class FileSelectionDialog extends JDialog {
     }
 
     /**
-     * Create the file completion provider that uses the old logic.
+     * Appends a filename to the input text area with space separator
      */
-    private CompletionProvider createFileCompletionProvider() {
-        Collection<RepoFile> tracked = GitRepo.instance.getTrackedFiles();
-        return new FileCompletionProvider(tracked);
+    private void appendFilenameToInput(String filename) {
+        String currentText = fileInput.getText();
+        if (currentText.isEmpty()) {
+            fileInput.setText(filename + " ");
+        } else if (currentText.endsWith(" ")) {
+            fileInput.setText(currentText + filename + " ");
+        } else {
+            fileInput.setText(currentText + " " + filename + " ");
+        }
+        fileInput.requestFocusInWindow();
     }
 
     /**
-     * When OK is pressed, get the file from the text input.
+     * Create the file completion provider that uses the old logic.
+     */
+    private CompletionProvider createFileCompletionProvider()
+    {
+        Collection<RepoFile> tracked = GitRepo.instance.getTrackedFiles();
+        return new FileCompletionProvider(tracked)
+        {
+            @Override
+            public String getAlreadyEnteredText(javax.swing.text.JTextComponent comp)
+            {
+                // Get the word under cursor (which can be blank if on whitespace).
+                String text = comp.getText();
+                int caretPos = comp.getCaretPosition();
+
+                // Search backward for whitespace
+                int start = caretPos;
+                while (start > 0 && !Character.isWhitespace(text.charAt(start - 1))) {
+                    start--;
+                }
+
+                // Search forward for whitespace
+                int end = caretPos;
+                while (end < text.length() && !Character.isWhitespace(text.charAt(end))) {
+                    end++;
+                }
+
+                if (start == end) {
+                    return "";
+                }
+                return text.substring(start, end);
+            }
+        };
+    }
+
+    /**
+     * When OK is pressed, get the files from the text input.
      */
     private void doOk() {
         confirmed = true;
-        selectedFile = null;
+        selectedFiles.clear();
 
         String typed = fileInput.getText().trim();
         if (!typed.isEmpty()) {
-            var expanded = Completions.expandPath(rootPath, typed);
-            for (var bf : expanded) {
-                if (bf instanceof RepoFile rf) {
-                    selectedFile = rf;
-                    break;
+            // Split by whitespace to get multiple filenames
+            String[] filenames = typed.split("\\s+");
+            
+            for (String filename : filenames) {
+                if (filename.isBlank()) continue;
+                
+                var expanded = Completions.expandPath(rootPath, filename);
+                for (var bf : expanded) {
+                    if (bf instanceof RepoFile rf) {
+                        selectedFiles.add(rf);
+                        break;
+                    }
                 }
             }
         }
@@ -211,17 +271,17 @@ public class FileSelectionDialog extends JDialog {
     }
 
     /**
-     * Return the selected RepoFile or null if none.
+     * Return the first selected RepoFile or null if none.
+     * This maintains backward compatibility with code that expects a single file.
      */
     public RepoFile getSelectedFile() {
-        return selectedFile;
+        return selectedFiles.isEmpty() ? null : selectedFiles.get(0);
     }
 
     /**
-     * Return a list containing the selected file, or empty list if none.
-     * This maintains backward compatibility.
+     * Return a list of all selected files.
      */
     public List<RepoFile> getSelectedFiles() {
-        return selectedFile != null ? List.of(selectedFile) : List.of();
+        return new ArrayList<>(selectedFiles);
     }
 }
