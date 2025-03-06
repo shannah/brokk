@@ -207,7 +207,7 @@ public class ContextManager implements IContextManager
                 pushContext(ctx -> {
                     var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
                     var parsed = new ParsedOutput(chrome.getLlmOutputText(), runFrag);
-                    return ctx.withParsedOutput(parsed, "Run " + input);
+                    return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
                 });
             } finally {
                 chrome.enableUserActionButtons();
@@ -748,7 +748,7 @@ public class ContextManager implements IContextManager
     {
         pushContext(ctx -> {
             var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
-            return ctx.addVirtualFragment(fragment);
+            return ctx.addPasteFragment(fragment, summaryFuture);
         });
         chrome.toolOutput("Added pasted content");
     }
@@ -1042,7 +1042,8 @@ public class ContextManager implements IContextManager
 
             @Override
             protected void done() {
-                chrome.contextTableChanged();
+                chrome.updateContextTable();
+                chrome.updateContextHistoryTable();
             }
         };
 

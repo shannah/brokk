@@ -17,7 +17,6 @@ import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.text.DefaultCaret;
@@ -1820,7 +1819,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
-    public void contextTableChanged() {
+    public void updateContextTable() {
         SwingUtilities.invokeLater(() -> {
             // need a full rebuild since the description is a string column, firing tableDataChanged won't help,
             // we need to re-populate it from the ContextFragment objects

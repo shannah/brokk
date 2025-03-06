@@ -4,6 +4,7 @@ import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -11,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -36,8 +39,8 @@ public class Context {
     /** LLM output or other parsed content, with optional fragment */
     final ParsedOutput parsedOutput;
 
-    /** description of the action that created this context */
-    final String action;
+    /** description of the action that created this context, can be a future (like PasteFragment) */
+    final Future<String> action;
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
@@ -54,7 +57,7 @@ public class Context {
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
     public Context(AnalyzerWrapper analyzer, int autoContextFileCount) {
-        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), "Welcome to Brokk");
+        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture("Welcome to Brokk"));
     }
 
     private Context(
@@ -67,7 +70,7 @@ public class Context {
             List<ChatMessage> historyMessages,
             Map<RepoFile, String> originalContents,
             ParsedOutput parsedOutput,
-            String action
+            Future<String> action
     ) {
         assert analyzer != null;
         assert autoContext != null;
@@ -100,7 +103,7 @@ public class Context {
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Edit " + actionDetails;
-        return withFragments(newEditable, readonlyFiles, virtualFragments, action);
+        return getWithFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
     public Context addReadonlyFiles(Collection<ContextFragment.PathFragment> paths) {
@@ -115,7 +118,7 @@ public class Context {
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Read " + actionDetails;
-        return withFragments(editableFiles, newReadOnly, virtualFragments, action);
+        return getWithFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
     public Context removeEditableFile(ContextFragment.PathFragment fragment) {
@@ -133,7 +136,7 @@ public class Context {
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
-        return withFragments(newEditable, readonlyFiles, virtualFragments, action);
+        return getWithFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
     public Context removeReadonlyFiles(List<? extends ContextFragment.PathFragment> fragments) {
@@ -147,7 +150,7 @@ public class Context {
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
-        return withFragments(editableFiles, newReadOnly, virtualFragments, action);
+        return getWithFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
     public Context removeVirtualFragments(List<? extends ContextFragment.VirtualFragment> fragments) {
@@ -161,7 +164,7 @@ public class Context {
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
-        return withFragments(editableFiles, readonlyFiles, newFragments, action);
+        return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
     }
     
     public Context removeReadonlyFile(ContextFragment.PathFragment path) {
@@ -173,13 +176,32 @@ public class Context {
         newFragments.add(fragment);
 
         String action = "Added " + fragment.shortDescription();
-        return withFragments(editableFiles, readonlyFiles, newFragments, action);
+        return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
+    }
+    
+    /**
+     * Adds a virtual fragment and uses the same future for both fragment description and action
+     */
+    public Context addPasteFragment(ContextFragment.PasteFragment fragment, Future<String> summaryFuture) {
+        var newFragments = new ArrayList<>(virtualFragments);
+        newFragments.add(fragment);
+        
+        // Create a future that prepends "Added " to the summary
+        Future<String> actionFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return "Added paste of " + summaryFuture.get();
+            } catch (Exception e) {
+                return "Added paste";
+            }
+        });
+        
+        return withFragments(editableFiles, readonlyFiles, newFragments, actionFuture);
     }
 
     public Context addSearchFragment(ContextFragment.VirtualFragment fragment, String query, String llmOutputText) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), "Search: " + query);
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), CompletableFuture.completedFuture("Search: " + query));
     }
 
     public Context convertAllToReadOnly() {
@@ -190,8 +212,8 @@ public class Context {
         newReadOnly.addAll(editableFiles);
         
         String action = "Converted to readonly " + actionDetails;
-        
-        return withFragments(List.of(), newReadOnly, virtualFragments, action);
+
+        return getWithFragments(List.of(), newReadOnly, virtualFragments, action);
     }
 
     public Context removeBadFragment(ContextFragment f) {
@@ -202,19 +224,19 @@ public class Context {
             if (inEditable) {
                 var newEditable = new ArrayList<>(editableFiles);
                 newEditable.remove(pf);
-                return withFragments(newEditable, readonlyFiles, virtualFragments,
+                return getWithFragments(newEditable, readonlyFiles, virtualFragments,
                                      "Removed unreadable " + pf.description());
             } else if (inReadonly) {
                 var newReadonly = new ArrayList<>(readonlyFiles);
                 newReadonly.remove(pf);
-                return withFragments(editableFiles, newReadonly, virtualFragments,
+                return getWithFragments(editableFiles, newReadonly, virtualFragments,
                                      "Removed unreadable " + pf.description());
             }
             return this;
         } else if (f instanceof ContextFragment.VirtualFragment vf) {
             var newFragments = new ArrayList<>(virtualFragments);
             if (newFragments.remove(vf)) {
-                return withFragments(editableFiles, readonlyFiles, newFragments,
+                return getWithFragments(editableFiles, readonlyFiles, newFragments,
                                      "Removed unreadable " + vf.description());
             }
             return this;
@@ -223,18 +245,27 @@ public class Context {
         }
     }
 
+    @NotNull
+    private Context getWithFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
+                                     List<ContextFragment.PathFragment> newReadonlyFiles,
+                                     List<ContextFragment.VirtualFragment> newVirtualFragments,
+                                     String action)
+    {
+        return withFragments(newEditableFiles, newReadonlyFiles, newVirtualFragments, CompletableFuture.completedFuture(action));
+    }
+
     /**
      * Sets how many files are pulled out of pagerank results. Uses 2*n in the pagerank call to
      * account for any out-of-project exclusions. Rebuilds autoContext if toggled on.
      */
     public Context setAutoContextFiles(int fileCount) {
-        String action;
+        Future<String> action;
         if (fileCount == 0 && autoContextFileCount > 0) {
-            action = "Disabled auto-context";
+            action = CompletableFuture.completedFuture("Disabled auto-context");
         } else if (fileCount > 0 && autoContextFileCount == 0) {
-            action = "Enabled auto-context of " + fileCount + " files";
+            action = CompletableFuture.completedFuture("Enabled auto-context of " + fileCount + " files");
         } else if (fileCount > 0) {
-            action = "Auto-context size -> " + fileCount;
+            action = CompletableFuture.completedFuture("Auto-context size -> " + fileCount);
         } else {
             // No change in state - auto-context remains disabled
             return this;
@@ -365,7 +396,7 @@ public class Context {
     private Context withFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
                                   List<ContextFragment.PathFragment> newReadonlyFiles,
                                   List<ContextFragment.VirtualFragment> newVirtualFragments,
-                                  String action)
+                                  Future<String> action)
     {
         return new Context(
             analyzer, 
@@ -383,7 +414,7 @@ public class Context {
 
     public Context removeAll() {
         String action = "Dropped all context";
-        return clearHistory().withFragments(List.of(), List.of(), List.of(), action);
+        return clearHistory().getWithFragments(List.of(), List.of(), List.of(), action);
     }
 
     /**
@@ -422,7 +453,7 @@ public class Context {
             List.copyOf(newHistory),
             originalContents,
             new ParsedOutput(outputText, new ContextFragment.StringFragment(outputText, "")),
-            "LLM conversation"
+            CompletableFuture.completedFuture("LLM conversation")
         );
     }
 
@@ -440,7 +471,7 @@ public class Context {
             List.of(),
             Map.of(),
             new ParsedOutput(),
-            "Cleared conversation history"
+            CompletableFuture.completedFuture("Cleared conversation history")
         );
     }
 
@@ -470,7 +501,14 @@ public class Context {
      * Get the action that created this context
      */
     public String getAction() {
-        return action;
+        if (action.isDone()) {
+            try {
+                return action.get();
+            } catch (Exception e) {
+                return "(Error retrieving action)";
+            }
+        }
+        return "(Summarizing)";
     }
 
     public Context addUsageFragment(String identifier, Set<CodeUnit> classnames, String code) {
@@ -515,7 +553,7 @@ public class Context {
         return parsedOutput.output();
     }
 
-    public Context withParsedOutput(ParsedOutput parsedOutput, String action) {
+    public Context withParsedOutput(ParsedOutput parsedOutput, Future<String> action) {
         return new Context(
             analyzer,
             editableFiles,
