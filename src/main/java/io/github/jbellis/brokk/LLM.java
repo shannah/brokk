@@ -138,7 +138,6 @@ public class LLM {
             } else {
                 parseErrorAttempts = 0;
             }
-            System.out.println("Parse error count is now " + parseErrorAttempts);
             blocks.clear(); // don't re-apply the same ones on the next loop
             if (!parseReflection.isEmpty()) {
                 io.toolOutput("Attempting to fix parse/match errors...");
@@ -236,9 +235,8 @@ public class LLM {
      */
     private static boolean shouldContinue(Coder coder, int parseErrorAttempts, List<String> buildErrors, IConsoleIO io) {
         // If we have parse errors, limit to MAX_PARSE_ATTEMPTS attempts
-        System.out.println(parseErrorAttempts);
         if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
-            io.toolOutput("Parse retry limit reached, stopping.");
+            io.shellOutput("Parse retry limit reached, stopping.");
             return false;
         }
 
