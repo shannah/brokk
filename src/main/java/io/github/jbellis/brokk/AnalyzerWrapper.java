@@ -7,6 +7,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 public class AnalyzerWrapper {
@@ -372,13 +374,17 @@ public class AnalyzerWrapper {
     /**
      * Get the analyzer, showing a spinner UI while waiting if requested.
      */
-    private Analyzer get(boolean spin) {
-        if (!future.isDone() && spin) {
+    private Analyzer get(boolean notifyWhenBlocked) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            throw new UnsupportedOperationException("Never call blocking get() from EDT");
+        }
+
+        if (!future.isDone() && notifyWhenBlocked) {
             if (logger.isDebugEnabled()) {
                 Exception e = new Exception("Stack trace");
                 logger.debug("Blocking on analyzer creation", e);
             }
-            io.spin("Analyzer is being created");
+            io.toolOutput("Analyzer is being created");
         }
         try {
             return future.get();
@@ -387,11 +393,6 @@ public class AnalyzerWrapper {
             throw new RuntimeException("Interrupted while fetching analyzer", e);
         } catch (ExecutionException e) {
             throw new RuntimeException("Failed to create analyzer", e);
-        }
-        finally {
-            if (spin) {
-                io.spinComplete();
-            }
         }
     }
 
@@ -417,6 +418,24 @@ public class AnalyzerWrapper {
     private void startWatcher() {
         Thread watcherThread = new Thread(() -> beginWatching(root), "DirectoryWatcher");
         watcherThread.start();
+    }
+
+    /**
+     * @return null if analyzer is not ready yet
+     */
+    public Analyzer getNonBlocking() {
+        try {
+            // Try to get with zero timeout - returns null if not done
+            return future.get(0, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            // Not done yet
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while checking analyzer", e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Failed to create analyzer", e);
+        }
     }
 
     public record CodeWithSource(String code, Set<CodeUnit> sources) {

@@ -99,6 +99,23 @@ public class ContextManager implements IContextManager
     
     private Mode mode = Mode.EDIT;
 
+    public void editSources(ContextFragment fragment) {
+        contextActionExecutor.submit(() -> {
+            var analyzer = getAnalyzer();
+            Set<CodeUnit> sources = fragment.sources(analyzer);
+            if (!sources.isEmpty()) {
+                Set<RepoFile> files = sources.stream()
+                        .map(analyzer::pathOf)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+                if (!files.isEmpty()) {
+                    addFiles(files);
+                }
+            }
+        });
+    }
+
     public enum Mode { EDIT, APPLY }
 
     // Keep contexts for undo/redo
@@ -186,6 +203,10 @@ public class ContextManager implements IContextManager
     public Analyzer getAnalyzer()
     {
         return analyzerWrapper.get();
+    }
+
+    public Analyzer getAnalyzerNonBlocking() {
+        return analyzerWrapper.getNonBlocking();
     }
 
     public Path getRoot()

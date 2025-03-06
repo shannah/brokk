@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
@@ -1329,6 +1330,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // Fill the table with new data
+        var analyzer = contextManager.getAnalyzerNonBlocking();
         var allFragments = ctx.getAllFragmentsInDisplayOrder();
         int totalLines = 0;
         var fullText = "";  // no large merges needed
@@ -1348,11 +1350,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             String referencedFiles = "";
             // Get referenced files for non-RepoPathFragment instances
-            if (!(frag instanceof ContextFragment.RepoPathFragment)) {
-                Set<CodeUnit> sources = frag.sources(contextManager.getAnalyzer());
+            if (analyzer != null && !(frag instanceof ContextFragment.RepoPathFragment)) {
+                Set<CodeUnit> sources = frag.sources(analyzer);
                 if (!sources.isEmpty()) {
                     referencedFiles = sources.stream()
-                        .map(cu -> contextManager.getAnalyzer().pathOf(cu))
+                        .map(analyzer::pathOf)
                         .filter(Objects::nonNull)
                         .map(RepoFile::getFileName)
                         .collect(Collectors.joining(", "));
@@ -1688,19 +1690,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         SwingUtilities.invokeLater(() -> {
             captureTextButton.setEnabled(hasText);
+            var analyzer = contextManager.getAnalyzerNonBlocking();
 
             // Check for sources only if there's text
-            if (hasText) {
+            if (hasText && analyzer != null) {
                 // Use the sources method directly instead of a static method
                 var fragment = new ContextFragment.StringFragment(text, "temp");
-                Set<CodeUnit> sources = fragment.sources(contextManager.getAnalyzer());
+                Set<CodeUnit> sources = fragment.sources(analyzer);
                 editFilesButton.setEnabled(!sources.isEmpty());
                 
                 // Update description with file names
-                updateFilesDescriptionLabel(sources);
+                updateFilesDescriptionLabel(sources, analyzer);
             } else {
                 editFilesButton.setEnabled(false);
-                updateFilesDescriptionLabel(Set.of());
+                updateFilesDescriptionLabel(Set.of(), analyzer);
             }
         });
     }
@@ -1708,14 +1711,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Updates the description label with file names
      */
-    private void updateFilesDescriptionLabel(Set<CodeUnit> sources) {
+    private void updateFilesDescriptionLabel(Set<CodeUnit> sources, Analyzer analyzer) {
         if (sources.isEmpty()) {
             captureDescriptionArea.setText("Files referenced: None");
             return;
         }
+
+        if (analyzer == null) {
+            captureDescriptionArea.setText("Files referenced: ?");
+        }
         
         Set<String> fileNames = sources.stream()
-            .map(cu -> contextManager.getAnalyzer().pathOf(cu))
+            .map(analyzer::pathOf)
             .filter(Objects::nonNull)
             .map(RepoFile::getFileName)
             .collect(Collectors.toSet());
@@ -1752,19 +1759,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (!text.isBlank()) {
             // Use the sources method directly instead of a static method
             var fragment = new ContextFragment.StringFragment(text, "temp");
-            Set<CodeUnit> sources = fragment.sources(contextManager.getAnalyzer());
-            if (!sources.isEmpty()) {
-                Set<RepoFile> files = sources.stream()
-                    .map(cu -> contextManager.getAnalyzer().pathOf(cu))
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-
-                if (!files.isEmpty()) {
-                    contextManager.addFiles(files);
-                    // Clear the textarea after adding files
-                    SwingUtilities.invokeLater(() -> llmStreamArea.setText(""));
-                }
-            }
+            contextManager.editSources(fragment);
         }
     }
     
