@@ -1,7 +1,5 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Chrome;
-
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;

@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.gui.Chrome;
+
 import javax.swing.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;

@@ -1,8 +1,14 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.gui.KeyValueRowPanel;
-import io.github.jbellis.brokk.gui.MultiLineCellRenderer;
-import io.github.jbellis.brokk.gui.SmartScroll;
+import io.github.jbellis.brokk.CodeUnit;
+import io.github.jbellis.brokk.Context;
+import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.GitRepo;
+import io.github.jbellis.brokk.IConsoleIO;
+import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -287,9 +293,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 Component c = super.getTableCellRendererComponent(
                         table, value, isSelected, hasFocus, row, column);
 
-                if (row < contextManager.contextHistory.size()) {
-                    var ctx = contextManager.contextHistory.get(row);
-                    if (ctx.textarea != null) {
+                if (row < contextManager.getContextHistory().size()) {
+                    var ctx = contextManager.getContextHistory().get(row);
+                    if (ctx.getTextAreaContents() != null) {
                     // LLM conversation - use dark background
                     if (!isSelected) {
                         c.setBackground(new Color(50, 50, 50));
@@ -312,8 +318,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int row = contextHistoryTable.getSelectedRow();
-                if (row >= 0 && row < contextManager.contextHistory.size()) {
-                    var ctx = contextManager.contextHistory.get(row);
+                if (row >= 0 && row < contextManager.getContextHistory().size()) {
+                    var ctx = contextManager.getContextHistory().get(row);
                     previewContextFromHistory(ctx);
                 }
             }
@@ -408,12 +414,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             populateContextTable(ctx);
 
             // If there's textarea content, restore it to the LLM output area
-            if (ctx.textarea == null) {
+            if (ctx.getTextAreaContents() == null) {
                 llmStreamArea.setText("");
             } else {
-                llmStreamArea.setText(ctx.textarea);
+                llmStreamArea.setText(ctx.getTextAreaContents());
                 llmStreamArea.setCaretPosition(0);
-                if (ctx.textarea.startsWith("Code:")) {
+                if (ctx.getTextAreaContents().startsWith("Code:")) {
                     llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
                 }
             }
@@ -444,7 +450,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Restore context to a specific point in history
      */
     private void restoreContextFromHistory(int index) {
-        int currentIndex = contextManager.contextHistory.size() - 1;
+        int currentIndex = contextManager.getContextHistory().size() - 1;
         if (index < currentIndex) {
             disableUserActionButtons();
             disableContextActionButtons();
@@ -1166,7 +1172,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             panel.add(label, BorderLayout.NORTH);
 
             var spinner = new JSpinner(new SpinnerNumberModel(
-                contextManager.currentContext().autoContextFileCount,
+                contextManager.currentContext().getAutoContextFileCount(),
                 0, 100, 1
         ));
             panel.add(spinner, BorderLayout.CENTER);
@@ -1679,7 +1685,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextHistoryModel.setRowCount(0);
 
             // Add rows for each context in history
-            for (var ctx : contextManager.contextHistory) {
+            for (var ctx : contextManager.getContextHistory()) {
                 contextHistoryModel.addRow(new Object[]{
                         ctx.getAction(),
                         ctx // We store the actual context object in hidden column
@@ -1903,7 +1909,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
-    JFrame getFrame() {
+    public JFrame getFrame() {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
         return frame;
     }

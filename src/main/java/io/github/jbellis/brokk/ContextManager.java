@@ -9,6 +9,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextFragment.StringFragment;
+import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.SwingUtil;
@@ -973,7 +974,7 @@ public class ContextManager implements IContextManager
 
         contextHistory.add(newContext);
         if (contextHistory.size() > MAX_UNDO_DEPTH) {
-            contextHistory.remove(0);
+            contextHistory.removeFirst();
         }
         redoHistory.clear();
         chrome.toolOutput(newContext.getAction());
