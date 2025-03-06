@@ -6,13 +6,17 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Future;
 
 public interface IContextManager {
     RepoFile toFile(String relName);
 
     Set<RepoFile> getEditableFiles();
 
-    default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents) {
+    default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action) {
+    }
+
+    default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action) {
     }
 
     default void addFiles(Collection<RepoFile> path) {
@@ -22,4 +26,5 @@ public interface IContextManager {
     default Project getProject() {
         return null;
     }
+
 }

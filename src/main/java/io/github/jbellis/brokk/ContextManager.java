@@ -247,7 +247,7 @@ public class ContextManager implements IContextManager
                 chrome.toolOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response.chatResponse() != null) {
-                    addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of());
+                    addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput("Ask command canceled.");
@@ -1034,7 +1034,7 @@ public class ContextManager implements IContextManager
                 // This runs in background thread
                 var msgs = List.of(
                         new UserMessage("Please summarize this content in 12 words or fewer:"),
-                        new AiMessage("Ok, let's see them."),
+                        new AiMessage("Ok, let's see it."),
                         new UserMessage(pastedContent)
                 );
                 return coder.sendMessage(msgs);
@@ -1050,6 +1050,30 @@ public class ContextManager implements IContextManager
         worker.execute();
         return worker;
     }
+
+    public SwingWorker<String, Void> submitSummarizeTaskForConversation(Coder coder, String input) {
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
+            @Override
+            protected String doInBackground() {
+                // This runs in background thread
+                var msgs = List.of(
+                        new UserMessage("Please summarize this question or task in 5 words or fewer:"),
+                        new AiMessage("Ok, let's see it."),
+                        new UserMessage(input)
+                );
+                return coder.sendMessage(msgs);
+            }
+
+            @Override
+            protected void done() {
+                chrome.updateContextHistoryTable();
+            }
+        };
+
+        worker.execute();
+        return worker;
+    }
+
     /**
      * Submits a background task to the internal background executor (non-user actions).
      */
@@ -1196,9 +1220,15 @@ public class ContextManager implements IContextManager
      * Add to the user/AI message history
      */
     @Override
-    public void addToHistory(List<ChatMessage> messages, Map<RepoFile,String> originalContents)
+    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action)
     {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText()));
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), action));
+    }
+
+    @Override
+    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
+    {
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), submitSummarizeTaskForConversation(coder, action)));
     }
 
     public List<Context> getContextHistory() {

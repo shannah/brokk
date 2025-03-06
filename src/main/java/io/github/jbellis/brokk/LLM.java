@@ -212,7 +212,7 @@ public class LLM {
 
         // Add all pending messages to history in one batch
         if (!pendingHistory.isEmpty()) {
-            coder.contextManager.addToHistory(pendingHistory, originalContents);
+            coder.contextManager.addToHistory(pendingHistory, originalContents, userInput);
         }
     }
 

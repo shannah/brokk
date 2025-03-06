@@ -440,7 +440,7 @@ public class Context {
      * Otherwise popping context off with /undo
      * would clear out the most recent conversation round trip which is not what we want.
      */
-    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents, String outputText) {
+    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents, String outputText, Future<String> action) {
         var newHistory = new ArrayList<>(historyMessages);
         newHistory.addAll(newMessages);
         return new Context(
@@ -453,7 +453,7 @@ public class Context {
             List.copyOf(newHistory),
             originalContents,
             new ParsedOutput(outputText, new ContextFragment.StringFragment(outputText, "")),
-            CompletableFuture.completedFuture("LLM conversation")
+            action
         );
     }
 
