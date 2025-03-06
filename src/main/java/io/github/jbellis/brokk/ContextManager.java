@@ -503,7 +503,7 @@ public class ContextManager implements IContextManager
         }
 
         // If not a stacktrace, add as string fragment
-        addStringFragment("Pasted text", clipboardText);
+        addPasteFragment("Pasted text", clipboardText);
         chrome.toolOutput("Clipboard content added as text");
     }
 

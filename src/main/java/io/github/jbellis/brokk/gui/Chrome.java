@@ -36,7 +36,8 @@ import java.util.stream.Collectors;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
-    private final int FRAGMENT_COLUMN = 2;
+    private final int FILES_REFERENCED_COLUMN = 2;
+    private final int FRAGMENT_COLUMN = 3;
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
@@ -722,7 +723,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         ));
 
         contextTable = new JTable(new DefaultTableModel(
-                new Object[]{"LOC", "Description", "Fragment"}, 0) {
+                new Object[]{"LOC", "Description", "Files Referenced", "Fragment"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -733,7 +734,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 return switch (columnIndex) {
                     case 0 -> Integer.class;
                     case 1 -> String.class;
-                    case 2 -> ContextFragment.class;
+                    case 2 -> String.class;
+                    case 3 -> ContextFragment.class;
                     default -> Object.class;
                 };
             }
@@ -757,6 +759,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 return c;
             }
         });
+        
+        // Use default renderer for Files Referenced column - files are joined with commas
         contextTable.setRowHeight(18);
 
         // Set up table header with custom column headers
@@ -775,7 +779,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // column widths
         contextTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         contextTable.getColumnModel().getColumn(0).setMaxWidth(100);
-        contextTable.getColumnModel().getColumn(1).setPreferredWidth(480);
+        contextTable.getColumnModel().getColumn(1).setPreferredWidth(230);
+        contextTable.getColumnModel().getColumn(FILES_REFERENCED_COLUMN).setPreferredWidth(250);
 
         // Add double-click listener to open fragment preview
         contextTable.addMouseListener(new MouseAdapter() {
@@ -1340,7 +1345,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 desc = "✏️ " + desc;  // Add pencil icon to editable files
             }
 
-            tableModel.addRow(new Object[]{loc, desc, frag});
+            String referencedFiles = "";
+            // Get referenced files for non-RepoPathFragment instances
+            if (!(frag instanceof ContextFragment.RepoPathFragment)) {
+                Set<CodeUnit> sources = frag.sources(contextManager.getAnalyzer());
+                if (!sources.isEmpty()) {
+                    referencedFiles = sources.stream()
+                        .map(cu -> contextManager.getAnalyzer().pathOf(cu))
+                        .filter(Objects::nonNull)
+                        .map(RepoFile::getFileName)
+                        .collect(Collectors.joining(", "));
+                }
+            }
+            
+            tableModel.addRow(new Object[]{loc, desc, referencedFiles, frag});
         }
 
         var approxTokens = Models.getApproximateTokens(fullText);
