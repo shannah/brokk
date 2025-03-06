@@ -88,8 +88,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
     private final int CHECKBOX_COLUMN = 2;
-    private JLabel captureDescriptionLabel;
-
+    private JTextArea captureDescriptionArea;
     /**
      * Enum representing the different types of context actions that can be performed.
      * This replaces the use of magic strings when calling performContextActionAsync.
@@ -1596,15 +1595,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         return false;
     }
-    
-    /**
-     * Sets the initial width of the history panel based on the context buttons width
-     */
-    /**
-     * Builds the Capture Output panel for capturing textarea content
-     */
-    private JPanel buildCaptureOutputPanel() {
-        var panel = new JPanel(new BorderLayout());
+
+    private JPanel buildCaptureOutputPanel()
+    {
+        // A top-level panel that stacks items vertically
+        var panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
                 "Capture Output",
@@ -1613,38 +1609,51 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
 
-        // Create buttons panel with vertical layout
-        var buttonPanel = new JPanel(new GridLayout(2, 1, 5, 5));
+        // 1) A multiline text area for the references
+        captureDescriptionArea = new JTextArea(5, 40);
+        captureDescriptionArea.setEditable(false);
+        captureDescriptionArea.setLineWrap(true);
+        captureDescriptionArea.setWrapStyleWord(true);
+        captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
+        captureDescriptionArea.setText("Files referenced: None");
+        captureDescriptionArea.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Capture Text button
+        // Optional: If you want to cap its maximum height at ~5 lines, do:
+        var lineHeight = captureDescriptionArea.getFontMetrics(
+                captureDescriptionArea.getFont()
+        ).getHeight();
+        captureDescriptionArea.setMaximumSize(
+                new Dimension(Integer.MAX_VALUE, lineHeight * 5 + 10)
+        );
+
+        panel.add(captureDescriptionArea);
+        panel.add(Box.createVerticalStrut(10)); // a bit of spacing below the text area
+
+        // 2) A button panel that does not expand
+        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        buttonPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
         captureTextButton = new JButton("Capture Text");
         captureTextButton.addActionListener(e -> captureTextFromTextarea());
-        
-        // Edit Files button
-        editFilesButton = new JButton("Edit Files");
-        editFilesButton.addActionListener(e -> editFilesFromTextarea());
-        editFilesButton.setEnabled(false); // Disabled by default
-
         buttonPanel.add(captureTextButton);
+
+        editFilesButton = new JButton("Edit Files");
+        editFilesButton.setEnabled(false); // remains disabled until references are found
+        editFilesButton.addActionListener(e -> editFilesFromTextarea());
         buttonPanel.add(editFilesButton);
 
-        // Add description label at top that will show files
-        captureDescriptionLabel = new JLabel("Files referenced: None");
-        captureDescriptionLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
+        panel.add(buttonPanel);
 
-        panel.add(captureDescriptionLabel, BorderLayout.NORTH);
-        panel.add(buttonPanel, BorderLayout.CENTER);
-        
-        // Update button state when textarea changes
+        // 3) Add “elastic” space at the bottom so buttons don’t stretch
+        panel.add(Box.createVerticalGlue());
+
+        // 4) Listen for LLM area changes (unchanged except for referencesTextArea):
         llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            @Override
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
-            @Override
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
-            @Override
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
         });
-        
+
         return panel;
     }
     
@@ -1679,7 +1688,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private void updateFilesDescriptionLabel(Set<CodeUnit> sources) {
         if (sources.isEmpty()) {
-            captureDescriptionLabel.setText("Files referenced: None");
+            captureDescriptionArea.setText("Files referenced: None");
             return;
         }
         
@@ -1690,7 +1699,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             .collect(Collectors.toSet());
             
         String filesText = "Files referenced: " + String.join(", ", fileNames);
-        captureDescriptionLabel.setText(filesText);
+        captureDescriptionArea.setText(filesText);
     }
     
     /**

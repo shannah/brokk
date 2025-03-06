@@ -112,7 +112,7 @@ public class Coder {
             @Override
             public void onError(Throwable error) {
                 ifNotCancelled.accept(() -> {
-                    writeToHistory("Error", error.getMessage());
+                    writeToHistory("Error", error.getClass() + ": " + error.getMessage());
                     io.toolErrorRaw("LLM error: " + error.getMessage());
                     streamThread.interrupt();
                 });
