@@ -645,7 +645,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Disables “Go/Ask/Search” to prevent overlapping tasks, until re-enabled
+     * Disables "Go/Ask/Search" to prevent overlapping tasks, until re-enabled
      */
     void disableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
@@ -658,7 +658,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Re-enables “Go/Ask/Search” when the task completes or is canceled
+     * Re-enables "Go/Ask/Search" when the task completes or is canceled
      */
     public void enableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
@@ -668,6 +668,37 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             runButton.setEnabled(true);
             stopButton.setEnabled(false);
             updateSuggestCommitButton();
+        });
+    }
+
+    /**
+     * Disables the context action buttons while an action is in progress
+     */
+    void disableContextActionButtons() {
+        SwingUtilities.invokeLater(() -> {
+            editButton.setEnabled(false);
+            readOnlyButton.setEnabled(false);
+            summarizeButton.setEnabled(false);
+            dropButton.setEnabled(false);
+            copyButton.setEnabled(false);
+            pasteButton.setEnabled(false);
+            symbolButton.setEnabled(false);
+        });
+    }
+
+    /**
+     * Re-enables context action buttons
+     */
+    public void enableContextActionButtons() {
+        SwingUtilities.invokeLater(() -> {
+            editButton.setEnabled(true);
+            readOnlyButton.setEnabled(true);
+            summarizeButton.setEnabled(true);
+            dropButton.setEnabled(true);
+            copyButton.setEnabled(true);
+            pasteButton.setEnabled(true);
+            symbolButton.setEnabled(true);
+            updateContextButtons();
         });
     }
 
@@ -974,37 +1005,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         return buttonsPanel;
-    }
-
-    /**
-     * Disables the context action buttons while an action is in progress
-     */
-    void disableContextActionButtons() {
-        SwingUtilities.invokeLater(() -> {
-            editButton.setEnabled(false);
-            readOnlyButton.setEnabled(false);
-            summarizeButton.setEnabled(false);
-            dropButton.setEnabled(false);
-            copyButton.setEnabled(false);
-            pasteButton.setEnabled(false);
-            symbolButton.setEnabled(false);
-        });
-    }
-
-    /**
-     * Re-enables context action buttons
-     */
-    public void enableContextActionButtons() {
-        SwingUtilities.invokeLater(() -> {
-            editButton.setEnabled(true);
-            readOnlyButton.setEnabled(true);
-            summarizeButton.setEnabled(true);
-            dropButton.setEnabled(true);
-            copyButton.setEnabled(true);
-            pasteButton.setEnabled(true);
-            symbolButton.setEnabled(true);
-            updateContextButtons();
-        });
     }
 
     /**
