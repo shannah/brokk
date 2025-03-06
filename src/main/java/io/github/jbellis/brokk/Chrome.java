@@ -95,7 +95,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * but before calling .resolveCircularReferences(...).
      */
     public Chrome(ContextManager contextManager) {
-        assert contextManager != null;
         this.contextManager = contextManager;
         this.project = contextManager.getProject();
 
@@ -133,16 +132,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
-                if (project != null) {
-                    project.saveMainWindowBounds(frame);
-                }
+                project.saveMainWindowBounds(frame);
             }
 
             @Override
             public void componentMoved(java.awt.event.ComponentEvent e) {
-                if (project != null) {
-                    project.saveMainWindowBounds(frame);
-                }
+                project.saveMainWindowBounds(frame);
             }
         });
     }
@@ -267,7 +262,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 Component c = super.getTableCellRendererComponent(
                         table, value, isSelected, hasFocus, row, column);
 
-                if (contextManager != null && row < contextManager.contextHistory.size()) {
+                if (row < contextManager.contextHistory.size()) {
                     var ctx = contextManager.contextHistory.get(row);
                     if (ctx.textarea != null) {
                     // LLM conversation - use dark background
@@ -292,7 +287,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int row = contextHistoryTable.getSelectedRow();
-                if (row >= 0 && contextManager != null && row < contextManager.contextHistory.size()) {
+                if (row >= 0 && row < contextManager.contextHistory.size()) {
                     var ctx = contextManager.contextHistory.get(row);
                     previewContextFromHistory(ctx);
                 }
@@ -332,21 +327,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var undoButton = new JButton("Undo");
         undoButton.setMnemonic(KeyEvent.VK_Z);
         undoButton.addActionListener(e -> {
-            if (contextManager != null) {
-                disableUserActionButtons();
-                disableContextActionButtons();
-                currentUserTask = contextManager.undoContextAsync();
-            }
+            disableUserActionButtons();
+            disableContextActionButtons();
+            currentUserTask = contextManager.undoContextAsync();
         });
 
         var redoButton = new JButton("Redo");
         redoButton.setMnemonic(KeyEvent.VK_Y);
         redoButton.addActionListener(e -> {
-            if (contextManager != null) {
-                disableUserActionButtons();
-                disableContextActionButtons();
-                currentUserTask = contextManager.redoContextAsync();
-            }
+            disableUserActionButtons();
+            disableContextActionButtons();
+            currentUserTask = contextManager.redoContextAsync();
         });
 
         buttonPanel.add(undoButton);
@@ -403,14 +394,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Restore context to a specific point in history
      */
     private void restoreContextFromHistory(int index) {
-        if (contextManager != null) {
-            int currentIndex = contextManager.contextHistory.size() - 1;
-            if (index < currentIndex) {
-                disableUserActionButtons();
-                disableContextActionButtons();
-                int stepsToUndo = currentIndex - index;
-                currentUserTask = contextManager.undoContextAsync(stepsToUndo);
-            }
+        int currentIndex = contextManager.contextHistory.size() - 1;
+        if (index < currentIndex) {
+            disableUserActionButtons();
+            disableContextActionButtons();
+            int stepsToUndo = currentIndex - index;
+            currentUserTask = contextManager.undoContextAsync(stepsToUndo);
         }
     }
 
@@ -1021,7 +1010,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         dropButton.setText(hasSelection ? "Drop Selected" : "Drop All");
         copyButton.setText(hasSelection ? "Copy Selected" : "Copy All");
 
-        var ctx = (contextManager == null) ? null : contextManager.currentContext();
+        var ctx = contextManager.currentContext();
         var hasContext = (ctx != null && !ctx.isEmpty());
         dropButton.setEnabled(hasContext);
         copyButton.setEnabled(hasContext);
@@ -1031,8 +1020,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates the uncommitted files table and the state of the suggest commit button
      */
     private void updateSuggestCommitButton() {
-        assert contextManager != null;
-
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             List<String> uncommittedFiles = GitRepo.instance.getUncommittedFileNames();
             SwingUtilities.invokeLater(() -> {
@@ -1069,11 +1056,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         rootPane.getActionMap().put("globalUndo", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (contextManager != null) {
-                    disableUserActionButtons();
-                    disableContextActionButtons();
-                    currentUserTask = contextManager.undoContextAsync();
-                }
+                disableUserActionButtons();
+                disableContextActionButtons();
+                currentUserTask = contextManager.undoContextAsync();
             }
         });
 
@@ -1084,11 +1069,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (contextManager != null) {
-                    disableUserActionButtons();
-                    disableContextActionButtons();
-                    currentUserTask = contextManager.redoContextAsync();
-                }
+                disableUserActionButtons();
+                disableContextActionButtons();
+                currentUserTask = contextManager.redoContextAsync();
             }
         });
 
@@ -1098,9 +1081,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (contextManager != null) {
-                    currentUserTask = contextManager.performContextActionAsync("paste", List.of());
-                }
+                currentUserTask = contextManager.performContextActionAsync("paste", List.of());
             }
         });
     }
@@ -1135,9 +1116,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             panel.add(label, BorderLayout.NORTH);
 
             var spinner = new JSpinner(new SpinnerNumberModel(
-                    (contextManager != null) ? contextManager.currentContext().autoContextFileCount : 5,
-                    0, 100, 1
-            ));
+                contextManager.currentContext().autoContextFileCount,
+                0, 100, 1
+        ));
             panel.add(spinner, BorderLayout.CENTER);
 
             var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -1477,9 +1458,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void close() {
         logger.info("Closing Chrome UI");
-        if (contextManager != null) {
-            contextManager.shutdown();
-        }
+        contextManager.shutdown();
         if (frame != null) {
             frame.dispose();
         }
