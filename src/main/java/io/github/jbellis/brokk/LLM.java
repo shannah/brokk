@@ -131,15 +131,19 @@ public class LLM {
 
             // Check for parse/match failures first
             var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
-            blocks.clear(); // don't re-apply on the next loop
+            // Only increase parse error attempts if no blocks were successfully applied
+            if (editResult.failedBlocks().size() == blocks.size()) {
+                parseErrorAttempts++;
+            } else {
+                parseErrorAttempts = 0;
+            }
+            System.out.println("Parse error count is now " + parseErrorAttempts);
+            blocks.clear(); // don't re-apply the same ones on the next loop
             if (!parseReflection.isEmpty()) {
                 io.toolOutput("Attempting to fix parse/match errors...");
-                model = coder.models.applyModel();
+                model = parseErrorAttempts > 0 ? coder.models.editModel() : coder.models.applyModel();
                 requestMessages.add(new UserMessage(parseReflection));
-                parseErrorAttempts++;
                 continue;
-            } else {
-                parseErrorAttempts = 0; // Reset on success
             }
 
             // Check for interruption before checking build
@@ -231,10 +235,8 @@ public class LLM {
      */
     private static boolean shouldContinue(Coder coder, int parseErrorAttempts, List<String> buildErrors, IConsoleIO io) {
         // If we have parse errors, limit to MAX_PARSE_ATTEMPTS attempts
-        if (parseErrorAttempts > 0) {
-            if (parseErrorAttempts < MAX_PARSE_ATTEMPTS) {
-                return true;
-            }
+        System.out.println(parseErrorAttempts);
+        if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
             io.toolOutput("Parse retry limit reached, stopping.");
             return false;
         }
