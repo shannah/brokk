@@ -5,11 +5,9 @@ import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,15 +32,18 @@ public class Context {
 
     /** backup of original contents for /undo, does not carry forward to Context children */
     final Map<RepoFile, String> originalContents;
+    
+    /** description of the action that created this context */
+    final String action;
 
     /**
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
     public Context(AnalyzerWrapper analyzer, int autoContextFileCount) {
-        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of());
+        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), "Welcome to Brokk");
     }
 
-    public Context(
+    private Context(
             AnalyzerWrapper analyzer,
             List<ContextFragment.RepoPathFragment> editableFiles,
             List<ContextFragment.PathFragment> readonlyFiles,
@@ -50,11 +51,13 @@ public class Context {
             AutoContext autoContext,
             int autoContextFileCount,
             List<ChatMessage> historyMessages,
-            Map<RepoFile, String> originalContents
+            Map<RepoFile, String> originalContents,
+            String action
     ) {
         assert analyzer != null;
         assert autoContext != null;
         assert autoContextFileCount >= 0;
+        assert action != null;
         this.analyzer = analyzer;
         this.editableFiles = List.copyOf(editableFiles);
         this.readonlyFiles = List.copyOf(readonlyFiles);
@@ -63,6 +66,7 @@ public class Context {
         this.autoContextFileCount = autoContextFileCount;
         this.historyMessages = historyMessages;
         this.originalContents = originalContents;
+        this.action = action;
     }
 
     /**
@@ -260,26 +264,44 @@ public class Context {
     }
 
     private Context withEditableFiles(List<ContextFragment.RepoPathFragment> newEditableFiles) {
-        return new Context(analyzer, newEditableFiles, readonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of());
+        return new Context(analyzer, newEditableFiles, readonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), "Modified editable files");
     }
 
     private Context withReadonlyFiles(List<ContextFragment.PathFragment> newReadonlyFiles) {
-        return new Context(analyzer, editableFiles, newReadonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of());
+        return new Context(analyzer, editableFiles, newReadonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), "Modified read-only files");
     }
 
     private Context withVirtualFragments(List<ContextFragment.VirtualFragment> newVirtualFragments) {
-        return new Context(analyzer, editableFiles, readonlyFiles, newVirtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of());
+        return new Context(analyzer, editableFiles, readonlyFiles, newVirtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), "Modified virtual fragments");
     }
 
     private Context withAutoContextFileCount(int newAutoContextFileCount) {
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, newAutoContextFileCount, historyMessages, Map.of());
+        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, newAutoContextFileCount, historyMessages, Map.of(), "Changed auto-context size to " + newAutoContextFileCount);
     }
 
     public Context removeAll() {
         return withEditableFiles(List.of())
                 .withReadonlyFiles(List.of())
                 .withVirtualFragments(List.of())
-                .refresh();
+                .refresh()
+                .withAction("Dropped all context");
+    }
+    
+    /**
+     * Create a new context with the specified action description
+     */
+    public Context withAction(String action) {
+        return new Context(
+                analyzer,
+                editableFiles,
+                readonlyFiles,
+                virtualFragments,
+                autoContext,
+                autoContextFileCount,
+                historyMessages,
+                originalContents,
+                action
+        );
     }
 
     /**
@@ -287,7 +309,7 @@ public class Context {
      */
     public Context refresh() {
         AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of());
+        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), "Refreshed context");
     }
 
     // Method removed in favor of toFragment(int position)
@@ -316,7 +338,8 @@ public class Context {
             autoContext,
             autoContextFileCount,
             List.copyOf(newHistory),
-            originalContents
+            originalContents,
+            "LLM conversation"
         );
     }
 
@@ -332,7 +355,8 @@ public class Context {
             autoContext,
             autoContextFileCount,
             List.of(),
-            Map.of()
+            Map.of(),
+            "Cleared conversation history"
         );
     }
 
@@ -345,7 +369,8 @@ public class Context {
                 autoContext,
                 autoContextFileCount,
                 historyMessages,
-                fileContents
+                fileContents,
+                this.action
         );
     }
 
@@ -359,15 +384,22 @@ public class Context {
     public boolean hasEditableFiles() {
         return !editableFiles.isEmpty();
     }
+    
+    /**
+     * Get the action that created this context
+     */
+    public String getAction() {
+        return action;
+    }
 
     public Context addUsageFragment(String identifier, Set<CodeUnit> classnames, String code) {
         var fragment = new ContextFragment.UsageFragment(identifier, classnames, code);
-        return addVirtualFragment(fragment);
+        return addVirtualFragment(fragment).withAction("Added usage references for " + identifier);
     }
 
     public Context addSkeletonFragment(List<String> shortClassnames, Set<CodeUnit> classnames, String skeleton) {
         var fragment = new SkeletonFragment(shortClassnames, classnames, skeleton);
-        return addVirtualFragment(fragment);
+        return addVirtualFragment(fragment).withAction("Added summarized code for " + String.join(", ", shortClassnames));
     }
 
     /**

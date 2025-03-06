@@ -816,7 +816,6 @@ public class ContextManager implements IContextManager
         }
         var combined = result.code();
         pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
-        chrome.toolOutput("Usage references added for " + identifier);
     }
 
     /** parse stacktrace */
@@ -848,7 +847,6 @@ public class ContextManager implements IContextManager
             var fragment = new ContextFragment.StacktraceFragment(sources, stacktraceText, exception, content.toString());
             return ctx.addVirtualFragment(fragment);
         });
-        chrome.toolOutput("Stacktrace parsed, relevant frames added");
     }
 
     /** Summarize classes => adds skeleton fragments */
@@ -888,7 +886,6 @@ public class ContextManager implements IContextManager
     public void setAutoContextFiles(int fileCount)
     {
         pushContext(ctx -> ctx.setAutoContextFiles(fileCount));
-        chrome.toolOutput("Auto-context size set to " + fileCount);
     }
 
     public List<ChatMessage> getHistoryMessages()
@@ -1025,6 +1022,7 @@ public class ContextManager implements IContextManager
             redoHistory.clear();
             if (chrome != null) {
                 chrome.updateContextTable(newContext);
+                chrome.toolOutput(newContext.getAction());
             }
         }
     }
