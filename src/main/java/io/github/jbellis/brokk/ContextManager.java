@@ -676,18 +676,29 @@ public class ContextManager implements IContextManager
     /** undo last context change */
     public Future<?> undoContextAsync()
     {
+        return undoContextAsync(1);
+    }
+    
+    /** undo multiple context changes to reach a specific point in history */
+    public Future<?> undoContextAsync(int stepsToUndo)
+    {
+        int finalStepsToUndo = Math.min(stepsToUndo, contextHistory.size() - 1);
         return contextActionExecutor.submit(() -> {
             try {
                 if (contextHistory.size() <= 1) {
                     chrome.toolErrorRaw("no undo state available");
                     return;
                 }
-                var popped = contextHistory.removeLast();
-                var redoContext = undoAndInvertChanges(popped);
-                redoHistory.add(redoContext);
+                
+                for (int i = 0; i < finalStepsToUndo; i++) {
+                    var popped = contextHistory.removeLast();
+                    var redoContext = undoAndInvertChanges(popped);
+                    redoHistory.add(redoContext);
+                }
+                
                 chrome.updateContextTable(currentContext());
                 chrome.updateContextHistoryTable();
-                chrome.toolOutput("Undo!");
+                chrome.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Undo canceled.");
             } finally {

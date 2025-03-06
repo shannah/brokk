@@ -25,10 +25,6 @@ public interface IConsoleIO {
     default void clear() {
     }
 
-    default char askOptions(String label, String options) {
-        return 'y';
-    }
-
     default void shellOutput(String message) {
         llmOutput("\n" + message);
     }

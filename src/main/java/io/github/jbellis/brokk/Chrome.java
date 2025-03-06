@@ -47,8 +47,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
-    private ContextManager contextManager;
-    private Project project;
+    private final ContextManager contextManager;
+    private final Project project;
 
     // Swing components:
     private final JFrame frame;
@@ -95,6 +95,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * but before calling .resolveCircularReferences(...).
      */
     public Chrome(ContextManager contextManager) {
+        assert contextManager != null;
         this.contextManager = contextManager;
         this.project = contextManager.getProject();
 
@@ -298,15 +299,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
         
-        // Add double-click listener to restore context
+        // Add right-click context menu for history operations
         contextHistoryTable.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    int row = contextHistoryTable.getSelectedRow();
-                    if (row >= 0 && contextManager != null) {
-                        restoreContextFromHistory(row);
-                    }
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showContextHistoryPopupMenu(e);
+                }
+            }
+            
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showContextHistoryPopupMenu(e);
                 }
             }
         });
@@ -367,12 +372,46 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             SwingUtilities.invokeLater(() -> {
                 llmStreamArea.setText(ctx.textarea);
                 llmStreamArea.setCaretPosition(0);
+                if (ctx.textarea.startsWith("Code:")) {
+                    llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
+                }
             });
         }
     }
 
+    /**
+     * Shows the context menu for the context history table
+     */
+    private void showContextHistoryPopupMenu(MouseEvent e) {
+        int row = contextHistoryTable.rowAtPoint(e.getPoint());
+        if (row < 0) return;
+        
+        // Select the row under the cursor
+        contextHistoryTable.setRowSelectionInterval(row, row);
+        
+        // Create popup menu
+        JPopupMenu popup = new JPopupMenu();
+        JMenuItem undoToHereItem = new JMenuItem("Undo to here");
+        undoToHereItem.addActionListener(event -> restoreContextFromHistory(row));
+        popup.add(undoToHereItem);
+        
+        // Show popup menu
+        popup.show(contextHistoryTable, e.getX(), e.getY());
+    }
+    
+    /**
+     * Restore context to a specific point in history
+     */
     private void restoreContextFromHistory(int index) {
-        // TODO
+        if (contextManager != null) {
+            int currentIndex = contextManager.contextHistory.size() - 1;
+            if (index < currentIndex) {
+                disableUserActionButtons();
+                disableContextActionButtons();
+                int stepsToUndo = currentIndex - index;
+                currentUserTask = contextManager.undoContextAsync(stepsToUndo);
+            }
+        }
     }
 
     /**
@@ -517,8 +556,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a command or text");
             return;
         }
+
+        llmStreamArea.setText("Code: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
 
         disableUserActionButtons();
@@ -535,8 +575,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolError("Please enter a command to run");
         }
 
+        llmStreamArea.setText("Run: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
@@ -552,8 +592,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a question");
             return;
         }
+        llmStreamArea.setText("Ask: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
@@ -569,8 +609,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please provide a search query");
             return;
         }
+        llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
@@ -1352,35 +1392,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     @Override
-    public char askOptions(String msg, String options) {
-        // e.g. (A)dd, (R)ead, etc.
-        final char[] selected = new char[1];
-        try {
-            if (SwingUtilities.isEventDispatchThread()) {
-                selected[0] = internalAskOptions(msg, options);
-            } else {
-                SwingUtilities.invokeAndWait(() -> {
-                    selected[0] = internalAskOptions(msg, options);
-                });
-            }
-        } catch (Exception e) {
-            logger.error("askOptions error", e);
-            return options.toLowerCase().charAt(options.length() - 1);
+    public void shellOutput(String message) {
+        if (!llmStreamArea.getText().endsWith("\n\n")) {
+            llmStreamArea.append("\n");
         }
-        return selected[0];
-    }
-
-    private char internalAskOptions(String msg, String options) {
-        var optsArr = options.chars().mapToObj(c -> String.valueOf((char) c)).toArray(String[]::new);
-        var choice = (String) JOptionPane.showInputDialog(
-                frame, msg, "Choose Option",
-                JOptionPane.PLAIN_MESSAGE, null,
-                optsArr, (optsArr.length > 0) ? optsArr[0] : null
-        );
-        if (choice == null || choice.isEmpty()) {
-            return options.toLowerCase().charAt(options.length() - 1);
-        }
-        return choice.toLowerCase().charAt(0);
+        llmStreamArea.append(message);
     }
 
     @Override
@@ -1396,14 +1412,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public boolean isSpinning() {
         return !backgroundStatusLabel.getText().equals(BGTASK_EMPTY);
-    }
-
-    @Override
-    public void clear() {
-        SwingUtilities.invokeLater(() -> {
-            llmStreamArea.setText("");
-            commandResultLabel.setText("");
-        });
     }
 
     /**
