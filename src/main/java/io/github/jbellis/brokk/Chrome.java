@@ -124,10 +124,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 6) Load saved window size and position, then show window
         loadWindowSizeAndPosition();
         updateContextButtons();
-        // Store a reference to this Chrome instance in the frame's client properties
-        // so inner classes can access it
-        frame.putClientProperty("chrome", this);
-        
+
         frame.setVisible(true);
 
         // Set focus to command input field on startup
@@ -1709,6 +1706,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextHistoryTable.clearSelection();
         });
     }
+    
+    /**
+     * Gets the context history table for selection checks
+     */
+    public JTable getContextHistoryTable() {
+        assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
+        return contextHistoryTable;
+    }
 
     /**
      * Checks if a position is on any available screen
@@ -1838,72 +1843,52 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Multi-line cell renderer for the context history table
      */
     private static class MultiLineCellRenderer extends JTextArea implements TableCellRenderer {
-        
+
         public MultiLineCellRenderer() {
             setLineWrap(true);
             setWrapStyleWord(true);
             setOpaque(true);
             setBorder(new EmptyBorder(2, 5, 2, 5));
         }
-        
+
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
-                boolean isSelected, boolean hasFocus, int row, int column) {
-            
-            // Set text
+                                                       boolean isSelected, boolean hasFocus, int row, int column) {
+            // Set text, size, and font to match the table's settings
             setText(value != null ? value.toString() : "");
-            
-            // Set width to match the table column width
             setSize(table.getColumnModel().getColumn(column).getWidth(), 0);
-            
-            // Match table font
             setFont(table.getFont());
-            
-            // Set colors based on selection and row type
+
             if (isSelected) {
                 setBackground(table.getSelectionBackground());
                 setForeground(table.getSelectionForeground());
-            } else if (row < table.getRowCount() &&
-                    table instanceof JTable jt && jt.getModel() instanceof DefaultTableModel model &&
-                    model.getRowCount() > row) {
-
-                // Find the Chrome instance that contains this table
-                var chrome = (Chrome)SwingUtilities.getWindowAncestor(table).getClientProperty("chrome");
-                if (chrome != null && row < chrome.contextManager.contextHistory.size()) {
-                    var ctx = chrome.contextManager.contextHistory.get(row);
-                    if (ctx.textarea != null) {
-                        // LLM conversation - use dark background
-                        setBackground(new Color(50, 50, 50));
-                        setForeground(new Color(220, 220, 220));
-                    } else {
-                        // Regular context - use normal colors
-                        setBackground(table.getBackground());
-                        setForeground(table.getForeground());
-                    }
-                } else {
-                    setBackground(table.getBackground());
-                    setForeground(table.getForeground());
-                }
-                    var ctx = chrome.contextManager.contextHistory.get(row);
-                    // This block is now handled in the preceding code
-                } else {
-                    setBackground(table.getBackground());
-                    setForeground(table.getForeground());
-                }
-                if (ctx.textarea != null) {
-                    // LLM conversation - use dark background
-                    setBackground(new Color(50, 50, 50));
-                    setForeground(new Color(220, 220, 220));
-                } else {
-                    // Regular context - use normal colors
-                    setBackground(table.getBackground());
-                    setForeground(table.getForeground());
-                }
             } else {
-                setBackground(table.getBackground());
-                setForeground(table.getForeground());
+                Color bg = table.getBackground();
+                Color fg = table.getForeground();
+
+                // Ensure row is within valid bounds
+                if (row < table.getRowCount()
+                        && table instanceof JTable jt
+                        && jt.getModel() instanceof DefaultTableModel model
+                        && model.getRowCount() > row) {
+
+                    // Look for an ancestor that supports client properties
+                    Component ancestor = SwingUtilities.getAncestorOfClass(JComponent.class, table);
+                    if (ancestor instanceof JComponent comp) {
+                        Object chromeObj = comp.getClientProperty("chrome");
+                        if (chromeObj instanceof Chrome chrome && row < chrome.contextManager.contextHistory.size()) {
+                            var ctx = chrome.contextManager.contextHistory.get(row);
+                            if (ctx.textarea != null) {
+                                // LLM conversation - use dark background
+                                bg = new Color(50, 50, 50);
+                                fg = new Color(220, 220, 220);
+                            }
+                        }
+                    }
+                }
+                setBackground(bg);
+                setForeground(fg);
             }
-            
             return this;
         }
     }

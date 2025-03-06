@@ -956,6 +956,17 @@ public class ContextManager implements IContextManager
      */
     private void pushContext(Function<Context, Context> contextGenerator)
     {
+        // Check if there's a history selection that's not the current context
+        int selectedIndex = getSelectedHistoryIndex();
+        if (selectedIndex >= 0 && selectedIndex < contextHistory.size() - 1) {
+            // Truncate history to the selected point (without adding to redo)
+            int currentSize = contextHistory.size();
+            for (int i = currentSize - 1; i > selectedIndex; i--) {
+                contextHistory.removeLast();
+            }
+            // Current context is now at the selected point
+        }
+        
         var newContext = contextGenerator.apply(currentContext());
         if (newContext == currentContext()) {
             return;
@@ -969,6 +980,14 @@ public class ContextManager implements IContextManager
         chrome.toolOutput(newContext.getAction());
         chrome.setContext(newContext);
         chrome.clearContextHistorySelection();
+    }
+    
+    /**
+     * Gets the currently selected index in the history table, or -1 if none selected
+     */
+    private int getSelectedHistoryIndex() {
+        assert chrome != null;
+        return SwingUtil.runOnEDT(() -> chrome.getContextHistoryTable().getSelectedRow(), null);
     }
 
     /**

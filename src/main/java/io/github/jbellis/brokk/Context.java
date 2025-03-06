@@ -88,7 +88,7 @@ public class Context {
         String actionDetails = toAdd.stream()
                 .map(ContextFragment::description)
                 .collect(Collectors.joining(", "));
-        String action = "Edit: " + actionDetails;
+        String action = "Edit " + actionDetails;
         return withFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
@@ -103,7 +103,7 @@ public class Context {
         String actionDetails = toAdd.stream()
                 .map(ContextFragment::description)
                 .collect(Collectors.joining(", "));
-        String action = "Read: " + actionDetails;
+        String action = "Read " + actionDetails;
         return withFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
@@ -121,7 +121,7 @@ public class Context {
         String actionDetails = fragments.stream()
                 .map(ContextFragment::description)
                 .collect(Collectors.joining(", "));
-        String action = "Removed: " + actionDetails;
+        String action = "Removed " + actionDetails;
         return withFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
@@ -135,7 +135,7 @@ public class Context {
         String actionDetails = fragments.stream()
                 .map(ContextFragment::description)
                 .collect(Collectors.joining(", "));
-        String action = "Removed: " + actionDetails;
+        String action = "Removed " + actionDetails;
         return withFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
@@ -149,7 +149,7 @@ public class Context {
         String actionDetails = fragments.stream()
                 .map(ContextFragment::description)
                 .collect(Collectors.joining(", "));
-        String action = "Removed: " + actionDetails;
+        String action = "Removed " + actionDetails;
         return withFragments(editableFiles, readonlyFiles, newFragments, action);
     }
     
@@ -164,7 +164,7 @@ public class Context {
         String fragmentText;
         fragmentText = fragment.text();
 
-        String action = "Added: " + fragmentText;
+        String action = "Added " + fragmentText;
         return withFragments(editableFiles, readonlyFiles, newFragments, action);
     }
 
@@ -181,7 +181,7 @@ public class Context {
                 .collect(Collectors.joining(", "));
         newReadOnly.addAll(editableFiles);
         
-        String action = "Converted to readonly: " + actionDetails;
+        String action = "Converted to readonly " + actionDetails;
         
         return withFragments(List.of(), newReadOnly, virtualFragments, action);
     }
@@ -195,19 +195,19 @@ public class Context {
                 var newEditable = new ArrayList<>(editableFiles);
                 newEditable.remove(pf);
                 return withFragments(newEditable, readonlyFiles, virtualFragments,
-                                     "Removed unreadable: " + pf.description());
+                                     "Removed unreadable " + pf.description());
             } else if (inReadonly) {
                 var newReadonly = new ArrayList<>(readonlyFiles);
                 newReadonly.remove(pf);
                 return withFragments(editableFiles, newReadonly, virtualFragments,
-                                     "Removed unreadable: " + pf.description());
+                                     "Removed unreadable " + pf.description());
             }
             return this;
         } else if (f instanceof ContextFragment.VirtualFragment vf) {
             var newFragments = new ArrayList<>(virtualFragments);
             if (newFragments.remove(vf)) {
                 return withFragments(editableFiles, readonlyFiles, newFragments,
-                                     "Removed unreadable: " + vf.description());
+                                     "Removed unreadable " + vf.description());
             }
             return this;
         } else {
