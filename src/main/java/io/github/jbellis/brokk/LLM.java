@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class LLM {
     private static final Logger logger = LogManager.getLogger(LLM.class);
@@ -112,10 +113,10 @@ public class LLM {
 
             // auto-add files referenced in search/replace blocks that are not already editable
             var filesToAdd = blocks.stream()
-                    .filter(block -> block.filename() != null)
-                    .filter(block -> !coder.contextManager.getEditableFiles().contains(coder.contextManager.toFile(block.filename())))
-                    .distinct()
                     .map(EditBlock.SearchReplaceBlock::filename)
+                    .filter(Objects::nonNull)
+                    .filter(filename -> !coder.contextManager.getEditableFiles().contains(coder.contextManager.toFile(filename)))
+                    .distinct()
                     .map(coder.contextManager::toFile)
                     .toList();
             logger.debug("Auto-adding as editable: {}", filesToAdd);
