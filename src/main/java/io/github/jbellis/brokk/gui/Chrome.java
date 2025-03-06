@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
-    private final int FRAGMENT_COLUMN = 3;
+    private final int FRAGMENT_COLUMN = 2;
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
@@ -87,7 +87,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
-    private final int CHECKBOX_COLUMN = 2;
     private JTextArea captureDescriptionArea;
     /**
      * Enum representing the different types of context actions that can be performed.
@@ -766,9 +765,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         tableHeader.setResizingAllowed(true);
         tableHeader.setFont(new Font(Font.DIALOG, Font.BOLD, 12));
 
-        // Hide the header for the "Select" and "Fragment" columns
-        contextTable.getColumnModel().getColumn(CHECKBOX_COLUMN).setHeaderValue("");
-        contextTable.getColumnModel().getColumn(CHECKBOX_COLUMN).setMaxWidth(60);
+        // Hide the header for the "Fragment" column
         contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setMinWidth(0);
         contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setMaxWidth(0);
         contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setWidth(0);
@@ -1328,8 +1325,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Fill the table with new data
         var allFragments = ctx.getAllFragmentsInDisplayOrder();
         int totalLines = 0;
+        var fullText = "";  // no large merges needed
         for (var frag : allFragments) {
-            var loc = countLinesSafe(frag);
+            var text = getTextSafe(frag);
+            fullText += text + "\n";
+            int loc = text.split("\\r?\\n", -1).length;
             totalLines += loc;
             var desc = frag.description();
 
@@ -1340,10 +1340,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 desc = "✏️ " + desc;  // Add pencil icon to editable files
             }
 
-            tableModel.addRow(new Object[]{loc, desc, false, frag});
+            tableModel.addRow(new Object[]{loc, desc, frag});
         }
 
-        var fullText = "";  // no large merges needed
         var approxTokens = Models.getApproximateTokens(fullText);
 
         ((JLabel)locSummaryLabel.getComponent(0)).setText(
@@ -1355,14 +1354,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextPanel.repaint();
     }
 
-    private int countLinesSafe(ContextFragment fragment) {
+    private String getTextSafe(ContextFragment fragment) {
         try {
-            var text = fragment.text();
-            if (text.isEmpty()) return 0;
-            return text.split("\\r?\\n", -1).length;
-        } catch (Exception e) {
+            return fragment.text();
+        } catch (IOException e) {
             toolErrorRaw("Error reading fragment: " + e.getMessage());
-            return 0;
+            contextManager.removeBadFragment(fragment, e);
+            return "";
         }
     }
 
