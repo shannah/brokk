@@ -972,6 +972,7 @@ public class ContextManager implements IContextManager
         redoHistory.clear();
         chrome.toolOutput(newContext.getAction());
         chrome.setContext(newContext);
+        chrome.clearContextHistorySelection();
     }
 
     /**

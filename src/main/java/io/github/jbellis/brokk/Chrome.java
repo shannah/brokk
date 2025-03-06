@@ -1025,8 +1025,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var hasContext = (ctx != null && !ctx.isEmpty());
         dropButton.setEnabled(hasContext);
         copyButton.setEnabled(hasContext);
-
-        updateSuggestCommitButton();
     }
 
     /**
@@ -1424,6 +1422,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             tableModel.setRowCount(0);
 
             updateContextButtons();
+            updateContextHistoryTable();
+            updateSuggestCommitButton();
 
             if (context.isEmpty()) {
                 ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
@@ -1431,9 +1431,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 contextPanel.repaint();
                 return;
             }
-            
-            // Update context history table
-            updateContextHistoryTable();
 
             // Fill the table with new data
             var allFragments = context.getAllFragmentsInDisplayOrder();
@@ -1460,7 +1457,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
             );
 
-            // Just revalidate/repaint the panel to reflect the new rows
+            // revalidate/repaint the panel to reflect the new rows
             contextPanel.revalidate();
             contextPanel.repaint();
         });
@@ -1644,12 +1641,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         ctx // We store the actual context object in hidden column
                 });
             }
+        });
+    }
 
-            // Auto-select the latest context
-            if (contextHistoryModel.getRowCount() > 0) {
-                int lastRow = contextHistoryModel.getRowCount() - 1;
-                contextHistoryTable.setRowSelectionInterval(lastRow, lastRow);
-            }
+    public void clearContextHistorySelection() {
+        SwingUtilities.invokeLater(() -> {
+            contextHistoryTable.clearSelection();
         });
     }
 
