@@ -43,7 +43,7 @@ import java.util.concurrent.Future;
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
     private final int FRAGMENT_COLUMN = 3;
-    private final String BGTASK_EMPTY = "[No background tasks]";
+    private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
     private ContextManager contextManager;
@@ -322,7 +322,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         searchButton.setMnemonic(KeyEvent.VK_S);
         searchButton.addActionListener(e -> runSearchCommand());
 
-        runButton = new JButton("Run");
+        runButton = new JButton("Run in Shell");
         runButton.setMnemonic(KeyEvent.VK_R);
         runButton.addActionListener(e -> runRunCommand());
 
