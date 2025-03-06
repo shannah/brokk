@@ -8,7 +8,9 @@ import java.util.Set;
 import java.util.concurrent.Future;
 
 public interface ContextFragment {
-    /** longer description displayed to user */
+    /** short description in history */
+    String shortDescription();
+    /** longer description displayed in context table */
     String description();
     /** raw content */
     String text() throws IOException;
@@ -40,6 +42,11 @@ public interface ContextFragment {
 
     record RepoPathFragment(RepoFile file) implements PathFragment {
         @Override
+        public String shortDescription() {
+            return file().getFileName();
+        }
+
+        @Override
         public String description() {
             return "%s [%s]".formatted(file.getFileName(), file.getParent());
         }
@@ -61,6 +68,11 @@ public interface ContextFragment {
     }
 
     record ExternalPathFragment(ExternalFile file) implements PathFragment {
+        @Override
+        public String shortDescription() {
+            return description();
+        }
+
         @Override
         public String description() {
             return file.toString();
@@ -86,44 +98,6 @@ public interface ContextFragment {
         throw new IllegalArgumentException("Unknown BrokkFile subtype: " + bf.getClass().getName());
     }
 
-    class SearchFragment extends VirtualFragment {
-        private final String query;
-        private final String explanation;
-        private final Set<CodeUnit> sources;
-
-        public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
-            super();
-            this.query = query;
-            this.explanation = explanation;
-            this.sources = sources;
-        }
-
-        @Override
-        public String text() {
-            return explanation;
-        }
-
-        @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
-            return sources;
-        }
-
-        @Override
-        public String description() {
-            return "Search results for: " + query;
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
-        }
-
-        @Override
-        public String toString() {
-            return "SearchFragment('%s')".formatted(query);
-        }
-    }
-
     abstract class VirtualFragment implements ContextFragment {
         @Override
         public String format() throws IOException {
@@ -132,6 +106,11 @@ public interface ContextFragment {
             %s
             </fragment>
             """.formatted(description(), text()).stripIndent();
+        }
+
+        @Override
+        public String shortDescription() {
+            return description();
         }
 
         @Override
@@ -174,6 +153,44 @@ public interface ContextFragment {
         @Override
         public String toString() {
             return "StringFragment('%s')".formatted(description);
+        }
+    }
+
+    class SearchFragment extends VirtualFragment {
+        private final String query;
+        private final String explanation;
+        private final Set<CodeUnit> sources;
+
+        public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
+            super();
+            this.query = query;
+            this.explanation = explanation;
+            this.sources = sources;
+        }
+
+        @Override
+        public String text() {
+            return explanation;
+        }
+
+        @Override
+        public Set<CodeUnit> sources(Analyzer analyzer) {
+            return sources;
+        }
+
+        @Override
+        public String description() {
+            return "Search results for: " + query;
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return "SearchFragment('%s')".formatted(query);
         }
     }
 
@@ -421,6 +438,11 @@ public interface ContextFragment {
         @Override
         public String description() {
             return "[Auto] " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
+        }
+
+        @Override
+        public String shortDescription() {
+            return "Autosummary of " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
         }
 
         @Override

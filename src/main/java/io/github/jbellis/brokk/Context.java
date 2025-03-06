@@ -86,7 +86,7 @@ public class Context {
         newEditable.addAll(toAdd);
         
         String actionDetails = toAdd.stream()
-                .map(ContextFragment::description)
+                .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Edit " + actionDetails;
         return withFragments(newEditable, readonlyFiles, virtualFragments, action);
@@ -101,7 +101,7 @@ public class Context {
         newReadOnly.addAll(toAdd);
         
         String actionDetails = toAdd.stream()
-                .map(ContextFragment::description)
+                .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Read " + actionDetails;
         return withFragments(editableFiles, newReadOnly, virtualFragments, action);
@@ -119,7 +119,7 @@ public class Context {
         }
         
         String actionDetails = fragments.stream()
-                .map(ContextFragment::description)
+                .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
         return withFragments(newEditable, readonlyFiles, virtualFragments, action);
@@ -133,7 +133,7 @@ public class Context {
         }
         
         String actionDetails = fragments.stream()
-                .map(ContextFragment::description)
+                .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
         return withFragments(editableFiles, newReadOnly, virtualFragments, action);
@@ -147,7 +147,7 @@ public class Context {
         }
         
         String actionDetails = fragments.stream()
-                .map(ContextFragment::description)
+                .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
         return withFragments(editableFiles, readonlyFiles, newFragments, action);
@@ -177,7 +177,7 @@ public class Context {
     public Context convertAllToReadOnly() {
         List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
         String actionDetails = editableFiles.stream()
-                .map(ContextFragment::description)
+                .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         newReadOnly.addAll(editableFiles);
         

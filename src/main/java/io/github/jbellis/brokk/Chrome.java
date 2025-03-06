@@ -413,7 +413,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.repaint();
             
             // If there's textarea content, restore it to the LLM output area
-            if (ctx.textarea != null) {
+            if (ctx.textarea == null) {
+                llmStreamArea.setText("");
+            } else {
                 llmStreamArea.setText(ctx.textarea);
                 llmStreamArea.setCaretPosition(0);
                 if (ctx.textarea.startsWith("Code:")) {
