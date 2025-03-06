@@ -68,7 +68,6 @@ public class Coder {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         // locking for cancellation -- we don't want to show any output after cancellation
-        var streamThread = Thread.currentThread();
         AtomicBoolean canceled = new AtomicBoolean(false);
         var lock = new ReentrantLock();
         AtomicReference<Throwable> errorRef = new AtomicReference<>(null);
@@ -403,12 +402,7 @@ public class Coder {
             io.toolErrorRaw("Failed to write to history: " + e.getMessage());
         }
     }
-}
 
-// Represents the outcome of a streaming request.
-record StreamingResult
-(
-    ChatResponse chatResponse,
-    boolean cancelled,
-    Throwable error
-) {}
+    // Represents the outcome of a streaming request.
+    public record StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {}
+}
