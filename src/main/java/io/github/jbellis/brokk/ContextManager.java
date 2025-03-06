@@ -294,7 +294,6 @@ public class ContextManager implements IContextManager
                     return;
                 }
                 // run a search agent
-                chrome.spin("Searching code");
                 var agent = new SearchAgent(query, this, coder, chrome);
                 var result = agent.execute();
                 if (result == null) {
@@ -307,7 +306,6 @@ public class ContextManager implements IContextManager
             } catch (CancellationException cex) {
                 chrome.toolOutput("Search command canceled.");
             } finally {
-                chrome.spinComplete();
                 chrome.enableUserActionButtons();
             }
         });

@@ -103,7 +103,6 @@ public class SearchAgent {
             knowledge.add(new Tuple2<>("Initial context", response.aiMessage().text()));
         }
 
-        io.shellOutput("Exploring: " + query);
         while (totalUsage.inputTokenCount() < TOKEN_BUDGET) {
             if (Thread.interrupted()) {
                 return null;
