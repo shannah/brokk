@@ -1847,7 +1847,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         Set<String> fileNames = sources.stream()
             .map(cu -> contextManager.getAnalyzer().pathOf(cu))
             .filter(Objects::nonNull)
-            .map(file -> file.getFileName().toString())
+            .map(RepoFile::getFileName)
             .collect(Collectors.toSet());
             
         String filesText = "Files referenced: " + String.join(", ", fileNames);
@@ -1860,10 +1860,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void captureTextFromTextarea() {
         String text = llmStreamArea.getText();
         if (!text.isBlank()) {
-            String description = "Captured text from " + new java.util.Date();
-            contextManager.addStringFragment(description, text);
-            // Clear the textarea after capturing
-            SwingUtilities.invokeLater(() -> llmStreamArea.setText(""));
+            var fragment = contextManager.getActionFragment();
+            assert fragment != null;
+            contextManager.addVirtualFragment(fragment);
         }
     }
 

@@ -8,6 +8,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
+import io.github.jbellis.brokk.ContextFragment.StringFragment;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.SwingUtil;
@@ -81,6 +82,9 @@ public class ContextManager implements IContextManager
 
     private Project project;
     private final Path root;
+    
+    // Store the most recent action fragment (Code/Ask/Search/Run)
+    private VirtualFragment actionFragment;
 
     private Mode mode = Mode.EDIT;
 
@@ -185,7 +189,11 @@ public class ContextManager implements IContextManager
             try {
                 chrome.toolOutput("Executing: " + input);
                 var result = Environment.instance.captureShellCommand(input);
-                chrome.shellOutput(result.output().isBlank() ? "[operation completed with no output]" : result.output());
+                String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
+                chrome.shellOutput(output);
+                
+                // Store the command result as a StringFragment
+                actionFragment = new StringFragment(output, "Run " + input);
             } finally {
                 chrome.enableUserActionButtons();
             }
@@ -198,6 +206,11 @@ public class ContextManager implements IContextManager
         return userActionExecutor.submit(() -> {
             try {
                 LLM.runSession(coder, chrome, getCurrentModel(coder.models), input);
+                // After the session completes, capture the output as a StringFragment
+                String outputText = chrome.getLlmOutputText();
+                if (!outputText.isBlank()) {
+                    actionFragment = new StringFragment(outputText, "Code for " + input);
+                }
             } finally {
                 chrome.enableUserActionButtons();
             }
@@ -225,6 +238,11 @@ public class ContextManager implements IContextManager
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response != null) {
                     addToHistory(List.of(messages.getLast(), response.aiMessage()), Map.of());
+                    // Store the response as a StringFragment
+                    String outputText = chrome.getLlmOutputText();
+                    if (!outputText.isBlank()) {
+                        actionFragment = new StringFragment(outputText, "Ask for " + question);
+                    }
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput("Ask command canceled.");
@@ -242,9 +260,9 @@ public class ContextManager implements IContextManager
      */
     public Future<?> runSearchAsync(String query)
     {
+        assert chrome != null;
         return userActionExecutor.submit(() -> {
             try {
-                if (chrome == null) return;
                 if (query.isBlank()) {
                     chrome.toolErrorRaw("Please provide a search query");
                     return;
@@ -257,6 +275,8 @@ public class ContextManager implements IContextManager
                     chrome.toolOutput("Search was interrupted");
                 } else {
                     chrome.llmOutput(result.text() + "\n");
+                    // The search agent already creates the right fragment type
+                    actionFragment = result;
                     addSearchFragment(result);
                 }
             } catch (CancellationException cex) {
@@ -742,6 +762,22 @@ public class ContextManager implements IContextManager
             var fragment = new ContextFragment.StringFragment(content, description);
             return ctx.addVirtualFragment(fragment);
         });
+    }
+    
+    /**
+     * Adds any virtual fragment directly 
+     */
+    public void addVirtualFragment(VirtualFragment fragment)
+    {
+        pushContext(ctx -> ctx.addVirtualFragment(fragment));
+    }
+    
+    /**
+     * Gets the most recent action fragment (from Code/Ask/Search/Run)
+     */
+    public VirtualFragment getActionFragment() 
+    {
+        return actionFragment;
     }
 
     /** usage for identifier */
