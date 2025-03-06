@@ -100,6 +100,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JLabel captureDescriptionLabel;
 
     /**
+     * Enum representing the different types of context actions that can be performed.
+     * This replaces the use of magic strings when calling performContextActionAsync.
+     */
+    public enum ContextAction {
+        EDIT, READ, SUMMARIZE, DROP, COPY, PASTE
+    }
+
+    /**
      * Default constructor sets up the UI.
      * We call this from Brokk after creating contextManager, commands, etc.,
      * but before calling .resolveCircularReferences(...).
@@ -877,7 +885,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             editButton.setMnemonic(KeyEvent.VK_D);
             editButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
-                currentUserTask = contextManager.performContextActionAsync("edit", selectedFragments);
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.EDIT, selectedFragments);
             });
         }
 
@@ -886,7 +894,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             readOnlyButton.setMnemonic(KeyEvent.VK_R);
             readOnlyButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
-                currentUserTask = contextManager.performContextActionAsync("read", selectedFragments);
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.READ, selectedFragments);
             });
         }
 
@@ -895,7 +903,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             summarizeButton.setMnemonic(KeyEvent.VK_S);
             summarizeButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
-                currentUserTask = contextManager.performContextActionAsync("summarize", selectedFragments);
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
             });
         }
 
@@ -905,7 +913,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             dropButton.addActionListener(e -> {
                 disableContextActionButtons();
                 var selectedFragments = getSelectedFragments();
-                currentUserTask = contextManager.performContextActionAsync("drop", selectedFragments);
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.DROP, selectedFragments);
             });
         }
 
@@ -913,14 +921,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             copyButton = new JButton("Copy All");
             copyButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
-                currentUserTask = contextManager.performContextActionAsync("copy", selectedFragments);
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.COPY, selectedFragments);
             });
         }
 
         if (pasteButton == null) {
             pasteButton = new JButton("Paste");
             pasteButton.addActionListener(e -> {
-                currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.PASTE, List.of());
             });
         }
 
@@ -1123,7 +1131,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+                currentUserTask = contextManager.performContextActionAsync(ContextAction.PASTE, List.of());
             }
         });
     }
@@ -1230,14 +1238,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
         copyMenuItem.addActionListener(e -> {
             var selectedFragments = getSelectedFragments();
-            currentUserTask = contextManager.performContextActionAsync("copy", selectedFragments);
+            currentUserTask = contextManager.performContextActionAsync(ContextAction.COPY, selectedFragments);
         });
         editMenu.add(copyMenuItem);
 
         var pasteMenuItem = new JMenuItem("Paste");
         pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK));
         pasteMenuItem.addActionListener(e -> {
-            currentUserTask = contextManager.performContextActionAsync("paste", List.of());
+            currentUserTask = contextManager.performContextActionAsync(ContextAction.PASTE, List.of());
         });
         editMenu.add(pasteMenuItem);
 

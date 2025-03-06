@@ -361,18 +361,17 @@ public class ContextManager implements IContextManager
      * Performed by the action buttons in the context panel: "edit / read / copy / drop / summarize"
      * If selectedFragments is empty, it means "All". We handle logic accordingly.
      */
-    public Future<?> performContextActionAsync(String action, List<ContextFragment> selectedFragments)
+    public Future<?> performContextActionAsync(Chrome.ContextAction action, List<ContextFragment> selectedFragments)
     {
         return contextActionExecutor.submit(() -> {
             try {
                 switch (action) {
-                    case "edit" -> doEditAction(selectedFragments);
-                    case "read" -> doReadAction(selectedFragments);
-                    case "copy" -> doCopyAction(selectedFragments);
-                    case "drop" -> doDropAction(selectedFragments);
-                    case "summarize" -> doSummarizeAction(selectedFragments);
-                    case "paste" -> doPasteAction();
-                    default -> chrome.toolErrorRaw("Unknown action: " + action);
+                    case EDIT -> doEditAction(selectedFragments);
+                    case READ -> doReadAction(selectedFragments);
+                    case COPY -> doCopyAction(selectedFragments);
+                    case DROP -> doDropAction(selectedFragments);
+                    case SUMMARIZE -> doSummarizeAction(selectedFragments);
+                    case PASTE -> doPasteAction();
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput(action + " canceled.");
