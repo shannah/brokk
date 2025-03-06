@@ -304,29 +304,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Set preferred height for 3 lines
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
 
-        // Handle Enter key for command submission
-        commandInputField.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "runCode");
-        commandInputField.getActionMap().put("runCode", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                runCodeCommand();
-            }
-        });
-
-        // Allow Shift+Enter for new line
-        commandInputField.getInputMap().put(
-                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK), "insert-break");
-        commandInputField.getActionMap().put("insert-break", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                commandInputField.replaceSelection("\n");
-            }
-        });
-
-        // Allow Ctrl+Enter for new line
-        commandInputField.getInputMap().put(
-                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK), "insert-break");
-
         // Emacs-like keybindings
         wrapper.add(commandScrollPane, BorderLayout.CENTER);
 
