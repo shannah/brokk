@@ -11,6 +11,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -123,8 +124,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 6) Load saved window size and position, then show window
         loadWindowSizeAndPosition();
         updateContextButtons();
-        frame.setVisible(true);
+        // Store a reference to this Chrome instance in the frame's client properties
+        // so inner classes can access it
+        frame.putClientProperty("chrome", this);
         
+        frame.setVisible(true);
+
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
 
@@ -247,12 +252,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         contextHistoryTable = new JTable(contextHistoryModel);
         contextHistoryTable.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
-        contextHistoryTable.setRowHeight(20);
         contextHistoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         
         // Remove table header
         contextHistoryTable.setTableHeader(null);
-
+        
+        // Set up multi-line cell renderer for the first column
+        contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new MultiLineCellRenderer());
+        
         // Set up column rendering for LLM conversation rows
         contextHistoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
@@ -354,20 +361,69 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private void previewContextFromHistory(Context ctx) {
         assert ctx != null;
+        previewContextOnly(ctx);
+    }
+
+    /**
+     * Lightweight method to preview a context without updating history
+     * Only updates the LLM text area and context panel display
+     */
+    public void previewContextOnly(Context ctx) {
+        assert ctx != null;
         
-        // update the context panel display
-        setContext(ctx);
-        
-        // If there's textarea content, restore it to the LLM output area
-        if (ctx.textarea != null) {
-            SwingUtilities.invokeLater(() -> {
+        SwingUtilities.invokeLater(() -> {
+            // Update context table without updating history
+            // Clear the existing table rows
+            var tableModel = (DefaultTableModel) contextTable.getModel();
+            tableModel.setRowCount(0);
+
+            updateContextButtons();
+            
+            if (ctx.isEmpty()) {
+                ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
+                contextPanel.revalidate();
+                contextPanel.repaint();
+                return;
+            }
+
+            // Fill the table with new data
+            var allFragments = ctx.getAllFragmentsInDisplayOrder();
+            int totalLines = 0;
+            for (var frag : allFragments) {
+                var loc = countLinesSafe(frag);
+                totalLines += loc;
+                var desc = frag.description();
+
+                var isEditable = (frag instanceof ContextFragment.RepoPathFragment)
+                        && ctx.editableFiles().anyMatch(e -> e == frag);
+
+                if (isEditable) {
+                    desc = "✏️ " + desc;  // Add pencil icon to editable files
+                }
+
+                tableModel.addRow(new Object[]{loc, desc, false, frag});
+            }
+
+            var fullText = "";  // no large merges needed
+            var approxTokens = Models.getApproximateTokens(fullText);
+
+            ((JLabel)locSummaryLabel.getComponent(0)).setText(
+                    "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
+            );
+
+            // revalidate/repaint the panel to reflect the new rows
+            contextPanel.revalidate();
+            contextPanel.repaint();
+            
+            // If there's textarea content, restore it to the LLM output area
+            if (ctx.textarea != null) {
                 llmStreamArea.setText(ctx.textarea);
                 llmStreamArea.setCaretPosition(0);
                 if (ctx.textarea.startsWith("Code:")) {
                     llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
                 }
-            });
-        }
+            }
+        });
     }
 
     /**
@@ -1620,7 +1676,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         ctx // We store the actual context object in hidden column
                 });
             }
+            
+            // Update row heights based on content
+            for (int row = 0; row < contextHistoryTable.getRowCount(); row++) {
+                adjustRowHeight(row);
+            }
         });
+    }
+    
+    /**
+     * Adjusts the height of a row based on its content
+     */
+    private void adjustRowHeight(int row) {
+        if (row >= contextHistoryTable.getRowCount()) return;
+        
+        // Get the cell renderer component for the visible column
+        var renderer = contextHistoryTable.getCellRenderer(row, 0);
+        var comp = contextHistoryTable.prepareRenderer(renderer, row, 0);
+        
+        // Calculate the preferred height
+        int preferredHeight = comp.getPreferredSize().height;
+        preferredHeight = Math.max(preferredHeight, 20); // Minimum height
+        
+        // Set the row height if it differs from current height
+        if (contextHistoryTable.getRowHeight(row) != preferredHeight) {
+            contextHistoryTable.setRowHeight(row, preferredHeight);
+        }
     }
 
     public void clearContextHistorySelection() {
@@ -1751,6 +1832,79 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         public String getKeyValue() {
             return keyValueField.getText().trim();
+        }
+    }
+    /**
+     * Multi-line cell renderer for the context history table
+     */
+    private static class MultiLineCellRenderer extends JTextArea implements TableCellRenderer {
+        
+        public MultiLineCellRenderer() {
+            setLineWrap(true);
+            setWrapStyleWord(true);
+            setOpaque(true);
+            setBorder(new EmptyBorder(2, 5, 2, 5));
+        }
+        
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            
+            // Set text
+            setText(value != null ? value.toString() : "");
+            
+            // Set width to match the table column width
+            setSize(table.getColumnModel().getColumn(column).getWidth(), 0);
+            
+            // Match table font
+            setFont(table.getFont());
+            
+            // Set colors based on selection and row type
+            if (isSelected) {
+                setBackground(table.getSelectionBackground());
+                setForeground(table.getSelectionForeground());
+            } else if (row < table.getRowCount() &&
+                    table instanceof JTable jt && jt.getModel() instanceof DefaultTableModel model &&
+                    model.getRowCount() > row) {
+
+                // Find the Chrome instance that contains this table
+                var chrome = (Chrome)SwingUtilities.getWindowAncestor(table).getClientProperty("chrome");
+                if (chrome != null && row < chrome.contextManager.contextHistory.size()) {
+                    var ctx = chrome.contextManager.contextHistory.get(row);
+                    if (ctx.textarea != null) {
+                        // LLM conversation - use dark background
+                        setBackground(new Color(50, 50, 50));
+                        setForeground(new Color(220, 220, 220));
+                    } else {
+                        // Regular context - use normal colors
+                        setBackground(table.getBackground());
+                        setForeground(table.getForeground());
+                    }
+                } else {
+                    setBackground(table.getBackground());
+                    setForeground(table.getForeground());
+                }
+                    var ctx = chrome.contextManager.contextHistory.get(row);
+                    // This block is now handled in the preceding code
+                } else {
+                    setBackground(table.getBackground());
+                    setForeground(table.getForeground());
+                }
+                if (ctx.textarea != null) {
+                    // LLM conversation - use dark background
+                    setBackground(new Color(50, 50, 50));
+                    setForeground(new Color(220, 220, 220));
+                } else {
+                    // Regular context - use normal colors
+                    setBackground(table.getBackground());
+                    setForeground(table.getForeground());
+                }
+            } else {
+                setBackground(table.getBackground());
+                setForeground(table.getForeground());
+            }
+            
+            return this;
         }
     }
 }
