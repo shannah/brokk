@@ -17,8 +17,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Completions {
-    @VisibleForTesting
-    static List<Candidate> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
+    public static List<String> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
         var allCodeUnits = analyzer.getAllClasses();
         var allClassnames = allCodeUnits.stream().map(CodeUnit::reference).toList();
         String partial = input.trim();
@@ -26,7 +25,7 @@ public class Completions {
         var matchingClasses = findClassesForMemberAccess(input, allClassnames);
         if (matchingClasses.size() == 1) {
             // find matching members
-            List<Candidate> results = new ArrayList<>();
+            var results = new ArrayList<String>();
             for (var matchedClass : matchingClasses) {
                 String memberPrefix = partial.substring(partial.lastIndexOf(".") + 1);
                 // Add members
@@ -34,8 +33,7 @@ public class Completions {
                 for (String fqMember : trueMembers.stream().map(CodeUnit::reference).toList()) {
                     String shortMember = fqMember.substring(fqMember.lastIndexOf('.') + 1);
                     if (shortMember.startsWith(memberPrefix)) {
-                        String display = returnFqn ? fqMember : getShortClassName(matchedClass) + "." + shortMember;
-                        results.add(new Candidate(display, display, null, null, null, null, true));
+                        results.add(returnFqn ? fqMember : getShortClassName(matchedClass) + "." + shortMember);
                     }
                 }
             }
@@ -64,8 +62,7 @@ public class Completions {
         // Return just the class names
         return matchedClasses.stream()
                 .map(fqClass -> {
-                    String display = returnFqn ? fqClass : getShortClassName(fqClass);
-                    return new Candidate(display, display, null, null, null, null, false);
+                    return returnFqn ? fqClass : getShortClassName(fqClass);
                 })
                 .collect(Collectors.toList());
     }
@@ -186,17 +183,6 @@ public class Completions {
             }
         }
         return capitals.toString();
-    }
-
-    /**
-     * Splits the given string by quoted or unquoted segments.
-     */
-    static List<String> parseQuotedFilenames(String args) {
-        var pattern = Pattern.compile("\"([^\"]+)\"|\\S+");
-        return pattern.matcher(args)
-                .results()
-                .map(m -> m.group(1) != null ? m.group(1) : m.group())
-                .toList();
     }
 
     /**

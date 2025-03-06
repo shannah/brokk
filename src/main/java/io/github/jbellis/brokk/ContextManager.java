@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
@@ -324,6 +325,29 @@ public class ContextManager implements IContextManager
             }
         });
     }
+    
+    /**
+     * Shows the symbol selection dialog and adds usage information for the selected symbol.
+     */
+    public Future<?> findSymbolUsageAsync()
+    {
+        assert chrome != null;
+        return contextActionExecutor.submit(() -> {
+            try {
+                String symbol = showSymbolSelectionDialog("Select Symbol");
+                if (symbol != null && !symbol.isBlank()) {
+                    usageForIdentifier(symbol);
+                } else {
+                    chrome.toolOutput("No symbol selected.");
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Symbol selection canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
 
     /**
      * Show the custom file selection dialog
@@ -341,6 +365,27 @@ public class ContextManager implements IContextManager
                 return dialog.getSelectedFiles();
             }
             return List.of();
+        } finally {
+            chrome.focusInput();
+        }
+    }
+    
+    /**
+     * Show the symbol selection dialog
+     */
+    private String showSymbolSelectionDialog(String title)
+    {
+        var dialog = new SymbolSelectionDialog(null, getAnalyzer(), title);
+        SwingUtil.runOnEDT(() -> {
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), 400);
+            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setVisible(true);
+        });
+        try {
+            if (dialog.isConfirmed()) {
+                return dialog.getSelectedSymbol();
+            }
+            return null;
         } finally {
             chrome.focusInput();
         }

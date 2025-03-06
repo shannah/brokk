@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import org.jline.reader.Candidate;
 import org.junit.jupiter.api.Test;
 import org.msgpack.core.annotations.VisibleForTesting;
 
@@ -19,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class CompleteUsageTest {
 
     @VisibleForTesting
-    static List<Candidate> completeUsage(String input, IAnalyzer analyzer) {
+    static List<String> completeUsage(String input, IAnalyzer analyzer) {
         return Completions.completeClassesAndMembers(input, analyzer, true);
     }
 
@@ -54,11 +53,9 @@ public class CompleteUsageTest {
         }
     }
     
-    // Helper to extract just the candidate values for easy assertion
-    private static Set<String> toValues(List<Candidate> candidates) {
-        return candidates.stream()
-                .map(Candidate::value)
-                .collect(Collectors.toSet());
+    // Helper to extract values for easy assertion (now just returns the strings)
+    private static Set<String> toValues(List<String> candidates) {
+        return new HashSet<>(candidates);
     }
 
     @Test

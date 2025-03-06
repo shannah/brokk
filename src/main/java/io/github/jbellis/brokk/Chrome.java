@@ -71,6 +71,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JButton dropButton;
     private JButton copyButton;
     private JButton pasteButton;
+    private JButton symbolButton;
 
     // Buttons for the command input panel:
     private JButton codeButton;  // renamed from goButton
@@ -751,6 +752,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(summarizeButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        
+        // Add Symbol Usage button right after Summarize
+        if (symbolButton == null) {
+            symbolButton = new JButton("Symbol Usage");
+            symbolButton.setMnemonic(KeyEvent.VK_Y);
+            symbolButton.addActionListener(e -> {
+                currentUserTask = contextManager.findSymbolUsageAsync();
+            });
+            symbolButton.setPreferredSize(preferredSize);
+            symbolButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        }
+        buttonsPanel.add(symbolButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        
         buttonsPanel.add(dropButton);
         buttonsPanel.add(Box.createVerticalGlue());  // Push remaining buttons to bottom
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -778,6 +793,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             dropButton.setEnabled(false);
             copyButton.setEnabled(false);
             pasteButton.setEnabled(false);
+            symbolButton.setEnabled(false);
         });
     }
 
@@ -792,6 +808,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             dropButton.setEnabled(true);
             copyButton.setEnabled(true);
             pasteButton.setEnabled(true);
+            symbolButton.setEnabled(true);
             updateContextButtons();
         });
     }
