@@ -783,7 +783,10 @@ public class EditBlock {
                     suggestion.append("Did you mean:\n").append(snippet).append("\n");
                 }
                 if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    suggestion.append("Note: The replacement text is already present in the file.\n");
+                    suggestion.append("""
+                    Note: The replacement text is already present in the file. If we no longer need to apply
+                    this block, omit it from your reply.
+                    """.stripIndent());
                 }
                 if (suggestion.length() > 0) {
                     suggestions.put(failedBlock, suggestion.toString());
