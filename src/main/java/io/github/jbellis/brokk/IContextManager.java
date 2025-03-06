@@ -19,10 +19,6 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default Set<RepoFile> findMissingFileMentions(String text) {
-        return Set.of();
-    }
-
     default Project getProject() {
         return null;
     }

@@ -234,7 +234,7 @@ public class ContextManager implements IContextManager
                 chrome.toolOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response != null) {
-                    addToHistory(List.of(messages.getLast(), response.aiMessage()));
+                    addToHistory(List.of(messages.getLast(), response.aiMessage()), Map.of());
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput("Ask command canceled.");
@@ -957,28 +957,6 @@ public class ContextManager implements IContextManager
                 .collect(Collectors.toSet());
     }
 
-    @Override
-    public Set<RepoFile> findMissingFileMentions(String text)
-    {
-        var missingByFilename = GitRepo.instance.getTrackedFiles().stream().parallel()
-                .filter(f -> currentContext().editableFiles().noneMatch(p -> f.equals(p.file())))
-                .filter(f -> currentContext().readonlyFiles().noneMatch(p -> f.equals(p.file())))
-                .filter(f -> text.contains(f.getFileName()));
-
-        var missingByClassname = getAnalyzer().getAllClasses().stream()
-                .filter(cu -> text.contains(
-                        cu.reference().substring(cu.reference().lastIndexOf('.') + 1)
-                ))
-                .filter(cu -> currentContext().allFragments().noneMatch(
-                        fragment -> fragment.sources(getAnalyzer()).contains(cu)
-                ))
-                .map(cu -> getAnalyzer().pathOf(cu))
-                .filter(Objects::nonNull);
-
-        return Streams.concat(missingByFilename, missingByClassname)
-                .collect(Collectors.toSet());
-    }
-
     /**
      * push context changes with a function that modifies the current context
      */
@@ -1182,11 +1160,7 @@ public class ContextManager implements IContextManager
     /**
      * Add to the user/AI message history
      */
-    public void addToHistory(List<ChatMessage> messages)
-    {
-        addToHistory(messages, Map.of());
-    }
-    
+    @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile,String> originalContents)
     {
         pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText()));
