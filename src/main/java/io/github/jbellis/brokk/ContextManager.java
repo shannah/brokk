@@ -503,7 +503,7 @@ public class ContextManager implements IContextManager
         }
 
         // If not a stacktrace, add as string fragment
-        addPasteFragment("Pasted text", clipboardText);
+        addPasteFragment("Pasted text", submitSummarizeTaskForPaste(coder, clipboardText));
         chrome.toolOutput("Clipboard content added as text");
     }
 
@@ -1027,6 +1027,28 @@ public class ContextManager implements IContextManager
 
     private final AtomicInteger activeTaskCount = new AtomicInteger(0);
 
+    public SwingWorker<String, Void> submitSummarizeTaskForPaste(Coder coder, String pastedContent) {
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
+            @Override
+            protected String doInBackground() {
+                // This runs in background thread
+                var msgs = List.of(
+                        new UserMessage("Please summarize this content in 12 words or fewer:"),
+                        new AiMessage("Ok, let's see them."),
+                        new UserMessage(pastedContent)
+                );
+                return coder.sendMessage(msgs);
+            }
+
+            @Override
+            protected void done() {
+                chrome.contextTableChanged();
+            }
+        };
+
+        worker.execute();
+        return worker;
+    }
     /**
      * Submits a background task to the internal background executor (non-user actions).
      */
