@@ -61,7 +61,7 @@ public class LLM {
             logger.debug("Sending to LLM [only last message shown]: {}", allMessages);
             
             int streamingAttempt = 0;
-            String llmText;
+            String llmText = null;
             while (true) {
                 var streamingResult = coder.sendStreaming(model, allMessages, true);
 
@@ -71,15 +71,34 @@ public class LLM {
                     return;
                 }
 
-                // 2) If streaming had an error
+                // 2) Handle errors or empty responses
+                String errorMessage = null;
                 if (streamingResult.error() != null) {
+                    errorMessage = "Error from LLM: " + streamingResult.error().getMessage();
+                    logger.warn("Error from LLM on attempt {}: {}", streamingAttempt, streamingResult.error().getMessage());
+                }
+
+                // 3) Success if chatResponse is non-null
+                var llmResponse = streamingResult.chatResponse();
+                if (llmResponse == null) {
+                    errorMessage = "Empty LLM response";
+                }
+
+                // Check for success
+                if (errorMessage == null) {
+                    llmText = llmResponse.aiMessage().text();
+                    if (llmText.isBlank()) {
+                        errorMessage = "Empty response from LLM";
+                    }
+                }
+
+                // Handle any error condition with backoff
+                if (errorMessage != null) {
                     streamingAttempt++;
                     long backoffSeconds = 1L << (streamingAttempt - 1);  // 1,2,4,8,16...
                     backoffSeconds = Math.min(backoffSeconds, 16);
-
-                    logger.warn("Error from LLM on attempt {}: {}", streamingAttempt, streamingResult.error().getMessage());
-                    io.toolOutput("Error from LLM, will retry in %d seconds: %s".formatted(backoffSeconds, streamingResult.error().getMessage()));
-
+                    
+                    io.toolOutput("%s, will retry in %d seconds".formatted(errorMessage, backoffSeconds));
                     try {
                         Thread.sleep(backoffSeconds * 1000);
                     } catch (InterruptedException e) {
@@ -87,26 +106,6 @@ public class LLM {
                         return;
                     }
                     continue; // retry
-                }
-
-                // 3) Success if chatResponse is non-null
-                var llmResponse = streamingResult.chatResponse();
-                assert llmResponse != null;
-
-                llmText = llmResponse.aiMessage().text();
-                if (llmText.isBlank()) {
-                    // same approach
-                    streamingAttempt++;
-                    long backoffSeconds = 1L << (streamingAttempt - 1);
-                    backoffSeconds = Math.min(backoffSeconds, 16);
-                    io.toolOutput("Empty response from LLM, will retry in %d seconds".formatted(backoffSeconds));
-                    try {
-                        Thread.sleep(backoffSeconds * 1000);
-                    } catch (InterruptedException e) {
-                        io.toolOutput("Session interrupted");
-                        return;
-                    }
-                    continue;
                 }
 
                 // 4) We got a non-blank response => proceed with old logic
