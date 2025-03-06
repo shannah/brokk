@@ -402,6 +402,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 if (ctx.getTextAreaContents().startsWith("Code:")) {
                     llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
                 }
+                // Ensure the scroll pane displays from the top
+                SwingUtilities.invokeLater(() -> {
+                    llmScrollPane.getVerticalScrollBar().setValue(0);
+                });
             }
         });
     }
