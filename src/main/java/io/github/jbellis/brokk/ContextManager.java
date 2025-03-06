@@ -300,33 +300,6 @@ public class ContextManager implements IContextManager
     // ------------------------------------------------------------------
 
     /**
-     * Called from the "File" menu -> "Add context"
-     */
-    public Future<?> addContextViaDialogAsync()
-    {
-        assert chrome != null;
-        return contextActionExecutor.submit(() -> {
-            try {
-                var fileList = showFileSelectionDialog("Add Context");
-                if (!fileList.isEmpty()) {
-                    addFiles(fileList);
-                    chrome.toolOutput("Added: " + fileList.stream().map(RepoFile::getFileName).toList());
-                } else {
-                    chrome.toolOutput("No files selected.");
-                }
-            } catch (CancellationException cex) {
-                chrome.toolOutput("Add context canceled.");
-            } catch (Exception e) {
-                logger.error("Error adding context", e);
-                chrome.toolErrorRaw("Error adding context: " + e.getMessage());
-            } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
-            }
-        });
-    }
-    
-    /**
      * Shows the symbol selection dialog and adds usage information for the selected symbol.
      */
     public Future<?> findSymbolUsageAsync()
@@ -478,7 +451,7 @@ public class ContextManager implements IContextManager
             var files = showFileSelectionDialog("Add Context");
             if (!files.isEmpty()) {
                 addFiles(files);
-                chrome.toolOutput("Added: " + files);
+                chrome.toolOutput("Added: " + files.stream().map(RepoFile::getFileName).toList());
             } else {
                 chrome.toolOutput("No files selected.");
             }
