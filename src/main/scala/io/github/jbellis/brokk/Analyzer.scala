@@ -2,18 +2,17 @@ package io.github.jbellis.brokk
 
 import flatgraph.storage.Serialization
 import io.joern.dataflowengineoss.layers.dataflows.OssDataFlow
-import io.joern.javasrc2cpg.{Config => JavaConfig, JavaSrc2Cpg}
-import io.joern.pysrc2cpg.Py2Cpg
-import io.joern.x2cpg.ValidationMode
+import io.joern.javasrc2cpg.{JavaSrc2Cpg, Config as JavaConfig}
 import io.joern.joerncli.CpgBasedTool
-import io.joern.x2cpg.X2Cpg
+import io.joern.pysrc2cpg.Py2Cpg
+import io.joern.x2cpg.{ValidationMode, X2Cpg}
 import io.shiftleft.codepropertygraph.generated.Cpg
 import io.shiftleft.codepropertygraph.generated.language.*
 import io.shiftleft.codepropertygraph.generated.nodes.{Method, TypeDecl}
 import io.shiftleft.semanticcpg.language.*
 import io.shiftleft.semanticcpg.layers.LayerCreatorContext
 
-import java.io.Closeable
+import java.io.{Closeable, IOException}
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters.IterableIsParallelizable
@@ -361,7 +360,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * by lines of code (LOC). Otherwise, use uniform seeds.
    */
   def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[(String, java.lang.Double)] = {
-    import scala.jdk.CollectionConverters._
+    import scala.jdk.CollectionConverters.*
     val seedWeights = seedClassWeights.asScala.view.mapValues(_.doubleValue()).toMap
     val seedSeq = seedWeights.keys.toSeq
 
@@ -822,6 +821,28 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   }
 }
 object Analyzer {
+  private def createCpgWithRetry[T](callable: => scala.util.Try[T], maxAttempts: Int = 3): T = {
+    var attempt = 0
+    var result: Option[T] = None
+    var lastException: Throwable = null
+    
+    while (attempt < maxAttempts && result.isEmpty) {
+      attempt += 1
+      try {
+        result = callable.toOption
+      } catch {
+        case e: java.io.IOException =>
+          lastException = e
+          // Wait briefly before retrying
+          Thread.sleep(500)
+      }
+    }
+    
+    result.getOrElse {
+      throw new IOException(s"Failed to create CPG after $maxAttempts attempts", lastException)
+    }
+  }
+  
   private def createNewCpgFor(sourcePath: java.nio.file.Path, language: Language): Cpg = {
     val absPath = sourcePath.toAbsolutePath.toRealPath()
     require(absPath.toFile.isDirectory, s"Source path must be a directory: $absPath")
@@ -830,24 +851,28 @@ object Analyzer {
         val config = JavaConfig()
           .withInputPath(absPath.toString)
           .withEnableTypeRecovery(true)
-        JavaSrc2Cpg().createCpg(config).get
+        createCpgWithRetry(JavaSrc2Cpg().createCpg(config))
       case Language.Python =>
         val cpg = Cpg.empty
-        import scala.collection.JavaConverters._
+        import scala.collection.JavaConverters.*
         val files = java.nio.file.Files.walk(absPath).iterator().asScala.toList
         val pythonFiles = files.filter(f => f.toString.endsWith(".py") && f.toFile.isFile).map(absPath.relativize(_))
         val inputProviders = pythonFiles.map { relPath =>
           val absFile = absPath.resolve(relPath)
           () => Py2Cpg.InputPair(scala.io.Source.fromFile(absFile.toFile).mkString, relPath.toString)
         }
-        new Py2Cpg(
-          inputProviders,
-          cpg,
-          absPath.toString,
-          "requirements.txt",
-          ValidationMode.Enabled,
-          false
-        ).buildCpg()
+        createCpgWithRetry {
+          scala.util.Try {
+            new Py2Cpg(
+              inputProviders,
+              cpg,
+              absPath.toString,
+              "requirements.txt",
+              ValidationMode.Enabled,
+              false
+            ).buildCpg()
+          }
+        }
         cpg
     }
     X2Cpg.applyDefaultOverlays(newCpg)
