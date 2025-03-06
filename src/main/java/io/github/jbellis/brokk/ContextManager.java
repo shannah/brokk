@@ -423,7 +423,6 @@ public class ContextManager implements IContextManager
             var files = showFileSelectionDialog("Add Context");
             if (!files.isEmpty()) {
                 addFiles(files);
-                chrome.toolOutput("Added: " + files.stream().map(RepoFile::getFileName).toList());
             } else {
                 chrome.toolOutput("No files selected.");
             }
@@ -433,7 +432,6 @@ public class ContextManager implements IContextManager
                 files.addAll(getFilesFromFragment(fragment));
             }
             addFiles(files);
-            chrome.toolOutput("Converted " + files.size() + " files to editable.");
         }
     }
 
@@ -444,7 +442,6 @@ public class ContextManager implements IContextManager
             var files = showFileSelectionDialog("Read Context");
             if (!files.isEmpty()) {
                 addReadOnlyFiles(files);
-                chrome.toolOutput("Added read-only " + files.stream().map(RepoFile::getFileName).toList());
             } else {
                 chrome.toolOutput("No files selected.");
             }
@@ -454,7 +451,6 @@ public class ContextManager implements IContextManager
                 files.addAll(getFilesFromFragment(fragment));
             }
             addReadOnlyFiles(files);
-            chrome.toolOutput("Added read-only " + files.stream().map(RepoFile::getFileName).toList());
         }
     }
 

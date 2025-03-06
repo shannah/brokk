@@ -84,7 +84,12 @@ public class Context {
         }
         var newEditable = new ArrayList<>(editableFiles);
         newEditable.addAll(toAdd);
-        return withEditableFiles(newEditable).refresh();
+        
+        String actionDetails = toAdd.stream()
+                .map(ContextFragment::description)
+                .collect(Collectors.joining(", "));
+        String action = "Edit: " + actionDetails;
+        return withFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
     public Context addReadonlyFiles(Collection<ContextFragment.PathFragment> paths) {
@@ -93,8 +98,13 @@ public class Context {
             return this;
         }
         List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
-        newReadOnly.addAll(paths);
-        return withReadonlyFiles(newReadOnly).refresh();
+        newReadOnly.addAll(toAdd);
+        
+        String actionDetails = toAdd.stream()
+                .map(ContextFragment::description)
+                .collect(Collectors.joining(", "));
+        String action = "Read: " + actionDetails;
+        return withFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
     public Context removeEditableFile(ContextFragment.PathFragment fragment) {
@@ -107,7 +117,12 @@ public class Context {
         if (newEditable.equals(editableFiles)) {
             return this;
         }
-        return withEditableFiles(newEditable).refresh();
+        
+        String actionDetails = fragments.stream()
+                .map(ContextFragment::description)
+                .collect(Collectors.joining(", "));
+        String action = "Removed: " + actionDetails;
+        return withFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
     public Context removeReadonlyFiles(List<? extends ContextFragment.PathFragment> fragments) {
@@ -116,7 +131,12 @@ public class Context {
         if (newReadOnly.equals(readonlyFiles)) {
             return this;
         }
-        return withReadonlyFiles(newReadOnly).refresh();
+        
+        String actionDetails = fragments.stream()
+                .map(ContextFragment::description)
+                .collect(Collectors.joining(", "));
+        String action = "Removed: " + actionDetails;
+        return withFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
     public Context removeVirtualFragments(List<? extends ContextFragment.VirtualFragment> fragments) {
@@ -125,7 +145,12 @@ public class Context {
         if (newFragments.equals(virtualFragments)) {
             return this;
         }
-        return withVirtualFragments(newFragments).refresh();
+        
+        String actionDetails = fragments.stream()
+                .map(ContextFragment::description)
+                .collect(Collectors.joining(", "));
+        String action = "Removed: " + actionDetails;
+        return withFragments(editableFiles, readonlyFiles, newFragments, action);
     }
     
     public Context removeReadonlyFile(ContextFragment.PathFragment path) {
@@ -135,7 +160,12 @@ public class Context {
     public Context addVirtualFragment(ContextFragment.VirtualFragment fragment) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        return withVirtualFragments(newFragments).refresh();
+        
+        String fragmentText;
+        fragmentText = fragment.text();
+
+        String action = "Added: " + fragmentText;
+        return withFragments(editableFiles, readonlyFiles, newFragments, action);
     }
 
     public Context addSearchFragment(ContextFragment.VirtualFragment fragment, String query, String llmOutputText) {
@@ -146,20 +176,40 @@ public class Context {
 
     public Context convertAllToReadOnly() {
         List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
+        String actionDetails = editableFiles.stream()
+                .map(ContextFragment::description)
+                .collect(Collectors.joining(", "));
         newReadOnly.addAll(editableFiles);
-        return withEditableFiles(List.of())
-                .withReadonlyFiles(newReadOnly);
+        
+        String action = "Converted to readonly: " + actionDetails;
+        
+        return withFragments(List.of(), newReadOnly, virtualFragments, action);
     }
 
     public Context removeBadFragment(ContextFragment f) {
         if (f instanceof ContextFragment.PathFragment pf) {
-            Context tmp = removeEditableFile(pf);
-            if (tmp == this) {
-                tmp = removeReadonlyFile(pf);
+            var inEditable = editableFiles.contains(pf);
+            var inReadonly = readonlyFiles.contains(pf);
+            
+            if (inEditable) {
+                var newEditable = new ArrayList<>(editableFiles);
+                newEditable.remove(pf);
+                return withFragments(newEditable, readonlyFiles, virtualFragments,
+                                     "Removed unreadable: " + pf.description());
+            } else if (inReadonly) {
+                var newReadonly = new ArrayList<>(readonlyFiles);
+                newReadonly.remove(pf);
+                return withFragments(editableFiles, newReadonly, virtualFragments,
+                                     "Removed unreadable: " + pf.description());
             }
-            return tmp.refresh();
+            return this;
         } else if (f instanceof ContextFragment.VirtualFragment vf) {
-            return removeVirtualFragments(List.of(vf));
+            var newFragments = new ArrayList<>(virtualFragments);
+            if (newFragments.remove(vf)) {
+                return withFragments(editableFiles, readonlyFiles, newFragments,
+                                     "Removed unreadable: " + vf.description());
+            }
+            return this;
         } else {
             throw new IllegalArgumentException("Unknown fragment type: " + f);
         }
@@ -170,7 +220,33 @@ public class Context {
      * account for any out-of-project exclusions. Rebuilds autoContext if toggled on.
      */
     public Context setAutoContextFiles(int fileCount) {
-        return withAutoContextFileCount(fileCount).refresh();
+        String action;
+        if (fileCount == 0 && autoContextFileCount > 0) {
+            action = "Disabled auto-context";
+        } else if (fileCount > 0 && autoContextFileCount == 0) {
+            action = "Enabled auto-context of " + fileCount + " files";
+        } else if (fileCount > 0) {
+            action = "Auto-context size -> " + fileCount;
+        } else {
+            // No change in state - auto-context remains disabled
+            return this;
+        }
+
+        var newContext = new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), null, null);
+        AutoContext newAutoContext = fileCount > 0 ? newContext.buildAutoContext() : AutoContext.DISABLED;
+        
+        return new Context(
+                analyzer,
+                editableFiles,
+                readonlyFiles,
+                virtualFragments,
+                newAutoContext,
+                fileCount,
+                historyMessages,
+                Map.of(),
+                null,
+                action
+        );
     }
 
     /**
@@ -274,54 +350,40 @@ public class Context {
         return autoContextFileCount;
     }
 
-    private Context withEditableFiles(List<ContextFragment.RepoPathFragment> newEditableFiles) {
-        return new Context(analyzer, newEditableFiles, readonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), null, "Modified editable files");
-    }
-
-    private Context withReadonlyFiles(List<ContextFragment.PathFragment> newReadonlyFiles) {
-        return new Context(analyzer, editableFiles, newReadonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), null, "Modified read-only files");
-    }
-
-    private Context withVirtualFragments(List<ContextFragment.VirtualFragment> newVirtualFragments) {
-        return new Context(analyzer, editableFiles, readonlyFiles, newVirtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), null, "Modified virtual fragments");
-    }
-
-    private Context withAutoContextFileCount(int newAutoContextFileCount) {
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, newAutoContextFileCount, historyMessages, Map.of(), null, "Changed auto-context size to " + newAutoContextFileCount);
+    /**
+     * Creates a new context with custom collections and action description,
+     * refreshing auto-context if needed
+     */
+    private Context withFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
+                                  List<ContextFragment.PathFragment> newReadonlyFiles,
+                                  List<ContextFragment.VirtualFragment> newVirtualFragments,
+                                  String action)
+    {
+        return new Context(
+            analyzer, 
+            newEditableFiles, 
+            newReadonlyFiles, 
+            newVirtualFragments, 
+            autoContext,
+            autoContextFileCount, 
+            historyMessages, 
+            Map.of(), 
+            null, 
+            action
+        ).refresh();
     }
 
     public Context removeAll() {
-        return withEditableFiles(List.of())
-                .withReadonlyFiles(List.of())
-                .withVirtualFragments(List.of())
-                .refresh()
-                .withAction("Dropped all context");
-    }
-    
-    /**
-     * Create a new context with the specified action description
-     */
-    public Context withAction(String action) {
-        return new Context(
-                analyzer,
-                editableFiles,
-                readonlyFiles,
-                virtualFragments,
-                autoContext,
-                autoContextFileCount,
-                historyMessages,
-                originalContents,
-                textarea,
-                action
-        );
+        String action = "Dropped all context";
+        return clearHistory().withFragments(List.of(), List.of(), List.of(), action);
     }
 
     /**
      * Produces a new Context object with a fresh AutoContext if enabled.
      */
-    public Context refresh() {
+    private Context refresh() {
         AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), null, "Refreshed context");
+        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), null, action);
     }
 
     // Method removed in favor of toFragment(int position)
@@ -396,10 +458,6 @@ public class Context {
         return List.copyOf(historyMessages);
     }
 
-    public boolean hasEditableFiles() {
-        return !editableFiles.isEmpty();
-    }
-    
     /**
      * Get the action that created this context
      */
@@ -409,12 +467,12 @@ public class Context {
 
     public Context addUsageFragment(String identifier, Set<CodeUnit> classnames, String code) {
         var fragment = new ContextFragment.UsageFragment(identifier, classnames, code);
-        return addVirtualFragment(fragment).withAction("Added usage references for " + identifier);
+        return addVirtualFragment(fragment);
     }
 
     public Context addSkeletonFragment(List<String> shortClassnames, Set<CodeUnit> classnames, String skeleton) {
         var fragment = new SkeletonFragment(shortClassnames, classnames, skeleton);
-        return addVirtualFragment(fragment).withAction("Added summarized code for " + String.join(", ", shortClassnames));
+        return addVirtualFragment(fragment);
     }
 
     /**
