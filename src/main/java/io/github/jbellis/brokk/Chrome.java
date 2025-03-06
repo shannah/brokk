@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.gui.KeyValueRowPanel;
+import io.github.jbellis.brokk.gui.MultiLineCellRenderer;
 import io.github.jbellis.brokk.gui.SmartScroll;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,7 +13,6 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.table.TableCellRenderer;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -1785,113 +1786,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
-    /**
-     * Helper row panel for editing secret keys in a single row
-     */
-    private static class KeyValueRowPanel extends JPanel {
-        private final JComboBox<String> keyNameCombo;
-        private final JTextField keyValueField;
-
-        public KeyValueRowPanel(String[] defaultKeyNames) {
-            this(defaultKeyNames, "", "");
-        }
-
-        public KeyValueRowPanel(String[] defaultKeyNames, String initialKey, String initialValue) {
-            setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
-            setBorder(new EmptyBorder(5, 0, 5, 0));
-
-            keyNameCombo = new JComboBox<>(defaultKeyNames);
-            keyNameCombo.setEditable(true);
-
-            if (!initialKey.isEmpty()) {
-                boolean found = false;
-                for (int i = 0; i < defaultKeyNames.length; i++) {
-                    if (defaultKeyNames[i].equals(initialKey)) {
-                        keyNameCombo.setSelectedIndex(i);
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    keyNameCombo.setSelectedItem(initialKey);
-                }
-            }
-
-            keyValueField = new JTextField(initialValue);
-
-            keyNameCombo.setPreferredSize(new Dimension(150, 25));
-            keyValueField.setPreferredSize(new Dimension(250, 25));
-
-            keyNameCombo.setMaximumSize(new Dimension(150, 25));
-            keyValueField.setMaximumSize(new Dimension(Short.MAX_VALUE, 25));
-
-            add(new JLabel("Key: "));
-            add(keyNameCombo);
-            add(Box.createRigidArea(new Dimension(10, 0)));
-            add(new JLabel("Value: "));
-            add(keyValueField);
-        }
-
-        public String getKeyName() {
-            var selected = keyNameCombo.getSelectedItem();
-            return (selected != null) ? selected.toString().trim() : "";
-        }
-
-        public String getKeyValue() {
-            return keyValueField.getText().trim();
-        }
-    }
-    /**
-     * Multi-line cell renderer for the context history table
-     */
-    private static class MultiLineCellRenderer extends JTextArea implements TableCellRenderer {
-
-        public MultiLineCellRenderer() {
-            setLineWrap(true);
-            setWrapStyleWord(true);
-            setOpaque(true);
-            setBorder(new EmptyBorder(2, 5, 2, 5));
-        }
-
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                                                       boolean isSelected, boolean hasFocus, int row, int column) {
-            // Set text, size, and font to match the table's settings
-            setText(value != null ? value.toString() : "");
-            setSize(table.getColumnModel().getColumn(column).getWidth(), 0);
-            setFont(table.getFont());
-
-            if (isSelected) {
-                setBackground(table.getSelectionBackground());
-                setForeground(table.getSelectionForeground());
-            } else {
-                Color bg = table.getBackground();
-                Color fg = table.getForeground();
-
-                // Ensure row is within valid bounds
-                if (row < table.getRowCount()
-                        && table instanceof JTable jt
-                        && jt.getModel() instanceof DefaultTableModel model
-                        && model.getRowCount() > row) {
-
-                    // Look for an ancestor that supports client properties
-                    Component ancestor = SwingUtilities.getAncestorOfClass(JComponent.class, table);
-                    if (ancestor instanceof JComponent comp) {
-                        Object chromeObj = comp.getClientProperty("chrome");
-                        if (chromeObj instanceof Chrome chrome && row < chrome.contextManager.contextHistory.size()) {
-                            var ctx = chrome.contextManager.contextHistory.get(row);
-                            if (ctx.textarea != null) {
-                                // LLM conversation - use dark background
-                                bg = new Color(50, 50, 50);
-                                fg = new Color(220, 220, 220);
-                            }
-                        }
-                    }
-                }
-                setBackground(bg);
-                setForeground(fg);
-            }
-            return this;
-        }
+    public ContextManager getContextManager() {
+        return contextManager;
     }
 }

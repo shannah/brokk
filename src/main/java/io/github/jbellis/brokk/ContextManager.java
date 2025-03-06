@@ -83,6 +83,7 @@ public class ContextManager implements IContextManager
     private final Path root;
 
     private Mode mode = Mode.EDIT;
+
     public enum Mode { EDIT, APPLY }
 
     // Keep contexts for undo/redo
@@ -1177,5 +1178,9 @@ public class ContextManager implements IContextManager
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile,String> originalContents)
     {
         pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText()));
+    }
+
+    public List<Context> getContextHistory() {
+        return contextHistory;
     }
 }
