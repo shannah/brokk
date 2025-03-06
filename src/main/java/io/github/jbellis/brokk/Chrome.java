@@ -84,14 +84,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JButton runButton;
     private JButton stopButton;  // cancels the current user-driven task
 
-    // History:
-    private final List<String> commandHistory = new ArrayList<>();
-    private int historyIndex = -1;
-
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     private volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
-    private int CHECKBOX_COLUMN = 2;
+    private final int CHECKBOX_COLUMN = 2;
 
     /**
      * Default constructor sets up the UI.
@@ -314,8 +310,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var scrollPane = new JScrollPane(contextHistoryTable);
 
         // Add undo/redo buttons at the bottom
-        var buttonPanel = new JPanel();
-        buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.Y_AXIS));
+        var buttonPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+        buttonPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
         var undoButton = new JButton("Undo");
         undoButton.setMnemonic(KeyEvent.VK_Z);
@@ -338,7 +334,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
 
         buttonPanel.add(undoButton);
-        buttonPanel.add(Box.createRigidArea(new Dimension(0, 5))); // vertical gap
         buttonPanel.add(redoButton);
         
         panel.add(scrollPane, BorderLayout.CENTER);
@@ -513,7 +508,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a command or text");
             return;
         }
-        addToHistory("Code: " + input);
         commandInputField.setText("");
         llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
@@ -532,7 +526,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolError("Please enter a command to run");
         }
 
-        addToHistory("Run: " + input);
         commandInputField.setText("");
         llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -550,7 +543,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a question");
             return;
         }
-        addToHistory("Ask: " + input);
         commandInputField.setText("");
         llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -568,7 +560,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please provide a search query");
             return;
         }
-        addToHistory("Search: " + input);
         commandInputField.setText("");
         llmStreamArea.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -611,17 +602,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (currentUserTask != null && !currentUserTask.isDone()) {
             currentUserTask.cancel(true);
         }
-    }
-
-    /**
-     * Adds the command to history if not duplicate of last
-     */
-    private void addToHistory(String command) {
-        if (commandHistory.isEmpty() ||
-                !command.equals(commandHistory.get(commandHistory.size() - 1))) {
-            commandHistory.add(command);
-        }
-        historyIndex = commandHistory.size();
     }
 
     /**
@@ -711,7 +691,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
             }
         });
-        ((DefaultTableModel) contextTable.getModel()).addTableModelListener(e -> {
+        contextTable.getModel().addTableModelListener(e -> {
             if (e.getColumn() == CHECKBOX_COLUMN) {
                 updateContextButtons();
             }
