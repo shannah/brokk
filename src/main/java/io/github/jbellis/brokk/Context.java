@@ -160,11 +160,8 @@ public class Context {
     public Context addVirtualFragment(ContextFragment.VirtualFragment fragment) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        
-        String fragmentText;
-        fragmentText = fragment.text();
 
-        String action = "Added " + fragmentText;
+        String action = "Added " + fragment.shortDescription();
         return withFragments(editableFiles, readonlyFiles, newFragments, action);
     }
 
