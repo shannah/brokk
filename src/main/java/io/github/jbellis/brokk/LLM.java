@@ -33,8 +33,8 @@ public class LLM {
         // `messages` is everything we send to the LLM;
         // `pendingHistory` contains user instructions + llm response but omits the Context messages
         List<ChatMessage> pendingHistory = new ArrayList<>();
-        var messages = DefaultPrompts.instance.collectMessages((ContextManager) coder.contextManager);
-        var requestMsg = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
+        var requestMessages = new ArrayList<ChatMessage>();
+        requestMessages.add(new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim())));
 
         // Reflection loop state tracking
         int parseErrorAttempts = 0;
@@ -46,17 +46,19 @@ public class LLM {
         io.toolOutput("Request sent");
 
         while (true) {
-            messages.add(requestMsg);
-
             // Check for interruption before sending to LLM
             if (Thread.currentThread().isInterrupted()) {
                 io.toolOutput("Session interrupted");
                 break;
             }
-            
+
+            // refresh with updated file contents
+            var contextMessages = DefaultPrompts.instance.collectMessages((ContextManager) coder.contextManager);
             // Actually send the message to the LLM and get the response
-            logger.debug("Sending to LLM [only last message shown]: {}", requestMsg);
-            var llmResponse = coder.sendStreaming(model, messages, true);
+            var allMessages = new ArrayList<>(contextMessages);
+            allMessages.addAll(requestMessages);
+            logger.debug("Sending to LLM [only last message shown]: {}", allMessages);
+            var llmResponse = coder.sendStreaming(model, allMessages, true);
             logger.debug("response:\n{}", llmResponse);
             if (llmResponse == null) {
                 // Interrupted or error. sendStreaming is responsible for giving feedback to user
@@ -70,8 +72,10 @@ public class LLM {
             }
 
             // Add the request/response to pending history
-            pendingHistory.addAll(List.of(requestMsg, llmResponse.aiMessage()));
-            messages.add(llmResponse.aiMessage());
+            pendingHistory.add(requestMessages.getLast());
+            pendingHistory.add(llmResponse.aiMessage());
+            // add response to requestMessages so AI sees it on the next request
+            requestMessages.add(llmResponse.aiMessage());
 
             // Gather all edit blocks in the reply
             var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, coder.contextManager.getEditableFiles());
@@ -79,7 +83,7 @@ public class LLM {
             blocks.addAll(parseResult.blocks());
             if (parseResult.parseError() != null) {
                 if (parseResult.blocks().isEmpty()) {
-                    requestMsg = new UserMessage(parseResult.parseError());
+                    requestMessages.add(new UserMessage(parseResult.parseError()));
                     io.toolOutput("Failed to parse LLM response; retrying");
                 } else {
                     var msg = """
@@ -89,13 +93,17 @@ public class LLM {
                     </block>
                     Please continue from there (WITHOUT repeating that one).
                     """.stripIndent().formatted(parseResult.blocks().getLast());
-                    requestMsg = new UserMessage(msg);
+                    requestMessages.add(new UserMessage(msg));
                     io.toolOutput("Incomplete response after %d blocks parsed; retrying".formatted(parseResult.blocks().size()));
                 }
                 continue;
             }
 
             logger.debug("{} total blocks", blocks.size());
+            if (blocks.isEmpty()) {
+                io.shellOutput("[No edits found in response]");
+                break;
+            }
             // Check for interruption before proceeding to edit files
             if (Thread.currentThread().isInterrupted()) {
                 io.toolOutput("Session interrupted");
@@ -127,7 +135,7 @@ public class LLM {
             if (!parseReflection.isEmpty()) {
                 io.toolOutput("Attempting to fix parse/match errors...");
                 model = coder.models.applyModel();
-                requestMsg = new UserMessage(parseReflection);
+                requestMessages.add(new UserMessage(parseReflection));
                 parseErrorAttempts++;
                 continue;
             } else {
@@ -154,7 +162,7 @@ public class LLM {
             io.toolOutput("Attempting to fix build errors...");
             // Use EDIT model (smarter) for build fixes
             model = coder.models.editModel();
-            requestMsg = new UserMessage(buildReflection);
+            requestMessages.add(new UserMessage(buildReflection));
         }
 
         // Add all pending messages to history in one batch
