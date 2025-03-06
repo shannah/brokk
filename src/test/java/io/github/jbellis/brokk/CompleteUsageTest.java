@@ -7,7 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.github.jbellis.brokk.Completions.findClassesForMemberAccess;
@@ -121,6 +120,10 @@ public class CompleteUsageTest {
         // Input "CC" -> should match "test.CamelClass" due to camel case matching
         var completions = completeUsage("CC", mock);
         var values = toValues(completions);
+        assertEquals(Set.of("test.CamelClass"), values);
+
+        completions = completeUsage("cam", mock);
+        values = toValues(completions);
         assertEquals(Set.of("test.CamelClass"), values);
     }
 

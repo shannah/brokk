@@ -1,10 +1,6 @@
 package io.github.jbellis.brokk;
 
-import org.jline.reader.Candidate;
-import org.msgpack.core.annotations.VisibleForTesting;
-
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,7 +9,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Completions {
@@ -25,7 +20,7 @@ public class Completions {
         var matchingClasses = findClassesForMemberAccess(input, allClassnames);
         if (matchingClasses.size() == 1) {
             // find matching members
-            var results = new ArrayList<String>();
+            var results = new ArrayList<>(matchingClasses);
             for (var matchedClass : matchingClasses) {
                 String memberPrefix = partial.substring(partial.lastIndexOf(".") + 1);
                 // Add members
