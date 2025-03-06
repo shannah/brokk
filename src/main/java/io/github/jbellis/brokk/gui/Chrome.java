@@ -1711,10 +1711,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void captureTextFromTextarea() {
         String text = llmStreamArea.getText();
         if (!text.isBlank()) {
-            var fragment = contextManager.getActionFragment();
-            assert fragment != null;
-            contextManager.addVirtualFragment(fragment);
+            var ctx = getSelectedContext();
+            assert ctx != null;
+            contextManager.addVirtualFragment(ctx.getParsedOutput().parsedFragment());
         }
+    }
+
+    private Context getSelectedContext() {
+        var selected = contextHistoryTable.getSelectedRow();
+        if (selected < 0) {
+            return contextManager.currentContext();
+        }
+        return (Context) contextHistoryTable.getModel().getValueAt(selected, 1);
     }
 
     /**

@@ -6,9 +6,9 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
-import io.github.jbellis.brokk.ContextFragment.StringFragment;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
@@ -26,8 +26,21 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -84,9 +97,6 @@ public class ContextManager implements IContextManager
     private Project project;
     private final Path root;
     
-    // Store the most recent action fragment (Code/Ask/Search/Run)
-    private VirtualFragment actionFragment;
-
     private Mode mode = Mode.EDIT;
 
     public enum Mode { EDIT, APPLY }
@@ -194,7 +204,11 @@ public class ContextManager implements IContextManager
                 chrome.shellOutput(output);
                 
                 // Add to context history with the output text
-                pushContext(ctx -> ctx.withTextArea(output, "Run " + input));
+                pushContext(ctx -> {
+                    var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
+                    var parsed = new ParsedOutput(chrome.getLlmOutputText(), runFrag);
+                    return ctx.withParsedOutput(parsed, "Run " + input);
+                });
             } finally {
                 chrome.enableUserActionButtons();
             }
@@ -207,11 +221,6 @@ public class ContextManager implements IContextManager
         return userActionExecutor.submit(() -> {
             try {
                 LLM.runSession(coder, chrome, getCurrentModel(coder.models), input);
-                // After the session completes, capture the output as a StringFragment
-                String outputText = chrome.getLlmOutputText();
-                if (!outputText.isBlank()) {
-                    actionFragment = new StringFragment(outputText, "Code for " + input);
-                }
             } finally {
                 chrome.enableUserActionButtons();
             }
@@ -239,11 +248,6 @@ public class ContextManager implements IContextManager
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response != null) {
                     addToHistory(List.of(messages.getLast(), response.aiMessage()), Map.of());
-                    // Store the response as a StringFragment
-                    String outputText = chrome.getLlmOutputText();
-                    if (!outputText.isBlank()) {
-                        actionFragment = new StringFragment(outputText, "Ask for " + question);
-                    }
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput("Ask command canceled.");
@@ -277,7 +281,6 @@ public class ContextManager implements IContextManager
                 } else {
                     chrome.llmOutput(result.text() + "\n");
                     // The search agent already creates the right fragment type
-                    actionFragment = result;
                     addSearchFragment(result);
                 }
             } catch (CancellationException cex) {
@@ -770,14 +773,6 @@ public class ContextManager implements IContextManager
     public void addVirtualFragment(VirtualFragment fragment)
     {
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
-    }
-    
-    /**
-     * Gets the most recent action fragment (from Code/Ask/Search/Run)
-     */
-    public VirtualFragment getActionFragment() 
-    {
-        return actionFragment;
     }
 
     /** usage for identifier */
