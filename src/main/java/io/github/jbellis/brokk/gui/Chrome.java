@@ -34,35 +34,17 @@ import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
-/**
- * Chrome provides a Swing-based UI for Brokk, replacing the old Lanterna-based ConsoleIO.
- * It implements IConsoleIO so the rest of the code can call io.toolOutput(...), etc.
- *
- * It sets up a main JFrame with:
- *   1) A top RSyntaxTextArea for LLM output & shell output
- *   2) A single-line command input field
- *   3) A context panel showing read-only and editable files
- *   4) A command result label for showing success/error messages
- *   5) A background status label at the bottom to show spinners or tasks
- *
- * Updated as per request to:
- *   - Move action logic into ContextManager,
- *   - Schedule “Go/Ask/Search” tasks in an ExecutorService,
- *   - Add “Stop” button to cancel the current user-driven task,
- *   - Make sure all Swing updates happen in invokeLater calls,
- *   - Remove OperationResult usage entirely.
- */
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
     private final int FRAGMENT_COLUMN = 3;
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
-    private final ContextManager contextManager;
+    final ContextManager contextManager;
     private final Project project;
 
     // Swing components:
-    private final JFrame frame;
+    final JFrame frame;
     private RSyntaxTextArea llmStreamArea;
     private JLabel commandResultLabel;
     private JTextArea commandInputField;
@@ -100,7 +82,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JButton stopButton;  // cancels the current user-driven task
 
     // Track the currently running user-driven future (Code/Ask/Search/Run)
-    private volatile Future<?> currentUserTask;
+    volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
     private final int CHECKBOX_COLUMN = 2;
     private JLabel captureDescriptionLabel;
@@ -139,7 +121,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.add(buildMainPanel(), BorderLayout.CENTER);
 
         // 4) Build menu
-        frame.setJMenuBar(buildMenuBar());
+        frame.setJMenuBar(MenuBar.buildMenuBar(this));
 
         // 5) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
@@ -665,7 +647,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Disables “Go/Ask/Search” to prevent overlapping tasks, until re-enabled
      */
-    private void disableUserActionButtons() {
+    void disableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
             codeButton.setEnabled(false);
             askButton.setEnabled(false);
@@ -997,7 +979,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Disables the context action buttons while an action is in progress
      */
-    private void disableContextActionButtons() {
+    void disableContextActionButtons() {
         SwingUtilities.invokeLater(() -> {
             editButton.setEnabled(false);
             readOnlyButton.setEnabled(false);
@@ -1044,7 +1026,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Get the list of selected fragments
      */
-    private List<ContextFragment> getSelectedFragments() {
+    List<ContextFragment> getSelectedFragments() {
         var fragments = new ArrayList<ContextFragment>();
         var tableModel = (DefaultTableModel) contextTable.getModel();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
@@ -1143,143 +1125,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Builds the menu bar
-     */
-    private JMenuBar buildMenuBar() {
-        var menuBar = new JMenuBar();
-
-        // File menu
-        var fileMenu = new JMenu("File");
-        fileMenu.setMnemonic(KeyEvent.VK_F);
-
-        var editKeysItem = new JMenuItem("Edit secret keys");
-        editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK));
-        editKeysItem.addActionListener(e -> showSecretKeysDialog());
-        fileMenu.add(editKeysItem);
-
-        fileMenu.addSeparator();
-
-        var setAutoContextItem = new JMenuItem("Set autocontext size");
-        setAutoContextItem.addActionListener(e -> {
-            // Simple spinner dialog
-            var dialog = new JDialog(frame, "Set Autocontext Size", true);
-            dialog.setLayout(new BorderLayout());
-
-            var panel = new JPanel(new BorderLayout());
-            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-            var label = new JLabel("Enter autocontext size (0-100):");
-            panel.add(label, BorderLayout.NORTH);
-
-            var spinner = new JSpinner(new SpinnerNumberModel(
-                contextManager.currentContext().getAutoContextFileCount(),
-                0, 100, 1
-        ));
-            panel.add(spinner, BorderLayout.CENTER);
-
-            var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            var okButton = new JButton("OK");
-            var cancelButton = new JButton("Cancel");
-
-            okButton.addActionListener(okEvent -> {
-                var newSize = (int) spinner.getValue();
-                contextManager.setAutoContextFiles(newSize);
-                dialog.dispose();
-            });
-
-            cancelButton.addActionListener(cancelEvent -> dialog.dispose());
-            buttonPanel.add(okButton);
-            buttonPanel.add(cancelButton);
-            panel.add(buttonPanel, BorderLayout.SOUTH);
-
-            dialog.getRootPane().setDefaultButton(okButton);
-            dialog.getRootPane().registerKeyboardAction(
-                    evt -> dialog.dispose(),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                    JComponent.WHEN_IN_FOCUSED_WINDOW
-            );
-
-            dialog.add(panel);
-            dialog.pack();
-            dialog.setLocationRelativeTo(frame);
-            dialog.setVisible(true);
-        });
-        fileMenu.add(setAutoContextItem);
-
-        var refreshItem = new JMenuItem("Refresh Code Intelligence");
-        refreshItem.addActionListener(e -> {
-            contextManager.requestRebuild();
-            toolOutput("Code intelligence will refresh in the background");
-        });
-        fileMenu.add(refreshItem);
-
-        menuBar.add(fileMenu);
-
-        // Edit menu
-        var editMenu = new JMenu("Edit");
-        editMenu.setMnemonic(KeyEvent.VK_E);
-
-        var undoItem = new JMenuItem("Undo");
-        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK));
-        undoItem.addActionListener(e -> {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            currentUserTask = contextManager.undoContextAsync();
-        });
-        editMenu.add(undoItem);
-
-        var redoItem = new JMenuItem("Redo");
-        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
-                                                       InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
-        redoItem.addActionListener(e -> {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            currentUserTask = contextManager.redoContextAsync();
-        });
-        editMenu.add(redoItem);
-
-        editMenu.addSeparator();
-
-        var copyMenuItem = new JMenuItem("Copy");
-        copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
-        copyMenuItem.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
-            currentUserTask = contextManager.performContextActionAsync(ContextAction.COPY, selectedFragments);
-        });
-        editMenu.add(copyMenuItem);
-
-        var pasteMenuItem = new JMenuItem("Paste");
-        pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK));
-        pasteMenuItem.addActionListener(e -> {
-            currentUserTask = contextManager.performContextActionAsync(ContextAction.PASTE, List.of());
-        });
-        editMenu.add(pasteMenuItem);
-
-        menuBar.add(editMenu);
-
-
-        // Help menu
-        var helpMenu = new JMenu("Help");
-        helpMenu.setMnemonic(KeyEvent.VK_H);
-
-        var aboutItem = new JMenuItem("About");
-        aboutItem.addActionListener(e -> {
-            JOptionPane.showMessageDialog(frame,
-                                          "Brokk Swing UI\nVersion X\n...",
-                                          "About Brokk",
-                                          JOptionPane.INFORMATION_MESSAGE);
-        });
-        helpMenu.add(aboutItem);
-
-        menuBar.add(helpMenu);
-
-        return menuBar;
-    }
-
-    /**
      * Shows a dialog for editing LLM API secret keys.
      */
-    private void showSecretKeysDialog() {
+    void showSecretKeysDialog() {
         if (project == null) {
             toolErrorRaw("Project not available");
             return;
