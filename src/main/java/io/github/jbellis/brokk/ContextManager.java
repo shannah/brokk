@@ -87,7 +87,8 @@ public class ContextManager implements IContextManager
 
     // Keep contexts for undo/redo
     private static final int MAX_UNDO_DEPTH = 100;
-    private final List<Context> contextHistory = new ArrayList<>();
+    // Package-private to allow Chrome to access for context history display
+    final List<Context> contextHistory = new ArrayList<>();
     private final List<Context> redoHistory = new ArrayList<>();
 
     // Possibly store an inferred buildCommand
@@ -115,7 +116,9 @@ public class ContextManager implements IContextManager
         this.analyzerWrapper = new AnalyzerWrapper(project, chrome, backgroundTasks);
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
-        contextHistory.add(new Context(analyzerWrapper, 5));
+        var initialContext = new Context(analyzerWrapper, 5);
+        contextHistory.add(initialContext);
+        chrome.updateContextHistoryTable();
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
@@ -268,31 +271,11 @@ public class ContextManager implements IContextManager
                 }
             } catch (CancellationException cex) {
                 chrome.toolOutput("Search command canceled.");
-            } catch (Exception e) {
-                logger.error("Error in search command", e);
-                chrome.toolErrorRaw("Error in search command: " + e.getMessage());
             } finally {
                 chrome.spinComplete();
                 chrome.enableUserActionButtons();
             }
         });
-    }
-
-    /**
-     * Move the old slash-command handling from Chrome to here, if needed.
-     * For now, we simply note that slash commands are disabled.
-     */
-    public void handleSlashCommand(String input)
-    {
-        chrome.toolErrorRaw("Slash commands are disabled. Use the menu options instead.");
-    }
-
-    /**
-     * Start a new LLM session with the user’s input
-     */
-    private void runSessionWithLLM(String input)
-    {
-        LLM.runSession(coder, chrome, getCurrentModel(coder.models), input);
     }
 
     // ------------------------------------------------------------------
@@ -714,6 +697,7 @@ public class ContextManager implements IContextManager
                 var redoContext = undoAndInvertChanges(popped);
                 redoHistory.add(redoContext);
                 chrome.updateContextTable(currentContext());
+                chrome.updateContextHistoryTable();
                 chrome.toolOutput("Undo!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Undo canceled.");
@@ -737,6 +721,7 @@ public class ContextManager implements IContextManager
                 var undoContext = undoAndInvertChanges(popped);
                 contextHistory.add(undoContext);
                 chrome.updateContextTable(currentContext());
+                chrome.updateContextHistoryTable();
                 chrome.toolOutput("Redo!");
             } catch (CancellationException cex) {
                 chrome.toolOutput("Redo canceled.");
@@ -790,7 +775,7 @@ public class ContextManager implements IContextManager
     /** Add search fragment from agent result */
     public void addSearchFragment(VirtualFragment fragment)
     {
-        pushContext(ctx -> ctx.addVirtualFragment(fragment));
+        pushContext(ctx -> ctx.addSearchFragment(fragment, fragment.text(), chrome.getLlmOutputText()));
     }
 
     public void addStringFragment(String description, String content)
@@ -994,37 +979,24 @@ public class ContextManager implements IContextManager
                 .collect(Collectors.toSet());
     }
 
-    public String getAndResetConstructedMessage()
-    {
-        try {
-            return constructedMessage;
-        } finally {
-            constructedMessage = null;
-        }
-    }
-
-    public void setConstructedMessage(String msg)
-    {
-        this.constructedMessage = msg;
-    }
-
     /**
      * push context changes with a function that modifies the current context
      */
     private void pushContext(Function<Context, Context> contextGenerator)
     {
         var newContext = contextGenerator.apply(currentContext());
-        if (newContext != currentContext()) {
-            contextHistory.add(newContext);
-            if (contextHistory.size() > MAX_UNDO_DEPTH) {
-                contextHistory.remove(0);
-            }
-            redoHistory.clear();
-            if (chrome != null) {
-                chrome.updateContextTable(newContext);
-                chrome.toolOutput(newContext.getAction());
-            }
+        if (newContext == currentContext()) {
+            return;
         }
+
+        contextHistory.add(newContext);
+        if (contextHistory.size() > MAX_UNDO_DEPTH) {
+            contextHistory.remove(0);
+        }
+        redoHistory.clear();
+        chrome.updateContextTable(newContext);
+        chrome.toolOutput(newContext.getAction());
+        chrome.updateContextHistoryTable();
     }
 
     /**
@@ -1214,8 +1186,9 @@ public class ContextManager implements IContextManager
     {
         addToHistory(messages, Map.of());
     }
+    
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile,String> originalContents)
     {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents));
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText()));
     }
 }

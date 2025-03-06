@@ -33,6 +33,9 @@ public class Context {
     /** backup of original contents for /undo, does not carry forward to Context children */
     final Map<RepoFile, String> originalContents;
     
+    /** LLM output text, if this context was created from an LLM interaction */
+    final String textarea;
+
     /** description of the action that created this context */
     final String action;
 
@@ -40,7 +43,7 @@ public class Context {
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
     public Context(AnalyzerWrapper analyzer, int autoContextFileCount) {
-        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), "Welcome to Brokk");
+        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), null, "Welcome to Brokk");
     }
 
     private Context(
@@ -52,6 +55,7 @@ public class Context {
             int autoContextFileCount,
             List<ChatMessage> historyMessages,
             Map<RepoFile, String> originalContents,
+            String textarea,
             String action
     ) {
         assert analyzer != null;
@@ -66,6 +70,7 @@ public class Context {
         this.autoContextFileCount = autoContextFileCount;
         this.historyMessages = historyMessages;
         this.originalContents = originalContents;
+        this.textarea = textarea;
         this.action = action;
     }
 
@@ -131,6 +136,12 @@ public class Context {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
         return withVirtualFragments(newFragments).refresh();
+    }
+
+    public Context addSearchFragment(ContextFragment.VirtualFragment fragment, String query, String llmOutputText) {
+        var newFragments = new ArrayList<>(virtualFragments);
+        newFragments.add(fragment);
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), llmOutputText, "Search: " + query);
     }
 
     public Context convertAllToReadOnly() {
@@ -264,19 +275,19 @@ public class Context {
     }
 
     private Context withEditableFiles(List<ContextFragment.RepoPathFragment> newEditableFiles) {
-        return new Context(analyzer, newEditableFiles, readonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), "Modified editable files");
+        return new Context(analyzer, newEditableFiles, readonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), null, "Modified editable files");
     }
 
     private Context withReadonlyFiles(List<ContextFragment.PathFragment> newReadonlyFiles) {
-        return new Context(analyzer, editableFiles, newReadonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), "Modified read-only files");
+        return new Context(analyzer, editableFiles, newReadonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), null, "Modified read-only files");
     }
 
     private Context withVirtualFragments(List<ContextFragment.VirtualFragment> newVirtualFragments) {
-        return new Context(analyzer, editableFiles, readonlyFiles, newVirtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), "Modified virtual fragments");
+        return new Context(analyzer, editableFiles, readonlyFiles, newVirtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), null, "Modified virtual fragments");
     }
 
     private Context withAutoContextFileCount(int newAutoContextFileCount) {
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, newAutoContextFileCount, historyMessages, Map.of(), "Changed auto-context size to " + newAutoContextFileCount);
+        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, newAutoContextFileCount, historyMessages, Map.of(), null, "Changed auto-context size to " + newAutoContextFileCount);
     }
 
     public Context removeAll() {
@@ -300,6 +311,7 @@ public class Context {
                 autoContextFileCount,
                 historyMessages,
                 originalContents,
+                textarea,
                 action
         );
     }
@@ -309,7 +321,7 @@ public class Context {
      */
     public Context refresh() {
         AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), "Refreshed context");
+        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), null, "Refreshed context");
     }
 
     // Method removed in favor of toFragment(int position)
@@ -327,7 +339,7 @@ public class Context {
      * Otherwise popping context off with /undo
      * would clear out the most recent conversation round trip which is not what we want.
      */
-    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents) {
+    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents, String outputText) {
         var newHistory = new ArrayList<>(historyMessages);
         newHistory.addAll(newMessages);
         return new Context(
@@ -339,6 +351,7 @@ public class Context {
             autoContextFileCount,
             List.copyOf(newHistory),
             originalContents,
+            outputText,
             "LLM conversation"
         );
     }
@@ -356,6 +369,7 @@ public class Context {
             autoContextFileCount,
             List.of(),
             Map.of(),
+            null,
             "Cleared conversation history"
         );
     }
@@ -370,6 +384,7 @@ public class Context {
                 autoContextFileCount,
                 historyMessages,
                 fileContents,
+                this.textarea,
                 this.action
         );
     }
@@ -429,5 +444,4 @@ public class Context {
 
         return result;
     }
-
 }

@@ -9,6 +9,7 @@ import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
@@ -57,6 +58,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JLabel commandResultLabel;
     private JTextArea commandInputField;
     private JLabel backgroundStatusLabel;
+    
+    // Context History Panel
+    private JTable contextHistoryTable;
+    private DefaultTableModel contextHistoryModel;
 
     // Context Panel & table:
     private JPanel contextPanel;
@@ -192,9 +197,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         llmScrollPane = buildLLMStreamScrollPane();
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
 
+        // Build the history panel, but don't add it to the split pane yet
+        // We'll do this after we know the button size
+        var contextHistoryPanel = buildContextHistoryPanel();
+
+        // Create a split pane to hold output and history
+        var outputSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        outputSplitPane.setLeftComponent(outputPanel);
+        outputSplitPane.setRightComponent(contextHistoryPanel);
+        outputSplitPane.setResizeWeight(0.8); // 80% to output, 20% to history
+
         gbc.weighty = 1.0;
         gbc.gridy = 0;
-        contentPanel.add(outputPanel, gbc);
+        contentPanel.add(outputSplitPane, gbc);
 
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
@@ -226,6 +241,151 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Creates the RSyntaxTextArea for the LLM stream, wrapped in a JScrollPane.
      */
+    /**
+     * Builds the Context History panel that shows past contexts
+     */
+    private JPanel buildContextHistoryPanel() {
+        var panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Context History",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
+        ));
+
+        // Create table model with columns - just one visible column
+        contextHistoryModel = new DefaultTableModel(
+                new Object[]{"", "Context"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        contextHistoryTable = new JTable(contextHistoryModel);
+        contextHistoryTable.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
+        contextHistoryTable.setRowHeight(20);
+        contextHistoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        
+        // Remove table header
+        contextHistoryTable.setTableHeader(null);
+
+        // Set up column rendering for LLM conversation rows
+        contextHistoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                    boolean isSelected, boolean hasFocus, int row, int column) {
+
+                Component c = super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
+
+                if (contextManager != null && row < contextManager.contextHistory.size()) {
+                    var ctx = contextManager.contextHistory.get(row);
+                    if (ctx.textarea != null) {
+                    // LLM conversation - use dark background
+                    if (!isSelected) {
+                        c.setBackground(new Color(50, 50, 50));
+                        c.setForeground(new Color(220, 220, 220));
+                    }
+                } else {
+                    // Regular context - use normal colors
+                    if (!isSelected) {
+                        c.setBackground(table.getBackground());
+                        c.setForeground(table.getForeground());
+                    }
+                }
+                }
+
+                return c;
+            }
+        });
+
+        // Add double-click listener to restore context
+        contextHistoryTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = contextHistoryTable.getSelectedRow();
+                    if (row >= 0 && contextManager != null) {
+                        restoreContextFromHistory(row);
+                    }
+                }
+            }
+        });
+
+        // Adjust column widths - hide the context object column
+        contextHistoryTable.getColumnModel().getColumn(0).setPreferredWidth(150);
+        contextHistoryTable.getColumnModel().getColumn(1).setMinWidth(0);
+        contextHistoryTable.getColumnModel().getColumn(1).setMaxWidth(0);
+        contextHistoryTable.getColumnModel().getColumn(1).setWidth(0);
+
+        // Add table to scroll pane
+        var scrollPane = new JScrollPane(contextHistoryTable);
+
+        // Add undo/redo buttons at the bottom
+        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        
+        var undoButton = new JButton("Undo");
+        undoButton.setMnemonic(KeyEvent.VK_Z);
+        undoButton.addActionListener(e -> {
+            if (contextManager != null) {
+                disableUserActionButtons();
+                disableContextActionButtons();
+                currentUserTask = contextManager.undoContextAsync();
+            }
+        });
+        
+        var redoButton = new JButton("Redo");
+        redoButton.setMnemonic(KeyEvent.VK_Y);
+        redoButton.addActionListener(e -> {
+            if (contextManager != null) {
+                disableUserActionButtons();
+                disableContextActionButtons();
+                currentUserTask = contextManager.redoContextAsync();
+            }
+        });
+        
+        buttonPanel.add(undoButton);
+        buttonPanel.add(redoButton);
+        
+        panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+    
+    /**
+     * Restores a context from history by index
+     */
+    private void restoreContextFromHistory(int index) {
+        if (contextManager == null || index < 0 || index >= contextManager.contextHistory.size()) {
+            return;
+        }
+        
+        var ctx = contextManager.contextHistory.get(index);
+        
+        // Update the context panel
+        updateContextTable(ctx);
+        
+        // If there's textarea content, restore it to the LLM output area
+        if (ctx.textarea != null) {
+            SwingUtilities.invokeLater(() -> {
+                llmStreamArea.setText(ctx.textarea);
+                llmStreamArea.setCaretPosition(0);
+            });
+        }
+        
+        toolOutput("Restored context: " + ctx.getAction());
+    }
+
+    /**
+     * Gets the current text from the LLM output area
+     */
+    public String getLlmOutputText() {
+        return llmStreamArea.getText();
+    }
+
     private JScrollPane buildLLMStreamScrollPane() {
         llmStreamArea = new RSyntaxTextArea();
         llmStreamArea.setEditable(false);
@@ -363,6 +523,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         addToHistory("Code: " + input);
         commandInputField.setText("");
+        llmStreamArea.setText("");
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
 
         disableUserActionButtons();
         // schedule in ContextManager
@@ -380,6 +542,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         addToHistory("Run: " + input);
         commandInputField.setText("");
+        llmStreamArea.setText("");
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runRunCommandAsync(input);
@@ -396,6 +560,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         addToHistory("Ask: " + input);
         commandInputField.setText("");
+        llmStreamArea.setText("");
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runAskAsync(input);
@@ -412,6 +578,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         addToHistory("Search: " + input);
         commandInputField.setText("");
+        llmStreamArea.setText("");
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runSearchAsync(input);
@@ -1276,6 +1444,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 contextPanel.repaint();
                 return;
             }
+            
+            // Update context history table
+            updateContextHistoryTable();
 
             // Fill the table with new data
             var allFragments = context.getAllFragmentsInDisplayOrder();
@@ -1475,6 +1646,61 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Checks if a position is on any available screen
      */
+    /**
+     * Updates the context history table with the current context history
+     */
+    public void updateContextHistoryTable() {
+        if (contextManager == null) return;
+
+        contextHistoryModel.setRowCount(0);
+
+        // Add rows for each context in history
+        for (var ctx : contextManager.contextHistory) {
+            contextHistoryModel.addRow(new Object[]{
+                ctx.getAction(),
+                ctx // We store the actual context object in hidden column
+            });
+        }
+
+        // Auto-select the latest context
+        if (contextHistoryModel.getRowCount() > 0) {
+            int lastRow = contextHistoryModel.getRowCount() - 1;
+            contextHistoryTable.setRowSelectionInterval(lastRow, lastRow);
+        }
+        
+        // Ensure history panel width matches context buttons width
+        SwingUtilities.invokeLater(() -> {
+            if (editButton != null) {
+                Container historyPanel = contextHistoryTable.getParent();
+                while (historyPanel != null && !(historyPanel instanceof JPanel)) {
+                    historyPanel = historyPanel.getParent();
+                }
+                
+                if (historyPanel != null) {
+                    int buttonWidth = editButton.getPreferredSize().width;
+                    int newWidth = buttonWidth + 30; // Add padding
+                    
+                    // Set the panel's preferred size
+                    historyPanel.setPreferredSize(new Dimension(newWidth, historyPanel.getPreferredSize().height));
+                    
+                    // Force the split pane divider location
+                    Container parent = historyPanel.getParent();
+                    while (parent != null && !(parent instanceof JSplitPane)) {
+                        parent = parent.getParent();
+                    }
+                    
+                    if (parent instanceof JSplitPane splitPane) {
+                        splitPane.setResizeWeight(0.8);
+                        splitPane.setDividerLocation(frame.getWidth() - newWidth - splitPane.getDividerSize());
+                    }
+                    
+                    historyPanel.revalidate();
+                    historyPanel.repaint();
+                }
+            }
+        });
+    }
+    
     private boolean isPositionOnScreen(int x, int y) {
         for (var screen : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
             for (var config : screen.getConfigurations()) {

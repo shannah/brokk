@@ -212,7 +212,7 @@ public class LLM {
         var result = Environment.instance.captureShellCommand(cmd);
         logger.debug("Build command result: {}", result);
         if (result.error() == null) {
-            io.shellOutput("Build successful");
+            io.toolOutput("Build successful");
             buildErrors.clear(); // Reset on successful build
             return "";
         }
