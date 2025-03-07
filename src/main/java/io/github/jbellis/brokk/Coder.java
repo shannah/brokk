@@ -89,7 +89,9 @@ public class Coder {
             // If there's an error or the final ChatResponse is null or empty, handle a retry
             if (result.error() != null
                 || result.chatResponse() == null
-                || result.chatResponse().aiMessage().text().isBlank()) {
+                || result.chatResponse().aiMessage().text().isBlank())
+            {
+                logger.debug(result.error());
                 // If out of attempts, return whatever we have
                 if (attempt == maxAttempts) {
                     return result;
@@ -112,6 +114,7 @@ public class Coder {
                         double remainingSeconds = (endTime - System.currentTimeMillis()) / 1000.0;
                         if (remainingSeconds <= 0) break;
                         io.toolOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
+                        //noinspection BusyWait
                         Thread.sleep(100); // Update every 100ms
                     }
                 } catch (InterruptedException e) {

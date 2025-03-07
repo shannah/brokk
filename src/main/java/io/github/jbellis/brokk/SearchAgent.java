@@ -399,10 +399,10 @@ public class SearchAgent {
                 beastMode = true;
                 return call;
             }
-            return forgedCall;
+            call = forgedCall;
         }
 
-        // 3. If it's not a duplicate, remember this signature for future checks, and return the original call
+        // Remember this signature for future checks, and return the call
         toolCallSignatures.add(createToolCallSignature(call));
         trackClassNamesFromToolCall(call);
 
@@ -550,17 +550,14 @@ public class SearchAgent {
         }
 
         var instructions = """
-        <query>
-        %s>
-        </query>
-        
-        Determine the next tool to call to search for code related to the query.
+        Determine the next tool to call to search for code related to the query, or `answer` if you have enough
+        information to answer the query.
         - Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
         - Of course, `abort` and `answer` tools cannot be composed with others.
         - Each tool call must include a `learnings` parameter that records what you learned
           from the MOST RECENT action in enough detail that you never have to repeat that action
           This will be the ONLY content from that action saved in history, you will not see the full response again,
-          so make it comprehensive! Be particularly sure to include relevant source code chunks so you can
+          so make it comprehensive! Be particularly sure to include ALL relevant source code chunks so you can
           reference them in your final answer!
           Here are examples of good and bad `learnings`:
             - Bad: Found several classes and methods related to the query
@@ -572,7 +569,7 @@ public class SearchAgent {
               ...
               }
               ```
-        """.formatted(query);
+        """;
         if (symbolsFound) {
             // Switch to beast mode if we're running out of time
             if (beastMode || actionHistorySize() > 0.8 * TOKEN_BUDGET) {
@@ -601,16 +598,17 @@ public class SearchAgent {
             Review your previous steps first -- the search results won't change so don't repeat yourself!
             """;
         }
+        instructions += """
+        <query>
+        %s>
+        </query>
+        """.stripIndent().formatted(query);
         messages.add(new UserMessage(userActionHistory + instructions.stripIndent()));
 
         return messages;
     }
 
     private String formatHistory(ToolCall step, int i) {
-        // Strip learnings from the arguments map in the history
-        var arguments = new HashMap<>(step.argumentsMap());
-        arguments.remove("learnings");
-
         return """
         <step sequence="%d" tool="%s" %s>
          %s
@@ -974,7 +972,7 @@ public class SearchAgent {
     public String answer(
             @P(value = "Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query.")
             String explanation,
-            @P(value = "List of fully qualified class names (FQCNs) of all classes relevant to the explanation.")
+            @P(value = "List of fully qualified class names (FQCNs) of ALL classes relevant to the explanation. Do not skip even minor details!")
             List<String> classNames
     ) {
         if (explanation.isBlank()) {
