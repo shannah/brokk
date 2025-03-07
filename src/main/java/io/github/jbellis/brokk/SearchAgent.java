@@ -379,8 +379,10 @@ public class SearchAgent {
         Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
         Of course, `abort` and `answer` tools cannot be composed with others.
         Each tool call must include a `learnings` parameter that records what you learned
-        from the MOST RECENT action. This will be the ONLY content from that action saved in 
+        from the MOST RECENT action. This will be the ONLY content from that action saved in
         history, so make it comprehensive!
+          - Bad: Found several classes and methods related to the query
+          - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods and org.foo.qux.Z.method1 and org.foo.fizz.W.method2 related to the query
         """.formatted(query);
         if (symbolsFound) {
             // Switch to beast mode if we're out of time
