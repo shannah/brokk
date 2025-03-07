@@ -357,18 +357,13 @@ public class SearchAgent {
 
         // Add cached action history to system prompt (for Anthropic context caching)
         if (!cachedActionHistory.isEmpty()) {
-            systemPrompt.append("\n<action-history>\n");
+            systemPrompt.append("\n<action-history part=1>\n");
             for (int i = 0; i < cachedActionHistory.size(); i++) {
                 var step = cachedActionHistory.get(i);
                 systemPrompt.append(formatHistory(step, i + 1));
             }
             systemPrompt.append("</action-history>\n");
         }
-
-        // Remind about the original query
-        systemPrompt.append("\n<original-query>\n");
-        systemPrompt.append(query);
-        systemPrompt.append("\n</original-query>\n");
 
         var sysPromptStr = systemPrompt.toString();
         messages.add(new SystemMessage(sysPromptStr));
@@ -381,7 +376,7 @@ public class SearchAgent {
         // Add uncached action history to user message
         StringBuilder userActionHistory = new StringBuilder();
         if (!actionHistory.isEmpty()) {
-            userActionHistory.append("\n<action-history>\n");
+            userActionHistory.append("\n<action-history part=2>\n");
             for (int i = 0; i < actionHistory.size(); i++) {
                 var step = actionHistory.get(i);
                 userActionHistory.append(formatHistory(step, cachedActionHistory.size() + i + 1));
@@ -390,7 +385,11 @@ public class SearchAgent {
         }
 
         var instructions = """
-        Determine the next action(s) to take to search for code related to: %s.
+        <query>
+        %s>
+        </query>
+        
+        Determine the next tool(s) to call to search for code related to the query.
         Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
         You can also call multiple tools in a single response when you think they will be needed.
         Of course, `abort` and `answer` tools cannot be composed with others.
