@@ -18,6 +18,7 @@ import scala.Tuple2;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -521,9 +522,80 @@ public class SearchAgent {
             }
         }
 
+        // Compress results using longest common package prefix
+        if (!relevant.isEmpty()) {
+            var compressionResult = compressSymbolsWithPackagePrefix(relevant);
+            String commonPrefix = compressionResult._1();
+            List<String> compressedSymbols = compressionResult._2();
+            
+            if (!commonPrefix.isEmpty()) {
+                return "Relevant symbols [Common package prefix: " + commonPrefix + "] " +
+                       "(IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls): " +
+                       String.join(", ", compressedSymbols);
+            }
+        }
+
         return "Relevant symbols: " + String.join(", ", relevant);
     }
 
+    /**
+     * Compresses a list of fully qualified symbol names by finding the longest common package prefix
+     * and removing it from each symbol.
+     * 
+     * @param symbols A list of fully qualified symbol names
+     * @return A tuple containing: 1) the common package prefix, 2) the list of compressed symbol names
+     */
+    private Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
+        if (symbols.isEmpty()) {
+            return new Tuple2<>("", List.of());
+        }
+        
+        // Find the package parts of each symbol
+        List<String[]> packageParts = symbols.stream()
+            .map(s -> s.split("\\."))
+            .collect(Collectors.toList());
+        
+        // Find longest common prefix of package parts
+        String[] firstParts = packageParts.getFirst();
+        int maxPrefixLength = 0;
+        
+        // Only consider package parts (stop before the class/method name)
+        // Assume the last element is always the class or method name
+        for (int i = 0; i < firstParts.length - 1; i++) {
+            boolean allMatch = true;
+            
+            for (String[] parts : packageParts) {
+                if (i >= parts.length - 1 || !parts[i].equals(firstParts[i])) {
+                    allMatch = false;
+                    break;
+                }
+            }
+            
+            if (allMatch) {
+                maxPrefixLength = i + 1;
+            } else {
+                break;
+            }
+        }
+        
+        // If we have a common prefix
+        if (maxPrefixLength > 0) {
+            // Build the common prefix string
+            String commonPrefix = String.join(".",
+                Arrays.copyOfRange(firstParts, 0, maxPrefixLength)) + ".";
+            
+            // Remove the common prefix from each symbol
+            List<String> compressedSymbols = symbols.stream()
+                .map(s -> s.startsWith(commonPrefix) ? s.substring(commonPrefix.length()) : s)
+                .collect(Collectors.toList());
+            
+            return new Tuple2<>(commonPrefix, compressedSymbols);
+        }
+        
+        // No common prefix found
+        return new Tuple2<>("", symbols);
+    }
+    
     /**
      * Extract text occurrences in response that match references from the originals
      */
