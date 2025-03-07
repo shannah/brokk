@@ -785,6 +785,30 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextTable.getColumnModel().getColumn(0).setMaxWidth(100);
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(230);
         contextTable.getColumnModel().getColumn(FILES_REFERENCED_COLUMN).setPreferredWidth(250);
+        
+        // Add tooltip for files referenced column
+        contextTable.addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int row = contextTable.rowAtPoint(e.getPoint());
+                int col = contextTable.columnAtPoint(e.getPoint());
+                
+                if (row >= 0 && col == FILES_REFERENCED_COLUMN) {
+                    var value = contextTable.getValueAt(row, col);
+                    if (value != null && !value.toString().isEmpty()) {
+                        // Format files as a multiline list by replacing commas with newlines
+                        String formattedTooltip = "<html>" + 
+                            value.toString().replace(", ", "<br>") + 
+                            "</html>";
+                        contextTable.setToolTipText(formattedTooltip);
+                        return;
+                    }
+                }
+                
+                // Clear tooltip when not over files column
+                contextTable.setToolTipText(null);
+            }
+        });
 
         // Add double-click listener to open fragment preview
         contextTable.addMouseListener(new MouseAdapter() {
