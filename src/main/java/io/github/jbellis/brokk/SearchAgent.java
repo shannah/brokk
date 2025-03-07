@@ -162,7 +162,7 @@ public class SearchAgent {
             } else if (firstToolName.equals("abort")) {
                 logger.debug("Search aborted");
                 assert steps.size() == 1 : steps;
-                
+
                 // Return a String fragment with the abort message
                 String result = results.getFirst().execute();
                 return new ContextFragment.StringFragment(query, result);
@@ -170,7 +170,7 @@ public class SearchAgent {
 
             // Add the steps to the history
             actionHistory.addAll(results);
-            
+
             // Check if we need to move action history to cached history
             checkAndMoveActionHistoryToCache();
         }
@@ -199,12 +199,12 @@ public class SearchAgent {
         String paramInfo = getToolParameterInfo(toolCall);
         String baseExplanation = switch (toolName) {
             case "searchSymbols" -> "Searching for symbols";
-            case "searchSubstring" -> "Searching for substrings";
+            case "searchSubstrings" -> "Searching for substrings";
             case "getUsages" -> "Finding usages";
             case "getRelatedClasses" -> "Finding related code";
-            case "getClassSkeleton" -> "Getting class overview";
-            case "getClassSource" -> "Fetching class source";
-            case "getMethodSource" -> "Fetching method source";
+            case "getClassSkeletons" -> "Getting class overview";
+            case "getClassSources" -> "Fetching class source";
+            case "getMethodSources" -> "Fetching method source";
             case "answer" -> "Answering the question";
             case "abort" -> "Abort the search";
             default -> {
@@ -212,47 +212,47 @@ public class SearchAgent {
                 yield  "Processing request";
             }
         };
-        
+
         return paramInfo.isBlank() ? baseExplanation : baseExplanation + " (" + paramInfo + ")";
     }
-    
+
     /**
      * Gets human-readable parameter information from a tool call
      */
+    /**
+     * Formats a list parameter for display in tool parameter info.
+     * Returns the first item if there's only one, or a count summary if there are multiple.
+     */
+    private String formatListParameter(Map<String, Object> arguments, String paramName) {
+        @SuppressWarnings("unchecked")
+        List<String> items = (List<String>) arguments.get(paramName);
+        if (items != null && !items.isEmpty()) {
+            return items.size() == 1 ? items.getFirst() : String.join(", ", items);
+        }
+        return "";
+    }
+
     private String getToolParameterInfo(ToolCall toolCall) {
         if (toolCall == null) return "";
-        
+
         try {
             // Parse the JSON arguments
             ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> arguments = mapper.readValue(toolCall.getRequest().arguments(), new TypeReference<>() {});
-            
+
             return switch (toolCall.getRequest().name()) {
-                case "searchSymbols" -> getStringParam(arguments, "pattern");
-                case "searchSubstring" -> getStringParam(arguments, "pattern");
-                case "getUsages" -> getStringParam(arguments, "symbol");
-                case "getRelatedClasses" -> {
-                    Object classList = arguments.get("classList");
-                    if (classList instanceof List<?> list && !list.isEmpty()) {
-                        yield list.size() == 1 ? list.getFirst().toString() : list.size() + " classes";
-                    }
-                    yield "";
-                }
-                case "getClassSkeleton" -> getStringParam(arguments, "className");
-                case "getClassSource" -> getStringParam(arguments, "className");
-                case "getMethodSource" -> getStringParam(arguments, "methodName");
-                case "answer" -> "finalizing";  // Keep it concise
+                case "searchSymbols", "searchSubstrings" -> formatListParameter(arguments, "patterns");
+                case "getUsages" -> formatListParameter(arguments, "symbols");
+                case "getRelatedClasses", "getClassSkeletons",
+                     "getClassSources" -> formatListParameter(arguments, "classNames");
+                case "getMethodSources" -> formatListParameter(arguments, "methodNames");
+                case "answer", "abort" -> "finalizing";
                 default -> throw new IllegalArgumentException("Unknown tool name " + toolCall.getRequest().name());
             };
         } catch (Exception e) {
             logger.error("Error getting parameter info", e);
             return "";
         }
-    }
-    
-    private String getStringParam(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value == null || value.toString().isBlank() ? "" : value.toString();
     }
 
     /**
@@ -285,7 +285,7 @@ public class SearchAgent {
 
         if (true || allowSubstringSearch) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("searchSubstring")));
+                    getMethodByName("searchSubstrings")));
         }
 
         if (true || allowPagerank) {
@@ -295,28 +295,28 @@ public class SearchAgent {
 
         if (true || allowInspect) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getClassSkeleton")));
+                    getMethodByName("getClassSkeletons")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getClassSource")));
+                    getMethodByName("getClassSources")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getMethodSource")));
+                    getMethodByName("getMethodSources")));
         }
 
         if (true || allowAnswer) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("answer")));
-            
+
             // Always allow abort when answer is allowed
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("abort")));
         }
-        
+
         return tools;
     }
-    
+
     /**
      * Helper method to get a Method by name.
-     * 
+     *
      * @param methodName The name of the method to find
      * @return The Method object or null if not found
      */
@@ -391,8 +391,9 @@ public class SearchAgent {
 
         var instructions = """
         Determine the next action(s) to take to search for code related to: %s.
-        It is more efficient to call multiple tools in a single response when you know they will be needed.
-        But if you don't have enough information to speculate, you can call just one tool.
+        Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
+        You can also call multiple tools in a single response when you think they will be needed.
+        Of course, `abort` and `answer` tools cannot be composed with others.
         """.formatted(query);
         if (symbolsFound) {
             // Switch to beast mode if we're out of time
@@ -417,7 +418,7 @@ public class SearchAgent {
             Start with broad searches, and then explore more specific code units once you find a foothold.
             For example, if the user is asking
             [how do Cassandra reads prevent compaction from invalidating the sstables they are referencing]
-            then we should start with searchSymbols(".*SSTable.*) or searchSymbols(".*Compaction.*") or searchSymbols(".*reference.*"),
+            then we should start with searchSymbols([".*SSTable.*", ".*Compaction.*", ".*reference.*"],
             instead of a more specific pattern like ".*SSTable.*compaction.*" or ".*compaction.*invalidation.*".
             Remember to review your previous steps -- the search results won't change so don't repeat yourself.
             """;
@@ -454,13 +455,13 @@ public class SearchAgent {
 
         // Process each tool execution request
         var toolCalls = response.toolExecutionRequests().stream()
-            .map(ToolCall::new)
-            .toList();
+                .map(ToolCall::new)
+                .toList();
 
         // If we have an Answer or Abort action, just return that
         var answerTools = toolCalls.stream()
-            .filter(t -> t.getRequest().name().equals("answer") || t.getRequest().name().equals("abort"))
-            .toList();
+                .filter(t -> t.getRequest().name().equals("answer") || t.getRequest().name().equals("abort"))
+                .toList();
 
         if (!answerTools.isEmpty()) {
             return List.of(answerTools.getFirst());
@@ -471,13 +472,13 @@ public class SearchAgent {
 
     @Tool("Search for symbols (class/method/field definitions) using Joern. This should usually be the first step in a search.")
     public String searchSymbols(
-            @P(value = "Case-insensitive Joern regex pattern to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
-            String pattern,
-            @P(value = "Reasoning about why this pattern is relevant to the query")
+            @P(value = "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
+            List<String> patterns,
+            @P(value = "Reasoning about why these patterns are relevant to the query")
             String reasoning
     ) {
-        if (pattern.isBlank()) {
-            return "Cannot search definitions: pattern is empty";
+        if (patterns.isEmpty()) {
+            return "Cannot search definitions: patterns list is empty";
         }
         if (reasoning.isBlank()) {
             return "Cannot search definitions: reasoning is empty";
@@ -486,19 +487,25 @@ public class SearchAgent {
         // Enable substring search after the first successful searchSymbols call
         allowSubstringSearch = true;
 
-        var definitions = analyzer.getDefinitions(pattern);
-        if (definitions.isEmpty()) {
-            return "No definitions found for pattern: " + pattern;
+        Set<CodeUnit> allDefinitions = new HashSet<>();
+        for (String pattern : patterns) {
+            if (!pattern.isBlank()) {
+                allDefinitions.addAll(analyzer.getDefinitions(pattern));
+            }
+        }
+
+        if (allDefinitions.isEmpty()) {
+            return "No definitions found for patterns: " + String.join(", ", patterns);
         }
 
         symbolsFound = true;
-        logger.debug("Raw definitions: {}", definitions);
+        logger.debug("Raw definitions: {}", allDefinitions);
 
         // Include all matches or filter if there are too many
         var relevant = new ArrayList<String>();
 
         // Check if we need to filter by relevance (if results are > 10% of token budget)
-        int definitionTokens = Models.getApproximateTokens(definitions.stream().map(CodeUnit::reference).collect(Collectors.joining("\n")));
+        int definitionTokens = Models.getApproximateTokens(allDefinitions.stream().map(CodeUnit::reference).collect(Collectors.joining("\n")));
         boolean shouldFilter = definitionTokens > TOKEN_BUDGET * 0.1;
         if (shouldFilter) {
             logger.debug("Filtering definitions due to size: {} tokens (> 10% of budget)", definitionTokens);
@@ -506,26 +513,26 @@ public class SearchAgent {
             // Get reasoning if available
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(new SystemMessage("You are helping evaluate which code definitions are relevant to a user query. " +
-                                          "Review the list of definitions and select the ones most relevant to the query and " +
-                                          "to your previous reasoning."));
-            messages.add(new UserMessage("Query: %s\nReasoning:%s\nDefinitions found:\n%s".formatted(query, reasoning, definitions)));
+                                                   "Review the list of definitions and select the ones most relevant to the query and " +
+                                                   "to your previous reasoning."));
+            messages.add(new UserMessage("Query: %s\nReasoning:%s\nDefinitions found:\n%s".formatted(query, reasoning, allDefinitions)));
             var response = coder.sendMessage(coder.models.searchModel(), messages);
             io.shellOutput("Filtering very large search result");
 
             // Extract mentions of the definitions from the response
-            var relevantDefinitions = extractMatches(response.aiMessage().text(), definitions.stream().map(CodeUnit::reference).collect(Collectors.toSet()));
+            var relevantDefinitions = extractMatches(response.aiMessage().text(), allDefinitions.stream().map(CodeUnit::reference).collect(Collectors.toSet()));
 
-            logger.debug("Filtered definitions: {} (from {})", relevantDefinitions.size(), definitions.size());
+            logger.debug("Filtered definitions: {} (from {})", relevantDefinitions.size(), allDefinitions.size());
 
             // Add the relevant definitions
-            for (CodeUnit definition : definitions) {
+            for (CodeUnit definition : allDefinitions) {
                 if (relevantDefinitions.contains(definition.reference())) {
                     relevant.add(definition.reference());
                 }
             }
         } else {
             // Just use all definitions without filtering
-            for (CodeUnit definition : definitions) {
+            for (CodeUnit definition : allDefinitions) {
                 relevant.add(definition.reference());
             }
         }
@@ -550,48 +557,54 @@ public class SearchAgent {
     }
 
     /**
-     * Search for usages of a symbol.
+     * Search for usages of symbols.
      */
-    @Tool("Find where a symbol is used in code. Use this to discover how a class, method, or field is actually used throughout the codebase.")
+    @Tool("Find where symbols are used in code. Use this to discover how classes, methods, or fields are actually used throughout the codebase.")
     public String getUsages(
-        @P(value = "Fully qualified symbol name (package name, class name, optional member name) to find usages for")
-        String symbol,
-        @P(value = "Reasoning about what information you're hoping to find in these usages")
-        String reasoning
+            @P(value = "Fully qualified symbol names (package name, class name, optional member name) to find usages for")
+            List<String> symbols,
+            @P(value = "Reasoning about what information you're hoping to find in these usages")
+            String reasoning
     ) {
-        if (symbol.isBlank()) {
-            return "Cannot search usages: symbol is empty";
+        if (symbols.isEmpty()) {
+            return "Cannot search usages: symbols list is empty";
         }
         if (reasoning.isBlank()) {
             return "Cannot search usages: reasoning is empty";
         }
 
-        List<CodeUnit> uses = analyzer.getUses(symbol);
-        if (uses.isEmpty()) {
-            return "No usages found for: " + symbol;
+        List<CodeUnit> allUses = new ArrayList<>();
+        for (String symbol : symbols) {
+            if (!symbol.isBlank()) {
+                allUses.addAll(analyzer.getUses(symbol));
+            }
+        }
+
+        if (allUses.isEmpty()) {
+            return "No usages found for: " + String.join(", ", symbols);
         }
 
         // Check if we need to filter by relevance (if results are > 10% of token budget)
-        var processedUsages = AnalyzerWrapper.processUsages(analyzer, uses).code();
+        var processedUsages = AnalyzerWrapper.processUsages(analyzer, allUses).code();
         int usageTokens = Models.getApproximateTokens(processedUsages);
         boolean shouldFilter = usageTokens > TOKEN_BUDGET * 0.1;
         if (!shouldFilter) {
             // Return all usages without filtering
-            return "Usages of " + symbol + ":\n\n" + processedUsages;
+            return "Usages of " + String.join(", ", symbols) + ":\n\n" + processedUsages;
         }
 
         logger.debug("Filtering usages due to size: {} tokens (> 10% of budget)", usageTokens);
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(new SystemMessage("You are helping evaluate which code usages are relevant to a user query. " +
-                                      "Review the following code usages and select ONLY the relevant chunks that directly " +
-                                      "address the query. Output the FULL TEXT of the relevant code chunks."));
+                                               "Review the following code usages and select ONLY the relevant chunks that directly " +
+                                               "address the query. Output the FULL TEXT of the relevant code chunks."));
         messages.add(new UserMessage("Query: %s\nReasoning: %s\nUsages found for %s:\n%s".formatted(
-                query, reasoning, symbol, processedUsages)));
+                query, reasoning, String.join(", ", symbols), processedUsages)));
         var response = coder.sendMessage(coder.models.searchModel(), messages);
         if (response == null) {
             return "Error: No response from coder";
         }
-        return "Relevant usages of " + symbol + ":\n\n" + Models.getText(response.aiMessage());
+        return "Relevant usages of " + String.join(", ", symbols) + ":\n\n" + Models.getText(response.aiMessage());
     }
 
     /**
@@ -599,13 +612,13 @@ public class SearchAgent {
      */
     @Tool("Find related classes. Use this for exploring and also when you're almost done and want to double-check that you haven't missed anything.")
     public String getRelatedClasses(
-        @P(value = "List of fully qualified class names.")
-        List<String> classList,
-        @P(value = "Reasoning about what related code you're hoping to discover")
-        String reasoning
+            @P(value = "List of fully qualified class names.")
+            List<String> classNames,
+            @P(value = "Reasoning about what related code you're hoping to discover")
+            String reasoning
     ) {
-        if (classList.isEmpty()) {
-            return "Cannot search pagerank: classList is empty";
+        if (classNames.isEmpty()) {
+            return "Cannot search pagerank: classNames is empty";
         }
         if (reasoning.isBlank()) {
             return "Cannot search pagerank: reasoning is empty";
@@ -613,7 +626,7 @@ public class SearchAgent {
 
         // Create map of seeds from discovered units
         HashMap<String, Double> weightedSeeds = new HashMap<>();
-        for (String className : classList) {
+        for (String className : classNames) {
             weightedSeeds.put(className, 1.0);
         }
 
@@ -628,92 +641,143 @@ public class SearchAgent {
     }
 
     /**
-     * Get the skeleton (structure) of a class.
+     * Get the skeletons (structures) of classes.
      */
-    @Tool("Get an overview of a class's contents, including fields and method signatures. Use this to understand a class's structure without fetching its full source code.")
-    public String getClassSkeleton(
-        @P(value = "Fully qualified class name to get the skeleton structure for")
-        String className
+    @Tool("Get an overview of classes' contents, including fields and method signatures. Use this to understand class structures without fetching full source code.")
+    public String getClassSkeletons(
+            @P(value = "Fully qualified class names to get the skeleton structures for")
+            List<String> classNames
     ) {
-        if (className.isBlank()) {
-            return "Cannot get skeleton: class name is empty";
+        if (classNames.isEmpty()) {
+            return "Cannot get skeletons: class names list is empty";
         }
 
-        var skeletonOpt = analyzer.getSkeleton(className);
-        if (skeletonOpt.isEmpty()) {
-            return "No skeleton found for class: " + className;
+        StringBuilder result = new StringBuilder();
+        Set<String> processedSkeletons = new HashSet<>();
+
+        for (String className : classNames) {
+            if (!className.isBlank()) {
+                var skeletonOpt = analyzer.getSkeleton(className);
+                if (skeletonOpt.isDefined()) {
+                    String skeleton = skeletonOpt.get();
+                    if (!processedSkeletons.contains(skeleton)) {
+                        processedSkeletons.add(skeleton);
+                        if (result.length() > 0) {
+                            result.append("\n\n");
+                        }
+                        result.append(skeleton);
+                    }
+                }
+            }
         }
 
-        return skeletonOpt.get();
+        if (result.length() == 0) {
+            return "No skeletons found for classes: " + String.join(", ", classNames);
+        }
+
+        return result.toString();
     }
 
     /**
-     * Get the full source code of a class.
+     * Get the full source code of classes.
      */
-    @Tool("Get the full source code of a class. This is expensive, so prefer using skeleton or method sources when possible. Use this when you need the complete implementation details, or if you think multiple methods in the class may be relevant.")
-    public String getClassSource(
-        @P(value = "Fully qualified class name to retrieve the full source code for")
-        String className,
-        @P(value = "Reasoning about what specific implementation details you're looking for in this class")
-        String reasoning
+    @Tool("Get the full source code of classes. This is expensive, so prefer using skeletons or method sources when possible. Use this when you need the complete implementation details, or if you think multiple methods in the classes may be relevant.")
+    public String getClassSources(
+            @P(value = "Fully qualified class names to retrieve the full source code for")
+            List<String> classNames,
+            @P(value = "Reasoning about what specific implementation details you're looking for in these classes")
+            String reasoning
     ) {
-        if (className.isBlank()) {
-            return "Cannot get class source: class name is empty";
+        if (classNames.isEmpty()) {
+            return "Cannot get class sources: class names list is empty";
         }
 
-        String classSource = analyzer.getClassSource(className);
-        if (classSource == null || classSource.isEmpty()) {
-            return "No source found for class: " + className;
+        StringBuilder result = new StringBuilder();
+        Set<String> processedSources = new HashSet<>();
+
+        for (String className : classNames) {
+            if (!className.isBlank()) {
+                String classSource = analyzer.getClassSource(className);
+                if (classSource != null && !classSource.isEmpty() && !processedSources.contains(classSource)) {
+                    processedSources.add(classSource);
+                    if (result.length() > 0) {
+                        result.append("\n\n");
+                    }
+                    result.append("Source code of ").append(className).append(":\n\n").append(classSource);
+                }
+            }
+        }
+
+        if (result.length() == 0) {
+            return "No sources found for classes: " + String.join(", ", classNames);
         }
 
         // Check if we need to filter by relevance (if results are > 10% of token budget)
-        int sourceTokens = Models.getApproximateTokens(classSource);
+        int sourceTokens = Models.getApproximateTokens(result.toString());
         boolean shouldFilter = sourceTokens > TOKEN_BUDGET * 0.1;
         if (shouldFilter) {
-            logger.debug("Filtering class source due to size: {} tokens (> 10% of budget)", sourceTokens);
+            logger.debug("Filtering class sources due to size: {} tokens (> 10% of budget)", sourceTokens);
 
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(new SystemMessage("You are helping evaluate which parts of a class source are relevant to a user query. " +
-                                          "Review the following class source and select ONLY the relevant portions that directly " +
-                                          "address the user's query and/or your own reasoning. Output the FULL TEXT of the relevant code chunks. When in doubt, include the chunk."));
-            messages.add(new UserMessage("Query: %s\nReasoning: %s\nClass source for %s:\n%s".formatted(
-                    query, reasoning, className, classSource)));
+            messages.add(new SystemMessage("You are helping evaluate which parts of class sources are relevant to a user query. " +
+                                                   "Review the following class sources and select ONLY the relevant portions that directly " +
+                                                   "address the user's query and/or your own reasoning. Output the FULL TEXT of the relevant code chunks. When in doubt, include the chunk."));
+            messages.add(new UserMessage("Query: %s\nReasoning: %s\nClass sources for %s:\n%s".formatted(
+                    query, reasoning, String.join(", ", classNames), result)));
             var response = coder.sendMessage(coder.models.searchModel(), messages);
-            io.shellOutput("Filtering very large class source");
+            io.shellOutput("Filtering very large class sources");
 
-            return "Relevant portions of " + className + ":\n\n" + response.aiMessage().text();
+            return "Relevant portions of " + String.join(", ", classNames) + ":\n\n" + response.aiMessage().text();
         } else {
-            // Return full class source without filtering
-            return "Source code of " + className + ":\n\n" + classSource;
+            // Return full class sources without filtering
+            return result.toString();
         }
     }
 
     /**
-     * Get the source code of a method.
+     * Get the source code of methods.
      */
-    @Tool("Get the source code of a specific method. Use this to examine the implementation of a particular method without retrieving the entire class.")
-    public String getMethodSource(
-        @P(value = "Fully qualified method name (package name, class name, method name) to retrieve source for")
-        String methodName
+    @Tool("Get the source code of specific methods. Use this to examine the implementation of particular methods without retrieving the entire classes.")
+    public String getMethodSources(
+            @P(value = "Fully qualified method names (package name, class name, method name) to retrieve sources for")
+            List<String> methodNames
     ) {
-        if (methodName.isBlank()) {
-            return "Cannot get method source: method name is empty";
+        if (methodNames.isEmpty()) {
+            return "Cannot get method sources: method names list is empty";
         }
 
-        var methodSourceOpt = analyzer.getMethodSource(methodName);
-        if (methodSourceOpt.isEmpty()) {
-            return "No source found for method: " + methodName;
+        StringBuilder result = new StringBuilder();
+        Set<String> processedMethodSources = new HashSet<>();
+
+        for (String methodName : methodNames) {
+            if (!methodName.isBlank()) {
+                var methodSourceOpt = analyzer.getMethodSource(methodName);
+                if (methodSourceOpt.isDefined()) {
+                    String methodSource = methodSourceOpt.get();
+                    if (!processedMethodSources.contains(methodSource)) {
+                        processedMethodSources.add(methodSource);
+                        if (result.length() > 0) {
+                            result.append("\n\n");
+                        }
+                        result.append(methodSource);
+                    }
+                }
+            }
         }
 
-        return methodSourceOpt.get();
+        if (result.length() == 0) {
+            return "No sources found for methods: " + String.join(", ", methodNames);
+        }
+
+        return result.toString();
     }
 
     @Tool("Provide a final answer to the query. Use this when you have enough information to fully address the query.")
     public String answer(
-        @P(value = "Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query.")
-        String explanation,
-        @P(value = "List of fully qualified class names (FQCNs) of all classes relevant to the explanation.")
-        List<String> classNames
+            @P(value = "Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query.")
+            String explanation,
+            @P(value = "List of fully qualified class names (FQCNs) of all classes relevant to the explanation.")
+            List<String> classNames
     ) {
         if (explanation.isBlank()) {
             throw new IllegalArgumentException("Empty or missing explanation parameter");
@@ -725,55 +789,67 @@ public class SearchAgent {
         return explanation;
     }
 
-    @Tool("Search for classes whose text contents match a Java regular expression pattern. This is slower than searchSymbols but can find usages of external dependencies and comment strings.")
-    public String searchSubstring(
-            @P(value = "Java-style regex pattern to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
-            String pattern,
-            @P(value = "Reasoning about why this pattern is relevant to the query")
+    @Tool("Search for classes whose text contents match Java regular expression patterns. This is slower than searchSymbols but can find usages of external dependencies and comment strings.")
+    public String searchSubstrings(
+            @P(value = "Java-style regex patterns to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
+            List<String> patterns,
+            @P(value = "Reasoning about why these patterns are relevant to the query")
             String reasoning
     ) {
-        if (pattern.isBlank()) {
-            return "Cannot search substrings: pattern is empty";
+        if (patterns.isEmpty()) {
+            return "Cannot search substrings: patterns list is empty";
         }
         if (reasoning.isBlank()) {
             return "Cannot search substrings: reasoning is empty";
         }
 
-        logger.debug("Searching file contents for pattern: {}", pattern);
+        logger.debug("Searching file contents for patterns: {}", patterns);
 
         try {
-            // Compile the regex pattern
-            Pattern compiledPattern = Pattern.compile(pattern);
+            // Compile all regex patterns
+            List<Pattern> compiledPatterns = patterns.stream()
+                    .filter(p -> !p.isBlank())
+                    .map(Pattern::compile)
+                    .toList();
+
+            if (compiledPatterns.isEmpty()) {
+                return "No valid patterns provided";
+            }
 
             // Get all tracked files from GitRepo and process them functionally
             var matchingClasses = GitRepo.instance.getTrackedFiles().parallelStream().map(file -> {
-                try {
-                    RepoFile repoFile = new RepoFile(GitRepo.instance.getRoot(), file.toString());
-                    String fileContents;
-                    fileContents = new String(Files.readAllBytes(repoFile.absPath()));
-                    // Return the repoFile if its contents match the pattern, otherwise null
-                    return compiledPattern.matcher(fileContents).find() ? repoFile : null;
-                } catch (Exception e) {
-                    logger.debug("Error processing file {}: {}", file, e.getMessage());
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull) // Filter out nulls (files with errors or no matches)
-            .flatMap(repoFile -> {
-                try {
-                    // For each matching file, get all non-inner classes and flatten them into the stream
-                    return analyzer.getClassesInFile(repoFile).stream()
-                        .map(CodeUnit::reference)
-                        .filter(reference -> !reference.contains("$"));
-                } catch (Exception e) {
-                    logger.debug("Error getting classes for file {}: {}", repoFile, e.getMessage());
-                    return Stream.empty();
-                }
-            })
-            .collect(Collectors.toSet()); // Collect to a set to eliminate duplicates
+                        try {
+                            RepoFile repoFile = new RepoFile(GitRepo.instance.getRoot(), file.toString());
+                            String fileContents = new String(Files.readAllBytes(repoFile.absPath()));
+
+                            // Return the repoFile if its contents match any of the patterns, otherwise null
+                            for (Pattern compiledPattern : compiledPatterns) {
+                                if (compiledPattern.matcher(fileContents).find()) {
+                                    return repoFile;
+                                }
+                            }
+                            return null;
+                        } catch (Exception e) {
+                            logger.debug("Error processing file {}: {}", file, e.getMessage());
+                            return null;
+                        }
+                    })
+                    .filter(Objects::nonNull) // Filter out nulls (files with errors or no matches)
+                    .flatMap(repoFile -> {
+                        try {
+                            // For each matching file, get all non-inner classes and flatten them into the stream
+                            return analyzer.getClassesInFile(repoFile).stream()
+                                    .map(CodeUnit::reference)
+                                    .filter(reference -> !reference.contains("$"));
+                        } catch (Exception e) {
+                            logger.debug("Error getting classes for file {}: {}", repoFile, e.getMessage());
+                            return Stream.empty();
+                        }
+                    })
+                    .collect(Collectors.toSet()); // Collect to a set to eliminate duplicates
 
             if (matchingClasses.isEmpty()) {
-                return "No classes found with content matching pattern: " + pattern;
+                return "No classes found with content matching patterns: " + String.join(", ", patterns);
             }
 
             // Check if we need to filter by relevance (if results are > 10% of token budget)
@@ -784,10 +860,10 @@ public class SearchAgent {
 
                 List<ChatMessage> messages = new ArrayList<>();
                 messages.add(new SystemMessage("You are helping evaluate which classes are relevant to a user query. " +
-                                             "Review the list of class names and select the ones most relevant to the query and " +
-                                             "to your previous reasoning."));
-                messages.add(new UserMessage("Query: %s\nReasoning: %s\nClasses found with content matching pattern '%s':\n%s".formatted(
-                        query, reasoning, pattern, String.join("\n", matchingClasses))));
+                                                       "Review the list of class names and select the ones most relevant to the query and " +
+                                                       "to your previous reasoning."));
+                messages.add(new UserMessage("Query: %s\nReasoning: %s\nClasses found with content matching patterns '%s':\n%s".formatted(
+                        query, reasoning, String.join(", ", patterns), String.join("\n", matchingClasses))));
                 var response = coder.sendMessage(coder.models.searchModel(), messages);
                 io.shellOutput("Filtering very large substring search result");
 
@@ -795,10 +871,10 @@ public class SearchAgent {
                 var relevantClasses = extractMatches(response.aiMessage().text(), matchingClasses);
 
                 logger.debug("Filtered substring search results: {} (from {})", relevantClasses.size(), matchingClasses.size());
-                return "Relevant classes with content matching pattern: " + String.join(", ", relevantClasses);
+                return "Relevant classes with content matching patterns: " + String.join(", ", relevantClasses);
             } else {
                 // Return all classes without filtering
-                return "Classes with content matching pattern: " + String.join(", ", matchingClasses);
+                return "Classes with content matching patterns: " + String.join(", ", matchingClasses);
             }
         } catch (Exception e) {
             logger.error("Error searching file contents", e);
@@ -808,8 +884,8 @@ public class SearchAgent {
 
     @Tool("Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found. Use this as a last resort when you're confident no useful answer can be provided.")
     public String abort(
-        @P(value = "Explanation of why the question cannot be answered or is not relevant to this codebase")
-        String explanation
+            @P(value = "Explanation of why the question cannot be answered or is not relevant to this codebase")
+            String explanation
     ) {
         if (explanation.isBlank()) {
             throw new IllegalArgumentException("Empty or missing explanation parameter");
@@ -897,22 +973,22 @@ public class SearchAgent {
         if (actionHistory.isEmpty()) {
             return;
         }
-        
+
         // Calculate approximate tokens in the action history
         String historyText = actionHistory.stream()
-            .map(ToolCall::toString)
-            .collect(Collectors.joining("\n"));
+                .map(ToolCall::toString)
+                .collect(Collectors.joining("\n"));
         int historyTokens = Models.getApproximateTokens(historyText);
-        
+
         // If we've exceeded the threshold, move action history to cached history and double the threshold
         if (historyTokens > cacheHistoryThreshold) {
-            logger.debug("Moving action history to cache: {} tokens > {} threshold", 
-                        historyTokens, cacheHistoryThreshold);
-            
+            logger.debug("Moving action history to cache: {} tokens > {} threshold",
+                         historyTokens, cacheHistoryThreshold);
+
             // Move all current actions to cached history
             cachedActionHistory.addAll(actionHistory);
             actionHistory.clear();
-            
+
             // Double the threshold for next time
             cacheHistoryThreshold = historyTokens * 2;
             logger.debug("New cache threshold: {}", cacheHistoryThreshold);
