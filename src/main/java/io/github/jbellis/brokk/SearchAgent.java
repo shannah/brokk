@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
@@ -147,11 +148,9 @@ public class SearchAgent {
 
                 try {
                     ToolCall answerCall = tools.getFirst();
-                    ObjectMapper mapper = new ObjectMapper();
-                    Map<String, Object> arguments = mapper.readValue(answerCall.getRequest().arguments(), new TypeReference<>() {});
+                    var arguments = answerCall.argumentsMap();
                     @SuppressWarnings("unchecked")
                     var classNames = (List<String>) arguments.get("classNames");
-                    String result = results.getFirst().execute();
                     logger.debug("Relevant classes are {}", classNames);
 
                     // Coalesce inner classes whose parents are also present
@@ -162,16 +161,16 @@ public class SearchAgent {
                     var sources = coalesced.stream()
                             .map(CodeUnit::cls)
                             .collect(Collectors.toSet());
-                    return new ContextFragment.SearchFragment(query, result, sources);
+                    return new ContextFragment.SearchFragment(query, results.getFirst().result, sources);
                 } catch (Exception e) {
+                    // something went wrong parsing out the classnames
                     logger.error("Error creating SearchFragment", e);
-                    return new ContextFragment.StringFragment(query, results.getFirst().execute());
+                    return new ContextFragment.StringFragment(query, results.getFirst().result);
                 }
             } else if (firstToolName.equals("abort")) {
                 logger.debug("Search aborted");
                 assert tools.size() == 1 : tools;
-                String result = results.getFirst().execute();
-                return new ContextFragment.StringFragment(query, result);
+                return new ContextFragment.StringFragment(query, results.getFirst().result);
             }
 
             // Record the steps in history
@@ -250,9 +249,7 @@ public class SearchAgent {
         if (toolCall == null) return "";
 
         try {
-            // Parse the JSON arguments
-            ObjectMapper mapper = new ObjectMapper();
-            Map<String, Object> arguments = mapper.readValue(toolCall.getRequest().arguments(), new TypeReference<>() {});
+            var arguments = toolCall.argumentsMap();
 
             return switch (toolCall.getRequest().name()) {
                 case "searchSymbols", "searchSubstrings" -> formatListParameter(arguments, "patterns");
@@ -436,16 +433,34 @@ public class SearchAgent {
     }
 
     private String formatHistory(ToolCall step, int i) {
+        // Strip learnings from the arguments map in the history
+        var arguments = new HashMap<>(step.argumentsMap());
+        arguments.remove("learnings");
+
         return """
         <step sequence="%d" tool="%s">
          <arguments>
          %s
          </arguments>
-         <result>
          %s
-         </result>
         </step>
-        """.stripIndent().formatted(i, step.request.name(), step.request.arguments(), step.result);
+        """.stripIndent().formatted(
+            i,
+            step.request.name(),
+            arguments,
+            step.learnings != null ?
+                "<learnings>\n%s\n</learnings>".formatted(step.learnings) :
+                "<result>\n%s\n</result>".formatted(step.result)
+        );
+    }
+    
+    /**
+     * Updates the learnings of the most recent history entry.
+     */
+    private void updateHistory(String learnings) {
+        if (!actionHistory.isEmpty()) {
+            actionHistory.getLast().learnings = learnings;
+        }
     }
 
     /**
@@ -490,6 +505,8 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search definitions: learnings summary is empty";
         }
+
+        updateHistory(learnings);
 
         // Enable substring search after the first successful searchSymbols call
         allowSubstringSearch = true;
@@ -619,6 +636,8 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search usages: learnings summary is empty";
         }
+        
+        updateHistory(learnings);
 
         List<CodeUnit> allUses = new ArrayList<>();
         for (String symbol : symbols) {
@@ -651,6 +670,8 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search pagerank: learnings summary is empty";
         }
+        
+        updateHistory(learnings);
 
         // Create map of seeds from discovered units
         HashMap<String, Double> weightedSeeds = new HashMap<>();
@@ -681,6 +702,8 @@ public class SearchAgent {
         if (classNames.isEmpty()) {
             return "Cannot get skeletons: class names list is empty";
         }
+        
+        updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
         Set<String> processedSkeletons = new HashSet<>();
@@ -721,6 +744,8 @@ public class SearchAgent {
         if (classNames.isEmpty()) {
             return "Cannot get class sources: class names list is empty";
         }
+        
+        updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
         Set<String> processedSources = new HashSet<>();
@@ -758,6 +783,8 @@ public class SearchAgent {
         if (methodNames.isEmpty()) {
             return "Cannot get method sources: method names list is empty";
         }
+        
+        updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
         Set<String> processedMethodSources = new HashSet<>();
@@ -815,6 +842,8 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search substrings: learnings summary is empty";
         }
+        
+        updateHistory(learnings);
 
         logger.debug("Searching file contents for patterns: {}", patterns);
 
@@ -892,6 +921,7 @@ public class SearchAgent {
     public class ToolCall {
         private final ToolExecutionRequest request;
         private String result; // initially null
+        private String learnings; // initially null
 
         public ToolCall(ToolExecutionRequest request) {
             this(request, null);
@@ -905,24 +935,34 @@ public class SearchAgent {
         public ToolExecutionRequest getRequest() {
             return request;
         }
+        
+        /**
+         * Parse the JSON arguments into a map
+         */
+        public Map<String, Object> argumentsMap() {
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                return mapper.readValue(request.arguments(), new TypeReference<>() {});
+            } catch (JsonProcessingException e) {
+                logger.error("Error parsing arguments", e);
+                return Map.of();
+            }
+        }
 
         /**
-         * Executes the tool call by using reflection.
+         * Executes the tool call by using reflection.  `result` will be modified.
          */
-        public String execute() {
+        public void execute() {
             if (result != null) {
-                return result;
+                return;
             }
             try {
                 // Use TER's tool name as the method name
                 String methodName = request.name();
                 java.lang.reflect.Method method = getMethodByName(methodName);
 
-                // Parse the JSON arguments into a map
-                ObjectMapper mapper = new ObjectMapper();
-                Map<String, Object> arguments = mapper.readValue(request.arguments(), new TypeReference<>() {});
-
                 // Prepare arguments array from method parameters
+                var arguments = argumentsMap();
                 var params = method.getParameters();
                 Object[] args = new Object[params.length];
                 for (int i = 0; i < params.length; i++) {
@@ -937,11 +977,9 @@ public class SearchAgent {
                 // Invoke the method
                 Object res = method.invoke(SearchAgent.this, args);
                 result = res != null ? res.toString() : "";
-                return result;
             } catch (Exception e) {
                 logger.error("Tool method invocation error", e);
                 result = "Error: " + e.getMessage();
-                return result;
             }
         }
 
@@ -951,6 +989,7 @@ public class SearchAgent {
                     "toolName=" + request.name() +
                     ", arguments=" + request.arguments() +
                     ", result=" + (result != null ? "'" + result + "'" : "null") +
+                    ", learnings=" + (learnings != null ? "'" + learnings + "'" : "null") +
                     '}';
         }
     }
