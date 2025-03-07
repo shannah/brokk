@@ -43,6 +43,7 @@ public class Coder {
     private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     public final Models models;
     final IContextManager contextManager;
+    private int MAX_ATTEMPTS = 8;
 
     public Coder(Models models, IConsoleIO io, Path sourceRoot, IContextManager contextManager) {
         this.models = models;
@@ -65,6 +66,68 @@ public class Coder {
      * @return The final response from the LLM as a string
      */
     public StreamingResult sendStreaming(StreamingChatLanguageModel model, List<ChatMessage> messages, boolean echo) {
+        return sendStreamingWithRetry(model, messages, echo, MAX_ATTEMPTS);
+    }
+
+    /**
+     * Wrapper for streaming calls with retry logic and exponential backoff
+     */
+    private StreamingResult sendStreamingWithRetry(StreamingChatLanguageModel model,
+                                                  List<ChatMessage> messages,
+                                                  boolean echo,
+                                                  int maxAttempts) {
+        int attempt = 0;
+        while (attempt < maxAttempts) {
+            attempt++;
+            var result = doSingleStreamingCall(model, messages, echo);
+
+            // If user cancelled during streaming, stop immediately
+            if (result.cancelled()) {
+                return result;
+            }
+
+            // If there's an error or the final ChatResponse is null or empty, handle a retry
+            if (result.error() != null
+                || result.chatResponse() == null
+                || result.chatResponse().aiMessage().text().isBlank()) {
+                // If out of attempts, return whatever we have
+                if (attempt == maxAttempts) {
+                    return result;
+                }
+
+                // Exponential backoff up to 16s
+                long backoffSeconds = 1L << (attempt - 1);
+                backoffSeconds = Math.min(backoffSeconds, 16);
+
+                io.toolOutput(
+                    String.format("LLM issue on attempt %d of %d (will retry in %d seconds).",
+                                  attempt, maxAttempts, backoffSeconds)
+                );
+                try {
+                    Thread.sleep(backoffSeconds * 1000L);
+                } catch (InterruptedException e) {
+                    io.toolOutput("Session interrupted during backoff");
+                    // Mark as cancelled
+                    return new StreamingResult(null, true, null);
+                }
+                // Retry
+                continue;
+            }
+
+            // -- If we reach here, we have a valid ChatResponse with non-empty text --
+            return result;
+        }
+
+        // Should never get here if the logic above returns, but just in case:
+        return new StreamingResult(null, false, new RuntimeException("Unexpected retry logic exit"));
+    }
+
+    /**
+     * Performs a single streaming call without retries
+     */
+    private StreamingResult doSingleStreamingCall(StreamingChatLanguageModel model,
+                                                 List<ChatMessage> messages,
+                                                 boolean echo) {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         // locking for cancellation -- we don't want to show any output after cancellation
@@ -86,7 +149,7 @@ public class Coder {
 
         AtomicReference<ChatResponse> atomicResponse = new AtomicReference<>();
         var request = ChatRequest.builder().messages(messages).build();
-        
+
         model.chat(request, new StreamingChatResponseHandler() {
             @Override
             public void onPartialResponse(String token) {
@@ -217,22 +280,101 @@ public class Coder {
     }
 
     private ChatResponse sendMessageInternal(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, boolean isRetry) {
+        return sendMessageWithRetry(model, messages, tools, isRetry, MAX_ATTEMPTS);
+    }
+
+    /**
+     * Wrapper for chat calls with retry logic and exponential backoff
+     */
+    private ChatResponse sendMessageWithRetry(ChatLanguageModel model,
+                                              List<ChatMessage> messages,
+                                              List<ToolSpecification> tools,
+                                              boolean isRetry,
+                                              int maxAttempts) {
+        int attempt = 0;
+        while (attempt < maxAttempts) {
+            attempt++;
+            ChatResponse response = null;
+            Throwable error = null;
+
+            try {
+                response = doSingleSendMessage(model, messages, tools, isRetry);
+            } catch (Throwable t) {
+                error = t;
+            }
+
+            boolean isEmpty = (response == null
+                               || response.aiMessage() == null
+                               || response.aiMessage().text().isBlank());
+
+            if (error != null || isEmpty) {
+                if (attempt == maxAttempts) {
+                    // Return the final error or a dummy ChatResponse
+                    if (error != null) {
+                        writeToHistory("Error", error.getClass() + ": " + error.getMessage());
+                        // Return a minimal ChatResponse with an error text so caller knows
+                        return ChatResponse.builder()
+                            .aiMessage(new AiMessage("Error: " + error.getMessage()))
+                            .build();
+                    } else {
+                        // Return a minimal ChatResponse indicating empty
+                        writeToHistory("Error", "LLM returned empty or null after max retries");
+                        return ChatResponse.builder()
+                            .aiMessage(new AiMessage("Empty response after max retries"))
+                            .build();
+                    }
+                }
+
+                // Exponential backoff
+                long backoffSeconds = 1L << (attempt - 1);
+                backoffSeconds = Math.min(backoffSeconds, 16);
+
+                io.toolOutput(
+                    String.format("LLM issue on attempt %d of %d (will retry in %d seconds).",
+                                  attempt, maxAttempts, backoffSeconds)
+                );
+                try {
+                    Thread.sleep(backoffSeconds * 1000L);
+                } catch (InterruptedException e) {
+                    io.toolOutput("Session interrupted during backoff");
+                    // Return a dummy with cancellation
+                    return ChatResponse.builder()
+                        .aiMessage(new AiMessage("Cancelled during backoff"))
+                        .build();
+                }
+                continue; // next attempt
+            }
+
+            // If no error & not empty => success
+            return response;
+        }
+
+        // Should not reach here
+        return ChatResponse.builder()
+            .aiMessage(new AiMessage("Unexpected retry logic exit"))
+            .build();
+    }
+
+    /**
+     * Performs a single message call without retries
+     */
+    private ChatResponse doSingleSendMessage(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, boolean isRetry) {
         writeRequestToHistory(messages, tools);
         var builder = ChatRequest.builder().messages(messages);
-        
+
         if (!tools.isEmpty()) {
             // Check if this is a DeepSeek model that needs function calling emulation
             if (models.nameOf(model).toLowerCase().contains("deepseek")) {
                 return emulateToolsUsingStructuredOutput(model, messages, tools, isRetry);
             }
-            
+
             // For models with native function calling
             var params = ChatRequestParameters.builder()
                     .toolSpecifications(tools)
                     .build();
             builder = builder.parameters(params);
         }
-        
+
         var request = builder.build();
         var response = model.chat(request);
         writeToHistory("Response", response.toString());

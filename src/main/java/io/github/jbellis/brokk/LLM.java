@@ -59,65 +59,42 @@ public class LLM {
             var allMessages = new ArrayList<>(contextMessages);
             allMessages.addAll(requestMessages);
             logger.debug("Sending to LLM [only last message shown]: {}", allMessages);
-            
-            int streamingAttempt = 0;
-            String llmText = null;
-            while (true) {
-                var streamingResult = coder.sendStreaming(model, allMessages, true);
 
-                // 1) If user cancelled
-                if (streamingResult.cancelled()) {
-                    io.toolOutput("Session interrupted");
-                    return;
-                }
+            var streamingResult = coder.sendStreaming(model, allMessages, true);
 
-                // 2) Handle errors or empty responses
-                String errorMessage = null;
-                if (streamingResult.error() != null) {
-                    errorMessage = "Error from LLM: " + streamingResult.error().getMessage();
-                    logger.warn("Error from LLM on attempt {}: {}", streamingAttempt, streamingResult.error().getMessage());
-                }
-
-                // 3) Success if chatResponse is non-null
-                var llmResponse = streamingResult.chatResponse();
-                if (llmResponse == null) {
-                    errorMessage = "Empty LLM response";
-                }
-
-                // Check for success
-                if (errorMessage == null) {
-                    llmText = llmResponse.aiMessage().text();
-                    if (llmText.isBlank()) {
-                        errorMessage = "Empty response from LLM";
-                    }
-                }
-
-                // Handle any error condition with backoff
-                if (errorMessage != null) {
-                    streamingAttempt++;
-                    long backoffSeconds = 1L << (streamingAttempt - 1);  // 1,2,4,8,16...
-                    backoffSeconds = Math.min(backoffSeconds, 16);
-                    
-                    io.toolOutput("%s, will retry in %d seconds".formatted(errorMessage, backoffSeconds));
-                    try {
-                        Thread.sleep(backoffSeconds * 1000);
-                    } catch (InterruptedException e) {
-                        io.toolOutput("Session interrupted");
-                        return;
-                    }
-                    continue; // retry
-                }
-
-                // 4) We got a non-blank response => proceed with old logic
-                logger.debug("response:\n{}", llmResponse);
-                
-                // Add the request/response to pending history
-                pendingHistory.add(requestMessages.getLast());
-                pendingHistory.add(llmResponse.aiMessage());
-                // add response to requestMessages so AI sees it on the next request
-                requestMessages.add(llmResponse.aiMessage());
-                break;  // exit the retry loop once we have a valid response
+            // 1) If user cancelled
+            if (streamingResult.cancelled()) {
+                io.toolOutput("Session interrupted");
+                return;
             }
+
+            // 2) Handle errors or empty responses
+            if (streamingResult.error() != null) {
+                logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
+                io.toolOutput("LLM returned an error even after retries.");
+                return;
+            }
+
+            var llmResponse = streamingResult.chatResponse();
+            if (llmResponse == null) {
+                io.toolOutput("Empty LLM response even after retries. Stopping session.");
+                return;
+            }
+
+            String llmText = llmResponse.aiMessage().text();
+            if (llmText.isBlank()) {
+                io.toolOutput("Blank LLM response even after retries. Stopping session.");
+                return;
+            }
+
+            // We got a valid response
+            logger.debug("response:\n{}", llmResponse);
+
+            // Add the request/response to pending history
+            pendingHistory.add(requestMessages.getLast());
+            pendingHistory.add(llmResponse.aiMessage());
+            // add response to requestMessages so AI sees it on the next request
+            requestMessages.add(llmResponse.aiMessage());
 
             // Gather all edit blocks in the reply
             var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, coder.contextManager.getEditableFiles());
