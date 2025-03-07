@@ -131,7 +131,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     // https://github.com/joernio/joern/issues/5328
     val sources = methods.flatMap { method =>
       for {
-        file <- Option(toFile(method.filename))
+        file <- toFile(method.filename)
         startLine <- method.lineNumber
         endLine <- method.lineNumberEnd
       } yield {
@@ -163,7 +163,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
 
     val td = classNodes.head
     // Get the file information
-    val fileOpt = Option(toFile(td.filename))
+    val fileOpt = toFile(td.filename)
 
     if (fileOpt.isEmpty) {
       return null
@@ -336,13 +336,13 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   def pathOf(codeUnit: CodeUnit): Option[RepoFile] = {
     codeUnit match {
       case CodeUnit.ClassType(fullClassName) =>
-        cpg.typeDecl.fullNameExact(fullClassName).headOption.map(toFile)
+        cpg.typeDecl.fullNameExact(fullClassName).headOption.flatMap(toFile)
       case CodeUnit.FunctionType(fullMethodName) =>
         val className = fullMethodName.split("\\.").dropRight(1).mkString(".")
-        cpg.typeDecl.fullNameExact(className).headOption.map(toFile)
+        cpg.typeDecl.fullNameExact(className).headOption.flatMap(toFile)
       case CodeUnit.FieldType(fullFieldName) =>
         val className = fullFieldName.split("\\.").dropRight(1).mkString(".")
-        cpg.typeDecl.fullNameExact(className).headOption.map(toFile)
+        cpg.typeDecl.fullNameExact(className).headOption.flatMap(toFile)
     }
   }
 
@@ -492,21 +492,21 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    */
   def getClassesInFile(file: RepoFile): java.util.Set[CodeUnit] = {
     val matches = cpg.typeDecl.l.filter { td =>
-      file == toFile(td)
+      toFile(td).contains(file)
     }
     CollectionConverters.asJava(matches.map(td => CodeUnit.cls(td.fullName)).toSet)
   }
 
-  private def toFile(td: TypeDecl): RepoFile = {
+  private def toFile(td: TypeDecl): Option[RepoFile] = {
     if (td.filename.isEmpty || td.filename == "<empty>" || td.filename == "<unknown>") {
-      null
+      None
     } else {
       toFile(td.filename)
     }
   }
 
-  private[brokk] def toFile(relName: String): RepoFile = {
-    RepoFile(absolutePath, relName)
+  private[brokk] def toFile(relName: String): Option[RepoFile] = {
+    Some(RepoFile(absolutePath, relName))
   }
 
   def isClassInProject(className: String): Boolean = {
@@ -516,7 +516,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
 
   def getAllClasses: java.util.List[CodeUnit] = {
     val results = cpg.typeDecl
-      .filterNot(toFile(_) == null)
+      .filter(toFile(_).isDefined)
       .fullName
       .l
       .map(CodeUnit.cls)

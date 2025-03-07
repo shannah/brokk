@@ -1,13 +1,13 @@
 package io.github.jbellis.brokk
 
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import io.shiftleft.codepropertygraph.generated.language.*
 import io.shiftleft.semanticcpg.language.*
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
+import org.junit.jupiter.api.Test
 
 import java.nio.file.Path
 import scala.jdk.javaapi.*
-import scala.jdk.javaapi.CollectionConverters.{asJava, asScala}
+import scala.jdk.javaapi.CollectionConverters.asScala
 
 class AnalyzerTest {
   implicit val callResolver: ICallResolver = NoResolve
@@ -16,9 +16,9 @@ class AnalyzerTest {
   def callerTest(): Unit = {
     val analyzer = getAnalyzer
     val callOut = analyzer.cpg.method.call.l
-    assert(callOut.size > 0)
+    assert(callOut.nonEmpty)
     val callIn = analyzer.cpg.method.caller.l
-    assert(callIn.size > 0)
+    assert(callIn.nonEmpty)
   }
 
   @Test
@@ -201,7 +201,7 @@ class AnalyzerTest {
   @Test
   def getClassesInFilePythonTest(): Unit = {
     val analyzer = Analyzer(Path.of("src/test/resources/testcode"), Language.Python)
-    val classes = analyzer.getClassesInFile(analyzer.toFile("A.py"))
+    val classes = analyzer.getClassesInFile(analyzer.toFile("A.py").get)
 //    val expected = Set("D", "D$DSub", "D$DSubStatic").map(CodeUnit.cls)
 //    assertEquals(expected, asScala(classes).toSet)
   }
@@ -217,7 +217,7 @@ class AnalyzerTest {
   @Test
   def getPagerankTest(): Unit = {
     val analyzer = getAnalyzer
-    import scala.jdk.javaapi._
+    import scala.jdk.javaapi.*
     
     val seeds = CollectionConverters.asJava(Map("D" -> (1.0: java.lang.Double)))
     val ranked = analyzer.getPagerank(seeds, 3)
@@ -231,15 +231,15 @@ class AnalyzerTest {
   @Test
   def getClassesInFileTest(): Unit = {
     val analyzer = getAnalyzer
-    val classes = analyzer.getClassesInFile(analyzer.toFile("D.java"))
+    val classes = analyzer.getClassesInFile(analyzer.toFile("D.java").get)
     val expected = Set("D", "D$DSub", "D$DSubStatic").map(CodeUnit.cls)
     assertEquals(expected, asScala(classes).toSet)
   }
 
-  @Test 
+  @Test
   def classesInPackagedFileTest(): Unit = {
     val analyzer = getAnalyzer
-    val classes = analyzer.getClassesInFile(analyzer.toFile("Packaged.java"))
+    val classes = analyzer.getClassesInFile(analyzer.toFile("Packaged.java").get)
     assertEquals(Set(CodeUnit.cls("io.github.jbellis.brokk.Foo")), asScala(classes).toSet)
   }
 
