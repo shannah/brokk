@@ -201,7 +201,7 @@ public class Context {
     public Context addSearchFragment(ContextFragment.VirtualFragment fragment, Future<String> query, String llmOutputText) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), query);
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), query).refresh();
     }
 
     public Context convertAllToReadOnly() {
@@ -454,7 +454,7 @@ public class Context {
             originalContents,
             new ParsedOutput(outputText, new ContextFragment.StringFragment(outputText, "")),
             action
-        );
+        ).refresh();
     }
 
     /**
@@ -565,7 +565,7 @@ public class Context {
             originalContents,
             parsedOutput,
             action
-        );
+        ).refresh();
     }
 
     public ParsedOutput getParsedOutput() {
