@@ -27,8 +27,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.zip.CRC32;
+
+import static java.lang.Math.min;
 
 /**
  * SearchAgent implements an iterative, agentic approach to code search.
@@ -102,9 +105,16 @@ public class SearchAgent {
             knowledge.add(new Tuple2<>("Initial context", response.aiMessage().text()));
         }
 
-        while (totalUsage.inputTokenCount() < TOKEN_BUDGET) {
+        while (true) {
+            // If thread interrupted, bail out
             if (Thread.interrupted()) {
                 return null;
+            }
+
+            // Check if action history is now more than our budget
+            if (actionHistorySize() > 0.95 * TOKEN_BUDGET) {
+                logger.debug("Stopping search because action history exceeds context window size");
+                break;
             }
 
             // Special handling based on previous steps
@@ -112,21 +122,18 @@ public class SearchAgent {
 
             // Decide what action to take for this query
             var steps = determineNextActions();
-
             if (steps.isEmpty()) {
                 logger.debug("No valid actions determined");
                 break;
             }
 
-            // Get the tool name from the first step for spinner message
-            ToolCall firstStep = steps.getFirst();
-            String toolName = firstStep.getRequest().name();
-            String explanation = getExplanationForTool(toolName, firstStep);
+            // Print some debug/log info
+            var explanation = steps.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
             io.shellOutput(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
             logger.debug("Actions: {}", steps);
 
-            // Execute the actions
+            // Execute the steps
             var results = steps.stream().parallel().peek(step -> {
                 step.execute();
                 logger.debug("Result: {}", step);
@@ -138,7 +145,6 @@ public class SearchAgent {
                 logger.debug("Search complete");
                 assert steps.size() == 1 : steps;
 
-                // Parse the classNames from the answer tool call
                 try {
                     ToolCall answerCall = steps.getFirst();
                     ObjectMapper mapper = new ObjectMapper();
@@ -147,32 +153,44 @@ public class SearchAgent {
                     var classNames = (List<String>) arguments.get("classNames");
                     String result = results.getFirst().execute();
                     logger.debug("Relevant classes are {}", classNames);
-                    // coalese inner classes whose parents are also present
-                    var coalesced = classNames.stream().filter(c -> classNames.stream().noneMatch(c2 -> c.startsWith(c2 + "$"))).toList();
 
-                    // Return a SearchFragment with the answer and class names
-                    var sources = coalesced.stream().map(CodeUnit::cls).collect(Collectors.toSet());
+                    // Coalesce inner classes whose parents are also present
+                    var coalesced = classNames.stream()
+                            .filter(c -> classNames.stream().noneMatch(c2 -> c.startsWith(c2 + "$")))
+                            .toList();
+
+                    var sources = coalesced.stream()
+                            .map(CodeUnit::cls)
+                            .collect(Collectors.toSet());
                     return new ContextFragment.SearchFragment(query, result, sources);
                 } catch (Exception e) {
                     logger.error("Error creating SearchFragment", e);
-                    // Fallback to just returning the answer as string in a SearchFragment with empty classes
                     return new ContextFragment.StringFragment(query, results.getFirst().execute());
                 }
             } else if (firstToolName.equals("abort")) {
                 logger.debug("Search aborted");
                 assert steps.size() == 1 : steps;
-
-                // Return a String fragment with the abort message
                 String result = results.getFirst().execute();
                 return new ContextFragment.StringFragment(query, result);
             }
 
-            // Add the steps to the history
+            // Record the steps in history
             actionHistory.addAll(results);
         }
 
-        logger.debug("Search complete after reaching max steps or budget");
-        return new ContextFragment.SearchFragment(query, "No answer found within budget", Set.of());
+        logger.debug("Search ended because we hit the action-history cutoff or no valid actions remained.");
+        return new ContextFragment.SearchFragment(query,
+                                                  "No final answer provided before hitting the 80% action-history cutoff.",
+                                                  Set.of());
+    }
+
+    private int actionHistorySize() {
+        var toIndex = min(0, actionHistory.size() - 1);
+        var historyString = IntStream.range(0, toIndex)
+                .mapToObj(actionHistory::get)
+                .map(h -> formatHistory(h, -1))
+                .collect(Collectors.joining());
+        return Models.getApproximateTokens(historyString);
     }
 
     /**
@@ -385,8 +403,8 @@ public class SearchAgent {
           - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods and org.foo.qux.Z.method1 and org.foo.fizz.W.method2 related to the query
         """.formatted(query);
         if (symbolsFound) {
-            // Switch to beast mode if we're out of time
-            if (totalUsage.inputTokenCount() > 0.9 * TOKEN_BUDGET) {
+            // Switch to beast mode if we're running out of time
+            if (actionHistorySize() > 0.8 * TOKEN_BUDGET) {
                 instructions = """
                 <beast-mode>
                 🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
