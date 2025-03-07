@@ -391,14 +391,22 @@ public class SearchAgent {
         </query>
         
         Determine the next tool to call to search for code related to the query.
-        Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
-        Of course, `abort` and `answer` tools cannot be composed with others.
-        Each tool call must include a `learnings` parameter that records what you learned
-        from the MOST RECENT action in enough detail that you never have to repeat that action
-        This will be the ONLY content from that action saved in history, you will not see the full response again,
-        so make it comprehensive!
-          - Bad: Found several classes and methods related to the query
-          - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods org.foo.qux.Z.method1 and org.foo.fizz.W.method2 related to the query
+        - Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
+        - Of course, `abort` and `answer` tools cannot be composed with others.
+        - Each tool call must include a `learnings` parameter that records what you learned
+          from the MOST RECENT action in enough detail that you never have to repeat that action
+          This will be the ONLY content from that action saved in history, you will not see the full response again,
+          so make it comprehensive! Be particularly sure to include relevant source code chunks so you can
+          reference them in your final answer!
+            - Bad: Found several classes and methods related to the query
+            - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods org.foo.qux.Z.method1 and org.foo.fizz.W.method2 related to the query.
+            - Bad: The Foo class implements the Bar algorithm
+            - Good: The Foo class implements the Bar algorithm.  Here are the most relevant lines of code:
+              ```
+              public class Foo {
+              ...
+              }
+              ```
         """.formatted(query);
         if (symbolsFound) {
             // Switch to beast mode if we're running out of time
@@ -425,7 +433,7 @@ public class SearchAgent {
             [how do Cassandra reads prevent compaction from invalidating the sstables they are referencing]
             then we should start with searchSymbols([".*SSTable.*", ".*Compaction.*", ".*reference.*"],
             instead of a more specific pattern like ".*SSTable.*compaction.*" or ".*compaction.*invalidation.*".
-            Remember to review your previous steps -- the search results won't change so don't repeat yourself.
+            Review your previous steps first -- the search results won't change so don't repeat yourself!
             """;
         }
         messages.add(new UserMessage(userActionHistory + instructions.stripIndent()));
@@ -497,7 +505,7 @@ public class SearchAgent {
     public String searchSymbols(
             @P(value = "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
             List<String> patterns,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (patterns.isEmpty()) {
@@ -628,7 +636,7 @@ public class SearchAgent {
     public String getUsages(
             @P(value = "Fully qualified symbol names (package name, class name, optional member name) to find usages for")
             List<String> symbols,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (symbols.isEmpty()) {
@@ -662,7 +670,7 @@ public class SearchAgent {
     public String getRelatedClasses(
             @P(value = "List of fully qualified class names.")
             List<String> classNames,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (classNames.isEmpty()) {
@@ -697,7 +705,7 @@ public class SearchAgent {
     public String getClassSkeletons(
             @P(value = "Fully qualified class names to get the skeleton structures for")
             List<String> classNames,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (classNames.isEmpty()) {
@@ -739,7 +747,7 @@ public class SearchAgent {
     public String getClassSources(
             @P(value = "Fully qualified class names to retrieve the full source code for")
             List<String> classNames,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (classNames.isEmpty()) {
@@ -778,7 +786,7 @@ public class SearchAgent {
     public String getMethodSources(
             @P(value = "Fully qualified method names (package name, class name, method name) to retrieve sources for")
             List<String> methodNames,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (methodNames.isEmpty()) {
@@ -834,7 +842,7 @@ public class SearchAgent {
     public String searchSubstrings(
             @P(value = "Java-style regex patterns to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
             List<String> patterns,
-            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken")
             String learnings
     ) {
         if (patterns.isEmpty()) {
