@@ -1085,12 +1085,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         buttonsPanel.add(copyButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(pasteButton);
-        
+
         // Set the suggestCommitButton to match the width of these context buttons
         if (suggestCommitButton != null) {
             suggestCommitButton.setPreferredSize(preferredSize);
             suggestCommitButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         }
+
+        // Force the panel to keep at least enough vertical space for all buttons.
+        var preferredSize = buttonsPanel.getPreferredSize();
+        buttonsPanel.setMinimumSize(preferredSize);
 
         return buttonsPanel;
     }
