@@ -198,10 +198,10 @@ public class Context {
         return withFragments(editableFiles, readonlyFiles, newFragments, actionFuture);
     }
 
-    public Context addSearchFragment(ContextFragment.VirtualFragment fragment, String query, String llmOutputText) {
+    public Context addSearchFragment(ContextFragment.VirtualFragment fragment, Future<String> query, String llmOutputText) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), CompletableFuture.completedFuture("Search: " + query));
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), query);
     }
 
     public Context convertAllToReadOnly() {

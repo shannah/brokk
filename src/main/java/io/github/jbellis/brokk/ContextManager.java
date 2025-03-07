@@ -522,7 +522,7 @@ public class ContextManager implements IContextManager
         }
 
         // If not a stacktrace, add as string fragment
-        addPasteFragment("Pasted text", submitSummarizeTaskForPaste(coder, clipboardText));
+        addPasteFragment("Pasted text", submitSummarizeTaskForPaste(clipboardText));
         chrome.toolOutput("Clipboard content added as text");
     }
 
@@ -775,7 +775,13 @@ public class ContextManager implements IContextManager
     /** Add search fragment from agent result */
     public void addSearchFragment(VirtualFragment fragment)
     {
-        pushContext(ctx -> ctx.addSearchFragment(fragment, fragment.text(), chrome.getLlmOutputText()));
+        Future<String> query;
+        if (fragment.description().split("\\s").length > 10) {
+            query = CompletableFuture.completedFuture("Search: " + fragment.description());
+        } else {
+            query = submitSummarizeTaskForConversation(fragment.description());
+        }
+        pushContext(ctx -> ctx.addSearchFragment(fragment, query, chrome.getLlmOutputText()));
     }
 
     public void addStringFragment(String description, String content)
@@ -1046,7 +1052,7 @@ public class ContextManager implements IContextManager
 
     private final AtomicInteger activeTaskCount = new AtomicInteger(0);
 
-    public SwingWorker<String, Void> submitSummarizeTaskForPaste(Coder coder, String pastedContent) {
+    public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
             protected String doInBackground() {
@@ -1070,7 +1076,7 @@ public class ContextManager implements IContextManager
         return worker;
     }
 
-    public SwingWorker<String, Void> submitSummarizeTaskForConversation(Coder coder, String input) {
+    public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
             protected String doInBackground() {
@@ -1247,7 +1253,7 @@ public class ContextManager implements IContextManager
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), submitSummarizeTaskForConversation(coder, action)));
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), submitSummarizeTaskForConversation(action)));
     }
 
     public List<Context> getContextHistory() {

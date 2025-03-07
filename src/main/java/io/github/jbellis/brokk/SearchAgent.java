@@ -418,7 +418,8 @@ public class SearchAgent {
             For example, if the user is asking
             [how do Cassandra reads prevent compaction from invalidating the sstables they are referencing]
             then we should start with searchSymbols(".*SSTable.*) or searchSymbols(".*Compaction.*") or searchSymbols(".*reference.*"),
-            instead of a more specific pattern like ".*SSTable.*compaction.*" or ".*compaction.*invalidation.*"
+            instead of a more specific pattern like ".*SSTable.*compaction.*" or ".*compaction.*invalidation.*".
+            Remember to review your previous steps -- the search results won't change so don't repeat yourself.
             """;
         }
         messages.add(new UserMessage(userActionHistory + instructions.stripIndent()));
