@@ -29,22 +29,21 @@ in your request.  Then use `copy` to pull all the content, including Brokk's pro
 Paste into o1pro and add your request at the bottom.  Then paste o1pro's response back into
 Brokk and it will apply the edits.
 
-# What Brokk can do very soon
-
-1. Automerge with conflict resolution
-1. Dataflow analysis
-
 # Current status
 
-Code intelligence only supports Java right now, but the non-intelligent pieces
-work fine in the meantime (I've edited my Python project
-[llmap](https://github.com/jbellis/llmap) with Brokk).
+We are currently focused on making Brokk's Java support the best in the world.
+Other languages will follow.
 
 ### Lombok fine print!
 
 Joern (the code intelligence engine) needs to run delombok before it can analyze anything.
 Delombok is unusably slow for anything but trivial projects, making Brokk a poor fit for
 Lombok-using codebases.
+
+### Known issues
+
+"Stop" button does not work during search.  This is caused by
+https://github.com/langchain4j/langchain4j/issues/2658
 
 # Getting started
 
@@ -63,18 +62,9 @@ There is a [Brokk Discord](https://discord.gg/ugXqhRem) for questions and sugges
 
 # Finer points on some commands
 
-- Most context commands can act on anonymous fragments as well as files.  `/add 1`, `/read 1`, `/summ 1`
-  will add, read, or summarize all the files referenced in anonymous context fragment 1.
-  (Brokk will recognize files
-  if they are specified by their full path from the git root, or if the fragment comes from Brokk's
-  own code analysis.)
-  `copy 1` will copy just the contents of anonymous fragment 1.
-- Brokk doesn't automatically detect filesystem changes, not even the ones it makes itself.
-  You will need to `/refresh` after making changes in your code for Brokk to see them.  You will
-  also need `/refresh` if you make changes to the git repo outside Brokk.
 - Brokk doesn't offer automatic running of tests (too much variance in what you might want it to do).
-  Instead, Brokk has the `send` command which will send the output of the last `$` command to
-  the LLM as instructions.
+  Instead, Brokk allows you to run arbitrary shell commands, and import those as context with "Capture Text"
+  or "Edit Files."
 
 # FAQ
 
