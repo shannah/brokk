@@ -121,32 +121,32 @@ public class SearchAgent {
             updateActionControlsBasedOnContext();
 
             // Decide what action to take for this query
-            var steps = determineNextActions();
-            if (steps.isEmpty()) {
+            var tools = determineNextActions();
+            if (tools.isEmpty()) {
                 logger.debug("No valid actions determined");
                 break;
             }
 
             // Print some debug/log info
-            var explanation = steps.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
+            var explanation = tools.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
             io.shellOutput(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
-            logger.debug("Actions: {}", steps);
+            logger.debug("Actions: {}", tools);
 
             // Execute the steps
-            var results = steps.stream().parallel().peek(step -> {
+            var results = tools.stream().parallel().peek(step -> {
                 step.execute();
                 logger.debug("Result: {}", step);
             }).toList();
 
             // Check if we should terminate
-            String firstToolName = steps.getFirst().getRequest().name();
+            String firstToolName = tools.getFirst().getRequest().name();
             if (firstToolName.equals("answer")) {
                 logger.debug("Search complete");
-                assert steps.size() == 1 : steps;
+                assert tools.size() == 1 : tools;
 
                 try {
-                    ToolCall answerCall = steps.getFirst();
+                    ToolCall answerCall = tools.getFirst();
                     ObjectMapper mapper = new ObjectMapper();
                     Map<String, Object> arguments = mapper.readValue(answerCall.getRequest().arguments(), new TypeReference<>() {});
                     @SuppressWarnings("unchecked")
@@ -169,7 +169,7 @@ public class SearchAgent {
                 }
             } else if (firstToolName.equals("abort")) {
                 logger.debug("Search aborted");
-                assert steps.size() == 1 : steps;
+                assert tools.size() == 1 : tools;
                 String result = results.getFirst().execute();
                 return new ContextFragment.StringFragment(query, result);
             }
