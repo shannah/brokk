@@ -5,17 +5,35 @@ import com.google.common.annotations.VisibleForTesting;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Scanner;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static java.lang.Math.min;
+
 /**
- * Utility for extracting and applying before/after search-replace blocks in content
+ * Utility for extracting and applying before/after search-replace blocks in content.
  */
 public class EditBlock {
-    public record EditResult(Map<RepoFile, String> originalContents, List<FailedBlock> blocks) { }
+    public enum EditBlockFailureReason {
+        FILE_NOT_FOUND,
+        NO_MATCH,
+        NO_FILENAME,
+        IO_ERROR
+    }
 
-    public record FailedBlock(SearchReplaceBlock block, ReflectionManager.EditBlockFailureReason reason) { }
+    public record EditResult(Map<RepoFile, String> originalContents, List<FailedBlock> failedBlocks) { }
+
+    public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
 
     /**
      * Parse the LLM response for SEARCH/REPLACE blocks (or shell blocks, etc.) and apply them.
@@ -26,7 +44,7 @@ public class EditBlock {
         // Track which blocks succeed or fail during application
         List<FailedBlock> failed = new ArrayList<>();
         List<SearchReplaceBlock> succeeded = new ArrayList<>();
-        
+
         // Track original file contents before any changes
         Map<RepoFile, String> changedFiles = new HashMap<>();
 
@@ -73,24 +91,12 @@ public class EditBlock {
 
             // if we still haven't found a matching file, we have to give up
             if (file == null) {
-                failed.add(new FailedBlock(block, ReflectionManager.EditBlockFailureReason.NO_MATCH));
+                failed.add(new FailedBlock(block, EditBlockFailureReason.NO_MATCH));
                 continue;
             }
 
             if (finalUpdated == null) {
-                // "Did you mean" + "already present?" suggestions
-                String fileContent;
-                try {
-                    fileContent = file.read();
-                } catch (IOException e) {
-                    io.toolError("Could not read files: " + e.getMessage());
-                    failed.add(new FailedBlock(block, ReflectionManager.EditBlockFailureReason.IO_ERROR
-                    ));
-                    continue;
-                }
-
-                // Build suggestions
-                var failedBlock = new FailedBlock(block, ReflectionManager.EditBlockFailureReason.NO_MATCH);
+                var failedBlock = new FailedBlock(block, EditBlockFailureReason.NO_MATCH);
                 failed.add(failedBlock);
             } else {
                 // Actually write the file if it changed
@@ -99,7 +105,7 @@ public class EditBlock {
                     file.write(finalUpdated);
                 } catch (IOException e) {
                     io.toolError("Failed writing " + file + ": " + e.getMessage());
-                    failed.add(new FailedBlock(block, ReflectionManager.EditBlockFailureReason.IO_ERROR));
+                    failed.add(new FailedBlock(block, EditBlockFailureReason.IO_ERROR));
                     error = true;
                 }
                 if (!error) {
@@ -107,7 +113,7 @@ public class EditBlock {
                     if (isCreateNew) {
                         try {
                             GitRepo.instance.add(file.toString());
-                            io.toolOutput("Added to git " + file);
+                            io.llmOutput("Added to git " + file);
                         } catch (IOException e) {
                             io.toolError("Failed to git add " + file + ": " + e.getMessage());
                         }
@@ -117,7 +123,7 @@ public class EditBlock {
         }
 
         if (!succeeded.isEmpty()) {
-            io.toolOutput(succeeded.size() + " SEARCH/REPLACE blocks applied.");
+            io.llmOutput(succeeded.size() + " SEARCH/REPLACE blocks applied.");
         }
         return new EditResult(changedFiles, failed);
     }
@@ -128,7 +134,33 @@ public class EditBlock {
      * search/replace. If {@code shellCommand} is non-null, then this block
      * corresponds to shell code that should be executed, not applied to a filename.
      */
-    public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) { }
+    public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) {
+        @Override
+        public String toString() {
+            if (shellCommand != null) {
+                return "```shell\n" + shellCommand + "\n```";
+            }
+            
+            StringBuilder sb = new StringBuilder();
+            sb.append("```");
+            if (filename != null) {
+                sb.append("\n").append(filename);
+            }
+            sb.append("\n<<<<<<< SEARCH\n");
+            sb.append(beforeText);
+            if (!beforeText.endsWith("\n")) {
+                sb.append("\n");
+            }
+            sb.append("=======\n");
+            sb.append(afterText);
+            if (!afterText.endsWith("\n")) {
+                sb.append("\n");
+            }
+            sb.append(">>>>>>> REPLACE\n```");
+            
+            return sb.toString();
+        }
+    }
 
     public record ParseResult(List<SearchReplaceBlock> blocks, String parseError) { }
 
@@ -176,7 +208,7 @@ public class EditBlock {
                         i++;
                     }
                     if (i >= lines.length) {
-                        return new ParseResult(null, "Expected ======= divider after <<<<<<< SEARCH");
+                        return new ParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
                     }
 
                     // gather "after" lines until >>>>>>> REPLACE or another divider
@@ -189,7 +221,7 @@ public class EditBlock {
                         i++;
                     }
                     if (i >= lines.length) {
-                        return new ParseResult(null, "Expected >>>>>>> REPLACE or =======");
+                        return new ParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
                     }
 
                     var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines), currentFilename, fence);
@@ -207,7 +239,7 @@ public class EditBlock {
 
                 } catch (Exception e) {
                     // Provide partial context in the error
-                    String partial = String.join("\n", Arrays.copyOfRange(lines, 0, Math.min(lines.length, i + 1)));
+                    String partial = String.join("\n", Arrays.copyOfRange(lines, 0, min(lines.length, i + 1)));
                     return new ParseResult(null, partial + "\n^^^ " + e.getMessage());
                 }
             }
@@ -239,9 +271,7 @@ public class EditBlock {
             content = "";
         }
 
-        if (content == null) {
-            return null;
-        }
+        assert content != null;
 
         // Strip any surrounding triple-backticks, optional filename line, etc.
         beforeText = stripQuotedWrapping(beforeText, file == null ? null : file.toString(), fence);
@@ -275,40 +305,21 @@ public class EditBlock {
      * Attempts perfect/whitespace replacements, then tries "...", then fuzzy.
      * Returns null if no match found.
      */
-    static String replaceMostSimilarChunk(String whole, String part, String replace) {
+    static String replaceMostSimilarChunk(String content, String target, String replace) {
         // 1) prep for line-based matching
-        ContentLines wholeCL = prep(whole);
-        ContentLines partCL = prep(part);
+        ContentLines originalCL = prep(content);
+        ContentLines targetCl = prep(target);
         ContentLines replaceCL = prep(replace);
 
         // 2) perfect or whitespace approach
-        String attempt = perfectOrWhitespace(wholeCL.lines, partCL.lines, replaceCL.lines);
+        String attempt = perfectOrWhitespace(originalCL.lines, targetCl.lines, replaceCL.lines);
         if (attempt != null) {
             return attempt;
         }
 
-        // Count how many leading blank lines in the "search" block
-        int partLeadingBlanks = countLeadingBlankLines(partCL.lines);
-
-        // For 1..partLeadingBlanks: remove exactly i blank lines from search
-        for (int i = 1; i <= partLeadingBlanks; i++) {
-            // slice i leading blank lines from 'partCL'
-            String[] truncatedPart = Arrays.copyOfRange(partCL.lines, i, partCL.lines.length);
-
-            // also slice up to i blank lines from 'replaceCL'
-            int replaceLeadingBlanks = countLeadingBlankLines(replaceCL.lines);
-            int limit = Math.min(i, replaceLeadingBlanks);
-            String[] truncatedReplace = Arrays.copyOfRange(replaceCL.lines, limit, replaceCL.lines.length);
-
-            attempt = perfectOrWhitespace(wholeCL.lines, truncatedPart, truncatedReplace);
-            if (attempt != null) {
-                return attempt;
-            }
-        }
-
         // 3) handle triple-dot expansions
         try {
-            attempt = tryDotdotdots(whole, part, replace);
+            attempt = tryDotdotdots(content, target, replace);
             if (attempt != null) {
                 return attempt;
             }
@@ -317,18 +328,18 @@ public class EditBlock {
         }
 
         // 3a) If that failed, attempt dropping a spurious leading blank line from the "search" block:
-        if (partCL.lines.length > 2 && partCL.lines[0].trim().isEmpty()) {
-            // drop the first line from partCL
-            String[] splicedPart = Arrays.copyOfRange(partCL.lines, 1, partCL.lines.length);
+        if (targetCl.lines.length > 2 && targetCl.lines[0].trim().isEmpty()) {
+            // drop the first line from targetCl
+            String[] splicedTarget = Arrays.copyOfRange(targetCl.lines, 1, targetCl.lines.length);
             String[] splicedReplace = Arrays.copyOfRange(replaceCL.lines, 1, replaceCL.lines.length);
 
-            attempt = perfectOrWhitespace(wholeCL.lines, splicedPart, splicedReplace);
+            attempt = perfectOrWhitespace(originalCL.lines, splicedTarget, splicedReplace);
             if (attempt != null) {
                 return attempt;
             }
 
             // try triple-dot expansions on the spliced block if needed.
-            return tryDotdotdots(whole, String.join("", splicedPart), String.join("", splicedReplace));
+            return tryDotdotdots(content, String.join("", splicedTarget), String.join("", splicedReplace));
         }
 
         return null;
@@ -350,24 +361,24 @@ public class EditBlock {
     /**
      * If the search/replace has lines of "..." as placeholders, do naive partial replacements.
      */
-    public static String tryDotdotdots(String whole, String part, String replace) {
-        // If there's no "..." in part or whole, skip
-        if (!part.contains("...") && !whole.contains("...")) {
+    public static String tryDotdotdots(String whole, String target, String replace) {
+        // If there's no "..." in target or whole, skip
+        if (!target.contains("...") && !whole.contains("...")) {
             return null;
         }
         // splits on lines of "..."
         Pattern dotsRe = Pattern.compile("(?m)^\\s*\\.\\.\\.\\s*$");
 
-        String[] partPieces = dotsRe.split(part);
+        String[] targetPieces = dotsRe.split(target);
         String[] replacePieces = dotsRe.split(replace);
 
-        if (partPieces.length != replacePieces.length) {
+        if (targetPieces.length != replacePieces.length) {
             throw new IllegalArgumentException("Unpaired ... usage in search/replace");
         }
 
         String result = whole;
-        for (int i = 0; i < partPieces.length; i++) {
-            String pp = partPieces[i];
+        for (int i = 0; i < targetPieces.length; i++) {
+            String pp = targetPieces[i];
             String rp = replacePieces[i];
 
             if (pp.isEmpty() && rp.isEmpty()) {
@@ -381,7 +392,7 @@ public class EditBlock {
                 // replace only the first occurrence
                 result = result.replaceFirst(Pattern.quote(pp), Matcher.quoteReplacement(rp));
             } else {
-                // part piece empty, but replace piece is not -> just append
+                // target piece empty, but replace piece is not -> just append
                 result += rp;
             }
         }
@@ -391,160 +402,170 @@ public class EditBlock {
     /**
      * Tries perfect replace first, then leading-whitespace-insensitive.
      */
-    public static String perfectOrWhitespace(String[] wholeLines,
-                                             String[] partLines,
+    public static String perfectOrWhitespace(String[] originalLines,
+                                             String[] targetLines,
                                              String[] replaceLines) {
-        String perfect = perfectReplace(wholeLines, partLines, replaceLines);
+        String perfect = perfectReplace(originalLines, targetLines, replaceLines);
         if (perfect != null) {
             return perfect;
         }
-        return replacePartWithMissingLeadingWhitespace(wholeLines, partLines, replaceLines);
+        return replaceIgnoringWhitespace(originalLines, targetLines, replaceLines);
     }
 
     /**
      * Tries exact line-by-line match.
      */
-    public static String perfectReplace(String[] wholeLines,
-                                        String[] partLines,
+    public static String perfectReplace(String[] originalLines,
+                                        String[] targetLines,
                                         String[] replaceLines) {
-        if (partLines.length == 0) {
+        if (targetLines.length == 0) {
             return null;
         }
         outer:
-        for (int i = 0; i <= wholeLines.length - partLines.length; i++) {
-            for (int j = 0; j < partLines.length; j++) {
-                if (!Objects.equals(wholeLines[i + j], partLines[j])) {
+        for (int i = 0; i <= originalLines.length - targetLines.length; i++) {
+            for (int j = 0; j < targetLines.length; j++) {
+                if (!Objects.equals(originalLines[i + j], targetLines[j])) {
                     continue outer;
                 }
             }
             // found match
-            List<String> newFile = new ArrayList<>();
+            List<String> newLines = new ArrayList<>();
             // everything before the match
-            newFile.addAll(Arrays.asList(wholeLines).subList(0, i));
+            newLines.addAll(Arrays.asList(originalLines).subList(0, i));
             // add replacement
-            newFile.addAll(Arrays.asList(replaceLines));
+            newLines.addAll(Arrays.asList(replaceLines));
             // everything after the match
-            newFile.addAll(Arrays.asList(wholeLines).subList(i + partLines.length, wholeLines.length));
-            return String.join("", newFile);
+            newLines.addAll(Arrays.asList(originalLines).subList(i + targetLines.length, originalLines.length));
+            return String.join("", newLines);
         }
         return null;
     }
 
     /**
-     * Attempt a line-for-line match ignoring leading whitespace. If found, replace that
+     * Attempt a line-for-line match ignoring whitespace. If found, replace that
      * slice by adjusting each replacement line's indentation to preserve the relative
      * indentation from the 'search' lines.
      */
-    static String replacePartWithMissingLeadingWhitespace(String[] wholeLines,
-                                                          String[] partLines,
-                                                          String[] replaceLines) {
-        // Skip leading blank lines in the 'search'
-        int pStart = 0;
-        while (pStart < partLines.length && partLines[pStart].trim().isEmpty()) {
-            pStart++;
-        }
-        // Skip trailing blank lines in the search block
-        int pEnd = partLines.length;
-        while (pEnd > pStart && partLines[pEnd - 1].trim().isEmpty()) {
-            pEnd--;
-        }
-        String[] truncatedPart = Arrays.copyOfRange(partLines, pStart, pEnd);
+    static String replaceIgnoringWhitespace(String[] originalLines, String[] targetLines, String[] replaceLines) {
+        // Skip leading blank lines in the target and replacement
+        var truncatedTarget = removeLeadingTrailingEmptyLines(targetLines);
+        var truncatedReplace = removeLeadingTrailingEmptyLines(replaceLines);
 
-        // Do the same for the 'replace'
-        int rStart = 0;
-        while (rStart < replaceLines.length && replaceLines[rStart].trim().isEmpty()) {
-            rStart++;
-        }
-        int rEnd = replaceLines.length;
-        while (rEnd > rStart && replaceLines[rEnd - 1].trim().isEmpty()) {
-            rEnd--;
-        }
-        String[] truncatedReplace = Arrays.copyOfRange(replaceLines, rStart, rEnd);
-
-        if (truncatedPart.length == 0) {
+        if (truncatedTarget.length == 0) {
             // No actual lines to match
             return null;
         }
 
-        // Attempt to find a slice in wholeLines that matches ignoring leading spaces.
-        int needed = truncatedPart.length;
-        for (int start = 0; start <= wholeLines.length - needed; start++) {
-            if (!matchesIgnoringLeading(wholeLines, start, truncatedPart)) {
+        // Attempt to find a slice in originalLines that matches ignoring whitespace.
+        int needed = truncatedTarget.length;
+        for (int start = 0; start <= originalLines.length - needed; start++) {
+            if (!matchesIgnoringWhitespace(originalLines, start, truncatedTarget)) {
                 continue;
             }
 
-            // Found a match - rebuild the filename around it
+            // Found a match - rebuild the file around it
             // everything before the match
-            List<String> newFile = new ArrayList<>(Arrays.asList(wholeLines).subList(0, start));
-            // add replacement lines with adjusted indentation
-            for (int i = 0; i < needed && i < truncatedReplace.length; i++) {
-                int sliceLeading = countLeadingSpaces(wholeLines[start + i]);
-                int partLeading  = countLeadingSpaces(truncatedPart[i]);
-                int difference = partLeading - sliceLeading;
-
-                String adjusted = adjustIndentation(truncatedReplace[i], difference);
-                newFile.add(adjusted);
-            }
-            // if the replacement is longer, add leftover lines
-            if (needed < truncatedReplace.length) {
-                newFile.addAll(
-                    Arrays.asList(truncatedReplace).subList(needed, truncatedReplace.length)
-                );
+            List<String> newLines = new ArrayList<>(Arrays.asList(originalLines).subList(0, start));
+            if (truncatedReplace.length > 0) {
+                // for the very first replacement line, handle the case where the LLM omitted whitespace in its target, e.g.
+                // Original:
+                //   L1
+                //   L2
+                // Target:
+                // L1
+                //   L2
+                var adjusted = getLeadingWhitespace(originalLines[start]) + truncatedReplace[0].trim() + "\n";
+                newLines.add(adjusted);
+                // add the rest of the replacement lines assuming that whitespace is correct
+                newLines.addAll(Arrays.asList(truncatedReplace).subList(1, truncatedReplace.length));
             }
             // everything after the match
-            newFile.addAll(Arrays.asList(wholeLines).subList(start + needed, wholeLines.length));
-            return String.join("", newFile);
+            newLines.addAll(Arrays.asList(originalLines).subList(start + needed, originalLines.length));
+            return String.join("", newLines);
         }
         return null;
     }
 
-    static boolean matchesIgnoringLeading(String[] wholeLines, int start, String[] partLines) {
-        if (start + partLines.length > wholeLines.length) {
+    private static String[] removeLeadingTrailingEmptyLines(String[] targetLines) {
+        int pStart = 0;
+        while (pStart < targetLines.length && targetLines[pStart].trim().isEmpty()) {
+            pStart++;
+        }
+        // Skip trailing blank lines in the search block
+        int pEnd = targetLines.length;
+        while (pEnd > pStart && targetLines[pEnd - 1].trim().isEmpty()) {
+            pEnd--;
+        }
+        return Arrays.copyOfRange(targetLines, pStart, pEnd);
+    }
+
+    /**
+     * return true if the targetLines match the originalLines starting at 'start', ignoring whitespace.
+     */
+    static boolean matchesIgnoringWhitespace(String[] originalLines, int start, String[] targetLines) {
+        if (start + targetLines.length > originalLines.length) {
             return false;
         }
-        for (int i = 0; i < partLines.length; i++) {
-            if (!wholeLines[start + i].stripLeading().equals(partLines[i].stripLeading())) {
+        for (int i = 0; i < targetLines.length; i++) {
+            if (!nonWhitespace(originalLines[start + i]).equals(nonWhitespace(targetLines[i]))) {
                 return false;
             }
         }
         return true;
     }
 
-    static int countLeadingSpaces(String line) {
-        int count = 0;
+    /**
+     * @return the non-whitespace characters in `line`
+     */
+    private static String nonWhitespace(String line) {
+        StringBuilder result = new StringBuilder();
         for (int i = 0; i < line.length(); i++) {
-            if (line.charAt(i) == ' ') {
+            char c = line.charAt(i);
+            if (!Character.isWhitespace(c)) {
+                result.append(c);
+            }
+        }
+        return result.toString();
+    }
+
+    /**
+     * @return the whitespace prefix in this line.
+     */
+    static String getLeadingWhitespace(String line) {
+        assert line.endsWith("\n");
+        int count = 0;
+        for (int i = 0; i < line.length() - 1; i++) { // -1 because we threw newline onto everything
+            if (Character.isWhitespace(line.charAt(i))) {
                 count++;
             } else {
                 break;
             }
         }
-        return count;
+        return line.substring(0, count);
     }
 
-    static String adjustIndentation(String line, int delta) {
-        if (line.isBlank() || delta == 0) {
-            return line;
+    /**
+     * Align the replacement line to the original target content, based on the prefixes from the first matched lines
+     */
+    static String adjustIndentation(String line, String targetPrefix, String replacePrefix) {
+        if (replacePrefix.isEmpty()) {
+            return targetPrefix + line;
         }
-        int current = countLeadingSpaces(line);
 
-        int newCount;
+        if (line.startsWith(replacePrefix)) {
+            return line.replaceFirst(replacePrefix, targetPrefix);
+        }
+
+        // no prefix match, either we have inconsistent whitespace in the replacement
+        // or (more likely) we have a replacement block that ends at a lower level of indentation
+        // than where it begins.  we'll do our best by counting characters
+        int delta = replacePrefix.length() - targetPrefix.length();
         if (delta > 0) {
             // remove up to `delta` spaces
-            int remove = Math.min(current, delta);
-            newCount = current - remove;
-        } else {
-            // delta < 0 => add -delta
-            newCount = current + (-delta);
+            delta = min(delta, getLeadingWhitespace(line).length());
+            return line.substring(delta);
         }
-
-        // never go below zero
-        if (newCount < 0) {
-            newCount = 0;
-        }
-
-        String stripped = line.stripLeading();
-        return " ".repeat(newCount) + stripped;
+        return replacePrefix.substring(0, -delta) + line;
     }
 
     /**
@@ -682,10 +703,7 @@ public class EditBlock {
      */
     private static String stripFilename(String line, String[] fence) {
         String s = line.trim();
-        if (s.equals("...")) {
-            return null;
-        }
-        if (s.startsWith(fence[0])) {
+        if (s.equals("...") || s.equals(fence[0])) {
             return null;
         }
         // remove trailing colons, leading #, etc.
@@ -696,9 +714,7 @@ public class EditBlock {
     }
 
     private static ContentLines prep(String content) {
-        if (content == null) {
-            content = "";
-        }
+        assert content != null;
         // ensure it ends with newline
         if (!content.isEmpty() && !content.endsWith("\n")) {
             content += "\n";
@@ -738,7 +754,7 @@ public class EditBlock {
 
         // return the chunk plus a bit of surrounding context
         int start = Math.max(0, bestIdx - 3);
-        int end = Math.min(contentLines.length, bestIdx + searchLen + 3);
+        int end = min(contentLines.length, bestIdx + searchLen + 3);
         String[] snippet = Arrays.copyOfRange(contentLines, start, end);
         return String.join("\n", snippet);
     }
@@ -755,10 +771,10 @@ public class EditBlock {
      */
     public static Map<FailedBlock, String> collectSuggestions(List<FailedBlock> failedBlocks, IContextManager cm) {
         Map<FailedBlock, String> suggestions = new HashMap<>();
-        
+
         for (var failedBlock : failedBlocks) {
             if (failedBlock.block().filename() == null) continue;
-            
+
             try {
                 String fileContent = cm.toFile(failedBlock.block().filename()).read();
                 String snippet = findSimilarLines(failedBlock.block().beforeText(), fileContent, 0.6);
@@ -767,7 +783,10 @@ public class EditBlock {
                     suggestion.append("Did you mean:\n").append(snippet).append("\n");
                 }
                 if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    suggestion.append("Note: The replacement text is already present in the file.\n");
+                    suggestion.append("""
+                    Note: The replacement text is already present in the file. If we no longer need to apply
+                    this block, omit it from your reply.
+                    """.stripIndent());
                 }
                 if (suggestion.length() > 0) {
                     suggestions.put(failedBlock, suggestion.toString());
@@ -777,5 +796,108 @@ public class EditBlock {
             }
         }
         return suggestions;
+    }
+
+    /**
+     * Parses blocks and attempts to apply them, reporting errors to stdout.
+     */
+    public static void main(String[] args) throws IOException {
+        // Create a simple console IO for output
+        var io = new IConsoleIO() {
+            @Override
+            public void shellOutput(String message) {
+                System.out.println(message);
+            }
+
+            @Override
+            public void llmOutput(String message) {
+                System.out.println(message);
+            }
+
+            @Override
+            public void toolOutput(String message) {
+                System.out.println(message);
+            }
+
+            @Override
+            public void toolError(String message) {
+                System.err.println("ERROR: " + message);
+            }
+
+            @Override
+            public void toolErrorRaw(String message) {
+                System.err.println(message);
+            }
+        };
+
+        // Read input from testblocks.txt
+        Path testBlocksPath = Path.of("testblocks.txt");
+        var content = new StringBuilder();
+        Path cwd = Path.of("").toAbsolutePath();
+        Set<RepoFile> potentialFiles = new HashSet<>();
+
+        // Collect lines while scanning for potential file paths
+        try (var scanner = new Scanner(testBlocksPath)) {
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                content.append(line).append("\n");
+
+                // Identify lines that look like file paths starting with src/
+                if (line.trim().startsWith("src/")) {
+                    potentialFiles.add(new RepoFile(cwd, line.trim()));
+                }
+            }
+        } catch (IOException e) {
+            io.toolError("Failed to read testblocks.txt: " + e.getMessage());
+            System.exit(1);
+        }
+        System.out.println("Potential files are " + potentialFiles);
+
+        // Get the context manager from Environment if available, or create one with potential files
+        IContextManager contextManager = new IContextManager() {
+                @Override
+                public Set<RepoFile> getEditableFiles() {
+                    return potentialFiles;
+                }
+
+                @Override
+                public RepoFile toFile(String path) {
+                    return new RepoFile(cwd, path);
+                }
+            };
+
+        // Parse the input for SEARCH/REPLACE blocks
+        var parseResult = findOriginalUpdateBlocks(content.toString(), contextManager.getEditableFiles());
+        if (parseResult.parseError() != null) {
+            io.toolErrorRaw(parseResult.parseError());
+            System.exit(1);
+        }
+
+        var blocks = parseResult.blocks();
+        if (blocks.isEmpty()) {
+            io.toolOutput("No SEARCH/REPLACE blocks found in input");
+            System.exit(0);
+        }
+
+        io.toolOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
+
+        // Apply the edit blocks
+        var editResult = applyEditBlocks(contextManager, io, blocks);
+
+        // Report any failures
+        if (!editResult.failedBlocks().isEmpty()) {
+            io.toolError(editResult.failedBlocks().size() + " blocks failed to apply:");
+            var suggestions = collectSuggestions(editResult.failedBlocks(), contextManager);
+
+            for (var failed : editResult.failedBlocks()) {
+                io.toolError("Failed to apply block for file: " +
+                                     (failed.block().filename() == null ? "(none)" : failed.block().filename()) +
+                                     " Reason: " + failed.reason());
+
+                if (suggestions.containsKey(failed)) {
+                    io.toolOutput(suggestions.get(failed));
+                }
+            }
+        }
     }
 }

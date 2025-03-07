@@ -37,31 +37,31 @@ class EditBlockInternalsTest {
     @Test
     void testCountLeadingSpaces() {
         // Simple checks
-        assertEquals(0, EditBlock.countLeadingSpaces("line1"));
-        assertEquals(4, EditBlock.countLeadingSpaces("    line2"));
-        assertEquals(2, EditBlock.countLeadingSpaces("  lineX "));
+        assertEquals("", EditBlock.getLeadingWhitespace("line1\n"));
+        assertEquals("    ", EditBlock.getLeadingWhitespace("    line2\n"));
+        assertEquals("  ", EditBlock.getLeadingWhitespace("  lineX \n"));
     }
 
     @Test
     void testAdjustIndentation() {
         // delta < 0 => add spaces
-        String line = "hello";
-        String adjusted = EditBlock.adjustIndentation(line, -2);
-        assertEquals("  hello", adjusted);
+        String line = "hello\n";
+        String adjusted = EditBlock.adjustIndentation(line, "  ", "");
+        assertEquals("  hello\n", adjusted);
 
         // delta > 0 => remove spaces (if present)
-        String line2 = "    hello";
-        String adjusted2 = EditBlock.adjustIndentation(line2, 2); // remove 2 spaces
-        assertEquals("  hello", adjusted2);
+        String line2 = "    hello\n";
+        String adjusted2 = EditBlock.adjustIndentation(line2, "  ", "    "); // remove 2 spaces
+        assertEquals("  hello\n", adjusted2);
 
         // ensure we never go below zero indentation
-        String line3 = "  hi";
-        String adjusted3 = EditBlock.adjustIndentation(line3, 10); // tries to remove 10, but has only 2
-        assertEquals("hi", adjusted3);
+        String line3 = "  hi\n";
+        String adjusted3 = EditBlock.adjustIndentation(line3, "  ", "          "); // tries to remove 10, but has only 2
+        assertEquals("hi\n", adjusted3);
     }
 
     @Test
-    void testMatchesIgnoringLeading() {
+    void testMatchesIgnoringWhitespace() {
         String[] whole = {
                 "    line1\n",
                 "        line2\n"
@@ -71,10 +71,10 @@ class EditBlockInternalsTest {
                 "    line2\n"
         };
         // We expect a match ignoring leading spaces
-        assertTrue(EditBlock.matchesIgnoringLeading(whole, 0, part));
+        assertTrue(EditBlock.matchesIgnoringWhitespace(whole, 0, part));
 
         // If we shift by 1, out of range => false
-        assertFalse(EditBlock.matchesIgnoringLeading(whole, 1, part));
+        assertFalse(EditBlock.matchesIgnoringWhitespace(whole, 1, part));
     }
 
     @Test
@@ -91,7 +91,7 @@ class EditBlockInternalsTest {
     }
 
     @Test
-    void testReplacePartWithMissingLeadingWhitespace_includingBlankLine() {
+    void testReplaceIgnoringWhitespace_includingBlankLine() {
         // This is closer to the scenario that breaks in your test:
         // There's an extra blank line in 'search' that doesn't appear in the original.
         String[] whole = {
@@ -108,7 +108,7 @@ class EditBlockInternalsTest {
                 "  replaced_line2\n"
         };
 
-        String attempt = EditBlock.replacePartWithMissingLeadingWhitespace(whole, part, replace);
+        String attempt = EditBlock.replaceIgnoringWhitespace(whole, part, replace);
 
         // We'll see if it aligns or if we get an extra blank line in between
         // (which might be the bug).

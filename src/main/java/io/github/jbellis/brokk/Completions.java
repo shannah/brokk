@@ -1,10 +1,6 @@
 package io.github.jbellis.brokk;
 
-import org.jline.reader.Candidate;
-import org.msgpack.core.annotations.VisibleForTesting;
-
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,12 +9,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Completions {
-    @VisibleForTesting
-    static List<Candidate> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
+    public static List<String> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
         var allCodeUnits = analyzer.getAllClasses();
         var allClassnames = allCodeUnits.stream().map(CodeUnit::reference).toList();
         String partial = input.trim();
@@ -26,7 +20,7 @@ public class Completions {
         var matchingClasses = findClassesForMemberAccess(input, allClassnames);
         if (matchingClasses.size() == 1) {
             // find matching members
-            List<Candidate> results = new ArrayList<>();
+            var results = new ArrayList<>(matchingClasses);
             for (var matchedClass : matchingClasses) {
                 String memberPrefix = partial.substring(partial.lastIndexOf(".") + 1);
                 // Add members
@@ -34,8 +28,7 @@ public class Completions {
                 for (String fqMember : trueMembers.stream().map(CodeUnit::reference).toList()) {
                     String shortMember = fqMember.substring(fqMember.lastIndexOf('.') + 1);
                     if (shortMember.startsWith(memberPrefix)) {
-                        String display = returnFqn ? fqMember : getShortClassName(matchedClass) + "." + shortMember;
-                        results.add(new Candidate(display, display, null, null, null, null, true));
+                        results.add(returnFqn ? fqMember : getShortClassName(matchedClass) + "." + shortMember);
                     }
                 }
             }
@@ -64,8 +57,7 @@ public class Completions {
         // Return just the class names
         return matchedClasses.stream()
                 .map(fqClass -> {
-                    String display = returnFqn ? fqClass : getShortClassName(fqClass);
-                    return new Candidate(display, display, null, null, null, null, false);
+                    return returnFqn ? fqClass : getShortClassName(fqClass);
                 })
                 .collect(Collectors.toList());
     }
@@ -178,7 +170,7 @@ public class Completions {
         return nameMatches;
     }
 
-    static String extractCapitals(String base) {
+    public static String extractCapitals(String base) {
         StringBuilder capitals = new StringBuilder();
         for (char c : base.toCharArray()) {
             if (Character.isUpperCase(c)) {
@@ -189,20 +181,9 @@ public class Completions {
     }
 
     /**
-     * Splits the given string by quoted or unquoted segments.
-     */
-    static List<String> parseQuotedFilenames(String args) {
-        var pattern = Pattern.compile("\"([^\"]+)\"|\\S+");
-        return pattern.matcher(args)
-                .results()
-                .map(m -> m.group(1) != null ? m.group(1) : m.group())
-                .toList();
-    }
-
-    /**
      * Expand paths that may contain wildcards (*, ?), returning all matches.
      */
-    static List<? extends BrokkFile> expandPath(Path root, String pattern) {
+    public static List<? extends BrokkFile> expandPath(Path root, String pattern) {
         // First check if this is a single file
         var file = maybeExternalFile(root, pattern);
         if (file.exists()) {

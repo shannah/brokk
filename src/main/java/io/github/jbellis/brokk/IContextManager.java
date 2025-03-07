@@ -6,17 +6,25 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Future;
 
 public interface IContextManager {
     RepoFile toFile(String relName);
 
-    void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents);
-
     Set<RepoFile> getEditableFiles();
 
-    void addFiles(Collection<RepoFile> path);
+    default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action) {
+    }
 
-    Set<RepoFile> findMissingFileMentions(String text);
+    default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action) {
+    }
 
-    ContextManager.OperationResult runBuild();
+    default void addFiles(Collection<RepoFile> path) {
+        throw new UnsupportedOperationException();
+    }
+
+    default Project getProject() {
+        return null;
+    }
+
 }

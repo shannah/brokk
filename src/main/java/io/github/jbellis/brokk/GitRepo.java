@@ -11,6 +11,7 @@ import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class GitRepo implements Closeable {
@@ -28,6 +30,13 @@ public class GitRepo implements Closeable {
     private final Repository repository;
     private final Git git;
     private List<RepoFile> trackedFilesCache = null;
+    
+    /**
+     * Get the JGit instance for direct API access
+     */
+    public Git getGit() {
+        return git;
+    }
 
     private GitRepo() {
         // Moved "findGitRoot" logic here
@@ -139,6 +148,11 @@ public class GitRepo implements Closeable {
             trackedPaths.addAll(status.getAdded());
             trackedPaths.addAll(status.getRemoved());
             trackedPaths.addAll(status.getMissing());
+            
+            // If no changed files, return empty string early
+            if (trackedPaths.isEmpty()) {
+                return "";
+            }
 
             var filters = new ArrayList<PathFilter>();
             for (String path : trackedPaths) {
@@ -172,6 +186,32 @@ public class GitRepo implements Closeable {
         } catch (IOException | GitAPIException e) {
             throw new UncheckedIOException(new IOException(e));
         }
+    }
+
+    /**
+     * Gets a list of uncommitted file paths
+     * @return List of file paths relative to git root
+     */
+    public List<String> getUncommittedFileNames() {
+        String diffSt = diff();
+        if (diffSt.isEmpty()) {
+            return List.of();
+        }
+
+        // Simple parsing to extract filepaths from git diff output
+        Set<String> filePaths = new HashSet<>();
+        for (String line : diffSt.split("\n")) {
+            line = line.trim();
+            if (line.startsWith("diff --git")) {
+                // Extract full path from diff --git a/path/to/file b/path/to/file
+                String[] parts = line.split(" ");
+                if (parts.length >= 4) {
+                    String path = parts[3].substring(2); // skip "b/"
+                    filePaths.add(path);
+                }
+            }
+        }
+        return new ArrayList<>(filePaths);
     }
 
     @Override

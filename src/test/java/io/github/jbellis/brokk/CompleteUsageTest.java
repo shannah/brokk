@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import org.jline.reader.Candidate;
 import org.junit.jupiter.api.Test;
 import org.msgpack.core.annotations.VisibleForTesting;
 
@@ -8,7 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.github.jbellis.brokk.Completions.findClassesForMemberAccess;
@@ -19,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class CompleteUsageTest {
 
     @VisibleForTesting
-    static List<Candidate> completeUsage(String input, IAnalyzer analyzer) {
+    static List<String> completeUsage(String input, IAnalyzer analyzer) {
         return Completions.completeClassesAndMembers(input, analyzer, true);
     }
 
@@ -54,11 +52,9 @@ public class CompleteUsageTest {
         }
     }
     
-    // Helper to extract just the candidate values for easy assertion
-    private static Set<String> toValues(List<Candidate> candidates) {
-        return candidates.stream()
-                .map(Candidate::value)
-                .collect(Collectors.toSet());
+    // Helper to extract values for easy assertion (now just returns the strings)
+    private static Set<String> toValues(List<String> candidates) {
+        return new HashSet<>(candidates);
     }
 
     @Test
@@ -124,6 +120,10 @@ public class CompleteUsageTest {
         // Input "CC" -> should match "test.CamelClass" due to camel case matching
         var completions = completeUsage("CC", mock);
         var values = toValues(completions);
+        assertEquals(Set.of("test.CamelClass"), values);
+
+        completions = completeUsage("cam", mock);
+        values = toValues(completions);
         assertEquals(Set.of("test.CamelClass"), values);
     }
 
@@ -235,7 +235,7 @@ public class CompleteUsageTest {
         assertEquals(Set.of("Do.foo", "Do.bar"), toValues(completions));
 
         completions = Completions.completeClassesAndMembers("Do.", mock, false);
-        assertEquals(Set.of("Do.foo", "Do.bar"), toValues(completions));
+        assertEquals(Set.of("a.b.Do", "Do.foo", "Do.bar"), toValues(completions));
     }
 
     //

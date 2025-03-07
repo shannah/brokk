@@ -7,6 +7,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 public class AnalyzerWrapper {
@@ -46,11 +48,11 @@ public class AnalyzerWrapper {
     /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
-    public AnalyzerWrapper(Project project, ExecutorService analyzerExecutor) {
+    public AnalyzerWrapper(Project project, IConsoleIO io, ExecutorService analyzerExecutor) {
         this.project = project;
         this.analyzerExecutor = analyzerExecutor;
-        this.io = project.getIo();
         this.root = project.getRoot();
+        this.io = io;
 
         // build the initial Analyzer
         future = analyzerExecutor.submit(this::loadOrCreateAnalyzer);
@@ -267,18 +269,18 @@ public class AnalyzerWrapper {
             if (duration > 5000) {
                 project.setCpgRefresh(CpgRefresh.MANUAL);
                 var msg = """
-                CPG creation was slow (%,d ms); code intelligence will only refresh when explicitly requested via /refresh.
+                CPG creation was slow (%,d ms); code intelligence will only refresh when explicitly requested via File menu.
                 (Code intelligence will still refresh once automatically at startup.)
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                io.toolOutput(msg);
+                io.shellOutput(msg);
             } else {
                 project.setCpgRefresh(CpgRefresh.AUTO);
                 var msg = """
                 CPG creation was fast (%,d ms); code intelligence will refresh automatically when changes are made to tracked files.
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                io.toolOutput(msg);
+                io.shellOutput(msg);
                 startWatcher();
             }
             return analyzer;
@@ -321,7 +323,8 @@ public class AnalyzerWrapper {
                 long fileMTime = Files.getLastModifiedTime(rf.absPath()).toMillis();
                 maxTrackedMTime = Math.max(maxTrackedMTime, fileMTime);
             } catch (IOException e) {
-                throw new RuntimeException("Error reading file timestamp", e);
+                // probable cause: file exists in git but is removed
+                logger.debug("Error reading analyzer file timestamp", e);
             }
         }
         if (cpgMTime > maxTrackedMTime) {
@@ -371,13 +374,17 @@ public class AnalyzerWrapper {
     /**
      * Get the analyzer, showing a spinner UI while waiting if requested.
      */
-    private Analyzer get(boolean spin) {
-        if (!future.isDone() && spin) {
+    private Analyzer get(boolean notifyWhenBlocked) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            throw new UnsupportedOperationException("Never call blocking get() from EDT");
+        }
+
+        if (!future.isDone() && notifyWhenBlocked) {
             if (logger.isDebugEnabled()) {
                 Exception e = new Exception("Stack trace");
                 logger.debug("Blocking on analyzer creation", e);
             }
-            io.spin("Analyzer is being created");
+            io.toolOutput("Analyzer is being created");
         }
         try {
             return future.get();
@@ -386,11 +393,6 @@ public class AnalyzerWrapper {
             throw new RuntimeException("Interrupted while fetching analyzer", e);
         } catch (ExecutionException e) {
             throw new RuntimeException("Failed to create analyzer", e);
-        }
-        finally {
-            if (spin) {
-                io.spinComplete();
-            }
         }
     }
 
@@ -416,6 +418,24 @@ public class AnalyzerWrapper {
     private void startWatcher() {
         Thread watcherThread = new Thread(() -> beginWatching(root), "DirectoryWatcher");
         watcherThread.start();
+    }
+
+    /**
+     * @return null if analyzer is not ready yet
+     */
+    public Analyzer getNonBlocking() {
+        try {
+            // Try to get with zero timeout - returns null if not done
+            return future.get(0, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            // Not done yet
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while checking analyzer", e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Failed to create analyzer", e);
+        }
     }
 
     public record CodeWithSource(String code, Set<CodeUnit> sources) {

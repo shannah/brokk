@@ -24,6 +24,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * Holds references to the models we use in Brokk.
@@ -37,6 +39,7 @@ public record Models(StreamingChatLanguageModel editModel,
                      String quickModelName,
                      String searchModelName)
 {
+    public static String[] defaultKeyNames = { "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY" };
 
     /**
      * Returns the name of the given model.
@@ -164,9 +167,8 @@ public record Models(StreamingChatLanguageModel editModel,
      *       to interpreting <em>url</em> + <em>key</em> as a custom OpenAI-like endpoint or uses
      *       a built-in OpenAI default.</li>
      *   <li><strong>key:</strong> Indicates the environment variable holding the API key (e.g., <code>DEEPSEEK_API_KEY</code>).
-     *       This is looked up via <code>System.getenv</code>. If <code>key</code> is <code>env:SOME_VAR</code>,
-     *       the portion after <code>env:</code> is taken as the environment variable name. Otherwise, the entire
-     *       <code>key</code> string is treated as the environment variable name directly.</li>
+     *       This is looked up via <code>~/.config/brokk/keys.properties</code>, or by <code>System.getenv</code>.
+     *       </li>
      *   <li><strong>url:</strong> Optional. If using <code>deepseek</code>, for instance, defaults to
      *       <code>https://api.deepseek.com</code> unless otherwise specified. OpenAI can omit <em>url</em>
      *       to use the default OpenAI endpoint.</li>
@@ -195,24 +197,52 @@ public record Models(StreamingChatLanguageModel editModel,
         }
 
         // Next try Anthropic if API key exists
-        String anthropicKey = System.getenv("ANTHROPIC_API_KEY");
+        String anthropicKey = getKey("ANTHROPIC_API_KEY");
         if (anthropicKey != null && !anthropicKey.isBlank()) {
             return buildModelsFromYaml(ANTHROPIC_DEFAULTS);
         }
 
         // Next try OpenAI if API key exists
-        String openaiKey = System.getenv("OPENAI_API_KEY");
+        String openaiKey = getKey("OPENAI_API_KEY");
         if (openaiKey != null && !openaiKey.isBlank()) {
             return buildModelsFromYaml(OPENAI_DEFAULTS);
         }
 
-        String deepseekKey = System.getenv("DEEPSEEK_API_KEY");
+        String deepseekKey = getKey("DEEPSEEK_API_KEY");
         if (deepseekKey != null && !deepseekKey.isBlank()) {
             return buildModelsFromYaml(DEEPSEEK_DEFAULTS);
         }
 
         // If no API keys are available, return disabled models
         return disabled();
+    }
+
+    private static String getKey(String keyName) {
+        // First try properties file
+        try {
+            Path keysPath = Project.getLlmKeysPath();
+            if (Files.exists(keysPath)) {
+                var properties = new java.util.Properties();
+                try (var reader = Files.newBufferedReader(keysPath)) {
+                    properties.load(reader);
+                }
+                String propValue = properties.getProperty(keyName);
+                if (propValue != null && !propValue.isBlank()) {
+                    return propValue.trim();
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error reading LLM keys: " + e.getMessage());
+        }
+
+        // Next try system environment variables
+        String envValue = System.getenv(keyName);
+        if (envValue != null && !envValue.isBlank()) {
+            return envValue.trim();
+        }
+
+        // Nothing found
+        return null;
     }
 
     private static Models buildModelsFromYaml(String yamlStr) {
@@ -287,10 +317,8 @@ public record Models(StreamingChatLanguageModel editModel,
         Double temperature = getDouble(modelMap, "temperature", null); // don't hardcode a default
         int maxTokens = getInt(modelMap, "maxTokens", DEFAULT_MAX_TOKENS);
 
-        // Resolve the actual API key if "key" is an env var name
-        String resolvedKey = (apiKeyOrEnv != null && apiKeyOrEnv.startsWith("env:"))
-                ? System.getenv(apiKeyOrEnv.substring("env:".length()))
-                : (apiKeyOrEnv != null ? System.getenv(apiKeyOrEnv) : null);
+        // Resolve the actual API key if "key" is a property name
+        String resolvedKey = getKey(apiKeyOrEnv) == null ? apiKeyOrEnv : getKey(apiKeyOrEnv);
 
         if (provider != null && provider.equalsIgnoreCase("deepseek")) {
             provider = null;

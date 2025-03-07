@@ -1,20 +1,19 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.ChatMessage;
+
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.Objects;
-import java.util.stream.Collectors;
 import java.util.concurrent.Future;
 
 public interface ContextFragment {
-    /** longer description displayed to user */
+    /** short description in history */
+    String shortDescription();
+    /** longer description displayed in context table */
     String description();
     /** raw content */
     String text() throws IOException;
-
-    String source(Context context);
 
     /** content formatted for LLM */
     String format() throws IOException;
@@ -43,13 +42,13 @@ public interface ContextFragment {
 
     record RepoPathFragment(RepoFile file) implements PathFragment {
         @Override
-        public String source(Context context) {
-            return file.getFileName();
+        public String shortDescription() {
+            return file().getFileName();
         }
 
         @Override
         public String description() {
-            return file.getParent();
+            return "%s [%s]".formatted(file.getFileName(), file.getParent());
         }
 
         @Override
@@ -70,13 +69,13 @@ public interface ContextFragment {
 
     record ExternalPathFragment(ExternalFile file) implements PathFragment {
         @Override
-        public String source(Context context) {
-            return file.toString();
+        public String shortDescription() {
+            return description();
         }
 
         @Override
         public String description() {
-            return "(External)";
+            return file.toString();
         }
 
         @Override
@@ -99,77 +98,20 @@ public interface ContextFragment {
         throw new IllegalArgumentException("Unknown BrokkFile subtype: " + bf.getClass().getName());
     }
 
-    class SearchFragment extends VirtualFragment {
-        private final String query;
-        private final String explanation;
-        private final Set<CodeUnit> sources;
-
-        public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
-            super();
-            this.query = query;
-            this.explanation = explanation;
-            this.sources = sources;
-        }
-
-        @Override
-        public String text() {
-            return explanation;
-        }
-
-        @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
-            return sources;
-        }
-
-        @Override
-        public String description() {
-            return "Search results for: " + query;
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
-        }
-
-        @Override
-        public String toString() {
-            return "SearchFragment('%s')".formatted(query);
-        }
-    }
-
     abstract class VirtualFragment implements ContextFragment {
-        /**
-         * Returns the position of this fragment in its containing context.
-         * This is computed dynamically by the Context when needed.
-         */
-        public int position(Context context) {
-            return context.getPositionOfFragment(this);
-        }
-
-        /**
-         * Returns the position-based source string when context is available
-         */
-        @Override
-        public String source(Context context) {
-            int pos = position(context);
-            if (pos == -1) {
-                return "[detached fragment]";
-            }
-            // 1-based label for display
-            return "%d".formatted(pos + 1);
-        }
-
         @Override
         public String format() throws IOException {
-            throw new UnsupportedOperationException();
-        }
-        
-        public String format(Context context) throws IOException {
             return """
-            <fragment id="%s" description="%s">
+            <fragment description="%s">
             %s
             </fragment>
-            """.formatted(source(context), description(), text()).stripIndent();
+            """.formatted(description(), text()).stripIndent();
+        }
+
+        @Override
+        public String shortDescription() {
+            assert !description().isEmpty();
+            return description().substring(0, 1).toLowerCase() + description().substring(1);
         }
 
         @Override
@@ -212,6 +154,44 @@ public interface ContextFragment {
         @Override
         public String toString() {
             return "StringFragment('%s')".formatted(description);
+        }
+    }
+
+    class SearchFragment extends VirtualFragment {
+        private final String query;
+        private final String explanation;
+        private final Set<CodeUnit> sources;
+
+        public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
+            super();
+            this.query = query;
+            this.explanation = explanation;
+            this.sources = sources;
+        }
+
+        @Override
+        public String text() {
+            return explanation;
+        }
+
+        @Override
+        public Set<CodeUnit> sources(Analyzer analyzer) {
+            return sources;
+        }
+
+        @Override
+        public String description() {
+            return "Search: " + query;
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return "SearchFragment('%s')".formatted(query);
         }
     }
 
@@ -380,6 +360,55 @@ public interface ContextFragment {
      * A context fragment that holds a list of short class names and a text
      * representation (e.g. skeletons) of those classes.
      */
+    class ConversationFragment extends VirtualFragment {
+        private final List<ChatMessage> messages;
+
+        public ConversationFragment(List<ChatMessage> messages) {
+            super();
+            this.messages = List.copyOf(messages);
+        }
+
+        @Override
+        public String text() {
+            return messages.stream()
+                .map(m -> m.type() + ": " + Models.getText(m))
+                .collect(java.util.stream.Collectors.joining("\n\n"));
+        }
+
+        @Override
+        public Set<CodeUnit> sources(Analyzer analyzer) {
+            return Set.of(); // Conversation history doesn't contain code sources
+        }
+
+        @Override
+        public String description() {
+            return "Conversation history (" + messages.size() + " messages)";
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return false;
+        }
+
+        @Override
+        public String format() {
+            return """
+            <conversation>
+            %s
+            </conversation>
+            """.formatted(text()).stripIndent();
+        }
+
+        @Override
+        public String toString() {
+            return "ConversationFragment(" + messages.size() + " messages)";
+        }
+
+        public List<ChatMessage> getMessages() {
+            return messages;
+        }
+    }
+
     class AutoContext implements ContextFragment {
         public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(List.of("Enabled, but no references found"), Set.of(), "")));
         public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(List.of("Disabled"), Set.of(), "")));
@@ -392,11 +421,6 @@ public interface ContextFragment {
 
         public List<SkeletonFragment> getSkeletons() {
             return skeletons;
-        }
-
-        @Override
-        public String source(Context context) {
-            return "0 [Auto]";
         }
 
         @Override
@@ -414,7 +438,12 @@ public interface ContextFragment {
          */
         @Override
         public String description() {
-            return String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
+            return "[Auto] " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
+        }
+
+        @Override
+        public String shortDescription() {
+            return "Autosummary of " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
         }
 
         @Override

@@ -6,28 +6,38 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
-import io.github.jbellis.brokk.prompts.DefaultPrompts;
+import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.LoggingExecutorService;
+import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
+import io.github.jbellis.brokk.prompts.ArchitectPrompts;
+import io.github.jbellis.brokk.prompts.AskPrompts;
+import io.github.jbellis.brokk.prompts.CommitPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -38,100 +48,1152 @@ import java.util.stream.Stream;
 
 /**
  * Manages the current and previous context, along with other state like prompts and message history.
+ *
+ * Updated to:
+ *   - Remove OperationResult,
+ *   - Move UI business logic from Chrome to here as asynchronous tasks,
+ *   - Directly call into Chrome’s UI methods from background tasks (via invokeLater),
+ *   - Provide separate async methods for “Go”, “Ask”, “Search”, context additions, etc.
  */
-public class ContextManager implements IContextManager {
+public class ContextManager implements IContextManager
+{
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
     private AnalyzerWrapper analyzerWrapper;
-    private ConsoleIO io;
+    private Chrome chrome; // for UI feedback
     private Coder coder;
-    private final ExecutorService backgroundTasks = Executors.newFixedThreadPool(2);
 
-    public enum Mode {
-        EDIT,
-        APPLY
+    // Convert a throwable to a string with full stack trace
+    private String getStackTraceAsString(Throwable throwable) {
+        var sw = new java.io.StringWriter();
+        var pw = new java.io.PrintWriter(sw);
+        throwable.printStackTrace(pw);
+        return sw.toString();
     }
 
+    // Run main user-driven tasks in background (Code/Ask/Search/Run)
+    // Only one of these can run at a time
+    private final ExecutorService userActionExecutor = createLoggingExecutorService(Executors.newSingleThreadExecutor());
+
+    @NotNull
+    private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {
+        return new LoggingExecutorService(toWrap, th -> {
+           var thread = Thread.currentThread();
+           logger.error("Uncaught exception in thread {}", thread.getName(), th);
+           if (chrome != null) {
+               chrome.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
+                                          .formatted(thread.getName(), getStackTraceAsString(th)));
+           }
+       });
+    }
+
+    // Context modification tasks (Edit/Read/Summarize/Drop/etc)
+    // Multiple of these can run concurrently
+    private final ExecutorService contextActionExecutor = createLoggingExecutorService(Executors.newFixedThreadPool(2));
+
+    // Internal background tasks (unrelated to user actions)
+    private final ExecutorService backgroundTasks = createLoggingExecutorService(Executors.newFixedThreadPool(2));
+
+    private Project project;
+    private final Path root;
+    
     private Mode mode = Mode.EDIT;
+
+    public void editSources(ContextFragment fragment) {
+        contextActionExecutor.submit(() -> {
+            var analyzer = getAnalyzer();
+            Set<CodeUnit> sources = fragment.sources(analyzer);
+            if (!sources.isEmpty()) {
+                Set<RepoFile> files = sources.stream()
+                        .map(analyzer::pathOf)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+                if (!files.isEmpty()) {
+                    addFiles(files);
+                }
+            }
+        });
+    }
+
+    public enum Mode { EDIT, APPLY }
+
+    // Keep contexts for undo/redo
+    private static final int MAX_UNDO_DEPTH = 100;
+    // Package-private to allow Chrome to access for context history display
+    final List<Context> contextHistory = new ArrayList<>();
+    private final List<Context> redoHistory = new ArrayList<>();
+
+    // Possibly store an inferred buildCommand
+    private Future<BuildCommand> buildCommand;
+
+    /**
+     * Minimal constructor called from Brokk
+     */
+    public ContextManager(Path root)
+    {
+        this.root = root.toAbsolutePath();
+        this.project = new Project(root);
+    }
+
+    /**
+     * Called from Brokk to finish wiring up references to Chrome and Coder
+     */
+    public void resolveCircularReferences(Chrome chrome, Coder coder)
+    {
+        this.chrome = chrome;
+        this.coder = coder;
+        this.analyzerWrapper = new AnalyzerWrapper(project, chrome, backgroundTasks);
+        // Context's analyzer reference is retained for the whole chain so wait until we have that ready
+        // before adding the Context sentinel to history
+        var initialContext = new Context(analyzerWrapper, 5);
+        contextHistory.add(initialContext);
+        chrome.setContext(initialContext);
+
+        ensureStyleGuide();
+        ensureBuildCommand(coder);
+    }
 
     /**
      * Get the current mode
      */
-    public Mode getMode() {
+    public Mode getMode()
+    {
         return mode;
     }
 
     /**
      * Set the current mode
      */
-    public void setMode(Mode mode) {
+    public void setMode(Mode mode)
+    {
         this.mode = mode;
     }
 
     /**
-     * Get the appropriate model based on current mode
+     * Return the streaming chat model used for the current mode
      */
-    public StreamingChatLanguageModel getCurrentModel(Models models) {
-        return mode == Mode.EDIT ? models.editModel() : models.applyModel();
+    public StreamingChatLanguageModel getCurrentModel(Models models)
+    {
+        return (mode == Mode.EDIT) ? models.editModel() : models.applyModel();
     }
 
-    // build command inference stored here
-    private Future<BuildCommand> buildCommand;
+    public Project getProject()
+    {
+        return project;
+    }
 
-    // Shell output that might be used by /send
-    private String lastShellOutput;
-
-    // If we have a constructed user message waiting to be sent via runSession:
-    private String constructedMessage;
-
-    private Project project;
-    private static final int MAX_UNDO_DEPTH = 100;
-
-    // We keep a history of contexts; each context has references to files, messages, etc.
-    private final List<Context> contextHistory = new ArrayList<>();
-    private final List<Context> redoHistory = new ArrayList<>();
-
-    private final Path root;
-
-    // Minimal constructor called from Brokk before calling resolveCircularReferences(...)
-    public ContextManager(Path root) {
-        this.root = root.toAbsolutePath();
+    @Override
+    public RepoFile toFile(String relName)
+    {
+        return new RepoFile(root, relName);
     }
 
     /**
-     * Called from Brokk to finish wiring up references to ConsoleIO and Coder
+     * Return the current context
      */
-    public void resolveCircularReferences(ConsoleIO io, Coder coder) {
-        this.io = io;
-        this.coder = coder;
-        this.project = new Project(root, io);
-        this.analyzerWrapper = new AnalyzerWrapper(project, backgroundTasks);
-
-        // Start with a blank context
-        Context newContext = new Context(this.analyzerWrapper, 5);
-        contextHistory.add(newContext);
-
-        // First-time setup
-        ensureStyleGuide();
-        ensureBuildCommand(io, coder);
+    public Context currentContext()
+    {
+        return contextHistory.isEmpty() ? null : contextHistory.getLast();
     }
 
-    private void ensureBuildCommand(ConsoleIO io, Coder coder) {
-        String loadedCommand = project.getBuildCommand();
-        if (loadedCommand != null) {
-            buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
-            io.toolOutput("Using saved build command: " + loadedCommand);
+    /**
+     * Return the main analyzer, building it if needed
+     */
+    public Analyzer getAnalyzer()
+    {
+        return analyzerWrapper.get();
+    }
+
+    public Analyzer getAnalyzerNonBlocking() {
+        return analyzerWrapper.getNonBlocking();
+    }
+
+    public Path getRoot()
+    {
+        return root;
+    }
+
+    public Future<?> runRunCommandAsync(String input)
+    {
+        assert chrome != null;
+        return userActionExecutor.submit(() -> {
+            try {
+                chrome.toolOutput("Executing: " + input);
+                var result = Environment.instance.captureShellCommand(input);
+                String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
+                chrome.shellOutput(output);
+                
+                // Add to context history with the output text
+                pushContext(ctx -> {
+                    var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
+                    var parsed = new ParsedOutput(chrome.getLlmOutputText(), runFrag);
+                    return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
+                });
+            } finally {
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    public Future<?> runCodeCommandAsync(String input)
+    {
+        assert chrome != null;
+        return userActionExecutor.submit(() -> {
+            try {
+                LLM.runSession(coder, chrome, getCurrentModel(coder.models), input);
+            } finally {
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /**
+     * Asynchronous “Ask” command
+     */
+    public Future<?> runAskAsync(String question)
+    {
+        return userActionExecutor.submit(() -> {
+            try {
+                if (chrome == null) return;
+                if (question.isBlank()) {
+                    chrome.toolErrorRaw("Please provide a question");
+                    return;
+                }
+                // Provide the prompt messages
+                var messages = new LinkedList<>(AskPrompts.instance.collectMessages(this));
+                messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
+
+                // stream from coder
+                chrome.toolOutput("Request sent");
+                var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
+                if (response.chatResponse() != null) {
+                    addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Ask command canceled.");
+            } catch (Exception e) {
+                logger.error("Error in ask command", e);
+                chrome.toolErrorRaw("Error in ask command: " + e.getMessage());
+            } finally {
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /**
+     * Asynchronous “Search” command
+     */
+    public Future<?> runSearchAsync(String query)
+    {
+        assert chrome != null;
+        return userActionExecutor.submit(() -> {
+            try {
+                if (query.isBlank()) {
+                    chrome.toolErrorRaw("Please provide a search query");
+                    return;
+                }
+                // run a search agent
+                var agent = new SearchAgent(query, this, coder, chrome);
+                var result = agent.execute();
+                if (result == null) {
+                    chrome.toolOutput("Search was interrupted");
+                } else {
+                    chrome.llmOutput("\n\n# Anaswer" + "\n\n" + result.text() + "\n");
+                    // The search agent already creates the right fragment type
+                    addSearchFragment(result);
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Search command canceled.");
+            } finally {
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Asynchronous context actions: add/read/copy/edit/summarize/drop
+    // ------------------------------------------------------------------
+
+    /**
+     * Shows the symbol selection dialog and adds usage information for the selected symbol.
+     */
+    public Future<?> findSymbolUsageAsync()
+    {
+        assert chrome != null;
+        return contextActionExecutor.submit(() -> {
+            try {
+                String symbol = showSymbolSelectionDialog("Select Symbol");
+                if (symbol != null && !symbol.isBlank()) {
+                    usageForIdentifier(symbol);
+                } else {
+                    chrome.toolOutput("No symbol selected.");
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Symbol selection canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /**
+     * Show the custom file selection dialog
+     */
+    private List<RepoFile> showFileSelectionDialog(String title)
+    {
+        var dialog = new FileSelectionDialog(null, getRoot(), title);
+        SwingUtil.runOnEDT(() -> {
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), 400);
+            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setVisible(true);
+        });
+        try {
+            if (dialog.isConfirmed()) {
+                return dialog.getSelectedFiles();
+            }
+            return List.of();
+        } finally {
+            chrome.focusInput();
+        }
+    }
+    
+    /**
+     * Show the symbol selection dialog
+     */
+    private String showSymbolSelectionDialog(String title)
+    {
+        var dialog = new SymbolSelectionDialog(null, getAnalyzer(), title);
+        SwingUtil.runOnEDT(() -> {
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), 400);
+            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setVisible(true);
+        });
+        try {
+            if (dialog.isConfirmed()) {
+                return dialog.getSelectedSymbol();
+            }
+            return null;
+        } finally {
+            chrome.focusInput();
+        }
+    }
+
+    /**
+     * Performed by the action buttons in the context panel: "edit / read / copy / drop / summarize"
+     * If selectedFragments is empty, it means "All". We handle logic accordingly.
+     */
+    public Future<?> performContextActionAsync(Chrome.ContextAction action, List<ContextFragment> selectedFragments)
+    {
+        return contextActionExecutor.submit(() -> {
+            try {
+                switch (action) {
+                    case EDIT -> doEditAction(selectedFragments);
+                    case READ -> doReadAction(selectedFragments);
+                    case COPY -> doCopyAction(selectedFragments);
+                    case DROP -> doDropAction(selectedFragments);
+                    case SUMMARIZE -> doSummarizeAction(selectedFragments);
+                    case PASTE -> doPasteAction();
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput(action + " canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+    
+    /**
+     * Asynchronous action for suggesting a commit message
+     */
+    public Future<?> performCommitActionAsync()
+    {
+        return contextActionExecutor.submit(() -> {
+            try {
+                doCommitAction();
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Commit action canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    private void doEditAction(List<ContextFragment> selectedFragments)
+    {
+        if (selectedFragments.isEmpty()) {
+            // Show a file selection dialog to add new files
+            var files = showFileSelectionDialog("Add Context");
+            if (!files.isEmpty()) {
+                addFiles(files);
+            } else {
+                chrome.toolOutput("No files selected.");
+            }
         } else {
-            // do background inference
-            List<String> filenames = GitRepo.instance.getTrackedFiles().stream()
-                    .map(RepoFile::toString)
-                    .filter(string -> !string.contains(File.separator))
-                    .collect(Collectors.toList());
-            if (filenames.isEmpty()) {
-                filenames = GitRepo.instance.getTrackedFiles().stream().map(RepoFile::toString).toList();
+            var files = new HashSet<RepoFile>();
+            for (var fragment : selectedFragments) {
+                files.addAll(getFilesFromFragment(fragment));
+            }
+            addFiles(files);
+        }
+    }
+
+    private void doReadAction(List<ContextFragment> selectedFragments)
+    {
+        if (selectedFragments.isEmpty()) {
+            // Show a file selection dialog for read-only
+            var files = showFileSelectionDialog("Read Context");
+            if (!files.isEmpty()) {
+                addReadOnlyFiles(files);
+            } else {
+                chrome.toolOutput("No files selected.");
+            }
+        } else {
+            var files = new HashSet<RepoFile>();
+            for (var fragment : selectedFragments) {
+                files.addAll(getFilesFromFragment(fragment));
+            }
+            addReadOnlyFiles(files);
+        }
+    }
+
+    private void doCopyAction(List<ContextFragment> selectedFragments) {
+        String content;
+        if (selectedFragments.isEmpty()) {
+            // gather entire context
+            var msgs = ArchitectPrompts.instance.collectMessages(this);
+            var combined = new StringBuilder();
+            for (var m : msgs) {
+                if (!(m instanceof dev.langchain4j.data.message.AiMessage)) {
+                    combined.append(Models.getText(m)).append("\n\n");
+                }
+            }
+            combined.append("\n<goal>\n\n</goal>");
+            content = combined.toString();
+        } else {
+            // copy only selected fragments
+            var sb = new StringBuilder();
+            for (var frag : selectedFragments) {
+                try {
+                    sb.append(frag.text()).append("\n\n");
+                } catch (IOException e) {
+                    removeBadFragment(frag, e);
+                    chrome.toolErrorRaw("Error reading fragment: " + e.getMessage());
+                }
+            }
+            content = sb.toString();
+        }
+
+        var sel = new java.awt.datatransfer.StringSelection(content);
+        var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        cb.setContents(sel, sel);
+        chrome.toolOutput("Content copied to clipboard");
+    }
+
+    private void doPasteAction()
+    {
+        // Get text from clipboard
+        String clipboardText;
+        try {
+            var clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+            var contents = clipboard.getContents(null);
+            if (contents == null || !contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
+                chrome.toolErrorRaw("No text on clipboard");
+                return;
+            }
+            clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
+            if (clipboardText.isBlank()) {
+                chrome.toolErrorRaw("Clipboard is empty");
+                return;
+            }
+        } catch (Exception e) {
+            chrome.toolErrorRaw("Failed to read clipboard: " + e.getMessage());
+            return;
+        }
+
+        // First try to parse as stacktrace
+        var stacktrace = StackTrace.parse(clipboardText);
+        if (stacktrace != null) {
+            addStacktraceFragment(clipboardText);
+            return;
+        }
+
+        // If not a stacktrace, add as string fragment
+        addPasteFragment("Pasted text", submitSummarizeTaskForPaste(clipboardText));
+        chrome.toolOutput("Clipboard content added as text");
+    }
+
+    private void doDropAction(List<ContextFragment> selectedFragments)
+    {
+        if (selectedFragments.isEmpty()) {
+            if (currentContext().isEmpty()) {
+                chrome.toolErrorRaw("No context to drop");
+                return;
+            }
+            dropAll();
+            chrome.toolOutput("Dropped all context");
+        } else {
+            var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
+            var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
+            boolean clearHistory = false;
+
+            for (var frag : selectedFragments) {
+                if (frag instanceof ContextFragment.ConversationFragment) {
+                    clearHistory = true;
+                } else if (frag instanceof ContextFragment.AutoContext) {
+                    setAutoContextFiles(0);
+                } else if (frag instanceof ContextFragment.PathFragment pf) {
+                    pathFragsToRemove.add(pf);
+                } else {
+                    assert frag instanceof ContextFragment.VirtualFragment: frag;
+                    virtualToRemove.add((VirtualFragment) frag);
+                }
+            }
+            
+            if (clearHistory) {
+                clearHistory();
+                chrome.toolOutput("Cleared conversation history");
+            }
+            
+            drop(pathFragsToRemove, virtualToRemove);
+            
+            if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
+                chrome.toolOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
+            }
+        }
+    }
+
+    /**
+     * Generate a commit message using the LLM and prefill the command input
+     */
+    private void doCommitAction() {
+        var messages = CommitPrompts.instance.collectMessages(this);
+        if (messages.isEmpty()) {
+            chrome.toolErrorRaw("Nothing to commit");
+            return;
+        }
+
+        chrome.toolOutput("Inferring commit message");
+        String commitMsg = coder.sendMessage(messages);
+        if (commitMsg.isEmpty()) {
+            chrome.toolErrorRaw("LLM did not provide a commit message");
+            return;
+        }
+
+        // Escape quotes in the commit message
+        commitMsg = commitMsg.replace("\"", "\\\"");
+
+        // Prefill the command input field
+        String finalCommitMsg = commitMsg;
+        chrome.prefillCommand("git commit -a -m \"" + finalCommitMsg + "\"");
+    }
+    
+    private void doSummarizeAction(List<ContextFragment> selectedFragments) {
+        HashSet<CodeUnit> sources = new HashSet<>();
+        String sourceDescription;
+
+        if (selectedFragments.isEmpty()) {
+            // Show file selection dialog when nothing is selected
+            var files = showFileSelectionDialog("Summarize Files");
+            if (files.isEmpty()) {
+                chrome.toolOutput("No files selected for summarization");
+                return;
             }
 
-            List<ChatMessage> messages = List.of(
+            for (var file : files) {
+                sources.addAll(getAnalyzer().getClassesInFile(file));
+            }
+            sourceDescription = files.size() + " files";
+        } else {
+            // Extract sources from selected fragments
+            for (var frag : selectedFragments) {
+                sources.addAll(frag.sources(getAnalyzer()));
+            }
+            sourceDescription = selectedFragments.size() + " fragments";
+        }
+
+        if (sources.isEmpty()) {
+            chrome.toolErrorRaw("No classes found in the selected " + (selectedFragments.isEmpty() ? "files" : "fragments"));
+            return;
+        }
+
+        boolean success = summarizeClasses(sources);
+        if (success) {
+            chrome.toolOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
+        } else {
+            chrome.toolErrorRaw("Failed to summarize classes");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Existing business logic from the old code
+    // ------------------------------------------------------------------
+
+    /** Add the given files to editable. */
+    @Override
+    public void addFiles(Collection<RepoFile> files)
+    {
+        var fragments = files.stream().map(ContextFragment.RepoPathFragment::new).toList();
+        pushContext(ctx -> ctx.removeReadonlyFiles(fragments).addEditableFiles(fragments));
+    }
+
+    /** Add read-only files. */
+    public void addReadOnlyFiles(Collection<? extends BrokkFile> files)
+    {
+        var fragments = files.stream().map(ContextFragment::toPathFragment).toList();
+        pushContext(ctx -> ctx.removeEditableFiles(fragments).addReadonlyFiles(fragments));
+    }
+
+    /** Drop all context. */
+    public void dropAll()
+    {
+        pushContext(Context::removeAll);
+    }
+
+    /** Drop the given fragments. */
+    public void drop(List<PathFragment> pathFragsToRemove, List<VirtualFragment> virtualToRemove)
+    {
+        pushContext(ctx -> ctx
+                .removeEditableFiles(pathFragsToRemove)
+                .removeReadonlyFiles(pathFragsToRemove)
+                .removeVirtualFragments(virtualToRemove));
+    }
+
+    /** Clear conversation history. */
+    public void clearHistory()
+    {
+        pushContext(Context::clearHistory);
+    }
+
+    /** request code-intel rebuild */
+    public void requestRebuild()
+    {
+        GitRepo.instance.refresh();
+        analyzerWrapper.requestRebuild();
+    }
+
+    /** undo last context change */
+    public Future<?> undoContextAsync()
+    {
+        return undoContextAsync(1);
+    }
+    
+    /** undo multiple context changes to reach a specific point in history */
+    public Future<?> undoContextAsync(int stepsToUndo)
+    {
+        int finalStepsToUndo = Math.min(stepsToUndo, contextHistory.size() - 1);
+        return contextActionExecutor.submit(() -> {
+            try {
+                if (contextHistory.size() <= 1) {
+                    chrome.toolErrorRaw("no undo state available");
+                    return;
+                }
+                
+                for (int i = 0; i < finalStepsToUndo; i++) {
+                    var popped = contextHistory.removeLast();
+                    var redoContext = undoAndInvertChanges(popped);
+                    redoHistory.add(redoContext);
+                }
+                
+                chrome.setContext(currentContext());
+                chrome.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Undo canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /** redo last undone context */
+    public Future<?> redoContextAsync()
+    {
+        return contextActionExecutor.submit(() -> {
+            try {
+                if (redoHistory.isEmpty()) {
+                    chrome.toolErrorRaw("no redo state available");
+                    return;
+                }
+                var popped = redoHistory.removeLast();
+                var undoContext = undoAndInvertChanges(popped);
+                contextHistory.add(undoContext);
+                chrome.setContext(currentContext());
+                chrome.toolOutput("Redo!");
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Redo canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /** Inverts changes from a popped context to revert to prior state, returning a new context for re-inversion */
+    @NotNull
+    private Context undoAndInvertChanges(Context original)
+    {
+        var redoContents = new HashMap<RepoFile,String>();
+        original.originalContents.forEach((file, oldText) -> {
+            try {
+                var current = Files.readString(file.absPath());
+                redoContents.put(file, current);
+            } catch (IOException e) {
+                chrome.toolError("Failed reading current contents of " + file + ": " + e.getMessage());
+            }
+        });
+
+        // restore
+        var changedFiles = new ArrayList<RepoFile>();
+        original.originalContents.forEach((file, oldText) -> {
+            try {
+                Files.writeString(file.absPath(), oldText);
+                changedFiles.add(file);
+            } catch (IOException e) {
+                chrome.toolError("Failed to restore file " + file + ": " + e.getMessage());
+            }
+        });
+        if (!changedFiles.isEmpty()) {
+            chrome.toolOutput("Modified " + changedFiles);
+        }
+        return original.withOriginalContents(redoContents);
+    }
+
+    /** Pasting content as read-only snippet */
+    public void addPasteFragment(String pastedContent, Future<String> summaryFuture)
+    {
+        pushContext(ctx -> {
+            var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
+            return ctx.addPasteFragment(fragment, summaryFuture);
+        });
+        chrome.toolOutput("Added pasted content");
+    }
+
+    /** Add search fragment from agent result */
+    public void addSearchFragment(VirtualFragment fragment)
+    {
+        Future<String> query;
+        if (fragment.description().split("\\s").length > 10) {
+            query = submitSummarizeTaskForConversation(fragment.description());
+        } else {
+            query = CompletableFuture.completedFuture(fragment.description());
+        }
+        pushContext(ctx -> ctx.addSearchFragment(fragment, query, chrome.getLlmOutputText()));
+    }
+
+    public void addStringFragment(String description, String content)
+    {
+        pushContext(ctx -> {
+            var fragment = new ContextFragment.StringFragment(content, description);
+            return ctx.addVirtualFragment(fragment);
+        });
+    }
+    
+    /**
+     * Adds any virtual fragment directly 
+     */
+    public void addVirtualFragment(VirtualFragment fragment)
+    {
+        pushContext(ctx -> ctx.addVirtualFragment(fragment));
+    }
+
+    /**
+     * Captures text from the LLM output area and adds it to the context.
+     * Called from Chrome's capture button.
+     */
+    public void captureTextFromContextAsync()
+    {
+        contextActionExecutor.submit(() -> {
+            try {
+                // Use reflection or pass chrome reference in constructor to avoid direct dependency
+                var selectedCtx = chrome.getSelectedContext();
+                if (selectedCtx != null) {
+                    addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
+                    chrome.toolOutput("Content captured from output");
+                } else {
+                    chrome.toolErrorRaw("No content to capture");
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Capture canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /**
+     * Finds sources in the current output text and edits them.
+     * Called from Chrome's edit files button.
+     */
+    public void editFilesFromContextAsync()
+    {
+        contextActionExecutor.submit(() -> {
+            try {
+                // Use reflection or pass chrome reference in constructor to avoid direct dependency
+                var selectedCtx = chrome.getSelectedContext();
+                if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
+                    var fragment = selectedCtx.getParsedOutput().parsedFragment();
+                    editSources(fragment);
+                    chrome.toolOutput("Editing files referenced in output");
+                } else {
+                    chrome.toolErrorRaw("No content with file references to edit");
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Edit files canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /** usage for identifier */
+    public void usageForIdentifier(String identifier)
+    {
+        var uses = getAnalyzer().getUses(identifier);
+        if (uses.isEmpty()) {
+            chrome.toolOutput("No uses found for " + identifier);
+            return;
+        }
+        var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
+        if (result.code().isEmpty()) {
+            chrome.toolOutput("No relevant uses found for " + identifier);
+            return;
+        }
+        var combined = result.code();
+        pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
+    }
+
+    /** parse stacktrace */
+    public void addStacktraceFragment(String stacktraceText)
+    {
+        var stacktrace = StackTrace.parse(stacktraceText);
+        if (stacktrace == null) {
+            chrome.toolErrorRaw("unable to parse stacktrace");
+            return;
+        }
+        var exception = stacktrace.getExceptionType();
+        var content = new StringBuilder();
+        var sources = new HashSet<CodeUnit>();
+
+        for (var element : stacktrace.getFrames()) {
+            var methodFullName = element.getClassName() + "." + element.getMethodName();
+            var methodSource = getAnalyzer().getMethodSource(methodFullName);
+            if (methodSource.isDefined()) {
+                sources.add(CodeUnit.cls(ContextFragment.toClassname(methodFullName)));
+                content.append(methodFullName).append(":\n");
+                content.append(methodSource.get()).append("\n\n");
+            }
+        }
+        if (content.isEmpty()) {
+            chrome.toolErrorRaw("no relevant methods found in stacktrace");
+            return;
+        }
+        pushContext(ctx -> {
+            var fragment = new ContextFragment.StacktraceFragment(sources, stacktraceText, exception, content.toString());
+            return ctx.addVirtualFragment(fragment);
+        });
+    }
+
+    /** Summarize classes => adds skeleton fragments */
+    public boolean summarizeClasses(Set<CodeUnit> classes)
+    {
+        var coalescedUnits = coalesceInnerClasses(classes);
+        var combined = new StringBuilder();
+        var shortNames = new ArrayList<String>();
+        for (var cu : coalescedUnits) {
+            var skeleton = getAnalyzer().getSkeleton(cu.reference());
+            if (skeleton.isDefined()) {
+                shortNames.add(Completions.getShortClassName(cu.reference()));
+                if (!combined.isEmpty()) combined.append("\n\n");
+                combined.append(skeleton.get());
+            }
+        }
+        if (combined.isEmpty()) {
+            return false;
+        }
+        pushContext(ctx -> ctx.addSkeletonFragment(shortNames, coalescedUnits, combined.toString()));
+        return true;
+    }
+
+    @NotNull
+    private static Set<CodeUnit> coalesceInnerClasses(Set<CodeUnit> classes)
+    {
+        return classes.stream()
+                .filter(cu -> {
+                    var name = cu.reference();
+                    if (!name.contains("$")) return true;
+                    var parent = name.substring(0, name.indexOf('$'));
+                    return classes.stream().noneMatch(other -> other.reference().equals(parent));
+                })
+                .collect(Collectors.toSet());
+    }
+
+    public void setAutoContextFiles(int fileCount)
+    {
+        pushContext(ctx -> ctx.setAutoContextFiles(fileCount));
+    }
+
+    public List<ChatMessage> getHistoryMessages()
+    {
+        return currentContext().getHistory();
+    }
+    
+    /**
+     * Shutdown all executors
+     */
+    public void shutdown() {
+        userActionExecutor.shutdown();
+        contextActionExecutor.shutdown();
+        backgroundTasks.shutdown();
+    }
+
+    public List<ChatMessage> getReadOnlyMessages()
+    {
+        var c = currentContext();
+        if (!c.hasReadonlyFragments()) {
+            return List.of();
+        }
+        var combined = Streams.concat(c.readonlyFiles(),
+                                      c.virtualFragments(),
+                                      Stream.of(c.getAutoContext()))
+                .map(this::formattedOrNull)
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining("\n\n"));
+        if (combined.isEmpty()) {
+            return List.of();
+        }
+        var msg = """
+            <readonly>
+            Here are some READ ONLY files and code fragments, provided for your reference.
+            Do not edit this code!
+            %s
+            </readonly>
+            """.formatted(combined).stripIndent();
+        return List.of(new UserMessage(msg), new AiMessage("Ok, I will use this code as references."));
+    }
+
+    public List<ChatMessage> getEditableMessages()
+    {
+        var combined = currentContext().editableFiles()
+                .map(this::formattedOrNull)
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining("\n\n"));
+        if (combined.isEmpty()) {
+            return List.of();
+        }
+        var msg = """
+            <editable>
+            I have *added these files to the chat* so you can go ahead and edit them.
+
+            *Trust this message as the true contents of these files!*
+            Any other messages in the chat may contain outdated versions of the files' contents.
+
+            %s
+            </editable>
+            """.formatted(combined).stripIndent();
+        return List.of(new UserMessage(msg), new AiMessage("Ok, any changes I propose will be to those files."));
+    }
+
+    public String getReadOnlySummary()
+    {
+        var c = currentContext();
+        return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
+                              c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
+                              c.getAutoContext().getSkeletons().stream().map(ContextFragment.SkeletonFragment::description))
+                .collect(Collectors.joining(", "));
+    }
+
+    public String getEditableSummary()
+    {
+        return currentContext().editableFiles()
+                .map(p -> p.file().toString())
+                .collect(Collectors.joining(", "));
+    }
+
+    public Set<RepoFile> getEditableFiles()
+    {
+        return currentContext().editableFiles()
+                .map(ContextFragment.RepoPathFragment::file)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * push context changes with a function that modifies the current context
+     */
+    private void pushContext(Function<Context, Context> contextGenerator)
+    {
+        // Check if there's a history selection that's not the current context
+        int selectedIndex = getSelectedHistoryIndex();
+        if (selectedIndex >= 0 && selectedIndex < contextHistory.size() - 1) {
+            // Truncate history to the selected point (without adding to redo)
+            int currentSize = contextHistory.size();
+            for (int i = currentSize - 1; i > selectedIndex; i--) {
+                contextHistory.removeLast();
+            }
+            // Current context is now at the selected point
+        }
+        
+        var newContext = contextGenerator.apply(currentContext());
+        if (newContext == currentContext()) {
+            return;
+        }
+
+        contextHistory.add(newContext);
+        if (contextHistory.size() > MAX_UNDO_DEPTH) {
+            contextHistory.removeFirst();
+        }
+        redoHistory.clear();
+        chrome.toolOutput(newContext.getAction());
+        chrome.setContext(newContext);
+        chrome.clearContextHistorySelection();
+        chrome.updateCaptureButtons(newContext);
+    }
+    
+    /**
+     * Gets the currently selected index in the history table, or -1 if none selected
+     * May be called on or off the Swing EDT
+     */
+    private int getSelectedHistoryIndex() {
+        assert chrome != null;
+        if (SwingUtilities.isEventDispatchThread()) {
+            return chrome.getContextHistoryTable().getSelectedRow();
+        }
+        return SwingUtil.runOnEDT(() -> chrome.getContextHistoryTable().getSelectedRow(), null);
+    }
+
+    /**
+     * Return the set of files for the given fragment
+     */
+    public Set<RepoFile> getFilesFromFragment(ContextFragment fragment)
+    {
+        var classnames = fragment.sources(getAnalyzer());
+        var files = classnames.stream()
+                .map(cu -> getAnalyzer().pathOf(cu))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // If it's a PathFragment, make sure to include its file
+        if (fragment instanceof ContextFragment.PathFragment pf && pf.file() instanceof RepoFile rf) {
+            files.add(rf);
+        }
+
+        return files;
+    }
+
+    private String formattedOrNull(ContextFragment fragment)
+    {
+        try {
+            return fragment.format();
+        } catch (IOException e) {
+            removeBadFragment(fragment, e);
+            return null;
+        }
+    }
+
+    public void removeBadFragment(ContextFragment f, IOException th)
+    {
+        logger.warn("Removing unreadable fragment {}", f.description(), th);
+        chrome.toolErrorRaw("Removing unreadable fragment " + f.description());
+        pushContext(c -> c.removeBadFragment(f));
+    }
+
+    private final AtomicInteger activeTaskCount = new AtomicInteger(0);
+
+    public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
+            @Override
+            protected String doInBackground() {
+                // This runs in background thread
+                var msgs = List.of(
+                        new UserMessage("Please summarize this content in 12 words or fewer:"),
+                        new AiMessage("Ok, let's see it."),
+                        new UserMessage(pastedContent)
+                );
+                return coder.sendMessage(msgs);
+            }
+
+            @Override
+            protected void done() {
+                chrome.updateContextTable();
+                chrome.updateContextHistoryTable();
+            }
+        };
+
+        worker.execute();
+        return worker;
+    }
+
+    public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
+            @Override
+            protected String doInBackground() {
+                // This runs in background thread
+                var msgs = List.of(
+                        new UserMessage("Please summarize this question or task in 5 words or fewer:"),
+                        new AiMessage("Ok, let's see it."),
+                        new UserMessage(input)
+                );
+                return coder.sendMessage(msgs);
+            }
+
+            @Override
+            protected void done() {
+                chrome.updateContextHistoryTable();
+            }
+        };
+
+        worker.execute();
+        return worker;
+    }
+
+    /**
+     * Submits a background task to the internal background executor (non-user actions).
+     */
+    public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
+        // Increment counter before submitting
+        activeTaskCount.incrementAndGet();
+
+        return backgroundTasks.submit(() -> {
+            try {
+                chrome.spin(taskDescription);
+                return task.call();
+            } finally {
+                // Decrement counter when done
+                int remaining = activeTaskCount.decrementAndGet();
+                SwingUtilities.invokeLater(() -> {
+                    if (remaining <= 0) {
+                        chrome.spinComplete();
+                    } else {
+                        chrome.spin("Tasks running: " + remaining);
+                    }
+                });
+            }
+        });
+    }
+
+    private void ensureBuildCommand(Coder coder)
+    {
+        var loadedCommand = project.getBuildCommand();
+        if (loadedCommand != null) {
+            buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
+            // TODO show this to user somehow
+        } else {
+            // do background inference
+            var tracked = GitRepo.instance.getTrackedFiles();
+            var filenames = tracked.stream()
+                    .map(RepoFile::toString)
+                    .filter(s -> !s.contains(File.separator))
+                    .collect(Collectors.toList());
+            if (filenames.isEmpty()) {
+                filenames = tracked.stream().map(RepoFile::toString).toList();
+            }
+
+            var messages = List.of(
                     new SystemMessage("You are a build assistant that suggests a single command to do a quick compile check."),
                     new UserMessage(
                             "We have these files:\n\n" + filenames
@@ -140,7 +1202,7 @@ public class ContextManager implements IContextManager {
                     )
             );
 
-            buildCommand = backgroundTasks.submit(() -> {
+            buildCommand = submitBackgroundTask("Inferring build command", () -> {
                 String response;
                 try {
                     response = coder.sendMessage(messages);
@@ -150,682 +1212,11 @@ public class ContextManager implements IContextManager {
                 if (response.equals(Models.UNAVAILABLE)) {
                     return BuildCommand.failure(Models.UNAVAILABLE);
                 }
-                String inferred = response.trim();
+                var inferred = response.trim();
                 project.setBuildCommand(inferred);
-                io.toolOutput("Inferred build command: " + inferred);
+                chrome.toolOutput("Inferred build command: " + inferred);
                 return BuildCommand.success(inferred);
             });
-        }
-    }
-
-    public Project getProject() {
-        return project;
-    }
-
-    /** create a RepoFile object corresponding to a relative path String */
-    @Override
-    public RepoFile toFile(String relName) {
-        return new RepoFile(root, relName);
-    }
-
-    /**
-     * Return the RepoFiles associated with the given Fragmen index. Throws IllegalArgumentException if no such fragment
-     */
-    public Set<RepoFile> getFilesFromVirtualFragmentIndex(int index) {
-        // numeric indexes are shown as 1-based in /show
-        int position = index - 1;
-        Context ctx = currentContext();
-        var fragment = ctx.virtualFragments()
-                .filter(f -> ctx.getPositionOfFragment(f) == position)
-                .findFirst();
-        if (fragment.isEmpty()) {
-            throw new IllegalArgumentException("No virtual fragment found at position " + index);
-        }
-
-        var classnames = fragment.get().sources(getAnalyzer());
-        var files = classnames.stream()
-                .map(cu -> getAnalyzer().pathOf(cu))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        if (files.isEmpty()) {
-            throw new IllegalArgumentException("No files found for fragment at position " + index);
-        }
-        return files;
-    }
-
-    // ------------------------------------------------------------------
-    // "Business logic" methods called from Commands or elsewhere
-    // ------------------------------------------------------------------
-
-    /** Add the given files to the editable set. */
-    @Override
-    public void addFiles(Collection<RepoFile> files) {
-        assert !files.isEmpty();
-        var fragments = files.stream().map(ContextFragment.RepoPathFragment::new).toList();
-        pushContext(ctx -> ctx.removeReadonlyFiles(fragments).addEditableFiles(fragments));
-    }
-
-    /**
-     * Convert all current context to read-only.
-     */
-    public OperationResult convertAllToReadOnly() {
-        pushContext(Context::convertAllToReadOnly);
-        return OperationResult.success();
-    }
-
-    /** Add the given files as read-only. */
-    public void addReadOnlyFiles(Collection<? extends BrokkFile> files) {
-        assert !files.isEmpty();
-        var fragments = files.stream().map(ContextFragment::toPathFragment).toList();
-        pushContext(context -> context.removeEditableFiles(fragments).addReadonlyFiles(fragments));
-    }
-
-    /** Drop all context */
-    public OperationResult dropAll() {
-        pushContext(Context::removeAll);
-        return OperationResult.success();
-    }
-
-    public void drop(List<PathFragment> pathFragsToRemove, List<VirtualFragment> virtualToRemove) {
-        pushContext(ctx -> ctx
-                .removeEditableFiles(pathFragsToRemove)
-                .removeReadonlyFiles(pathFragsToRemove)
-                .removeVirtualFragments(virtualToRemove));
-    }
-
-    /** Clear conversation history */
-    public OperationResult clearHistory() {
-        pushContext(Context::clearHistory);
-        return OperationResult.success();
-    }
-
-    /** trigger a code intelligence rebuild in background. */
-    public void requestRebuild() {
-        GitRepo.instance.refresh();
-        analyzerWrapper.requestRebuild();
-    }
-
-    /** For /undo */
-    public OperationResult undoContext() {
-        if (contextHistory.size() <= 1) {
-            return OperationResult.error("no undo state available");
-        }
-        var popped = contextHistory.removeLast();
-        var redoContext = undoAndInvertChanges(popped);
-        redoHistory.add(redoContext);
-        return OperationResult.success();
-    }
-
-    /** For /redo */
-    public OperationResult redoContext() {
-        if (redoHistory.isEmpty()) {
-            return OperationResult.error("no redo state available");
-        }
-        var popped = redoHistory.removeLast();
-        var undoContext = undoAndInvertChanges(popped);
-        contextHistory.add(undoContext);
-        return OperationResult.success();
-    }
-
-    /**
-     * Inverts changes from a popped context to revert to prior state,
-     * and returns a new context that allows re-inversion (redo).
-     */
-    @NotNull
-    private Context undoAndInvertChanges(Context original) {
-        // gather new "originalContents" for a future redo
-        Map<RepoFile, String> redoContents = new HashMap<>();
-        original.originalContents.forEach((file, oldText) -> {
-            try {
-                String current = Files.readString(file.absPath());
-                redoContents.put(file, current);
-            } catch (IOException e) {
-                io.toolError("Failed to read current contents of " + file + ": " + e.getMessage());
-            }
-        });
-
-        // restore the popped context's original contents
-        var changedFiles = new ArrayList<RepoFile>();
-        original.originalContents.forEach((file, oldText) -> {
-            try {
-                Files.writeString(file.absPath(), oldText);
-                changedFiles.add(file);
-            } catch (IOException e) {
-                io.toolError("Failed to restore file " + file + ": " + e.getMessage());
-            }
-        });
-        if (!changedFiles.isEmpty()) {
-            io.toolOutput("Modified " + changedFiles);
-        }
-
-        return original.withOriginalContents(redoContents);
-    }
-
-    /** Store the pasted content as a read-only snippet */
-    public OperationResult addPasteFragment(String pastedContent, Future<String> summaryFuture) {
-        pushContext(ctx -> {
-            var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
-            return ctx.addVirtualFragment(fragment);
-        });
-        return OperationResult.success("Added pasted content");
-    }
-
-    public void addSearchFragment(VirtualFragment fragment) {
-        pushContext(ctx -> ctx.addVirtualFragment(fragment));
-    }
-
-    /** Submits a background summarization for pasted content */
-    public Future<String> submitSummarizeTaskForPaste(Coder coder, String pastedContent) {
-        return backgroundTasks.submit(() -> {
-            // Summarize these changes in a single line:
-            var msgs = List.of(
-                    new UserMessage("Please summarize these changes in a single line:"),
-                    new AiMessage("Ok, let's see them."),
-                    new UserMessage(pastedContent)
-            );
-            return coder.sendMessage(msgs);
-        });
-    }
-
-    /** Find usage references of the user-provided symbol and store them in context. */
-    public OperationResult usageForIdentifier(String identifier) {
-        List<CodeUnit> uses;
-        try {
-            uses = getAnalyzer().getUses(identifier);
-        } catch (IllegalArgumentException e) {
-            return OperationResult.error(e.getMessage());
-        }
-        if (uses.isEmpty()) {
-            return OperationResult.success("No uses found for " + identifier);
-        }
-
-        var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
-
-        if (result.code().isEmpty()) {
-            return OperationResult.success("No relevant uses found for " + identifier);
-        }
-
-        String combined = result.code();
-        pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
-        return OperationResult.success();
-    }
-
-    /** Parse the stacktrace and add the source of in-project methods to context */
-    public OperationResult parseStacktrace(String stacktraceText) {
-        try {
-            var stacktrace = StackTrace.parse(stacktraceText);
-            if (stacktrace == null) {
-                return OperationResult.error("unable to parse stacktrace");
-            }
-
-            String exception = stacktrace.getExceptionType();
-            StringBuilder content = new StringBuilder();
-
-            var sources = new HashSet<CodeUnit>();
-            for (var element : stacktrace.getFrames()) {
-                String methodFullName = element.getClassName() + "." + element.getMethodName();
-                var methodSource = getAnalyzer().getMethodSource(methodFullName);
-                if (methodSource.isDefined()) {
-                    sources.add(CodeUnit.cls(ContextFragment.toClassname(methodFullName)));
-                    content.append(methodFullName).append(":\n");
-                    content.append(methodSource.get()).append("\n\n");
-                }
-            }
-
-            if (content.isEmpty()) {
-                return OperationResult.error("no relevant methods found in stacktrace");
-            }
-
-            pushContext(ctx -> {
-                var fragment = new ContextFragment.StacktraceFragment(sources, stacktraceText, exception, content.toString());
-                return ctx.addVirtualFragment(fragment);
-            });
-            return OperationResult.success();
-        } catch (Exception e) {
-            return OperationResult.error("Failed to parse stacktrace: " + e.getMessage());
-        }
-    }
-
-    public boolean summarizeClasses(Set<CodeUnit> classes) {
-        // coalesce inner classes
-        var coalescedUnits = coalesceInnerClasses(classes);
-
-        StringBuilder combined = new StringBuilder();
-        List<String> shortNames = new ArrayList<>();
-        for (var cu : coalescedUnits) {
-            var skeleton = getAnalyzer().getSkeleton(cu.reference());
-            if (skeleton.isDefined()) {
-                shortNames.add(Completions.getShortClassName(cu.reference()));
-                if (!combined.isEmpty()) {
-                    combined.append("\n\n");
-                }
-                combined.append(skeleton.get());
-            }
-        }
-
-        if (combined.isEmpty()) {
-            return false;
-        }
-        pushContext(ctx -> ctx.addSkeletonFragment(shortNames, coalescedUnits, combined.toString()));
-        return true;
-    }
-
-    @NotNull
-    private static Set<CodeUnit> coalesceInnerClasses(Set<CodeUnit> classes) {
-        return classes.stream()
-                .filter(cu -> {
-                    var name = cu.reference();
-                    if (!name.contains("$")) {
-                        return true;
-                    }
-                    String parent = name.substring(0, name.indexOf('$'));
-                    return !classes.stream().map(CodeUnit::reference).collect(Collectors.toSet()).contains(parent);
-                })
-                .collect(Collectors.toSet());
-    }
-
-    /** Set the auto context size */
-    public OperationResult setAutoContextFiles(int fileCount) {
-        pushContext(ctx -> ctx.setAutoContextFiles(fileCount));
-        return OperationResult.success("Autocontext size set to " + fileCount);
-    }
-
-    /**
-     * Add to the history of user/AI messages in the current context.
-     */
-    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents) {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents));
-    }
-    public void addToHistory(List<ChatMessage> messages) {
-        addToHistory(messages, Map.of());
-    }
-
-    public void addStringFragment(String description, String content) {
-        pushContext(context -> {
-            var fragment = new ContextFragment.StringFragment(content, description);
-            return context.addVirtualFragment(fragment);
-        });
-    }
-
-    /**
-     * Returns the current "constructedMessage" if set, then clears it. This is used in the main REPL loop to
-     * immediately feed that message to the LLM instead of prompting the user again.
-     */
-    public String getAndResetConstructedMessage() {
-        try {
-            return constructedMessage;
-        } finally {
-            constructedMessage = null;
-        }
-    }
-
-    public void setConstructedMessage(String msg) {
-        this.constructedMessage = msg;
-    }
-
-    /** The "last shell output" we might want to pass to /send. */
-    // TODO move this into Context?
-    public String getLastShellOutput() {
-        return lastShellOutput;
-    }
-    public void setLastShellOutput(String s) {
-        this.lastShellOutput = s;
-    }
-
-    /**
-     * Shows the current context in a user-friendly listing.
-     */
-    public void show() {
-        // FIXME move to Commands
-        if (currentContext().isEmpty()) {
-            showHeader("No context! Use /add to add files or /help to list commands");
-            return;
-        }
-        int humanContextSize = contextHistory.size() - 1; // first entry is sentinel
-        showHeader("%s mode. %d %s in context history".formatted(
-                mode.name(),
-                humanContextSize,
-                humanContextSize > 1 ? "entries" : "entry"
-        ));
-
-        int termWidth = io.getTerminalWidth();
-        int totalLines = 0;
-
-        // message history lines
-        int historyLines = currentContext().getHistory().stream()
-                .mapToInt(m -> Models.getText(m).split("\n").length)
-                .sum();
-        totalLines += historyLines;
-
-        io.context("Read-only:");
-        if (historyLines > 0) {
-            // just one line summary for message history
-            io.context(formatLine(historyLines, "  [Message History]", termWidth));
-        }
-
-        // auto context
-        totalLines += formatFragments(Stream.of(currentContext().getAutoContext()), termWidth);
-
-        // virtual fragments
-        totalLines += formatFragments(currentContext().virtualFragments(), termWidth);
-
-        // read-only filenames
-        totalLines += formatFragments(currentContext().readonlyFiles(), termWidth);
-
-        // editable
-        if (currentContext().hasEditableFiles()) {
-            io.context("\nEditable:");
-            totalLines += formatFragments(currentContext().editableFiles(), termWidth);
-        }
-
-        io.context("\nTotal:");
-        var st = DefaultPrompts.instance.collectMessages(this).stream().map(Models::getText).collect(Collectors.joining("\n"));
-        int approxTokens = Models.getApproximateTokens(st);
-        io.context(String.format("%s lines, about %,dk tokens",
-                                 formatLoc(totalLines),
-                                 approxTokens / 1000));
-    }
-
-    private void showHeader(String label) {
-        int width = io.getTerminalWidth();
-        String line = "%s %s ".formatted("-".repeat(8), label);
-        if (width - line.length() > 0) {
-            line += "-".repeat(width - line.length());
-        }
-        io.toolOutput(line);
-        if (!coder.isLlmAvailable()) {
-            io.toolErrorRaw("LLM is not configured, not much will work besides /copy");
-        }
-    }
-
-    /**
-     * Formats and prints each fragment with:
-     *   - the line count on the left (6 chars, right-justified)
-     *   - the fragment filename/description (possibly wrapped) on the right
-     * Returns the sum of lines across all fragments printed.
-     */
-    private int formatFragments(Stream<? extends ContextFragment> fragments, int termWidth) {
-        final AtomicInteger sum = new AtomicInteger();
-        Context ctx = currentContext();
-        fragments.forEach(f -> {
-            try {
-                String text = f.text();
-                int lines = text.isEmpty() ? 0 : text.split("\n").length;
-                sum.addAndGet(lines);
-
-                // The "source", i.e. the filename or virtual fragment position
-                String source = f.source(ctx) + ": ";
-
-                // We do naive wrapping of the fragment's short description
-                List<String> wrapped = wrapOnSpace(f.description(), termWidth - (LOC_FIELD_WIDTH + 3 + source.length()));
-
-                if (wrapped.isEmpty()) {
-                    // No description, just print lines + prefix
-                    io.context(formatLine(lines, source, termWidth));
-                } else {
-                    // For virtual fragments, use the context-aware source method
-                    String displaySource = source;
-                    if (f instanceof ContextFragment.VirtualFragment vf) {
-                        displaySource = vf.source(currentContext()) + ": ";
-                    }
-
-                    // First line includes the actual lines count
-                    io.context(formatLine(lines, displaySource + wrapped.getFirst(), termWidth));
-
-                    // Remaining lines: pass 0 so we don't repeat the line count
-                    String indent = " ".repeat(displaySource.length());
-                    for (int i = 1; i < wrapped.size(); i++) {
-                        io.context(formatLine(0, indent + wrapped.get(i), termWidth));
-                    }
-                }
-            } catch (IOException e) {
-                removeBadFragment(f, e);
-            }
-        });
-        return sum.get();
-    }
-
-    public void removeBadFragment(ContextFragment f, IOException e) {
-        logger.warn("Removing unreadable fragment %s".formatted(f.source(currentContext())), e);
-        io.toolErrorRaw("Removing unreadable fragment %s".formatted(f.source(currentContext())));
-        pushContext(c -> c.removeBadFragment(f));
-    }
-
-    private static final int LOC_FIELD_WIDTH = 9;
-
-    /**
-     * Prints a single line with the integer 'loc' (if > 0) on the left, right-justified to LOC_FIELD_WIDTH, then 'text'.
-     */
-    private static String formatLine(int loc, String text, int width) {
-        var locStr = formatLoc(loc);
-
-        // We'll trim or leave the right side as needed
-        int spaceForText = width - (locStr.length() + 1);
-        if (spaceForText < 1) {
-            spaceForText = 1;
-        }
-        String trimmed = (text.length() > spaceForText)
-                ? text.substring(0, spaceForText)
-                : text;
-
-        return locStr + "  " + trimmed;
-    }
-
-    private static String formatLoc(int loc) {
-        if (loc == 0) {
-            return " ".repeat(LOC_FIELD_WIDTH - 2);
-        }
-
-        int width = LOC_FIELD_WIDTH - 2; // 2 padding spaces
-        String locStr = String.format("%,d", loc);
-        return String.format("%" + width + "s", locStr);
-    }
-
-    /**
-     * Wrap text on spaces up to maxWidth; returns multiple lines if needed.
-     */
-    private static List<String> wrapOnSpace(String text, int maxWidth) {
-        if (text == null || text.isEmpty()) {
-            return Collections.emptyList();
-        }
-        if (maxWidth <= 0) {
-            return List.of(text);
-        }
-
-        List<String> lines = new ArrayList<>();
-        String[] tokens = text.split("\\s+");
-        StringBuilder current = new StringBuilder();
-        for (String token : tokens) {
-            if (current.isEmpty()) {
-                current.append(token);
-            } else if (current.length() + 1 + token.length() <= maxWidth) {
-                current.append(" ").append(token);
-            } else {
-                lines.add(current.toString());
-                current.setLength(0);
-                current.append(token);
-            }
-        }
-        if (!current.isEmpty()) {
-            lines.add(current.toString());
-        }
-        return lines;
-    }
-
-    public Context currentContext() {
-        assert !contextHistory.isEmpty();
-        return contextHistory.getLast();
-    }
-
-    public List<ChatMessage> getHistoryMessages() {
-        return currentContext().getHistory();
-    }
-
-    /**
-     * Return a merged list of read-only code (or even auto-context) as a single user message.
-     */
-    public List<ChatMessage> getReadOnlyMessages() {
-        if (!currentContext().hasReadonlyFragments()) {
-            return List.of();
-        }
-
-        var combined = Streams.concat(currentContext().readonlyFiles(),
-                                      currentContext().virtualFragments(),
-                                      Stream.of(currentContext().getAutoContext()))
-                .map(this::formattedOrNull)
-                .filter(Objects::nonNull)
-                .collect(Collectors.joining("\n\n"));
-        if (combined.isEmpty()) {
-            return List.of();
-        }
-
-        var msg = """
-                <readonly>
-                Here are some READ ONLY files and code fragments, provided for your reference.
-                Do not edit this code!
-                %s
-                </readonly>
-                """.formatted(combined).stripIndent();
-        return List.of(
-                new UserMessage(msg),
-                new AiMessage("Ok, I will use this code as references.")
-        );
-    }
-
-    private String formattedOrNull(ContextFragment fragment) {
-        try {
-            if (fragment instanceof ContextFragment.VirtualFragment) {
-                // For virtual fragments, we need to pass the context to get the correct ID
-                return ((ContextFragment.VirtualFragment) fragment).format(currentContext());
-            }
-            return fragment.format();
-        } catch (IOException e) {
-            removeBadFragment(fragment, e);
-            return null;
-        }
-    }
-
-    /**
-     * Return a merged user message with all editable code.
-     */
-    public List<ChatMessage> getEditableMessages() {
-        String combined = currentContext().editableFiles()
-                .map(this::formattedOrNull)
-                .filter(Objects::nonNull)
-                .collect(Collectors.joining("\n\n"));
-        if (combined.isEmpty()) {
-            return List.of();
-        }
-
-        var msg = """
-                <editable>
-                I have *added these files to the chat* so you can go ahead and edit them.
-
-                *Trust this message as the true contents of these files!*
-                Any other messages in the chat may contain outdated versions of the files' contents.
-
-                %s
-                </editable>
-                """.formatted(combined).stripIndent();
-        return List.of(
-                new UserMessage(msg),
-                new AiMessage("Ok, any changes I propose will be to those files.")
-        );
-    }
-
-    public String getReadOnlySummary() {
-        var c = currentContext();
-        return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
-                              c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
-                              c.getAutoContext().getSkeletons().stream().map(ContextFragment.SkeletonFragment::description))
-                .collect(Collectors.joining(", "));
-    }
-
-    public String getEditableSummary() {
-        return currentContext().editableFiles()
-                .map(p -> p.file().toString())
-                .collect(Collectors.joining(", "));
-    }
-
-
-    public Set<RepoFile> getEditableFiles() {
-        return currentContext().editableFiles()
-                .map(ContextFragment.RepoPathFragment::file)
-                .collect(Collectors.toSet());
-    }
-
-    /**
-     * Finds filenames or class references not in the current context but mentioned in text.
-     */
-    @Override
-    public Set<RepoFile> findMissingFileMentions(String text) {
-        var missingByFilename = GitRepo.instance.getTrackedFiles().stream().parallel()
-                .filter(f -> currentContext().editableFiles().noneMatch(p -> f.equals(p.file())))
-                .filter(f -> currentContext().readonlyFiles().noneMatch(p -> f.equals(p.file())))
-                .filter(f -> text.contains(f.getFileName()));
-
-        var missingByClassname = getAnalyzer().getAllClasses().stream()
-                .filter(cu -> text.contains(List.of(cu.reference().split("\\."))
-                                                    .getLast())) // simple classname
-                .filter(cu -> currentContext().allFragments().noneMatch(fragment ->
-                                                                                fragment.sources(getAnalyzer()).contains(cu)))
-                .map(cu -> getAnalyzer().pathOf(cu))
-                .filter(Objects::nonNull);
-
-        return Streams.concat(missingByFilename, missingByClassname)
-                .collect(Collectors.toSet());
-    }
-
-    /**
-     * Return a combined list of all fragment "sources" (filenames or numeric indices)
-     * used for autocompletion (for /drop, /copy, etc.).
-     */
-    public List<String> getAllFragmentSources() {
-        return Streams.concat(
-                currentContext().editableFiles(),
-                currentContext().readonlyFiles(),
-                currentContext().virtualFragments()
-        ).map(f -> f.source(currentContext())).toList();
-    }
-
-    /**
-     * Returns the main analyzer, building it if needed.
-     * This will display a UI spinner for user-facing operations.
-     */
-    public Analyzer getAnalyzer() {
-        return analyzerWrapper.get();
-    }
-
-    public Path getRoot() {
-        return root;
-    }
-
-    /** Internal push context logic */
-    private void pushContext(Function<Context, Context> contextGenerator) {
-        var newContext = contextGenerator.apply(currentContext());
-        if (newContext != currentContext()) {
-            contextHistory.add(newContext);
-            if (contextHistory.size() > MAX_UNDO_DEPTH) {
-                contextHistory.removeFirst();
-            }
-            // Clear redo history
-            redoHistory.clear();
-        }
-    }
-
-    /** Builds the code with the inferred or user-supplied build command, if any. */
-    @Override
-    public OperationResult runBuild() {
-        try {
-            BuildCommand cmd = buildCommand.get();
-            if (cmd.command == null || cmd.command.isBlank()) {
-                io.toolOutput("No build command configured");
-                return OperationResult.success();
-            }
-            io.toolOutput("Running " + cmd.command);
-            return Environment.instance.captureShellCommand(cmd.command);
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
         }
     }
 
@@ -833,36 +1224,30 @@ public class ContextManager implements IContextManager {
         static BuildCommand success(String cmd) {
             return new BuildCommand(cmd, cmd);
         }
-
         static BuildCommand failure(String message) {
             return new BuildCommand(null, message);
         }
     }
 
     /**
-     * Ensures a style guide exists, generating one if needed
+     * Ensure style guide exists, generating if needed
      */
-    private void ensureStyleGuide() {
+    private void ensureStyleGuide()
+    {
         if (project.getStyleGuide() != null) {
             return;
         }
-
-        backgroundTasks.submit(() -> {
+        submitBackgroundTask("Generating style guide", () -> {
             try {
-                io.toolOutput("Generating project style guide...");
-
-                // Get top classes by pagerank
+                chrome.toolOutput("Generating project style guide...");
                 var analyzer = analyzerWrapper.getForBackground();
                 var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
 
-                // Get source code for these classes
-                StringBuilder codeForLLM = new StringBuilder();
-                int tokens = 0;
+                var codeForLLM = new StringBuilder();
+                var tokens = 0;
                 for (var fqcn : topClasses) {
                     var path = analyzer.pathOf(CodeUnit.cls(fqcn));
-                    if (path == null) {
-                        continue;
-                    }
+                    if (path == null) continue;
                     String chunk;
                     try {
                         chunk = "<file path=%s>\n%s\n</file>\n".formatted(path, path.read());
@@ -870,73 +1255,60 @@ public class ContextManager implements IContextManager {
                         logger.error("Failed to read {}: {}", path, e.getMessage());
                         continue;
                     }
-                    int chunkTokens = Models.getApproximateTokens(chunk);
+                    var chunkTokens = Models.getApproximateTokens(chunk);
                     if (tokens + chunkTokens > 50000) {
-                        // don't quit until we find at least one class under 50k
-                        if (tokens > 0) {
-                            break;
-                        }
+                        if (tokens > 0) break;
                     }
                     codeForLLM.append(chunk);
                     tokens += chunkTokens;
                 }
 
                 if (codeForLLM.isEmpty()) {
-                    io.toolOutput("No relevant code found for style guide generation");
-                    return;
+                    chrome.toolOutput("No relevant code found for style guide generation");
+                    return null;
                 }
 
-                // Generate style guide using LLM
-                List<ChatMessage> messages = List.of(
+                var messages = List.of(
                         new SystemMessage("You are an expert software engineer. Your task is to extract a concise coding style guide from the provided code examples."),
                         new UserMessage("""
-                        Based on these code examples, create a concise, clear coding style guide in Markdown format 
+                        Based on these code examples, create a concise, clear coding style guide in Markdown format
                         that captures the conventions used in this codebase, particularly the ones that leverage new or uncommon features.
                         DO NOT repeat what are simply common best practices.
-                        
+
                         %s
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                String styleGuide = coder.sendMessage(messages);
+                var styleGuide = coder.sendMessage(messages);
                 if (styleGuide.equals(Models.UNAVAILABLE)) {
-                    io.toolOutput("Failed to generate style guide: LLM unavailable");
-                    return;
+                    chrome.toolOutput("Failed to generate style guide: LLM unavailable");
+                    return null;
                 }
-
                 project.saveStyleGuide(styleGuide);
-                io.toolOutput("Style guide generated and saved to .brokk/style.md");
+                chrome.toolOutput("Style guide generated and saved to .brokk/style.md");
             } catch (Exception e) {
                 logger.error("Error generating style guide", e);
             }
+            return null;
         });
     }
 
-    // ------------------------------------------------------------------
-    // OperationResult used by all commands
-    // ------------------------------------------------------------------
-    public enum OperationStatus {
-        SUCCESS,
-        SKIP_SHOW,
-        PREFILL,
-        ERROR
+    /**
+     * Add to the user/AI message history
+     */
+    @Override
+    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action)
+    {
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), action));
     }
 
-    public record OperationResult(OperationStatus status, String message) {
-        public static OperationResult prefill(String msg) {
-            return new OperationResult(OperationStatus.PREFILL, msg);
-        }
-        public static OperationResult success() {
-            return new OperationResult(OperationStatus.SUCCESS, null);
-        }
-        public static OperationResult success(String msg) {
-            return new OperationResult(OperationStatus.SUCCESS, msg);
-        }
-        public static OperationResult skipShow() {
-            return new OperationResult(OperationStatus.SKIP_SHOW, null);
-        }
-        public static OperationResult error(String msg) {
-            return new OperationResult(OperationStatus.ERROR, msg);
-        }
+    @Override
+    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
+    {
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), submitSummarizeTaskForConversation(action)));
+    }
+
+    public List<Context> getContextHistory() {
+        return contextHistory;
     }
 }

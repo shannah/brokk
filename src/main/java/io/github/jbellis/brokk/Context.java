@@ -4,6 +4,7 @@ import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -11,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -32,15 +35,32 @@ public class Context {
 
     /** backup of original contents for /undo, does not carry forward to Context children */
     final Map<RepoFile, String> originalContents;
+    
+    /** LLM output or other parsed content, with optional fragment */
+    final ParsedOutput parsedOutput;
+
+    /** description of the action that created this context, can be a future (like PasteFragment) */
+    final Future<String> action;
+
+    public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
+        public ParsedOutput {
+            assert output != null;
+            assert parsedFragment != null;
+        }
+
+        public ParsedOutput() {
+            this("", new ContextFragment.StringFragment("", ""));
+        }
+    }
 
     /**
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
     public Context(AnalyzerWrapper analyzer, int autoContextFileCount) {
-        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of());
+        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture("Welcome to Brokk"));
     }
 
-    public Context(
+    private Context(
             AnalyzerWrapper analyzer,
             List<ContextFragment.RepoPathFragment> editableFiles,
             List<ContextFragment.PathFragment> readonlyFiles,
@@ -48,11 +68,14 @@ public class Context {
             AutoContext autoContext,
             int autoContextFileCount,
             List<ChatMessage> historyMessages,
-            Map<RepoFile, String> originalContents
+            Map<RepoFile, String> originalContents,
+            ParsedOutput parsedOutput,
+            Future<String> action
     ) {
         assert analyzer != null;
         assert autoContext != null;
         assert autoContextFileCount >= 0;
+        assert action != null;
         this.analyzer = analyzer;
         this.editableFiles = List.copyOf(editableFiles);
         this.readonlyFiles = List.copyOf(readonlyFiles);
@@ -61,6 +84,8 @@ public class Context {
         this.autoContextFileCount = autoContextFileCount;
         this.historyMessages = historyMessages;
         this.originalContents = originalContents;
+        this.parsedOutput = parsedOutput;
+        this.action = action;
     }
 
     /**
@@ -73,7 +98,12 @@ public class Context {
         }
         var newEditable = new ArrayList<>(editableFiles);
         newEditable.addAll(toAdd);
-        return withEditableFiles(newEditable).refresh();
+        
+        String actionDetails = toAdd.stream()
+                .map(ContextFragment::shortDescription)
+                .collect(Collectors.joining(", "));
+        String action = "Edit " + actionDetails;
+        return getWithFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
     public Context addReadonlyFiles(Collection<ContextFragment.PathFragment> paths) {
@@ -82,8 +112,13 @@ public class Context {
             return this;
         }
         List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
-        newReadOnly.addAll(paths);
-        return withReadonlyFiles(newReadOnly).refresh();
+        newReadOnly.addAll(toAdd);
+        
+        String actionDetails = toAdd.stream()
+                .map(ContextFragment::shortDescription)
+                .collect(Collectors.joining(", "));
+        String action = "Read " + actionDetails;
+        return getWithFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
     public Context removeEditableFile(ContextFragment.PathFragment fragment) {
@@ -96,7 +131,12 @@ public class Context {
         if (newEditable.equals(editableFiles)) {
             return this;
         }
-        return withEditableFiles(newEditable).refresh();
+        
+        String actionDetails = fragments.stream()
+                .map(ContextFragment::shortDescription)
+                .collect(Collectors.joining(", "));
+        String action = "Removed " + actionDetails;
+        return getWithFragments(newEditable, readonlyFiles, virtualFragments, action);
     }
 
     public Context removeReadonlyFiles(List<? extends ContextFragment.PathFragment> fragments) {
@@ -105,7 +145,12 @@ public class Context {
         if (newReadOnly.equals(readonlyFiles)) {
             return this;
         }
-        return withReadonlyFiles(newReadOnly).refresh();
+        
+        String actionDetails = fragments.stream()
+                .map(ContextFragment::shortDescription)
+                .collect(Collectors.joining(", "));
+        String action = "Removed " + actionDetails;
+        return getWithFragments(editableFiles, newReadOnly, virtualFragments, action);
     }
 
     public Context removeVirtualFragments(List<? extends ContextFragment.VirtualFragment> fragments) {
@@ -114,7 +159,12 @@ public class Context {
         if (newFragments.equals(virtualFragments)) {
             return this;
         }
-        return withVirtualFragments(newFragments).refresh();
+        
+        String actionDetails = fragments.stream()
+                .map(ContextFragment::shortDescription)
+                .collect(Collectors.joining(", "));
+        String action = "Removed " + actionDetails;
+        return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
     }
     
     public Context removeReadonlyFile(ContextFragment.PathFragment path) {
@@ -124,28 +174,84 @@ public class Context {
     public Context addVirtualFragment(ContextFragment.VirtualFragment fragment) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        return withVirtualFragments(newFragments).refresh();
+
+        String action = "Added " + fragment.shortDescription();
+        return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
+    }
+    
+    /**
+     * Adds a virtual fragment and uses the same future for both fragment description and action
+     */
+    public Context addPasteFragment(ContextFragment.PasteFragment fragment, Future<String> summaryFuture) {
+        var newFragments = new ArrayList<>(virtualFragments);
+        newFragments.add(fragment);
+        
+        // Create a future that prepends "Added " to the summary
+        Future<String> actionFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return "Added paste of " + summaryFuture.get();
+            } catch (Exception e) {
+                return "Added paste";
+            }
+        });
+        
+        return withFragments(editableFiles, readonlyFiles, newFragments, actionFuture);
+    }
+
+    public Context addSearchFragment(ContextFragment.VirtualFragment fragment, Future<String> query, String llmOutputText) {
+        var newFragments = new ArrayList<>(virtualFragments);
+        newFragments.add(fragment);
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), query).refresh();
     }
 
     public Context convertAllToReadOnly() {
         List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
+        String actionDetails = editableFiles.stream()
+                .map(ContextFragment::shortDescription)
+                .collect(Collectors.joining(", "));
         newReadOnly.addAll(editableFiles);
-        return withEditableFiles(List.of())
-                .withReadonlyFiles(newReadOnly);
+        
+        String action = "Converted to readonly " + actionDetails;
+
+        return getWithFragments(List.of(), newReadOnly, virtualFragments, action);
     }
 
     public Context removeBadFragment(ContextFragment f) {
         if (f instanceof ContextFragment.PathFragment pf) {
-            Context tmp = removeEditableFile(pf);
-            if (tmp == this) {
-                tmp = removeReadonlyFile(pf);
+            var inEditable = editableFiles.contains(pf);
+            var inReadonly = readonlyFiles.contains(pf);
+            
+            if (inEditable) {
+                var newEditable = new ArrayList<>(editableFiles);
+                newEditable.remove(pf);
+                return getWithFragments(newEditable, readonlyFiles, virtualFragments,
+                                     "Removed unreadable " + pf.description());
+            } else if (inReadonly) {
+                var newReadonly = new ArrayList<>(readonlyFiles);
+                newReadonly.remove(pf);
+                return getWithFragments(editableFiles, newReadonly, virtualFragments,
+                                     "Removed unreadable " + pf.description());
             }
-            return tmp.refresh();
+            return this;
         } else if (f instanceof ContextFragment.VirtualFragment vf) {
-            return removeVirtualFragments(List.of(vf));
+            var newFragments = new ArrayList<>(virtualFragments);
+            if (newFragments.remove(vf)) {
+                return getWithFragments(editableFiles, readonlyFiles, newFragments,
+                                     "Removed unreadable " + vf.description());
+            }
+            return this;
         } else {
             throw new IllegalArgumentException("Unknown fragment type: " + f);
         }
+    }
+
+    @NotNull
+    private Context getWithFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
+                                     List<ContextFragment.PathFragment> newReadonlyFiles,
+                                     List<ContextFragment.VirtualFragment> newVirtualFragments,
+                                     String action)
+    {
+        return withFragments(newEditableFiles, newReadonlyFiles, newVirtualFragments, CompletableFuture.completedFuture(action));
     }
 
     /**
@@ -153,7 +259,33 @@ public class Context {
      * account for any out-of-project exclusions. Rebuilds autoContext if toggled on.
      */
     public Context setAutoContextFiles(int fileCount) {
-        return withAutoContextFileCount(fileCount).refresh();
+        Future<String> action;
+        if (fileCount == 0 && autoContextFileCount > 0) {
+            action = CompletableFuture.completedFuture("Disabled auto-context");
+        } else if (fileCount > 0 && autoContextFileCount == 0) {
+            action = CompletableFuture.completedFuture("Enabled auto-context of " + fileCount + " files");
+        } else if (fileCount > 0) {
+            action = CompletableFuture.completedFuture("Auto-context size -> " + fileCount);
+        } else {
+            // No change in state - auto-context remains disabled
+            return this;
+        }
+
+        var newContext = new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), null, null);
+        AutoContext newAutoContext = fileCount > 0 ? newContext.buildAutoContext() : AutoContext.DISABLED;
+        
+        return new Context(
+                analyzer,
+                editableFiles,
+                readonlyFiles,
+                virtualFragments,
+                newAutoContext,
+                fileCount,
+                historyMessages,
+                Map.of(),
+                new ParsedOutput(),
+                action
+        );
     }
 
     /**
@@ -257,62 +389,43 @@ public class Context {
         return autoContextFileCount;
     }
 
-    private Context withEditableFiles(List<ContextFragment.RepoPathFragment> newEditableFiles) {
-        return new Context(analyzer, newEditableFiles, readonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of());
-    }
-
-    private Context withReadonlyFiles(List<ContextFragment.PathFragment> newReadonlyFiles) {
-        return new Context(analyzer, editableFiles, newReadonlyFiles, virtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of());
-    }
-
-    private Context withVirtualFragments(List<ContextFragment.VirtualFragment> newVirtualFragments) {
-        return new Context(analyzer, editableFiles, readonlyFiles, newVirtualFragments, autoContext, autoContextFileCount, historyMessages, Map.of());
-    }
-
-    private Context withAutoContextFileCount(int newAutoContextFileCount) {
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, newAutoContextFileCount, historyMessages, Map.of());
+    /**
+     * Creates a new context with custom collections and action description,
+     * refreshing auto-context if needed
+     */
+    private Context withFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
+                                  List<ContextFragment.PathFragment> newReadonlyFiles,
+                                  List<ContextFragment.VirtualFragment> newVirtualFragments,
+                                  Future<String> action)
+    {
+        return new Context(
+            analyzer, 
+            newEditableFiles, 
+            newReadonlyFiles, 
+            newVirtualFragments, 
+            autoContext,
+            autoContextFileCount, 
+            historyMessages, 
+            Map.of(),
+            new ParsedOutput(),
+            action
+        ).refresh();
     }
 
     public Context removeAll() {
-        return withEditableFiles(List.of())
-                .withReadonlyFiles(List.of())
-                .withVirtualFragments(List.of())
-                .refresh();
+        String action = "Dropped all context";
+        return clearHistory().getWithFragments(List.of(), List.of(), List.of(), action);
     }
 
     /**
      * Produces a new Context object with a fresh AutoContext if enabled.
      */
-    public Context refresh() {
+    private Context refresh() {
         AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of());
+        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), parsedOutput, action);
     }
 
-    /**
-     * Return the String or Path Fragment corresponding to the given target,
-     * or null if not found.
-     */
-    public ContextFragment toFragment(String target) {
-        try {
-            int ordinal = Integer.parseInt(target);
-            if (ordinal == 0) {
-                if (!isAutoContextEnabled()) {
-                    return null;
-                }
-                return autoContext;
-            }
-
-            if (ordinal > virtualFragments.size() || ordinal < 1) {
-                return null;
-            }
-            return virtualFragments.get(ordinal - 1);
-        } catch (NumberFormatException e) {
-            return Streams.concat(editableFiles.stream(), readonlyFiles.stream())
-                    .filter(f -> f.source(this).equals(target))
-                    .findFirst()
-                    .orElse(null);
-        }
-    }
+    // Method removed in favor of toFragment(int position)
 
     public boolean isEmpty() {
         return editableFiles.isEmpty()
@@ -327,7 +440,7 @@ public class Context {
      * Otherwise popping context off with /undo
      * would clear out the most recent conversation round trip which is not what we want.
      */
-    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents) {
+    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents, String outputText, Future<String> action) {
         var newHistory = new ArrayList<>(historyMessages);
         newHistory.addAll(newMessages);
         return new Context(
@@ -338,8 +451,10 @@ public class Context {
             autoContext,
             autoContextFileCount,
             List.copyOf(newHistory),
-            originalContents
-        );
+            originalContents,
+            new ParsedOutput(outputText, new ContextFragment.StringFragment(outputText, "")),
+            action
+        ).refresh();
     }
 
     /**
@@ -354,7 +469,9 @@ public class Context {
             autoContext,
             autoContextFileCount,
             List.of(),
-            Map.of()
+            Map.of(),
+            new ParsedOutput(),
+            CompletableFuture.completedFuture("Cleared conversation history")
         );
     }
 
@@ -367,7 +484,9 @@ public class Context {
                 autoContext,
                 autoContextFileCount,
                 historyMessages,
-                fileContents
+                fileContents,
+                this.parsedOutput,
+                this.action
         );
     }
 
@@ -378,8 +497,18 @@ public class Context {
         return List.copyOf(historyMessages);
     }
 
-    public boolean hasEditableFiles() {
-        return !editableFiles.isEmpty();
+    /**
+     * Get the action that created this context
+     */
+    public String getAction() {
+        if (action.isDone()) {
+            try {
+                return action.get();
+            } catch (Exception e) {
+                return "(Error retrieving action)";
+            }
+        }
+        return "(Summarizing)";
     }
 
     public Context addUsageFragment(String identifier, Set<CodeUnit> classnames, String code) {
@@ -393,10 +522,53 @@ public class Context {
     }
 
     /**
-     * Returns the position (index) of the given fragment in the virtual fragments list.
-     * Returns -1 if the fragment is not in the list.
+     * Returns all fragments in display order:
+     * 0 => conversation history (if not empty)
+     * 1 => autoContext (always present, even when DISABLED)
+     * next => read-only (readonlyFiles + virtualFragments)
+     * finally => editable
      */
-    public int getPositionOfFragment(ContextFragment.VirtualFragment fragment) {
-        return virtualFragments.indexOf(fragment);
+    public List<ContextFragment> getAllFragmentsInDisplayOrder() {
+        var result = new ArrayList<ContextFragment>();
+
+        // First include conversation history if not empty
+        if (!historyMessages.isEmpty()) {
+            result.add(new ContextFragment.ConversationFragment(historyMessages));
+        }
+        
+        // Then include autoContext
+        result.add(autoContext);
+        
+        // then read-only
+        result.addAll(readonlyFiles);
+        result.addAll(virtualFragments);
+        
+        // then editable
+        result.addAll(editableFiles);
+
+        return result;
+    }
+
+    public String getTextAreaContents() {
+        return parsedOutput.output();
+    }
+
+    public Context withParsedOutput(ParsedOutput parsedOutput, Future<String> action) {
+        return new Context(
+            analyzer,
+            editableFiles,
+            readonlyFiles,
+            virtualFragments,
+            autoContext,
+            autoContextFileCount,
+            historyMessages,
+            originalContents,
+            parsedOutput,
+            action
+        ).refresh();
+    }
+
+    public ParsedOutput getParsedOutput() {
+        return parsedOutput;
     }
 }

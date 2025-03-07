@@ -16,32 +16,38 @@ public class Environment {
     /**
      * Runs a shell command using /bin/sh, returning {stdout, stderr}.
      */
-    public ProcessResult runShellCommand(String command) throws IOException {
-        Process process = null;
-        try {
-            process = createProcessBuilder("/bin/sh", "-c", command).start();
+    public ProcessResultInternal runShellCommand(String command) throws IOException {
+        Process process = createProcessBuilder("/bin/sh", "-c", command).start();
 
-            var out = new StringBuilder();
-            var err = new StringBuilder();
-            try (var scOut = new Scanner(process.getInputStream());
-                 var scErr = new Scanner(process.getErrorStream()))
-            {
-                while (scOut.hasNextLine()) {
-                    out.append(scOut.nextLine()).append("\n");
-                }
-                while (scErr.hasNextLine()) {
-                    err.append(scErr.nextLine()).append("\n");
-                }
+        var out = new StringBuilder();
+        var err = new StringBuilder();
+        try (var scOut = new Scanner(process.getInputStream());
+             var scErr = new Scanner(process.getErrorStream()))
+        {
+            while (scOut.hasNextLine()) {
+                out.append(scOut.nextLine()).append("\n");
             }
-
-            int exitCode = process.waitFor();
-            return new ProcessResult(exitCode, out.toString(), err.toString());
-        } catch (InterruptedException e) {
-            if (process != null) {
-                process.destroy();
+            while (scErr.hasNextLine()) {
+                err.append(scErr.nextLine()).append("\n");
             }
-            throw new RuntimeException("Interrupted!", e);
         }
+
+        int exitCode;
+        while (true) {
+            try {
+                if (process.waitFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    exitCode = process.exitValue();
+                    break;
+                }
+                if (Thread.interrupted()) {
+                    throw new InterruptedException();
+                }
+            } catch (InterruptedException e) {
+                process.destroy();
+                return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
+            }
+        }
+        return new ProcessResultInternal(exitCode, out.toString(), err.toString());
     }
 
     private static ProcessBuilder createProcessBuilder(String... command) {
@@ -57,12 +63,12 @@ public class Environment {
     /**
      * Run a shell command, returning stdout or stderr in an OperationResult.
      */
-    public ContextManager.OperationResult captureShellCommand(String command) {
-        ProcessResult result;
+    public ProcessResult captureShellCommand(String command) {
+        ProcessResultInternal result;
         try {
             result = runShellCommand(command);
         } catch (Exception e) {
-            return ContextManager.OperationResult.error("Error executing command: " + e.getMessage());
+            return new ProcessResult(e.getMessage(), "");
         }
 
         var ANSI_ESCAPE_PATTERN = "\\x1B(?:\\[[;\\d]*[ -/]*[@-~]|\\]\\d+;[^\\x07]*\\x07)";
@@ -84,9 +90,9 @@ public class Environment {
         var output = combinedOut.toString();
 
         if (result.status() > 0) {
-            return ContextManager.OperationResult.error("`%s` returned code %d\n%s".formatted(command, result.status(), output));
+            return new ProcessResult("`%s` returned code %d".formatted(command, result.status()), output);
         }
-        return ContextManager.OperationResult.success(output);
+        return new ProcessResult(null, output);
     }
 
     public static void createDirIfNotExists(Path path) throws IOException {
@@ -98,5 +104,11 @@ public class Environment {
         }
     }
 
-    public record ProcessResult(int status, String stdout, String stderr) {}
+    public record ProcessResult(String error, String output) {
+        public ProcessResult {
+            assert output != null : "Output cannot be null";
+        }
+    }
+
+    public record ProcessResultInternal(int status, String stdout, String stderr) {}
 }

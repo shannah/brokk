@@ -1,15 +1,12 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,26 +33,6 @@ class EditBlockTest {
         public Set<RepoFile> getEditableFiles() {
             return validFiles;
         }
-
-        @Override
-        public void addFiles(Collection<RepoFile> path) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Set<RepoFile> findMissingFileMentions(String text) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ContextManager.OperationResult runBuild() {
-            throw new UnsupportedOperationException();
-        }
     }
 
     static class TestConsoleIO implements IConsoleIO {
@@ -73,11 +50,6 @@ class EditBlockTest {
         }
 
         @Override
-        public boolean confirmAsk(String msg) {
-            return false;
-        }
-
-        @Override
         public void llmOutput(String token) {
             // not needed for these tests
         }
@@ -90,25 +62,6 @@ class EditBlockTest {
             return errorLog.toString();
         }
     }
-
-    
-    // ----------------------------------------------------
-    // Helper methods
-    // ----------------------------------------------------
-    private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
-        var files = validFilenames.stream().map(f -> new RepoFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
-        var blocks = EditBlock.findOriginalUpdateBlocks(fullResponse, files).blocks();
-        return blocks.toArray(new EditBlock.SearchReplaceBlock[0]);
-    }
-
-    private String fuzzyReplace(String original, String search, String replace) {
-        return EditBlock.doReplace(original, search, replace);
-    }
-
-
-    // ----------------------------------------------------
-    // Original tests from the question snippet
-    // ----------------------------------------------------
 
     @Test
     void testFindOriginalUpdateBlocksSimple() {
@@ -239,28 +192,60 @@ class EditBlockTest {
         String search = "Another line\n";
         String replace = "Changed line\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         String expected = "This is a sample text.\nChanged line\nYet another line.\n";
         assertEquals(expected, updated);
     }
 
     @Test
-    void testReplaceIgnoringLeadingWhitespace() {
+    void testReplaceIgnoringWhitespace() {
         String original = """
                 line1
                     line2
                     line3
                 """.stripIndent();
-        String search = "line2\n    line3\n";
-        String replace = "new_line2\n    new_line3\n";
+        String search = """
+                line2
+                    line3
+                """;
+        String replace = """
+                new_line2
+                    new_line3
+                """;
         String expected = """
                 line1
                     new_line2
                     new_line3
                 """.stripIndent();
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
+    }
+
+    @Test
+    void testDeletionIgnoringWhitespace() {
+        String original = """
+                One
+                  Two
+                """.stripIndent();
+        String edit = """
+                Here's the change:
+
+                ```
+                foo.txt
+                <<<<<<< SEARCH
+                Two
+                =======
+                >>>>>>> REPLACE
+                ```
+
+                Hope you like it!
+                """;
+
+        EditBlock.SearchReplaceBlock[] blocks = parseBlocks(edit, Set.of("foo.txt"));
+        assertEquals(1, blocks.length);
+        String updated = EditBlock.doReplace(original, blocks[0].beforeText(), blocks[0].afterText());
+        assertEquals("One\n", updated);
     }
 
     @Test
@@ -280,7 +265,7 @@ class EditBlockTest {
                 line3
                 """;
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
     }
 
@@ -292,7 +277,7 @@ class EditBlockTest {
         String replace = "new content\n";
         String expected = "one\ntwo\nnew content\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals(expected, updated);
     }
 
@@ -354,25 +339,18 @@ class EditBlockTest {
         var blocks = EditBlock.findOriginalUpdateBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
-        assertNotEquals(List.of(), result.blocks());
+        assertNotEquals(List.of(), result.failedBlocks());
     }
 
-
-    // ----------------------------------------------------
-    // Additional Tests (cover corner cases from Python)
-    // ----------------------------------------------------
-
     /**
-     * Test partial or fuzzy leading whitespace issues with multiple lines,
-     * verifying that indentation differences are handled.
-     * (Similar to python's test_replace_part_with_missing_varied_leading_whitespace)
+     * LLM likes to start blocks without the leading whitespace sometimes
      */
     @Test
-    void testReplacePartWithMissingVariedLeadingWhitespace() {
+    void testReplacePartWithMissingLeadingWhitespace() {
         String original = """
                 line1
                     line2
-                        line3
+                    line3
                 line4
                 """.stripIndent();
 
@@ -391,7 +369,7 @@ class EditBlockTest {
         String expected = """
                 line1
                     NEW_line2
-                        NEW_line3
+                    NEW_line3
                 line4
                 """.stripIndent();
 
@@ -403,17 +381,23 @@ class EditBlockTest {
      * (Similar to python test_replace_part_with_missing_leading_whitespace_including_blank_line)
      */
     @Test
-    void testReplacePartWithMissingLeadingWhitespaceIncludingBlankLine() {
+    void testReplaceIgnoringWhitespaceIncludingBlankLine() {
         String original = """
                 line1
                     line2
                     line3
                 """.stripIndent();
         // Insert a blank line in the beforeText, plus incomplete indentation
-        String search = "\n  line2\n";
-        String replace = "\n  replaced_line2\n";
+        String search = """
+                
+                  line2
+                """;
+        String replace = """
+                
+                  replaced_line2
+                """;
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
 
         // The beforeText block basically tries to match line2 ignoring some whitespace and skipping a blank line
         // We expect line2 -> replaced_line2, with same leading indentation as original (4 spaces).
@@ -423,6 +407,54 @@ class EditBlockTest {
                     line3
                 """.stripIndent();
 
+        assertEquals(expected, updated);
+    }
+
+    @Test
+    void testReplaceIgnoringTrailingWhitespace() {
+        String original = """
+                line1
+                    line2  
+                    line3
+                """.stripIndent();
+        // Insert a blank line in the beforeText, plus incomplete indentation
+        String search = """
+                  line2
+                """;
+        String replace = """
+                  replaced_line2
+                """;
+
+        String updated = EditBlock.doReplace(original, search, replace);
+        String expected = """
+                line1
+                    replaced_line2
+                    line3
+                """.stripIndent();
+        assertEquals(expected, updated);
+    }
+
+    @Test
+    void testReplaceIgnoringInternalWhitespace() {
+        String original = """
+                line1
+                    a   b 
+                    line3
+                """.stripIndent();
+        // Insert a blank line in the beforeText, plus incomplete indentation
+        String search = """
+                  a b
+                """;
+        String replace = """
+                  replaced_line2
+                """;
+
+        String updated = EditBlock.doReplace(original, search, replace);
+        String expected = """
+                line1
+                    replaced_line2
+                    line3
+                """.stripIndent();
         assertEquals(expected, updated);
     }
 
@@ -473,7 +505,7 @@ class EditBlockTest {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of());
         var blocks = EditBlock.findOriginalUpdateBlocks(edit, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
-        assertNotEquals(List.of(), result.blocks());
+        assertNotEquals(List.of(), result.failedBlocks());
     }
 
     /**
@@ -517,7 +549,7 @@ class EditBlockTest {
         String search = "line2\n";
         String replace = "line2\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         // We expect no change
         assertEquals(original, updated);
     }
@@ -541,7 +573,7 @@ class EditBlockTest {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
         var blocks = EditBlock.findOriginalUpdateBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
-        assertNotEquals(List.of(), result.blocks());
+        assertNotEquals(List.of(), result.failedBlocks());
     }
 
     @Test
@@ -579,7 +611,16 @@ class EditBlockTest {
         String search = "";  // empty
         String replace = "initial content\n";
 
-        String updated = fuzzyReplace(original, search, replace);
+        String updated = EditBlock.doReplace(original, search, replace);
         assertEquals("initial content\n", updated);
+    }
+
+    // ----------------------------------------------------
+    // Helper methods
+    // ----------------------------------------------------
+    private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
+        var files = validFilenames.stream().map(f -> new RepoFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
+        var blocks = EditBlock.findOriginalUpdateBlocks(fullResponse, files).blocks();
+        return blocks.toArray(new EditBlock.SearchReplaceBlock[0]);
     }
 }
