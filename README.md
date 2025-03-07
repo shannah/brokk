@@ -24,10 +24,9 @@ These allow some simple but powerful patterns:
 
 Brokk is particularly useful when making complex, multi-file edits with o1pro.
 
-The `prepare` command will ask your normal editing model what extra context you might want to include
-in your request.  Then use `copy` to pull all the content, including Brokk's prompts, into your clipboard.
-Paste into o1pro and add your request at the bottom.  Then paste o1pro's response back into
-Brokk and it will apply the edits.
+After setting up your session, use `copy` to pull all the content, including Brokk's prompts, into your clipboard.
+Paste into o1pro and add your request at the bottom in the <goal> section.  Then paste o1pro's response back into
+Brokk and have it apply the edits with the Code action.
 
 # Current status
 
