@@ -299,7 +299,7 @@ public class ContextManager implements IContextManager
                 if (result == null) {
                     chrome.toolOutput("Search was interrupted");
                 } else {
-                    chrome.llmOutput(result.text() + "\n");
+                    chrome.llmOutput("\n\n# Anaswer" + "\n\n" + result.text() + "\n");
                     // The search agent already creates the right fragment type
                     addSearchFragment(result);
                 }

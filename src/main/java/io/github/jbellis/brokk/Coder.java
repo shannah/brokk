@@ -119,6 +119,7 @@ public class Coder {
                     // Mark as cancelled
                     return new StreamingResult(null, true, null);
                 }
+                io.toolOutput("");
                 // Retry
                 continue;
             }
