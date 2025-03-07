@@ -19,6 +19,7 @@ import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -114,6 +115,10 @@ public class ContextManager implements IContextManager
                 }
             }
         });
+    }
+
+    public Coder getCoder() {
+        return coder;
     }
 
     public enum Mode { EDIT, APPLY }
@@ -299,6 +304,7 @@ public class ContextManager implements IContextManager
                 if (result == null) {
                     chrome.toolOutput("Search was interrupted");
                 } else {
+                    chrome.setSyntaxStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
                     chrome.llmOutput("\n\n# Anaswer" + "\n\n" + result.text() + "\n");
                     // The search agent already creates the right fragment type
                     addSearchFragment(result);

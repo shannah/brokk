@@ -594,7 +594,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // Check if LLM is available
-        if (!contextManager.coder.isLlmAvailable()) {
+        if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
@@ -636,7 +636,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         
         // Check if LLM is available
-        if (!contextManager.coder.isLlmAvailable()) {
+        if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
@@ -660,7 +660,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         
         // Check if LLM is available
-        if (!contextManager.coder.isLlmAvailable()) {
+        if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
@@ -1866,6 +1866,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // we need to re-populate it from the ContextFragment objects
             populateContextTable(contextManager.currentContext());
         });
+    }
+
+    public void setSyntaxStyle(String style) {
+        llmStreamArea.setSyntaxEditingStyle(style);
     }
 
     public ContextManager getContextManager() {
