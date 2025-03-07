@@ -779,7 +779,7 @@ public class ContextManager implements IContextManager
         if (fragment.description().split("\\s").length > 10) {
             query = submitSummarizeTaskForConversation(fragment.description());
         } else {
-            query = CompletableFuture.completedFuture("Search: " + fragment.description());
+            query = CompletableFuture.completedFuture(fragment.description());
         }
         pushContext(ctx -> ctx.addSearchFragment(fragment, query, chrome.getLlmOutputText()));
     }

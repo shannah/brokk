@@ -181,7 +181,7 @@ public interface ContextFragment {
 
         @Override
         public String description() {
-            return "Search results for: " + query;
+            return "Search: " + query;
         }
 
         @Override
