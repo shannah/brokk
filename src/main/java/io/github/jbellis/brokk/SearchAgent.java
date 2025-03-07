@@ -54,6 +54,7 @@ public class SearchAgent {
     private boolean allowAnswer = true;
     private boolean allowSubstringSearch = false; // Starts disabled until searchSymbols is called
     private boolean symbolsFound = false;
+    private boolean beastMode = false;
 
     // Search state
     private final String query;
@@ -356,12 +357,9 @@ public class SearchAgent {
      */
     private ToolCall replaceDuplicateCallIfNeeded(ToolCall call)
     {
-        // 1. Create a unique signature for the incoming call
-        String signature = createToolCallSignature(call);
-
-        // 2. If we already have that signature, forge the replacement call
-        if (toolCallSignatures.contains(signature)) {
-            logger.debug("Duplicate tool call detected: {}. Forging a getRelatedClasses call instead.", signature);
+        // If we already have seen this signature, forge a replacement call
+        if (toolCallSignatures.contains(createToolCallSignature(call))) {
+            logger.debug("Duplicate tool call detected: {}. Forging a getRelatedClasses call instead.", createToolCallSignature(call));
 
             // Build the arguments for the forged getRelatedClasses call.
             // We'll pass all currently tracked class names, so that the agent
@@ -394,12 +392,18 @@ public class SearchAgent {
                 .name("getRelatedClasses")
                 .arguments(forgedArgumentsJson)
                 .build();
-            ToolCall forgedCall = new ToolCall(forgedRequest);
+            var forgedCall = new ToolCall(forgedRequest);
+            // if the forged call is itself a duplicate, use the original request but force Beast Mode next
+            if (toolCallSignatures.contains(createToolCallSignature(forgedCall))) {
+                logger.debug("Pagerank would be duplicate too!  Switching to Beast Mode.");
+                beastMode = true;
+                return call;
+            }
             return forgedCall;
         }
 
         // 3. If it's not a duplicate, remember this signature for future checks, and return the original call
-        toolCallSignatures.add(signature);
+        toolCallSignatures.add(createToolCallSignature(call));
         trackClassNamesFromToolCall(call);
 
         // 4. Return the original call if no duplication
@@ -452,24 +456,24 @@ public class SearchAgent {
     private List<ToolSpecification> createToolSpecifications() {
         List<ToolSpecification> tools = new ArrayList<>();
 
-        if (true || allowSearch) {
+        if (!beastMode || allowSearch) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("searchSymbols")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getUsages")));
         }
 
-        if (true || allowSubstringSearch) {
+        if (!beastMode || allowSubstringSearch) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("searchSubstrings")));
         }
 
-        if (true || allowPagerank) {
+        if (!beastMode || allowPagerank) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getRelatedClasses")));
         }
 
-        if (true || allowInspect) {
+        if (!beastMode || allowInspect) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getClassSkeletons")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
@@ -478,7 +482,7 @@ public class SearchAgent {
                     getMethodByName("getMethodSources")));
         }
 
-        if (true || allowAnswer) {
+        if (beastMode || allowAnswer) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("answer")));
 
@@ -576,7 +580,7 @@ public class SearchAgent {
         """.formatted(query);
         if (symbolsFound) {
             // Switch to beast mode if we're running out of time
-            if (actionHistorySize() > 0.8 * TOKEN_BUDGET) {
+            if (beastMode || actionHistorySize() > 0.8 * TOKEN_BUDGET) {
                 instructions = """
                 <beast-mode>
                 🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
