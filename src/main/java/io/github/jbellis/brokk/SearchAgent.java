@@ -377,8 +377,10 @@ public class SearchAgent {
         
         Determine the next tool(s) to call to search for code related to the query.
         Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
-        You can also call multiple tools in a single response when you think they will be needed.
         Of course, `abort` and `answer` tools cannot be composed with others.
+        Each tool call must include a `learnings` parameter that records what you learned
+        from the MOST RECENT action. This will be the ONLY content from that action saved in 
+        history, so make it comprehensive!
         """.formatted(query);
         if (symbolsFound) {
             // Switch to beast mode if we're out of time
@@ -459,14 +461,14 @@ public class SearchAgent {
     public String searchSymbols(
             @P(value = "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
             List<String> patterns,
-            @P(value = "Reasoning about why these patterns are relevant to the query")
-            String reasoning
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (patterns.isEmpty()) {
             return "Cannot search definitions: patterns list is empty";
         }
-        if (reasoning.isBlank()) {
-            return "Cannot search definitions: reasoning is empty";
+        if (learnings.isBlank()) {
+            return "Cannot search definitions: learnings summary is empty";
         }
 
         // Enable substring search after the first successful searchSymbols call
@@ -486,45 +488,14 @@ public class SearchAgent {
         symbolsFound = true;
         logger.debug("Raw definitions: {}", allDefinitions);
 
-        // Include all matches or filter if there are too many
-        var relevant = new ArrayList<String>();
-
-        // Check if we need to filter by relevance (if results are > 10% of token budget)
-        int definitionTokens = Models.getApproximateTokens(allDefinitions.stream().map(CodeUnit::reference).collect(Collectors.joining("\n")));
-        boolean shouldFilter = definitionTokens > TOKEN_BUDGET * 0.1;
-        if (shouldFilter) {
-            logger.debug("Filtering definitions due to size: {} tokens (> 10% of budget)", definitionTokens);
-
-            // Get reasoning if available
-            List<ChatMessage> messages = new ArrayList<>();
-            messages.add(new SystemMessage("You are helping evaluate which code definitions are relevant to a user query. " +
-                                                   "Review the list of definitions and select the ones most relevant to the query and " +
-                                                   "to your previous reasoning."));
-            messages.add(new UserMessage("Query: %s\nReasoning:%s\nDefinitions found:\n%s".formatted(query, reasoning, allDefinitions)));
-            var response = coder.sendMessage(coder.models.searchModel(), messages);
-            io.shellOutput("Filtering very large search result");
-
-            // Extract mentions of the definitions from the response
-            var relevantDefinitions = extractMatches(response.aiMessage().text(), allDefinitions.stream().map(CodeUnit::reference).collect(Collectors.toSet()));
-
-            logger.debug("Filtered definitions: {} (from {})", relevantDefinitions.size(), allDefinitions.size());
-
-            // Add the relevant definitions
-            for (CodeUnit definition : allDefinitions) {
-                if (relevantDefinitions.contains(definition.reference())) {
-                    relevant.add(definition.reference());
-                }
-            }
-        } else {
-            // Just use all definitions without filtering
-            for (CodeUnit definition : allDefinitions) {
-                relevant.add(definition.reference());
-            }
+        var references = new ArrayList<String>();
+        for (CodeUnit definition : allDefinitions) {
+            references.add(definition.reference());
         }
 
         // Compress results using longest common package prefix
-        if (!relevant.isEmpty()) {
-            var compressionResult = compressSymbolsWithPackagePrefix(relevant);
+        if (!references.isEmpty()) {
+            var compressionResult = compressSymbolsWithPackagePrefix(references);
             String commonPrefix = compressionResult._1();
             List<String> compressedSymbols = compressionResult._2();
             
@@ -535,7 +506,7 @@ public class SearchAgent {
             }
         }
 
-        return "Relevant symbols: " + String.join(", ", relevant);
+        return "Relevant symbols: " + String.join(", ", references);
     }
 
     /**
@@ -619,14 +590,14 @@ public class SearchAgent {
     public String getUsages(
             @P(value = "Fully qualified symbol names (package name, class name, optional member name) to find usages for")
             List<String> symbols,
-            @P(value = "Reasoning about what information you're hoping to find in these usages")
-            String reasoning
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (symbols.isEmpty()) {
             return "Cannot search usages: symbols list is empty";
         }
-        if (reasoning.isBlank()) {
-            return "Cannot search usages: reasoning is empty";
+        if (learnings.isBlank()) {
+            return "Cannot search usages: learnings summary is empty";
         }
 
         List<CodeUnit> allUses = new ArrayList<>();
@@ -640,28 +611,8 @@ public class SearchAgent {
             return "No usages found for: " + String.join(", ", symbols);
         }
 
-        // Check if we need to filter by relevance (if results are > 10% of token budget)
         var processedUsages = AnalyzerWrapper.processUsages(analyzer, allUses).code();
-        int usageTokens = Models.getApproximateTokens(processedUsages);
-        boolean shouldFilter = usageTokens > TOKEN_BUDGET * 0.1;
-        if (!shouldFilter) {
-            // Return all usages without filtering
-            return "Usages of " + String.join(", ", symbols) + ":\n\n" + processedUsages;
-        }
-
-        logger.debug("Filtering usages due to size: {} tokens (> 10% of budget)", usageTokens);
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(new SystemMessage("You are helping evaluate which code usages are relevant to a user query. " +
-                                               "Review the following code usages and select ONLY the relevant chunks that directly " +
-                                               "address the query. Output the FULL TEXT of the relevant code chunks."));
-        messages.add(new UserMessage("Query: %s\nReasoning: %s\nUsages found for %s:\n%s".formatted(
-                query, reasoning, String.join(", ", symbols), processedUsages)));
-        var response = coder.sendMessage(coder.models.searchModel(), messages);
-        io.shellOutput("Filtering very long usages list");
-        if (response == null) {
-            return "Error: No response from coder";
-        }
-        return "Relevant usages of " + String.join(", ", symbols) + ":\n\n" + Models.getText(response.aiMessage());
+        return "Usages of " + String.join(", ", symbols) + ":\n\n" + processedUsages;
     }
 
     /**
@@ -671,14 +622,14 @@ public class SearchAgent {
     public String getRelatedClasses(
             @P(value = "List of fully qualified class names.")
             List<String> classNames,
-            @P(value = "Reasoning about what related code you're hoping to discover")
-            String reasoning
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (classNames.isEmpty()) {
             return "Cannot search pagerank: classNames is empty";
         }
-        if (reasoning.isBlank()) {
-            return "Cannot search pagerank: reasoning is empty";
+        if (learnings.isBlank()) {
+            return "Cannot search pagerank: learnings summary is empty";
         }
 
         // Create map of seeds from discovered units
@@ -742,8 +693,8 @@ public class SearchAgent {
     public String getClassSources(
             @P(value = "Fully qualified class names to retrieve the full source code for")
             List<String> classNames,
-            @P(value = "Reasoning about what specific implementation details you're looking for in these classes")
-            String reasoning
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (classNames.isEmpty()) {
             return "Cannot get class sources: class names list is empty";
@@ -769,26 +720,7 @@ public class SearchAgent {
             return "No sources found for classes: " + String.join(", ", classNames);
         }
 
-        // Check if we need to filter by relevance (if results are > 10% of token budget)
-        int sourceTokens = Models.getApproximateTokens(result.toString());
-        boolean shouldFilter = sourceTokens > TOKEN_BUDGET * 0.1;
-        if (shouldFilter) {
-            logger.debug("Filtering class sources due to size: {} tokens (> 10% of budget)", sourceTokens);
-
-            List<ChatMessage> messages = new ArrayList<>();
-            messages.add(new SystemMessage("You are helping evaluate which parts of class sources are relevant to a user query. " +
-                                                   "Review the following class sources and select ONLY the relevant portions that directly " +
-                                                   "address the user's query and/or your own reasoning. Output the FULL TEXT of the relevant code chunks. When in doubt, include the chunk."));
-            messages.add(new UserMessage("Query: %s\nReasoning: %s\nClass sources for %s:\n%s".formatted(
-                    query, reasoning, String.join(", ", classNames), result)));
-            var response = coder.sendMessage(coder.models.searchModel(), messages);
-            io.shellOutput("Filtering very large class sources");
-
-            return "Relevant portions of " + String.join(", ", classNames) + ":\n\n" + response.aiMessage().text();
-        } else {
-            // Return full class sources without filtering
-            return result.toString();
-        }
+        return result.toString();
     }
 
     /**
@@ -850,14 +782,14 @@ public class SearchAgent {
     public String searchSubstrings(
             @P(value = "Java-style regex patterns to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
             List<String> patterns,
-            @P(value = "Reasoning about why these patterns are relevant to the query")
-            String reasoning
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (patterns.isEmpty()) {
             return "Cannot search substrings: patterns list is empty";
         }
-        if (reasoning.isBlank()) {
-            return "Cannot search substrings: reasoning is empty";
+        if (learnings.isBlank()) {
+            return "Cannot search substrings: learnings summary is empty";
         }
 
         logger.debug("Searching file contents for patterns: {}", patterns);
@@ -909,30 +841,7 @@ public class SearchAgent {
                 return "No classes found with content matching patterns: " + String.join(", ", patterns);
             }
 
-            // Check if we need to filter by relevance (if results are > 10% of token budget)
-            int resultsTokens = Models.getApproximateTokens(String.join("\n", matchingClasses));
-            boolean shouldFilter = resultsTokens > TOKEN_BUDGET * 0.1;
-            if (shouldFilter) {
-                logger.debug("Filtering substring search results due to size: {} tokens (> 10% of budget)", resultsTokens);
-
-                List<ChatMessage> messages = new ArrayList<>();
-                messages.add(new SystemMessage("You are helping evaluate which classes are relevant to a user query. " +
-                                                       "Review the list of class names and select the ones most relevant to the query and " +
-                                                       "to your previous reasoning."));
-                messages.add(new UserMessage("Query: %s\nReasoning: %s\nClasses found with content matching patterns '%s':\n%s".formatted(
-                        query, reasoning, String.join(", ", patterns), String.join("\n", matchingClasses))));
-                var response = coder.sendMessage(coder.models.searchModel(), messages);
-                io.shellOutput("Filtering very large substring search result");
-
-                // Extract mentions of the class names from the response
-                var relevantClasses = extractMatches(response.aiMessage().text(), matchingClasses);
-
-                logger.debug("Filtered substring search results: {} (from {})", relevantClasses.size(), matchingClasses.size());
-                return "Relevant classes with content matching patterns: " + String.join(", ", relevantClasses);
-            } else {
-                // Return all classes without filtering
-                return "Classes with content matching patterns: " + String.join(", ", matchingClasses);
-            }
+            return "Classes with content matching patterns: " + String.join(", ", matchingClasses);
         } catch (Exception e) {
             logger.error("Error searching file contents", e);
             return "Error searching file contents: " + e.getMessage();
