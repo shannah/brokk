@@ -17,29 +17,37 @@ public class Environment {
      * Runs a shell command using /bin/sh, returning {stdout, stderr}.
      */
     public ProcessResultInternal runShellCommand(String command) throws IOException {
-        Process process = null;
-        try {
-            process = createProcessBuilder("/bin/sh", "-c", command).start();
+        Process process = createProcessBuilder("/bin/sh", "-c", command).start();
 
-            var out = new StringBuilder();
-            var err = new StringBuilder();
-            try (var scOut = new Scanner(process.getInputStream());
-                 var scErr = new Scanner(process.getErrorStream()))
-            {
-                while (scOut.hasNextLine()) {
-                    out.append(scOut.nextLine()).append("\n");
-                }
-                while (scErr.hasNextLine()) {
-                    err.append(scErr.nextLine()).append("\n");
-                }
+        var out = new StringBuilder();
+        var err = new StringBuilder();
+        try (var scOut = new Scanner(process.getInputStream());
+             var scErr = new Scanner(process.getErrorStream()))
+        {
+            while (scOut.hasNextLine()) {
+                out.append(scOut.nextLine()).append("\n");
             }
-
-            int exitCode = process.waitFor();
-            return new ProcessResultInternal(exitCode, out.toString(), err.toString());
-        } catch (InterruptedException e) {
-            process.destroy();
-            return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
+            while (scErr.hasNextLine()) {
+                err.append(scErr.nextLine()).append("\n");
+            }
         }
+
+        int exitCode;
+        while (true) {
+            try {
+                if (process.waitFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    exitCode = process.exitValue();
+                    break;
+                }
+                if (Thread.interrupted()) {
+                    throw new InterruptedException();
+                }
+            } catch (InterruptedException e) {
+                process.destroy();
+                return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
+            }
+        }
+        return new ProcessResultInternal(exitCode, out.toString(), err.toString());
     }
 
     private static ProcessBuilder createProcessBuilder(String... command) {
