@@ -1673,7 +1673,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 4) "Capture Text" button, full width
         captureTextButton = new JButton("Capture Text");
-        captureTextButton.addActionListener(e -> captureTextFromTextarea());
+        captureTextButton.addActionListener(e -> {
+            contextManager.captureTextFromContextAsync();
+        });
         captureTextButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         captureTextButton.setMaximumSize(
                 new Dimension(Integer.MAX_VALUE, captureTextButton.getPreferredSize().height)
@@ -1682,7 +1684,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 5) "Edit Files" button, full width
         editFilesButton = new JButton("Edit Files");
         editFilesButton.setEnabled(false);
-        editFilesButton.addActionListener(e -> editFilesFromTextarea());
+        editFilesButton.addActionListener(e -> {
+            contextManager.editFilesFromContextAsync();
+        });
         editFilesButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         editFilesButton.setMaximumSize(
                 new Dimension(Integer.MAX_VALUE, editFilesButton.getPreferredSize().height)
@@ -1759,37 +1763,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         String filesText = "Files referenced: " + String.join(", ", fileNames);
         captureDescriptionArea.setText(filesText);
     }
-    
-    /**
-     * Captures the current text from textarea as a StringFragment
-     */
-    private void captureTextFromTextarea() {
-        String text = llmStreamArea.getText();
-        if (!text.isBlank()) {
-            var ctx = getSelectedContext();
-            assert ctx != null;
-            contextManager.addVirtualFragment(ctx.getParsedOutput().parsedFragment());
-        }
-    }
 
-    private Context getSelectedContext() {
-        var selected = contextHistoryTable.getSelectedRow();
+    public Context getSelectedContext() {
+        var selected = SwingUtil.runOnEDT(() -> contextHistoryTable.getSelectedRow(), -1);
         if (selected < 0) {
             return contextManager.currentContext();
         }
-        return (Context) contextHistoryTable.getModel().getValueAt(selected, 1);
-    }
-
-    /**
-     * Edits files referenced in the textarea content
-     */
-    private void editFilesFromTextarea() {
-        String text = llmStreamArea.getText();
-        if (!text.isBlank()) {
-            // Use the sources method directly instead of a static method
-            var fragment = new ContextFragment.StringFragment(text, "temp");
-            contextManager.editSources(fragment);
-        }
+        return SwingUtil.runOnEDT(() -> (Context) contextHistoryTable.getModel().getValueAt(selected, 1), null);
     }
     
     private void setInitialHistoryPanelWidth()

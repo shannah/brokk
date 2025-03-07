@@ -800,6 +800,57 @@ public class ContextManager implements IContextManager
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
     }
 
+    /**
+     * Captures text from the LLM output area and adds it to the context.
+     * Called from Chrome's capture button.
+     */
+    public void captureTextFromContextAsync()
+    {
+        contextActionExecutor.submit(() -> {
+            try {
+                // Use reflection or pass chrome reference in constructor to avoid direct dependency
+                var selectedCtx = chrome.getSelectedContext();
+                if (selectedCtx != null) {
+                    addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
+                    chrome.toolOutput("Content captured from output");
+                } else {
+                    chrome.toolErrorRaw("No content to capture");
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Capture canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
+    /**
+     * Finds sources in the current output text and edits them.
+     * Called from Chrome's edit files button.
+     */
+    public void editFilesFromContextAsync()
+    {
+        contextActionExecutor.submit(() -> {
+            try {
+                // Use reflection or pass chrome reference in constructor to avoid direct dependency
+                var selectedCtx = chrome.getSelectedContext();
+                if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
+                    var fragment = selectedCtx.getParsedOutput().parsedFragment();
+                    editSources(fragment);
+                    chrome.toolOutput("Editing files referenced in output");
+                } else {
+                    chrome.toolErrorRaw("No content with file references to edit");
+                }
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Edit files canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
+    }
+
     /** usage for identifier */
     public void usageForIdentifier(String identifier)
     {
