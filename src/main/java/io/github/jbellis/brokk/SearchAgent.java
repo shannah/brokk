@@ -537,11 +537,6 @@ public class SearchAgent {
 
         var sysPromptStr = systemPrompt.toString();
         messages.add(new SystemMessage(sysPromptStr));
-        // log checksum of system prompt
-        var crc32 = new CRC32();
-        crc32.update(sysPromptStr.getBytes());
-        long checksum = crc32.getValue();
-        logger.debug("System prompt length / checksum: {} / {}", sysPromptStr.length(), checksum);
 
         // Add action history to user message
         StringBuilder userActionHistory = new StringBuilder();
