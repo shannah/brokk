@@ -405,6 +405,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     llmScrollPane.getVerticalScrollBar().setValue(0);
                 });
             }
+
+            updateCaptureButtons(ctx);
         });
     }
 
@@ -1671,11 +1673,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         //    update when that text changes
         llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             @Override
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
             @Override
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
             @Override
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
         });
 
         return panel;
@@ -1684,7 +1686,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Updates the state of capture buttons based on textarea content
      */
-    private void updateCaptureButtons() {
+    public void updateCaptureButtons(Context ctx) {
         String text = llmStreamArea.getText();
         boolean hasText = !text.isBlank();
 
@@ -1695,7 +1697,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // Check for sources only if there's text
             if (hasText && analyzer != null) {
                 // Use the sources method directly instead of a static method
-                var fragment = new ContextFragment.StringFragment(text, "temp");
+                ContextFragment.VirtualFragment fragment;
+                fragment = ctx == null
+                        ? new ContextFragment.StringFragment(text, "temp")
+                        : ctx.getParsedOutput().parsedFragment();
                 Set<CodeUnit> sources = fragment.sources(analyzer);
                 editFilesButton.setEnabled(!sources.isEmpty());
                 

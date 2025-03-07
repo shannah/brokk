@@ -1000,6 +1000,7 @@ public class ContextManager implements IContextManager
         chrome.toolOutput(newContext.getAction());
         chrome.setContext(newContext);
         chrome.clearContextHistorySelection();
+        chrome.updateCaptureButtons(newContext);
     }
     
     /**
