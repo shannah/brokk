@@ -674,7 +674,9 @@ public class SearchAgent {
     @Tool("Get an overview of classes' contents, including fields and method signatures. Use this to understand class structures without fetching full source code.")
     public String getClassSkeletons(
             @P(value = "Fully qualified class names to get the skeleton structures for")
-            List<String> classNames
+            List<String> classNames,
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (classNames.isEmpty()) {
             return "Cannot get skeletons: class names list is empty";
@@ -749,7 +751,9 @@ public class SearchAgent {
     @Tool("Get the source code of specific methods. Use this to examine the implementation of particular methods without retrieving the entire classes.")
     public String getMethodSources(
             @P(value = "Fully qualified method names (package name, class name, method name) to retrieve sources for")
-            List<String> methodNames
+            List<String> methodNames,
+            @P(value = "Summary of what you learned from THE MOST RECENT step taken")
+            String learnings
     ) {
         if (methodNames.isEmpty()) {
             return "Cannot get method sources: method names list is empty";
