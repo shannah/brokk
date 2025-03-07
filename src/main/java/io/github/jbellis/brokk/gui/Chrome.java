@@ -338,6 +338,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         var undoButton = new JButton("Undo");
         undoButton.setMnemonic(KeyEvent.VK_Z);
+        undoButton.setToolTipText("Undo the most recent history entry");
         undoButton.addActionListener(e -> {
             disableUserActionButtons();
             disableContextActionButtons();
@@ -346,6 +347,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         var redoButton = new JButton("Redo");
         redoButton.setMnemonic(KeyEvent.VK_Y);
+        redoButton.setToolTipText("Redo the most recently undone entry");
         redoButton.addActionListener(e -> {
             disableUserActionButtons();
             disableContextActionButtons();
@@ -536,18 +538,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
+        codeButton.setToolTipText("Tell the LLM to write code to solve this problem using the current context");
         codeButton.addActionListener(e -> runCodeCommand());
 
         askButton = new JButton("Ask");
         askButton.setMnemonic(KeyEvent.VK_A);
+        askButton.setToolTipText("Ask the LLM a question about the current context");
         askButton.addActionListener(e -> runAskCommand());
 
         searchButton = new JButton("Search");
         searchButton.setMnemonic(KeyEvent.VK_H);
+        searchButton.setToolTipText("Explore the codebase to find answers that are NOT in the current context");
         searchButton.addActionListener(e -> runSearchCommand());
 
         runButton = new JButton("Run in Shell");
         runButton.setMnemonic(KeyEvent.VK_R);
+        runButton.setToolTipText("Execute the current instructions as a shell command");
         runButton.addActionListener(e -> runRunCommand());
 
         leftButtonsPanel.add(codeButton);
@@ -558,6 +564,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Right side: stop
         var rightButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         stopButton = new JButton("Stop");
+        stopButton.setToolTipText("Cancel the current operation");
         stopButton.addActionListener(e -> stopCurrentUserTask());
         rightButtonsPanel.add(stopButton);
 
@@ -878,6 +885,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         suggestCommitButton = new JButton("Suggest Commit");
         suggestCommitButton.setEnabled(false);
         suggestCommitButton.setMnemonic(KeyEvent.VK_C);
+        suggestCommitButton.setToolTipText("Suggest a commit message for the uncommitted changes");
         suggestCommitButton.addActionListener(e -> {
             disableUserActionButtons();
             currentUserTask = contextManager.performCommitActionAsync();
@@ -933,6 +941,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (editButton == null) {
             editButton = new JButton("Edit All");
             editButton.setMnemonic(KeyEvent.VK_D);
+            editButton.setToolTipText("Add project files as editable context");
             editButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync(ContextAction.EDIT, selectedFragments);
@@ -942,6 +951,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (readOnlyButton == null) {
             readOnlyButton = new JButton("Read All");
             readOnlyButton.setMnemonic(KeyEvent.VK_R);
+            readOnlyButton.setToolTipText("Add project or external files as read-only context");
             readOnlyButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync(ContextAction.READ, selectedFragments);
@@ -951,6 +961,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (summarizeButton == null) {
             summarizeButton = new JButton("Summarize All");
             summarizeButton.setMnemonic(KeyEvent.VK_S);
+            summarizeButton.setToolTipText("Summarize the classes in project files");
             summarizeButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
@@ -960,6 +971,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (dropButton == null) {
             dropButton = new JButton("Drop All");
             dropButton.setMnemonic(KeyEvent.VK_P);  // Changed from VK_D to VK_P
+            dropButton.setToolTipText("Drop all or selected context entries");
             dropButton.addActionListener(e -> {
                 disableContextActionButtons();
                 var selectedFragments = getSelectedFragments();
@@ -969,6 +981,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         if (copyButton == null) {
             copyButton = new JButton("Copy All");
+            copyButton.setToolTipText("Copy all or selected context entries to clipboard");
             copyButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync(ContextAction.COPY, selectedFragments);
@@ -977,6 +990,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         if (pasteButton == null) {
             pasteButton = new JButton("Paste");
+            pasteButton.setToolTipText("Paste the clipboard contents as a new context entry");
             pasteButton.addActionListener(e -> {
                 currentUserTask = contextManager.performContextActionAsync(ContextAction.PASTE, List.of());
             });
@@ -1013,6 +1027,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (symbolButton == null) {
             symbolButton = new JButton("Symbol Usage");
             symbolButton.setMnemonic(KeyEvent.VK_Y);
+            symbolButton.setToolTipText("Find uses of a class, method, or field");
             symbolButton.addActionListener(e -> {
                 currentUserTask = contextManager.findSymbolUsageAsync();
             });
@@ -1673,6 +1688,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 4) "Capture Text" button, full width
         captureTextButton = new JButton("Capture Text");
+        captureTextButton.setToolTipText("Capture the output as context");
         captureTextButton.addActionListener(e -> {
             contextManager.captureTextFromContextAsync();
         });
@@ -1683,6 +1699,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 5) "Edit Files" button, full width
         editFilesButton = new JButton("Edit Files");
+        editFilesButton.setToolTipText("Edit the files referenced by the output");
         editFilesButton.setEnabled(false);
         editFilesButton.addActionListener(e -> {
             contextManager.editFilesFromContextAsync();
