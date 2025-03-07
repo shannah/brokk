@@ -547,7 +547,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         askButton.addActionListener(e -> runAskCommand());
 
         searchButton = new JButton("Search");
-        searchButton.setMnemonic(KeyEvent.VK_H);
+        searchButton.setMnemonic(KeyEvent.VK_S);
         searchButton.setToolTipText("Explore the codebase to find answers that are NOT in the current context");
         searchButton.addActionListener(e -> runSearchCommand());
 
@@ -960,8 +960,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         if (summarizeButton == null) {
             summarizeButton = new JButton("Summarize All");
-            summarizeButton.setMnemonic(KeyEvent.VK_S);
-            summarizeButton.setToolTipText("Summarize the classes in project files");
+        summarizeButton.setMnemonic(KeyEvent.VK_M);
+        summarizeButton.setToolTipText("Summarize the classes in project files");
             summarizeButton.addActionListener(e -> {
                 var selectedFragments = getSelectedFragments();
                 currentUserTask = contextManager.performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
