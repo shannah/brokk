@@ -100,11 +100,20 @@ public class Coder {
                 backoffSeconds = Math.min(backoffSeconds, 16);
 
                 io.toolOutput(
-                    String.format("LLM issue on attempt %d of %d (will retry in %d seconds).",
-                                  attempt, maxAttempts, backoffSeconds)
+                    String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
+                                  attempt, maxAttempts, (double)backoffSeconds)
                 );
+                
+                // Busywait with countdown
+                long startTime = System.currentTimeMillis();
+                long endTime = startTime + (backoffSeconds * 1000L);
                 try {
-                    Thread.sleep(backoffSeconds * 1000L);
+                    while (System.currentTimeMillis() < endTime) {
+                        double remainingSeconds = (endTime - System.currentTimeMillis()) / 1000.0;
+                        if (remainingSeconds <= 0) break;
+                        io.toolOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
+                        Thread.sleep(100); // Update every 100ms
+                    }
                 } catch (InterruptedException e) {
                     io.toolOutput("Session interrupted during backoff");
                     // Mark as cancelled
@@ -330,11 +339,20 @@ public class Coder {
                 backoffSeconds = Math.min(backoffSeconds, 16);
 
                 io.toolOutput(
-                    String.format("LLM issue on attempt %d of %d (will retry in %d seconds).",
-                                  attempt, maxAttempts, backoffSeconds)
+                    String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
+                                  attempt, maxAttempts, (double)backoffSeconds)
                 );
+                
+                // Busywait with countdown
+                long startTime = System.currentTimeMillis();
+                long endTime = startTime + (backoffSeconds * 1000L);
                 try {
-                    Thread.sleep(backoffSeconds * 1000L);
+                    while (System.currentTimeMillis() < endTime) {
+                        double remainingSeconds = (endTime - System.currentTimeMillis()) / 1000.0;
+                        if (remainingSeconds <= 0) break;
+                        io.toolOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
+                        Thread.sleep(100); // Update every 100ms
+                    }
                 } catch (InterruptedException e) {
                     io.toolOutput("Session interrupted during backoff");
                     // Return a dummy with cancellation
