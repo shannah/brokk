@@ -276,24 +276,24 @@ public class SearchAgent {
     private List<ToolSpecification> createToolSpecifications() {
         List<ToolSpecification> tools = new ArrayList<>();
 
-        if (allowSearch) {
+        if (true || allowSearch) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("searchSymbols")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getUsages")));
         }
 
-        if (allowSubstringSearch) {
+        if (true || allowSubstringSearch) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("searchSubstring")));
         }
 
-        if (allowPagerank) {
+        if (true || allowPagerank) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getRelatedClasses")));
         }
 
-        if (allowInspect) {
+        if (true || allowInspect) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getClassSkeleton")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
@@ -302,7 +302,7 @@ public class SearchAgent {
                     getMethodByName("getMethodSource")));
         }
 
-        if (allowAnswer) {
+        if (true || allowAnswer) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("answer")));
             
