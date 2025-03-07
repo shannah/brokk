@@ -352,48 +352,83 @@ public class SearchAgent {
     }
 
     /**
-     * Checks if a tool call is a duplicate and returns PageRank results if it is
+     * Checks if a tool call is a duplicate and if so, replaces it with a getRelatedClasses call
      */
-    private String checkDuplicateToolCall() {
-        ToolCall toolCall = currentToolCall.get();
-        if (toolCall == null) {
-            return null;
-        }
-        
-        String signature = createToolCallSignature(toolCall);
+    private ToolCall replaceDuplicateCallIfNeeded(ToolCall call)
+    {
+        // 1. Create a unique signature for the incoming call
+        String signature = createToolCallSignature(call);
+
+        // 2. If we already have that signature, forge the replacement call
         if (toolCallSignatures.contains(signature)) {
-            logger.debug("Duplicate tool call detected: {}", signature);
+            logger.debug("Duplicate tool call detected: {}. Forging a getRelatedClasses call instead.", signature);
 
-            // If we have tracked class names, return PageRank results for them
-            if (trackedClassNames.isEmpty()) {
-                return "You've already made this exact call. Please review previous results rather than repeating the same search.";
+            // Build the arguments for the forged getRelatedClasses call.
+            // We'll pass all currently tracked class names, so that the agent
+            // sees "related classes" from everything discovered so far.
+            var classList = new ArrayList<>(trackedClassNames);
+
+            // We also must preserve the agent's "learnings" from the original call,
+            // because the LLM will have put some explanation in there. If none
+            // exist, just do an empty string for the new call.
+            Map<String,Object> oldArgs = call.argumentsMap();
+            String oldLearnings = oldArgs.getOrDefault("learnings", "").toString();
+
+            // Construct JSON arguments for the forged call
+            // We must fill both parameters of getRelatedClasses:
+            //   - classNames
+            //   - learnings
+            // We create them as JSON because that's how ToolExecutionRequest stores them.
+            String forgedArgumentsJson = """
+            {
+               "classNames": %s,
+               "learnings": %s
             }
+            """.formatted(
+                toJsonArray(classList),
+                toJsonString(oldLearnings)
+            );
 
-            HashMap<String, Double> weightedSeeds = new HashMap<>();
-            for (String className : trackedClassNames) {
-                weightedSeeds.put(className, 1.0);
-            }
-
-            var pageRankResults = AnalyzerWrapper.combinedPageRankFor(analyzer, weightedSeeds);
-            if (!pageRankResults.isEmpty()) {
-                var prString = pageRankResults.stream().limit(30).collect(Collectors.joining(", "));
-                logger.debug("Pagerank results: " + prString);
-                return "You've already made this exact call. Instead of repeating the results, " +
-                        "here are related classes from PageRank analysis of previously discovered classes: " +
-                        prString;
-            }
-
-            return "You've already made this exact call. Please review previous results rather than repeating the same search.";
+            // Create a new ToolExecutionRequest and ToolCall
+            var forgedRequest = ToolExecutionRequest.builder()
+                .name("getRelatedClasses")
+                .arguments(forgedArgumentsJson)
+                .build();
+            ToolCall forgedCall = new ToolCall(forgedRequest);
+            return forgedCall;
         }
 
-        // Track this call for future duplicate checks
+        // 3. If it's not a duplicate, remember this signature for future checks, and return the original call
         toolCallSignatures.add(signature);
-        trackClassNamesFromToolCall(toolCall);
-        
-        // Clean up ThreadLocal
-        currentToolCall.remove();
-        
-        return null; // Not a duplicate
+        trackClassNamesFromToolCall(call);
+
+        // 4. Return the original call if no duplication
+        return call;
+    }
+
+    private String toJsonArray(List<String> items)
+    {
+        // Create a JSON array from the list. e.g. ["Foo","Bar"]
+        var mapper = new ObjectMapper();
+        try {
+            return mapper.writeValueAsString(items);
+        } catch (JsonProcessingException e) {
+            logger.error("Error serializing array", e);
+            // fallback to an empty array
+            return "[]";
+        }
+    }
+
+    private String toJsonString(String s)
+    {
+        // Wrap a string in quotes, escaping as needed
+        var mapper = new ObjectMapper();
+        try {
+            return mapper.writeValueAsString(s);
+        } catch (JsonProcessingException e) {
+            logger.error("Error serializing string", e);
+            return "\"\"";
+        }
     }
 
     /**
@@ -615,6 +650,8 @@ public class SearchAgent {
         // Process each tool execution request
         var toolCalls = response.toolExecutionRequests().stream()
                 .map(ToolCall::new)
+                // Add the next line to transform duplicates into forged calls:
+                .map(this::replaceDuplicateCallIfNeeded)
                 .toList();
 
         // If we have an Answer or Abort action, just return that
@@ -643,11 +680,6 @@ public class SearchAgent {
             return "Cannot search definitions: learnings summary is empty";
         }
         
-        // Set current tool call and check if this is a duplicate
-        String duplicateResultResponse = checkDuplicateToolCall();
-        if (duplicateResultResponse != null) {
-            return duplicateResultResponse;
-        }
 
         updateHistory(learnings);
 
@@ -763,12 +795,6 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search usages: learnings summary is empty";
         }
-        
-        // Set current tool call and check if this is a duplicate
-        String duplicateResult = checkDuplicateToolCall();
-        if (duplicateResult != null) {
-            return duplicateResult;
-        }
 
         updateHistory(learnings);
 
@@ -803,12 +829,6 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search pagerank: learnings summary is empty";
         }
-        
-        // Set current tool call and check if this is a duplicate
-        String duplicateResult = checkDuplicateToolCall();
-        if (duplicateResult != null) {
-            return duplicateResult;
-        }
 
         updateHistory(learnings);
 
@@ -840,12 +860,6 @@ public class SearchAgent {
     ) {
         if (classNames.isEmpty()) {
             return "Cannot get skeletons: class names list is empty";
-        }
-        
-        // Set current tool call and check if this is a duplicate
-        String duplicateResult = checkDuplicateToolCall();
-        if (duplicateResult != null) {
-            return duplicateResult;
         }
 
         updateHistory(learnings);
@@ -889,12 +903,6 @@ public class SearchAgent {
         if (classNames.isEmpty()) {
             return "Cannot get class sources: class names list is empty";
         }
-        
-        // Set current tool call and check if this is a duplicate
-        String duplicateResult = checkDuplicateToolCall();
-        if (duplicateResult != null) {
-            return duplicateResult;
-        }
 
         updateHistory(learnings);
 
@@ -933,12 +941,6 @@ public class SearchAgent {
     ) {
         if (methodNames.isEmpty()) {
             return "Cannot get method sources: method names list is empty";
-        }
-        
-        // Set current tool call and check if this is a duplicate
-        String duplicateResult = checkDuplicateToolCall();
-        if (duplicateResult != null) {
-            return duplicateResult;
         }
 
         updateHistory(learnings);
@@ -998,12 +1000,6 @@ public class SearchAgent {
         }
         if (learnings.isBlank()) {
             return "Cannot search substrings: learnings summary is empty";
-        }
-        
-        // Set current tool call and check if this is a duplicate
-        String duplicateResult = checkDuplicateToolCall();
-        if (duplicateResult != null) {
-            return duplicateResult;
         }
 
         updateHistory(learnings);

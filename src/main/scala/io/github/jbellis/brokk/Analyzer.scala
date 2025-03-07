@@ -333,19 +333,16 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     adjacency.map { case (src, tgtMap) => src -> tgtMap.toMap }.toMap
   }
 
-  def pathOf(codeUnit: CodeUnit): RepoFile = {
+  def pathOf(codeUnit: CodeUnit): Option[RepoFile] = {
     codeUnit match {
       case CodeUnit.ClassType(fullClassName) =>
-        val clsNode = cpg.typeDecl.fullNameExact(fullClassName).head
-        toFile(clsNode)
+        cpg.typeDecl.fullNameExact(fullClassName).headOption.map(toFile)
       case CodeUnit.FunctionType(fullMethodName) =>
         val className = fullMethodName.split("\\.").dropRight(1).mkString(".")
-        val clsNode = cpg.typeDecl.fullNameExact(className).head
-        toFile(clsNode)
+        cpg.typeDecl.fullNameExact(className).headOption.map(toFile)
       case CodeUnit.FieldType(fullFieldName) =>
         val className = fullFieldName.split("\\.").dropRight(1).mkString(".")
-        val clsNode = cpg.typeDecl.fullNameExact(className).head
-        toFile(clsNode)
+        cpg.typeDecl.fullNameExact(className).headOption.map(toFile)
     }
   }
 

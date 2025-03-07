@@ -21,6 +21,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.NotNull;
+import scala.Option;
 
 import javax.swing.*;
 import java.io.File;
@@ -107,7 +108,8 @@ public class ContextManager implements IContextManager
             if (!sources.isEmpty()) {
                 Set<RepoFile> files = sources.stream()
                         .map(analyzer::pathOf)
-                        .filter(Objects::nonNull)
+                        .filter(Option::isDefined)
+                        .map(Option::get)
                         .collect(Collectors.toSet());
 
                 if (!files.isEmpty()) {
@@ -1080,7 +1082,8 @@ public class ContextManager implements IContextManager
         var classnames = fragment.sources(getAnalyzer());
         var files = classnames.stream()
                 .map(cu -> getAnalyzer().pathOf(cu))
-                .filter(Objects::nonNull)
+                .filter(Option::isDefined)
+                .map(Option::get)
                 .collect(Collectors.toSet());
 
         // If it's a PathFragment, make sure to include its file
@@ -1252,11 +1255,12 @@ public class ContextManager implements IContextManager
                 var codeForLLM = new StringBuilder();
                 var tokens = 0;
                 for (var fqcn : topClasses) {
-                    var path = analyzer.pathOf(CodeUnit.cls(fqcn));
-                    if (path == null) continue;
+                    var pathOption = analyzer.pathOf(CodeUnit.cls(fqcn));
+                    if (pathOption.isEmpty()) continue;
+                    var path = pathOption.get();
                     String chunk;
                     try {
-                        chunk = "<file path=%s>\n%s\n</file>\n".formatted(path, path.read());
+                        chunk = "<file path=%s>\n%s\n</file>\n".formatted(pathOption, path.read());
                     } catch (IOException e) {
                         logger.error("Failed to read {}: {}", path, e.getMessage());
                         continue;

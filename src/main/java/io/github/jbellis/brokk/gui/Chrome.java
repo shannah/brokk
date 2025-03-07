@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rsyntaxtextarea.Theme;
+import scala.Option;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -30,7 +31,6 @@ import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -1438,7 +1438,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 if (!sources.isEmpty()) {
                     referencedFiles = sources.stream()
                         .map(analyzer::pathOf)
-                        .filter(Objects::nonNull)
+                        .filter(Option::isDefined)
+                        .map(Option::get)
                         .map(RepoFile::getFileName)
                         .collect(Collectors.joining(", "));
                 }
@@ -1811,11 +1812,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         if (analyzer == null) {
             captureDescriptionArea.setText("Files referenced: ?");
+            return;
         }
         
         Set<String> fileNames = sources.stream()
             .map(analyzer::pathOf)
-            .filter(Objects::nonNull)
+            .filter(Option::isDefined)
+            .map(Option::get)
             .map(RepoFile::getFileName)
             .collect(Collectors.toSet());
             
