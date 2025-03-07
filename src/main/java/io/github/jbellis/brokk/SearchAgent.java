@@ -240,7 +240,13 @@ public class SearchAgent {
         @SuppressWarnings("unchecked")
         List<String> items = (List<String>) arguments.get(paramName);
         if (items != null && !items.isEmpty()) {
-            return items.size() == 1 ? items.getFirst() : String.join(", ", items);
+            // turn it back into a JSON list or the LLM will be lazy too
+            var mapper =  new ObjectMapper();
+            try {
+                return "%s=%s".formatted(paramName, mapper.writeValueAsString(items));
+            } catch (IOException e) {
+                logger.error("Error formatting list parameter", e);
+            }
         }
         return "";
     }
@@ -398,6 +404,7 @@ public class SearchAgent {
           This will be the ONLY content from that action saved in history, you will not see the full response again,
           so make it comprehensive! Be particularly sure to include relevant source code chunks so you can
           reference them in your final answer!
+          Here are examples of good and bad `learnings`:
             - Bad: Found several classes and methods related to the query
             - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods org.foo.qux.Z.method1 and org.foo.fizz.W.method2 related to the query.
             - Bad: The Foo class implements the Bar algorithm
@@ -447,16 +454,13 @@ public class SearchAgent {
         arguments.remove("learnings");
 
         return """
-        <step sequence="%d" tool="%s">
-         <arguments>
-         %s
-         </arguments>
+        <step sequence="%d" tool="%s" %s>
          %s
         </step>
         """.stripIndent().formatted(
             i,
             step.request.name(),
-            arguments,
+            getToolParameterInfo(step),
             step.learnings != null ?
                 "<learnings>\n%s\n</learnings>".formatted(step.learnings) :
                 "<result>\n%s\n</result>".formatted(step.result)
@@ -505,7 +509,7 @@ public class SearchAgent {
     public String searchSymbols(
             @P(value = "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
             List<String> patterns,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (patterns.isEmpty()) {
@@ -612,22 +616,6 @@ public class SearchAgent {
         // No common prefix found
         return new Tuple2<>("", symbols);
     }
-    
-    /**
-     * Extract text occurrences in response that match references from the originals
-     */
-    private static Set<String> extractMatches(String response, Set<String> originals) {
-        Set<String> relevantDefinitions = new HashSet<>();
-        for (var ref : originals) {
-            // Look for the reference with word boundaries to avoid partial matches
-            var p = Pattern.compile("\\b" + Pattern.quote(ref) + "\\b");
-            var matcher = p.matcher(response);
-            if (matcher.find()) {
-                relevantDefinitions.add(ref);
-            }
-        }
-        return relevantDefinitions;
-    }
 
     /**
      * Search for usages of symbols.
@@ -636,7 +624,7 @@ public class SearchAgent {
     public String getUsages(
             @P(value = "Fully qualified symbol names (package name, class name, optional member name) to find usages for")
             List<String> symbols,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (symbols.isEmpty()) {
@@ -670,7 +658,7 @@ public class SearchAgent {
     public String getRelatedClasses(
             @P(value = "List of fully qualified class names.")
             List<String> classNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (classNames.isEmpty()) {
@@ -705,7 +693,7 @@ public class SearchAgent {
     public String getClassSkeletons(
             @P(value = "Fully qualified class names to get the skeleton structures for")
             List<String> classNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (classNames.isEmpty()) {
@@ -747,7 +735,7 @@ public class SearchAgent {
     public String getClassSources(
             @P(value = "Fully qualified class names to retrieve the full source code for")
             List<String> classNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (classNames.isEmpty()) {
@@ -786,7 +774,7 @@ public class SearchAgent {
     public String getMethodSources(
             @P(value = "Fully qualified method names (package name, class name, method name) to retrieve sources for")
             List<String> methodNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (methodNames.isEmpty()) {
@@ -842,7 +830,7 @@ public class SearchAgent {
     public String searchSubstrings(
             @P(value = "Java-style regex patterns to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
             List<String> patterns,
-            @P(value = "Everything you learned from THE MOST RECENT step taken")
+            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
             String learnings
     ) {
         if (patterns.isEmpty()) {
