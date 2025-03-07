@@ -801,7 +801,7 @@ public class EditBlock {
     /**
      * Parses blocks and attempts to apply them, reporting errors to stdout.
      */
-    public static void main(String[] args) throws IOException {
+    public static void main2(String[] args) throws IOException {
         // Create a simple console IO for output
         var io = new IConsoleIO() {
             @Override
