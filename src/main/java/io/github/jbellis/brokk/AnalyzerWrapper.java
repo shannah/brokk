@@ -269,18 +269,18 @@ public class AnalyzerWrapper {
             if (duration > 5000) {
                 project.setCpgRefresh(CpgRefresh.MANUAL);
                 var msg = """
-                CPG creation was slow (%,d ms); code intelligence will only refresh when explicitly requested via /refresh.
+                CPG creation was slow (%,d ms); code intelligence will only refresh when explicitly requested via File menu.
                 (Code intelligence will still refresh once automatically at startup.)
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                io.toolOutput(msg);
+                io.shellOutput(msg);
             } else {
                 project.setCpgRefresh(CpgRefresh.AUTO);
                 var msg = """
                 CPG creation was fast (%,d ms); code intelligence will refresh automatically when changes are made to tracked files.
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                io.toolOutput(msg);
+                io.shellOutput(msg);
                 startWatcher();
             }
             return analyzer;
