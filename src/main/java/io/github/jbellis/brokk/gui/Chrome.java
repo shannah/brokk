@@ -58,6 +58,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     
     // Track the horizontal split that holds the history panel
     private JSplitPane historySplitPane;
+    private JSplitPane verticalSplitPane;
 
     // Capture panel buttons
     private JButton captureTextButton;
@@ -116,7 +117,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // 2) Build main window
-        frame = new JFrame("Brokk - Swing Edition");
+        frame = new JFrame("Brokk: Code Intelligence for AI");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 1200);  // Taller than wide
         frame.setLayout(new BorderLayout());
@@ -195,35 +196,56 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historySplitPane.setRightComponent(contextHistoryPanel);
         historySplitPane.setResizeWeight(0.8); // 80% to output, 20% to history
 
-        gbc.weighty = 1.0;
-        gbc.gridy = 0;
-        contentPanel.add(historySplitPane, gbc);
-
+        // Create a split pane with output+history in top and command+context+status in bottom
+        verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        verticalSplitPane.setTopComponent(historySplitPane);
+        
+        // Create a panel for everything below the output area
+        var bottomPanel = new JPanel(new GridBagLayout());
+        var bottomGbc = new GridBagConstraints();
+        bottomGbc.fill = GridBagConstraints.BOTH;
+        bottomGbc.weightx = 1.0;
+        bottomGbc.gridx = 0;
+        bottomGbc.insets = new Insets(2, 2, 2, 2);
+        
         // We will size the history panel after the frame is actually displayed
         SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
 
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
-        gbc.weighty = 0.0;
-        gbc.gridy = 1;
-        contentPanel.add(resultLabel, gbc);
+        bottomGbc.weighty = 0.0;
+        bottomGbc.gridy = 0;
+        bottomPanel.add(resultLabel, bottomGbc);
 
         // 3. Command input with prompt
         var commandPanel = buildCommandInputPanel();
-        gbc.gridy = 2;
-        contentPanel.add(commandPanel, gbc);
+        bottomGbc.gridy = 1;
+        bottomPanel.add(commandPanel, bottomGbc);
 
         // 4. Context panel (with border title)
         var ctxPanel = buildContextPanel();
-        gbc.weighty = 0.2;
-        gbc.gridy = 3;
-        contentPanel.add(ctxPanel, gbc);
+        bottomGbc.weighty = 0.2;
+        bottomGbc.gridy = 2;
+        bottomPanel.add(ctxPanel, bottomGbc);
 
         // 5. Background status label at bottom
         var statusLabel = buildBackgroundStatusLabel();
-        gbc.weighty = 0.0;
-        gbc.gridy = 4;
-        contentPanel.add(statusLabel, gbc);
+        bottomGbc.weighty = 0.0;
+        bottomGbc.gridy = 3;
+        bottomPanel.add(statusLabel, bottomGbc);
+        
+        verticalSplitPane.setBottomComponent(bottomPanel);
+        
+        // Add the vertical split pane to the content panel
+        gbc.weighty = 1.0;
+        gbc.gridy = 0;
+        contentPanel.add(verticalSplitPane, gbc);
+
+        // Set initial divider position - 60% for output area, 40% for bottom
+        SwingUtilities.invokeLater(() -> {
+            int height = frame.getHeight();
+            verticalSplitPane.setDividerLocation((int)(height * 0.6));
+        });
 
         panel.add(contentPanel, BorderLayout.CENTER);
         return panel;
