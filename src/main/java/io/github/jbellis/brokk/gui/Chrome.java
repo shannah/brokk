@@ -62,7 +62,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Capture panel buttons
     private JButton captureTextButton;
-    private JButton editFilesButton;
+    private JButton editReferencesButton;
 
     // Context Panel & table:
     private JPanel contextPanel;
@@ -1731,6 +1731,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 4) "Capture Text" button, full width
         captureTextButton = new JButton("Capture Text");
+        captureTextButton.setMnemonic(KeyEvent.VK_T);
         captureTextButton.setToolTipText("Capture the output as context");
         captureTextButton.addActionListener(e -> {
             contextManager.captureTextFromContextAsync();
@@ -1740,22 +1741,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new Dimension(Integer.MAX_VALUE, captureTextButton.getPreferredSize().height)
         );
 
-        // 5) "Edit Files" button, full width
-        editFilesButton = new JButton("Edit Files");
-        editFilesButton.setToolTipText("Edit the files referenced by the output");
-        editFilesButton.setEnabled(false);
-        editFilesButton.addActionListener(e -> {
+        // 5) "Edit References" button, full width
+        editReferencesButton = new JButton("Edit References");
+        editReferencesButton.setToolTipText("Edit the files referenced by the output");
+        editReferencesButton.setMnemonic(KeyEvent.VK_F);
+        editReferencesButton.setEnabled(false);
+        editReferencesButton.addActionListener(e -> {
             contextManager.editFilesFromContextAsync();
         });
-        editFilesButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        editFilesButton.setMaximumSize(
-                new Dimension(Integer.MAX_VALUE, editFilesButton.getPreferredSize().height)
+        editReferencesButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        editReferencesButton.setMaximumSize(
+                new Dimension(Integer.MAX_VALUE, editReferencesButton.getPreferredSize().height)
         );
 
         // 6) Stack both buttons at the bottom
         panel.add(captureTextButton);
         panel.add(Box.createVerticalStrut(5));  // small gap
-        panel.add(editFilesButton);
+        panel.add(editReferencesButton);
 
         // 7) Add a DocumentListener to the main llmStreamArea so these buttons
         //    update when that text changes
@@ -1790,12 +1792,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         ? new ContextFragment.StringFragment(text, "temp")
                         : ctx.getParsedOutput().parsedFragment();
                 Set<CodeUnit> sources = fragment.sources(analyzer);
-                editFilesButton.setEnabled(!sources.isEmpty());
+                editReferencesButton.setEnabled(!sources.isEmpty());
                 
                 // Update description with file names
                 updateFilesDescriptionLabel(sources, analyzer);
             } else {
-                editFilesButton.setEnabled(false);
+                editReferencesButton.setEnabled(false);
                 updateFilesDescriptionLabel(Set.of(), analyzer);
             }
         });

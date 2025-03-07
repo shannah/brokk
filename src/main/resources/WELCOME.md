@@ -15,7 +15,7 @@ Completion Suggestions: Press Ctrl+Space in any dialog to get completions.
 - Paste text (including stacktraces), and Brokk will automatically parse them for references to
   code sources.
 - Use `Capture Text` to capture the current output as context; this is particularly
-  useful for git commands.  Or you can use the related `Edit Files` to edit all
+  useful for git commands.  Or you can use `Edit References` to edit all
   files referenced.
 
 ## Working with external LLMs
