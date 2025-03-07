@@ -377,14 +377,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private void previewContextFromHistory(Context ctx) {
         assert ctx != null;
-        previewContextOnly(ctx);
+        loadContext(ctx);
     }
 
     /**
      * Lightweight method to preview a context without updating history
      * Only updates the LLM text area and context panel display
      */
-    public void previewContextOnly(Context ctx) {
+    public void loadContext(Context ctx) {
         assert ctx != null;
 
         SwingUtilities.invokeLater(() -> {
