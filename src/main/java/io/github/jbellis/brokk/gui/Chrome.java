@@ -455,8 +455,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JScrollPane buildLLMStreamScrollPane() {
         llmStreamArea = new RSyntaxTextArea();
         llmStreamArea.setEditable(false);
-        // We'll treat the content as plain text
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        // Initial welcome message is Markdown
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
         var caret = (DefaultCaret) llmStreamArea.getCaret();
         caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
         llmStreamArea.setLineWrap(true);

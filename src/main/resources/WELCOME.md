@@ -5,17 +5,15 @@ Brokk is code intelligence for AI.
 Check out the README at https://github.com/jbellis/brokk, but
 here's the short version:
 
-Use the `Edit Files` button to add files that you want Brokk to edit. You can
-use `Read Files` to add files that are related to your problem but you don't
-want edited; you can also summarize a file (or a class).
+- Use `Edit Files` to add files you want Brokk to modify.
+- Use `Read Files` to add files you want Brokk to see but not change.  However,
+  often you should prefer `Summarize Files` to keep your context streamlined.
+- Paste text (including stacktraces), and Brokk will automatically parse them for references to
+  code sources. 
+- Use `Capture Text` to capture the current output as context; this is particularly
+  useful for git commands.  Or you can use the related `Edit Files` to edit all
+  files referenced.
 
-You can paste text and images; stacktraces will be automatically parsed
-and method sources extracted as additional context.
+Completion Suggestions: Press Ctrl+Space in any dialog to get completions.
 
-Use `$$` to pull in information from another tool (most often git).
-
-You can trigger completion suggestions of identifiers while writing instructions
-with ctrl-space.
-
-P.S. The `Copy All` button pulls all the context into your clipboard with editing
-instructions for o1pro.
+`Copy All` gathers your entire context and relevant instructions for use with external editors like o1pro.
