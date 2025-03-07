@@ -601,6 +601,7 @@ public class SearchAgent {
         messages.add(new UserMessage("Query: %s\nReasoning: %s\nUsages found for %s:\n%s".formatted(
                 query, reasoning, String.join(", ", symbols), processedUsages)));
         var response = coder.sendMessage(coder.models.searchModel(), messages);
+        io.shellOutput("Filtering very long usages list");
         if (response == null) {
             return "Error: No response from coder";
         }
