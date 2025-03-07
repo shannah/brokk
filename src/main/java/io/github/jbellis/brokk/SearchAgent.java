@@ -59,6 +59,11 @@ public class SearchAgent {
     private final String query;
     private final List<ToolCall> actionHistory = new ArrayList<>();
     private final List<Tuple2<String, String>> knowledge = new ArrayList<>();
+    private final Set<String> toolCallSignatures = new HashSet<>();
+    private final Set<String> trackedClassNames = new HashSet<>();
+    
+    // ThreadLocal to store the current ToolCall being processed
+    private static final ThreadLocal<ToolCall> currentToolCall = new ThreadLocal<>();
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
 
@@ -232,10 +237,6 @@ public class SearchAgent {
     /**
      * Gets human-readable parameter information from a tool call
      */
-    /**
-     * Formats a list parameter for display in tool parameter info.
-     * Returns the first item if there's only one, or a count summary if there are multiple.
-     */
     private String formatListParameter(Map<String, Object> arguments, String paramName) {
         @SuppressWarnings("unchecked")
         List<String> items = (List<String>) arguments.get(paramName);
@@ -251,6 +252,9 @@ public class SearchAgent {
         return "";
     }
 
+    /**
+     * Formats a list parameter for display in tool parameter info.
+     */
     private String getToolParameterInfo(ToolCall toolCall) {
         if (toolCall == null) return "";
 
@@ -270,6 +274,126 @@ public class SearchAgent {
             logger.error("Error getting parameter info", e);
             return "";
         }
+    }
+    
+    /**
+     * Creates a unique signature for a tool call based on tool name and parameters
+     */
+    private String createToolCallSignature(ToolCall toolCall) {
+        String toolName = toolCall.getRequest().name();
+        String params = getToolParameterInfo(toolCall);
+        return toolName + ":" + params;
+    }
+    
+    /**
+     * Tracks class names from tool call parameters
+     */
+    private void trackClassNamesFromToolCall(ToolCall toolCall) {
+        try {
+            var arguments = toolCall.argumentsMap();
+            String toolName = toolCall.getRequest().name();
+            
+            switch (toolName) {
+                case "getClassSkeletons", "getClassSources", "getRelatedClasses" -> {
+                    @SuppressWarnings("unchecked")
+                    List<String> classNames = (List<String>) arguments.get("classNames");
+                    if (classNames != null) {
+                        trackedClassNames.addAll(classNames);
+                    }
+                }
+                case "getMethodSources" -> {
+                    @SuppressWarnings("unchecked")
+                    List<String> methodNames = (List<String>) arguments.get("methodNames");
+                    if (methodNames != null) {
+                        methodNames.stream()
+                            .map(this::extractClassNameFromMethod)
+                            .filter(Objects::nonNull)
+                            .forEach(trackedClassNames::add);
+                    }
+                }
+                case "getUsages" -> {
+                    @SuppressWarnings("unchecked")
+                    List<String> symbols = (List<String>) arguments.get("symbols");
+                    if (symbols != null) {
+                        symbols.stream()
+                            .map(this::extractClassNameFromSymbol)
+                            .filter(Objects::nonNull)
+                            .forEach(trackedClassNames::add);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error tracking class names", e);
+        }
+    }
+    
+    /**
+     * Extracts class name from a fully qualified method name
+     */
+    private String extractClassNameFromMethod(String methodName) {
+        int lastDot = methodName.lastIndexOf('.');
+        if (lastDot > 0) {
+            return methodName.substring(0, lastDot);
+        }
+        return null;
+    }
+    
+    /**
+     * Extracts class name from a symbol
+     */
+    private String extractClassNameFromSymbol(String symbol) {
+        // If the symbol contains a method or field reference
+        int lastDot = symbol.lastIndexOf('.');
+        if (lastDot > 0) {
+            return symbol.substring(0, lastDot);
+        }
+        // Otherwise assume it's a class
+        return symbol;
+    }
+
+    /**
+     * Checks if a tool call is a duplicate and returns PageRank results if it is
+     */
+    private String checkDuplicateToolCall() {
+        ToolCall toolCall = currentToolCall.get();
+        if (toolCall == null) {
+            return null;
+        }
+        
+        String signature = createToolCallSignature(toolCall);
+        if (toolCallSignatures.contains(signature)) {
+            logger.debug("Duplicate tool call detected: {}", signature);
+
+            // If we have tracked class names, return PageRank results for them
+            if (trackedClassNames.isEmpty()) {
+                return "You've already made this exact call. Please review previous results rather than repeating the same search.";
+            }
+
+            HashMap<String, Double> weightedSeeds = new HashMap<>();
+            for (String className : trackedClassNames) {
+                weightedSeeds.put(className, 1.0);
+            }
+
+            var pageRankResults = AnalyzerWrapper.combinedPageRankFor(analyzer, weightedSeeds);
+            if (!pageRankResults.isEmpty()) {
+                var prString = pageRankResults.stream().limit(30).collect(Collectors.joining(", "));
+                logger.debug("Pagerank results: " + prString);
+                return "You've already made this exact call. Instead of repeating the results, " +
+                        "here are related classes from PageRank analysis of previously discovered classes: " +
+                        prString;
+            }
+
+            return "You've already made this exact call. Please review previous results rather than repeating the same search.";
+        }
+
+        // Track this call for future duplicate checks
+        toolCallSignatures.add(signature);
+        trackClassNamesFromToolCall(toolCall);
+        
+        // Clean up ThreadLocal
+        currentToolCall.remove();
+        
+        return null; // Not a duplicate
     }
 
     /**
@@ -518,6 +642,12 @@ public class SearchAgent {
         if (learnings.isBlank()) {
             return "Cannot search definitions: learnings summary is empty";
         }
+        
+        // Set current tool call and check if this is a duplicate
+        String duplicateResultResponse = checkDuplicateToolCall();
+        if (duplicateResultResponse != null) {
+            return duplicateResultResponse;
+        }
 
         updateHistory(learnings);
 
@@ -634,6 +764,12 @@ public class SearchAgent {
             return "Cannot search usages: learnings summary is empty";
         }
         
+        // Set current tool call and check if this is a duplicate
+        String duplicateResult = checkDuplicateToolCall();
+        if (duplicateResult != null) {
+            return duplicateResult;
+        }
+
         updateHistory(learnings);
 
         List<CodeUnit> allUses = new ArrayList<>();
@@ -668,6 +804,12 @@ public class SearchAgent {
             return "Cannot search pagerank: learnings summary is empty";
         }
         
+        // Set current tool call and check if this is a duplicate
+        String duplicateResult = checkDuplicateToolCall();
+        if (duplicateResult != null) {
+            return duplicateResult;
+        }
+
         updateHistory(learnings);
 
         // Create map of seeds from discovered units
@@ -700,6 +842,12 @@ public class SearchAgent {
             return "Cannot get skeletons: class names list is empty";
         }
         
+        // Set current tool call and check if this is a duplicate
+        String duplicateResult = checkDuplicateToolCall();
+        if (duplicateResult != null) {
+            return duplicateResult;
+        }
+
         updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
@@ -742,6 +890,12 @@ public class SearchAgent {
             return "Cannot get class sources: class names list is empty";
         }
         
+        // Set current tool call and check if this is a duplicate
+        String duplicateResult = checkDuplicateToolCall();
+        if (duplicateResult != null) {
+            return duplicateResult;
+        }
+
         updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
@@ -781,6 +935,12 @@ public class SearchAgent {
             return "Cannot get method sources: method names list is empty";
         }
         
+        // Set current tool call and check if this is a duplicate
+        String duplicateResult = checkDuplicateToolCall();
+        if (duplicateResult != null) {
+            return duplicateResult;
+        }
+
         updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
@@ -840,6 +1000,12 @@ public class SearchAgent {
             return "Cannot search substrings: learnings summary is empty";
         }
         
+        // Set current tool call and check if this is a duplicate
+        String duplicateResult = checkDuplicateToolCall();
+        if (duplicateResult != null) {
+            return duplicateResult;
+        }
+
         updateHistory(learnings);
 
         logger.debug("Searching file contents for patterns: {}", patterns);
@@ -953,6 +1119,8 @@ public class SearchAgent {
             if (result != null) {
                 return;
             }
+
+            currentToolCall.set(this);
             try {
                 // Use TER's tool name as the method name
                 String methodName = request.name();
