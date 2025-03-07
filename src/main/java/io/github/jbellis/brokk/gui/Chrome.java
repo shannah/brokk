@@ -593,6 +593,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
+        // Check if LLM is available
+        if (!contextManager.coder.isLlmAvailable()) {
+            toolError("No LLM available (missing API keys)");
+            return;
+        }
+
         llmStreamArea.setText("Code: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
@@ -628,6 +634,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a question");
             return;
         }
+        
+        // Check if LLM is available
+        if (!contextManager.coder.isLlmAvailable()) {
+            toolError("No LLM available (missing API keys)");
+            return;
+        }
+        
         llmStreamArea.setText("Ask: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -645,6 +658,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please provide a search query");
             return;
         }
+        
+        // Check if LLM is available
+        if (!contextManager.coder.isLlmAvailable()) {
+            toolError("No LLM available (missing API keys)");
+            return;
+        }
+        
         llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);

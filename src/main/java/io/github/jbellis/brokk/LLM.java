@@ -23,11 +23,6 @@ public class LLM {
      * Implementation of the LLM session that runs in a separate thread.
      */
     public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
-        if (!coder.isLlmAvailable()) {
-            io.toolError("No LLM available (missing API keys)");
-            return;
-        }
-
         // Track original contents of files before any changes
         var originalContents = new HashMap<RepoFile, String>();
 
