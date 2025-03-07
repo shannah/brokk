@@ -82,7 +82,7 @@ public class Brokk {
             }
 
             // Output initial info to the command result area
-            io.shellOutput("\nEnvironment:");
+            io.shellOutput("\n## Environment:");
             io.shellOutput("Brokk %s".formatted(version));
             io.shellOutput("Editor model: " + models.editModelName());
             io.shellOutput("Apply model: " + models.applyModelName());
