@@ -91,7 +91,7 @@ public class Coder {
                 || result.chatResponse() == null
                 || result.chatResponse().aiMessage().text().isBlank())
             {
-                logger.debug(result.error());
+                logger.debug("LLM error", result.error());
                 // If out of attempts, return whatever we have
                 if (attempt == maxAttempts) {
                     return result;
@@ -101,10 +101,8 @@ public class Coder {
                 long backoffSeconds = 1L << (attempt - 1);
                 backoffSeconds = Math.min(backoffSeconds, 16);
 
-                io.toolOutput(
-                    String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
-                                  attempt, maxAttempts, (double)backoffSeconds)
-                );
+                io.toolOutput(String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
+                                  attempt, maxAttempts, (double)backoffSeconds));
                 
                 // Busywait with countdown
                 long startTime = System.currentTimeMillis();
@@ -321,6 +319,7 @@ public class Coder {
                                || response.aiMessage().text().isBlank());
 
             if (error != null || isEmpty) {
+                logger.debug("LLM error", error);
                 if (attempt == maxAttempts) {
                     // Return the final error or a dummy ChatResponse
                     if (error != null) {
