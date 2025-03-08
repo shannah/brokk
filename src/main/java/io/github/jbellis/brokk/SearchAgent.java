@@ -112,7 +112,7 @@ public class SearchAgent {
             // Build short system prompt or messages
             ArrayList<ChatMessage> messages = new ArrayList<>();
             messages.add(new SystemMessage("""
-            You are a code expert that extracts ALL information from the input that is relevant to the given query. 
+            You are a code expert that extracts ALL information from the input that is relevant to the given query.
             Your partner has included his reasoning about what he is looking for; your work will be the only knowledge
             about this tool call that he will have to work with, he will not see the full result, so make it comprehensive!
             Be particularly sure to include ALL relevant source code chunks so he can reference them in his final answer,
@@ -149,7 +149,7 @@ public class SearchAgent {
             )));
 
             // Use the quick model for summarization
-            var response = coder.sendMessage(coder.models.quickModel(), messages);
+            var response = coder.sendMessage(coder.models.searchModel(), messages);
             return response.aiMessage().text();
         });
     }
@@ -702,7 +702,9 @@ public class SearchAgent {
             [how do Cassandra reads prevent compaction from invalidating the sstables they are referencing]
             then we should start with searchSymbols([".*SSTable.*", ".*Compaction.*", ".*reference.*"],
             instead of a more specific pattern like ".*SSTable.*compaction.*" or ".*compaction.*invalidation.*".
-            Review your previous steps first -- the search results won't change so don't repeat yourself!
+            But once you have found specific relevant classes or methods, you can ask for them directly, you don't
+            need to make another symbol request first.
+            Don't forget to review your previous steps -- the search results won't change so don't repeat yourself!
             """;
         }
         instructions += """
