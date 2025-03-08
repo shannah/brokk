@@ -28,4 +28,29 @@ public interface IConsoleIO {
     default void shellOutput(String message) {
         llmOutput("\n" + message);
     }
+
+    default void shellOutputMarkdown(String message) {
+        shellOutput(escapeMarkdown(message));
+    }
+
+    static String escapeMarkdown(String text) {
+        if (text == null) return "";
+
+        return text.replace("\\", "\\\\")
+                .replace("`", "\\`")
+                .replace("*", "\\*")
+                .replace("_", "\\_")
+                .replace("{", "\\{")
+                .replace("}", "\\}")
+                .replace("[", "\\[")
+                .replace("]", "\\]")
+                .replace("(", "\\(")
+                .replace(")", "\\)")
+                .replace("#", "\\#")
+                .replace("+", "\\+")
+                .replace("-", "\\-")
+                .replace(".", "\\.")
+                .replace("!", "\\!")
+                .replace("|", "\\|");
+    }
 }

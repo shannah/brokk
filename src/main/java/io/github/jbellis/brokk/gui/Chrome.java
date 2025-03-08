@@ -1902,7 +1902,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void setSyntaxStyle(String style) {
-        llmStreamArea.setSyntaxEditingStyle(style);
+        SwingUtilities.invokeLater(() -> {
+            llmStreamArea.setSyntaxEditingStyle(style);
+        });
     }
 
     public ContextManager getContextManager() {

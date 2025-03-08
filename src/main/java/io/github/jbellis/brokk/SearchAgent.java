@@ -30,7 +30,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import java.util.zip.CRC32;
 
 import static java.lang.Math.min;
 
@@ -99,7 +98,7 @@ public class SearchAgent {
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {
-            io.shellOutput("Evaluating context");
+            io.shellOutputMarkdown("Evaluating context");
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
             You are an expert software architect.
@@ -136,7 +135,7 @@ public class SearchAgent {
 
             // Print some debug/log info
             var explanation = tools.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
-            io.shellOutput(explanation);
+            io.shellOutputMarkdown(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
             logger.debug("Actions: {}", tools);
 
@@ -639,15 +638,16 @@ public class SearchAgent {
      */
     private List<ToolCall> parseResponse(AiMessage response) {
         if (!response.hasToolExecutionRequests()) {
+            logger.debug("No tool execution requests found in response");
             var dummyTer = ToolExecutionRequest.builder().name("MISSING_TOOL_CALL").build();
             var errorCall = new ToolCall(dummyTer, "Error: No tool execution requests found in response");
             return List.of(errorCall);
         }
 
-        // Process each tool execution request
+        // Process each tool execution request with duplicate detection
+        logger.debug("Processing tool execution requests {}", response.toolExecutionRequests());
         var toolCalls = response.toolExecutionRequests().stream()
                 .map(ToolCall::new)
-                // Add the next line to transform duplicates into forged calls:
                 .map(this::replaceDuplicateCallIfNeeded)
                 .toList();
 

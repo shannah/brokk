@@ -301,12 +301,12 @@ public class ContextManager implements IContextManager
                     return;
                 }
                 // run a search agent
+                chrome.setSyntaxStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
                 var agent = new SearchAgent(query, this, coder, chrome);
                 var result = agent.execute();
                 if (result == null) {
                     chrome.toolOutput("Search was interrupted");
                 } else {
-                    chrome.setSyntaxStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
                     chrome.llmOutput("\n\n# Anaswer" + "\n\n" + result.text() + "\n");
                     // The search agent already creates the right fragment type
                     addSearchFragment(result);
