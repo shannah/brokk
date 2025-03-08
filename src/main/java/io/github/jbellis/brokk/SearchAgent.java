@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -76,6 +77,84 @@ public class SearchAgent {
     }
 
     /**
+     * Finalizes any pending summarizations in the action history by waiting for
+     * CompletableFutures to complete and replacing raw results with learnings.
+     */
+    private void finalizePendingSummaries() {
+        for (var step : actionHistory) {
+            // Already summarized? skip
+            if (step.learnings != null) continue;
+
+            // If this step has a summarizeFuture, block for result
+            if (step.summarizeFuture != null) {
+                try {
+                    var summary = step.summarizeFuture.get(); // block
+                    step.learnings = summary;
+                    // once we have learnings, we can discard the big raw result
+                    step.result = null;
+                    logger.debug("Replaced <result> with <learnings> for tool call: {}", step.request.name());
+                } catch (Exception e) {
+                    logger.error("Error waiting for summary", e);
+                    step.learnings = step.result;
+                }
+            }
+        }
+    }
+
+    /**
+     * Asynchronously summarizes a raw result using the quick model
+     */
+    private CompletableFuture<String> summarizeResultAsync(String query, ToolCall step)
+    {
+        // Use supplyAsync to run in background
+        return CompletableFuture.supplyAsync(() -> {
+            logger.debug("Summarizing result with quick model...");
+            // Build short system prompt or messages
+            ArrayList<ChatMessage> messages = new ArrayList<>();
+            messages.add(new SystemMessage("""
+            You are a code expert that extracts ALL information from the input that is relevant to the given query. 
+            Your partner has included his reasoning about what he is looking for; your work will be the only knowledge
+            about this tool call that he will have to work with, he will not see the full result, so make it comprehensive!
+            Be particularly sure to include ALL relevant source code chunks so he can reference them in his final answer,
+            but DO NOT speculate or guess: your answer must ONLY include information in this result!
+            Here are examples of good and bad extractions:
+              - Bad: Found several classes and methods related to the query
+              - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods org.foo.qux.Z.method1 and org.foo.fizz.W.method2
+              - Bad: The Foo class implements the Bar algorithm
+              - Good: The Foo class implements the Bar algorithm.  Here are all the relevant lines of code:
+                ```
+                public class Foo {
+                ...
+                }
+                ```
+            """.stripIndent()));
+            var arguments = step.argumentsMap();
+            var reasoning = arguments.getOrDefault("reasoning", "");
+            messages.add(new UserMessage("""
+            <query>
+            %s
+            </query>
+            <reasoning>
+            %s
+            </reasoning>
+            <tool name="%s" %s>
+            %s
+            </tool>
+            """.stripIndent().formatted(
+                query,
+                reasoning,
+                step.request.name(),
+                getToolParameterInfo(step),
+                step.result
+            )));
+
+            // Use the quick model for summarization
+            var response = coder.sendMessage(coder.models.quickModel(), messages);
+            return response.aiMessage().text();
+        });
+    }
+
+    /**
      * Execute the search process, iterating through queries until completion.
      * @return The final set of discovered code units
      */
@@ -112,6 +191,9 @@ public class SearchAgent {
         }
 
         while (true) {
+            // Finalize any pending summaries before determining the next actions
+            finalizePendingSummaries();
+            
             // If thread interrupted, bail out
             if (Thread.interrupted()) {
                 return null;
@@ -142,6 +224,14 @@ public class SearchAgent {
             // Execute the steps
             var results = tools.stream().parallel().peek(step -> {
                 step.execute();
+                
+                // Start summarization for specific tools
+                var toolName = step.getRequest().name();
+                var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getRelatedClasses", "getClassSources", "searchSubstrings");
+                if (toolsRequiringSummaries.contains(toolName)) {
+                    step.summarizeFuture = summarizeResultAsync(query, step);
+                }
+                
                 logger.debug("Result: {}", step);
             }).toList();
 
@@ -586,21 +676,6 @@ public class SearchAgent {
         information to answer the query.
         - Round trips are expensive! If you have multiple search terms to learn about, group them in a single call.
         - Of course, `abort` and `answer` tools cannot be composed with others.
-        - Each tool call must include a `learnings` parameter that records what you learned
-          from the MOST RECENT action in enough detail that you never have to repeat that action
-          This will be the ONLY content from that action saved in history, you will not see the full response again,
-          so make it comprehensive! Be particularly sure to include ALL relevant source code chunks so you can
-          reference them in your final answer!
-          Here are examples of good and bad `learnings`:
-            - Bad: Found several classes and methods related to the query
-            - Good: Found classes org.foo.bar.X and org.foo.baz.Y, and methods org.foo.qux.Z.method1 and org.foo.fizz.W.method2 related to the query.
-            - Bad: The Foo class implements the Bar algorithm
-            - Good: The Foo class implements the Bar algorithm.  Here are the most relevant lines of code:
-              ```
-              public class Foo {
-              ...
-              }
-              ```
         """;
         if (symbolsFound) {
             // Switch to beast mode if we're running out of time
@@ -656,15 +731,6 @@ public class SearchAgent {
     }
     
     /**
-     * Updates the learnings of the most recent history entry.
-     */
-    private void updateHistory(String learnings) {
-        if (!actionHistory.isEmpty()) {
-            actionHistory.getLast().learnings = learnings;
-        }
-    }
-
-    /**
      * Parse the LLM response into a list of ToolCall objects.
      * This method handles both direct text responses and tool execution responses.
      * ANSWER or ABORT tools will be sorted at the end.
@@ -700,18 +766,15 @@ public class SearchAgent {
     public String searchSymbols(
             @P(value = "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
             List<String> patterns,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            @P(value = "Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
+            String reasoning
     ) {
         if (patterns.isEmpty()) {
             return "Cannot search definitions: patterns list is empty";
         }
-        if (learnings.isBlank()) {
-            return "Cannot search definitions: learnings summary is empty";
+        if (reasoning.isBlank()) {
+            return "Cannot search definitions: missing or empty reasoning parameter";
         }
-        
-
-        updateHistory(learnings);
 
         // Enable substring search after the first successful searchSymbols call
         allowSubstringSearch = true;
@@ -816,17 +879,15 @@ public class SearchAgent {
     public String getUsages(
             @P(value = "Fully qualified symbol names (package name, class name, optional member name) to find usages for")
             List<String> symbols,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            @P(value = "Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
+            String reasoning
     ) {
         if (symbols.isEmpty()) {
             return "Cannot search usages: symbols list is empty";
         }
-        if (learnings.isBlank()) {
-            return "Cannot search usages: learnings summary is empty";
+        if (reasoning.isBlank()) {
+            return "Cannot search usages: missing or empty reasoning parameter";
         }
-
-        updateHistory(learnings);
 
         List<CodeUnit> allUses = new ArrayList<>();
         for (String symbol : symbols) {
@@ -850,17 +911,15 @@ public class SearchAgent {
     public String getRelatedClasses(
             @P(value = "List of fully qualified class names.")
             List<String> classNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            @P(value = "Explanation of the reasoning behind this request so the summarizer can see it.")
+            String reasoning
     ) {
         if (classNames.isEmpty()) {
             return "Cannot search pagerank: classNames is empty";
         }
-        if (learnings.isBlank()) {
-            return "Cannot search pagerank: learnings summary is empty";
+        if (reasoning.isBlank()) {
+            return "Cannot search pagerank: missing or empty reasoning parameter";
         }
-
-        updateHistory(learnings);
 
         // Create map of seeds from discovered units
         HashMap<String, Double> weightedSeeds = new HashMap<>();
@@ -884,15 +943,11 @@ public class SearchAgent {
     @Tool("Get an overview of classes' contents, including fields and method signatures. Use this to understand class structures without fetching full source code.")
     public String getClassSkeletons(
             @P(value = "Fully qualified class names to get the skeleton structures for")
-            List<String> classNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            List<String> classNames
     ) {
         if (classNames.isEmpty()) {
             return "Cannot get skeletons: class names list is empty";
         }
-
-        updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
         Set<String> processedSkeletons = new HashSet<>();
@@ -927,14 +982,15 @@ public class SearchAgent {
     public String getClassSources(
             @P(value = "Fully qualified class names to retrieve the full source code for")
             List<String> classNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            @P(value = "Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
+            String reasoning
     ) {
         if (classNames.isEmpty()) {
             return "Cannot get class sources: class names list is empty";
         }
-
-        updateHistory(learnings);
+        if (reasoning.isBlank()) {
+            return "Cannot get class sources: missing or empty reasoning parameter";
+        }
 
         StringBuilder result = new StringBuilder();
         Set<String> processedSources = new HashSet<>();
@@ -944,7 +1000,7 @@ public class SearchAgent {
                 String classSource = analyzer.getClassSource(className);
                 if (classSource != null && !classSource.isEmpty() && !processedSources.contains(classSource)) {
                     processedSources.add(classSource);
-                    if (result.length() > 0) {
+                    if (!result.isEmpty()) {
                         result.append("\n\n");
                     }
                     result.append("Source code of ").append(className).append(":\n\n").append(classSource);
@@ -952,7 +1008,7 @@ public class SearchAgent {
             }
         }
 
-        if (result.length() == 0) {
+        if (result.isEmpty()) {
             return "No sources found for classes: " + String.join(", ", classNames);
         }
 
@@ -965,15 +1021,11 @@ public class SearchAgent {
     @Tool("Get the source code of specific methods. Use this to examine the implementation of particular methods without retrieving the entire classes.")
     public String getMethodSources(
             @P(value = "Fully qualified method names (package name, class name, method name) to retrieve sources for")
-            List<String> methodNames,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            List<String> methodNames
     ) {
         if (methodNames.isEmpty()) {
             return "Cannot get method sources: method names list is empty";
         }
-
-        updateHistory(learnings);
 
         StringBuilder result = new StringBuilder();
         Set<String> processedMethodSources = new HashSet<>();
@@ -985,7 +1037,7 @@ public class SearchAgent {
                     String methodSource = methodSourceOpt.get();
                     if (!processedMethodSources.contains(methodSource)) {
                         processedMethodSources.add(methodSource);
-                        if (result.length() > 0) {
+                        if (!result.isEmpty()) {
                             result.append("\n\n");
                         }
                         result.append(methodSource);
@@ -994,7 +1046,7 @@ public class SearchAgent {
             }
         }
 
-        if (result.length() == 0) {
+        if (result.isEmpty()) {
             return "No sources found for methods: " + String.join(", ", methodNames);
         }
 
@@ -1022,17 +1074,15 @@ public class SearchAgent {
     public String searchSubstrings(
             @P(value = "Java-style regex patterns to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
             List<String> patterns,
-            @P(value = "Everything you learned from THE MOST RECENT step taken, including ALL relevant source code")
-            String learnings
+            @P(value = "Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
+            String reasoning
     ) {
         if (patterns.isEmpty()) {
             return "Cannot search substrings: patterns list is empty";
         }
-        if (learnings.isBlank()) {
-            return "Cannot search substrings: learnings summary is empty";
+        if (reasoning.isBlank()) {
+            return "Cannot search substrings: missing or empty reasoning parameter";
         }
-
-        updateHistory(learnings);
 
         logger.debug("Searching file contents for patterns: {}", patterns);
 
@@ -1111,6 +1161,7 @@ public class SearchAgent {
         private final ToolExecutionRequest request;
         private String result; // initially null
         private String learnings; // initially null
+        private CompletableFuture<String> summarizeFuture;
 
         public ToolCall(ToolExecutionRequest request) {
             this(request, null);
