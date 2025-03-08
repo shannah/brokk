@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Executors;
 
 public class Project {
     private final Path propertiesFile;
@@ -20,6 +21,7 @@ public class Project {
     private final Properties props;
     private final Path styleGuidePath;
     private final Path historyFilePath;
+    private final AnalyzerWrapper analyzerWrapper;
 
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
     private static final int DEFAULT_WINDOW_WIDTH = 800;
@@ -34,7 +36,7 @@ public class Project {
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
         this.historyFilePath = root.resolve(".brokk").resolve("linereader.txt");
         this.props = new Properties();
-
+        
         if (Files.exists(propertiesFile)) {
             try (var reader = Files.newBufferedReader(propertiesFile)) {
                 props.load(reader);
@@ -43,6 +45,9 @@ public class Project {
                 props.clear();
             }
         }
+        
+        // Create the analyzer wrapper
+        this.analyzerWrapper = new AnalyzerWrapper(this, Executors.newSingleThreadExecutor());
 
         // Set defaults on missing or error
         if (props.isEmpty()) {
@@ -298,5 +303,19 @@ public class Project {
         } catch (IOException e) {
             logger.error("Error saving LLM keys: {}", e.getMessage());
         }
+    }
+    
+    /**
+     * Get the analyzer wrapper
+     */
+    public AnalyzerWrapper getAnalyzerWrapper() {
+        return analyzerWrapper;
+    }
+    
+    /**
+     * Set a listener for analyzer events
+     */
+    public void setAnalyzerListener(AnalyzerListener listener) {
+        analyzerWrapper.setListener(listener);
     }
 }

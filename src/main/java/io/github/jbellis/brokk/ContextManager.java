@@ -61,7 +61,6 @@ public class ContextManager implements IContextManager
 {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
-    private AnalyzerWrapper analyzerWrapper;
     private Chrome io; // for UI feedback
     private Coder coder;
 
@@ -150,10 +149,23 @@ public class ContextManager implements IContextManager
     {
         this.io = chrome;
         this.coder = coder;
-        this.analyzerWrapper = new AnalyzerWrapper(project, chrome, backgroundTasks);
+        
+        // Set up the listener for analyzer events
+        project.setAnalyzerListener(new AnalyzerListener() {
+            @Override
+            public void onAnalyzerBlocked() {
+                SwingUtilities.invokeLater(() -> io.toolOutput("Analyzer is refreshing"));
+            }
+
+            @Override
+            public void onAnalyzerFirstBuild(String msg) {
+                SwingUtilities.invokeLater(() -> io.shellOutput(msg));
+            }
+        });
+        
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
-        var initialContext = new Context(analyzerWrapper, 5);
+        var initialContext = new Context(project.getAnalyzerWrapper(), 5);
         contextHistory.add(initialContext);
         chrome.setContext(initialContext);
 
@@ -209,11 +221,11 @@ public class ContextManager implements IContextManager
      */
     public Analyzer getAnalyzer()
     {
-        return analyzerWrapper.get();
+        return project.getAnalyzerWrapper().get();
     }
 
     public Analyzer getAnalyzerNonBlocking() {
-        return analyzerWrapper.getNonBlocking();
+        return project.getAnalyzerWrapper().getNonBlocking();
     }
 
     public Path getRoot()
@@ -681,7 +693,7 @@ public class ContextManager implements IContextManager
     public void requestRebuild()
     {
         GitRepo.instance.refresh();
-        analyzerWrapper.requestRebuild();
+        project.getAnalyzerWrapper().requestRebuild();
     }
 
     /** undo last context change */
@@ -1271,7 +1283,7 @@ public class ContextManager implements IContextManager
         submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.toolOutput("Generating project style guide...");
-                var analyzer = analyzerWrapper.getForBackground();
+                var analyzer = project.getAnalyzerWrapper().getForBackground();
                 var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
 
                 var codeForLLM = new StringBuilder();

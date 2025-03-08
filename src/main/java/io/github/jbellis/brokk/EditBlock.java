@@ -113,9 +113,9 @@ public class EditBlock {
                     if (isCreateNew) {
                         try {
                             GitRepo.instance.add(file.toString());
-                            io.llmOutput("Added to git " + file);
+                            io.shellOutput("Added to git " + file);
                         } catch (IOException e) {
-                            io.toolError("Failed to git add " + file + ": " + e.getMessage());
+                            io.shellOutput("Failed to git add " + file + ": " + e.getMessage());
                         }
                     }
                 }

@@ -32,7 +32,7 @@ public class AnalyzerWrapper {
 
     private static final long DEBOUNCE_DELAY_MS = 500;
 
-    private final IConsoleIO io;
+    private AnalyzerListener listener; // can be null if no one is listening
     private final Path root;
     private final ExecutorService analyzerExecutor;   // where analyzer rebuilds run
     private final BlockingQueue<DirectoryChangeEvent> eventQueue = new LinkedBlockingQueue<>();
@@ -48,14 +48,20 @@ public class AnalyzerWrapper {
     /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
-    public AnalyzerWrapper(Project project, IConsoleIO io, ExecutorService analyzerExecutor) {
+    public AnalyzerWrapper(Project project, ExecutorService analyzerExecutor) {
         this.project = project;
         this.analyzerExecutor = analyzerExecutor;
         this.root = project.getRoot();
-        this.io = io;
 
         // build the initial Analyzer
         future = analyzerExecutor.submit(this::loadOrCreateAnalyzer);
+    }
+    
+    /**
+     * Set a listener to receive analyzer events
+     */
+    public void setListener(AnalyzerListener listener) {
+        this.listener = listener;
     }
 
     @NotNull
@@ -273,14 +279,20 @@ public class AnalyzerWrapper {
                 (Code intelligence will still refresh once automatically at startup.)
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                io.shellOutput(msg);
+                if (listener != null) {
+                    listener.onAnalyzerFirstBuild(msg);
+                }
+                logger.info(msg);
             } else {
                 project.setCpgRefresh(CpgRefresh.AUTO);
                 var msg = """
                 CPG creation was fast (%,d ms); code intelligence will refresh automatically when changes are made to tracked files.
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                io.shellOutput(msg);
+                if (listener != null) {
+                    listener.onAnalyzerFirstBuild(msg);
+                }
+                logger.info(msg);
                 startWatcher();
             }
             return analyzer;
@@ -352,6 +364,7 @@ public class AnalyzerWrapper {
         }
 
         rebuildInProgress = true;
+        logger.debug("Rebuilding analyzer");
         future = analyzerExecutor.submit(() -> {
             try {
                 return createAndSaveAnalyzer();
@@ -384,7 +397,9 @@ public class AnalyzerWrapper {
                 Exception e = new Exception("Stack trace");
                 logger.debug("Blocking on analyzer creation", e);
             }
-            io.toolOutput("Analyzer is being created");
+            if (listener != null) {
+                listener.onAnalyzerBlocked();
+            }
         }
         try {
             return future.get();
