@@ -24,7 +24,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class GitRepo implements Closeable {
-    public static final GitRepo instance = new GitRepo();
 
     private final Path root;
     private final Repository repository;
@@ -38,9 +37,8 @@ public class GitRepo implements Closeable {
         return git;
     }
 
-    private GitRepo() {
-        // Moved "findGitRoot" logic here
-        this.root = findGitRoot();
+    public GitRepo(Path root) {
+        this.root = root;
         if (root == null) {
             throw new IllegalStateException("No git repository found");
         }
@@ -57,7 +55,7 @@ public class GitRepo implements Closeable {
     /**
      * The single place for locating .git upward from current directory.
      */
-    private static Path findGitRoot() {
+    public static Path findGitRoot() {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
             if (Files.exists(current.resolve(".git"))) {

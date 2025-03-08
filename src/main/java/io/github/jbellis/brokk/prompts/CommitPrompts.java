@@ -15,7 +15,7 @@ public abstract class CommitPrompts extends DefaultPrompts {
 
     @Override
     public List<ChatMessage> collectMessages(ContextManager cm) {
-        var diffTxt = GitRepo.instance.diff();
+        var diffTxt = cm.getProject().getRepo().diff();
         if (diffTxt.isEmpty()) {
             return List.of();
         }

@@ -18,7 +18,7 @@ public class CompleteUsageTest {
 
     @VisibleForTesting
     static List<String> completeUsage(String input, IAnalyzer analyzer) {
-        return Completions.completeClassesAndMembers(input, analyzer, true);
+        return Completions.completeClassesAndMembers(input, analyzer);
     }
 
     // A simple inline "mock" analyzer: no mocking library used.
@@ -213,7 +213,7 @@ public class CompleteUsageTest {
         var mock = new MockAnalyzer();
         
         // Test class-only completions (no dot or $ in input)
-        var completions = Completions.completeClassesAndMembers("d", mock, false);
+        var completions = Completions.completeClassesAndMembers("d", mock);
         var values = toValues(completions);
         assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), values);
 
@@ -226,15 +226,15 @@ public class CompleteUsageTest {
     public void testShortNameCompletions() {
         var mock = new MockAnalyzer();
 
-        var completions = Completions.completeClassesAndMembers("d", mock, false);
+        var completions = Completions.completeClassesAndMembers("d", mock);
         // spelling out the classname doesn't change things
-        assertEquals(completions, Completions.completeClassesAndMembers("Do", mock, false));
+        assertEquals(completions, Completions.completeClassesAndMembers("Do", mock));
         assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), toValues(completions));
 
-        completions = Completions.completeClassesAndMembers("Do.", mock, false);
+        completions = Completions.completeClassesAndMembers("Do.", mock);
         assertEquals(Set.of("a.b.Do", "Do.foo", "Do.bar"), toValues(completions));
 
-        completions = Completions.completeClassesAndMembers("Do.", mock, false);
+        completions = Completions.completeClassesAndMembers("Do.", mock);
         assertEquals(Set.of("a.b.Do", "Do.foo", "Do.bar"), toValues(completions));
     }
 

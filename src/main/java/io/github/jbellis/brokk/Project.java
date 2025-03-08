@@ -22,6 +22,7 @@ public class Project {
     private final Path styleGuidePath;
     private final Path historyFilePath;
     private final AnalyzerWrapper analyzerWrapper;
+    private final GitRepo repo;
 
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
     private static final int DEFAULT_WINDOW_WIDTH = 800;
@@ -31,6 +32,7 @@ public class Project {
     private static final Logger logger = LogManager.getLogger(Project.class);
 
     public Project(Path root) {
+        this.repo = new GitRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
@@ -65,6 +67,10 @@ public class Project {
                 logger.error("Error creating default window settings: {}", e.getMessage());
             }
         }
+    }
+
+    public GitRepo getRepo() {
+        return repo;
     }
 
     public String getBuildCommand() {

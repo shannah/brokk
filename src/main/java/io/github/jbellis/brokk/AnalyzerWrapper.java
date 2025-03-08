@@ -235,11 +235,11 @@ public class AnalyzerWrapper {
         });
         if (needsGitRefresh) {
             logger.debug("Refreshing git due to changes in .git directory");
-            GitRepo.instance.refresh();
+            project.getRepo().refresh();
         }
 
         // 2) Check if any *tracked* files changed
-        Set<Path> trackedPaths = GitRepo.instance.getTrackedFiles().stream()
+        Set<Path> trackedPaths = project.getRepo().getTrackedFiles().stream()
                 .map(RepoFile::absPath)
                 .collect(Collectors.toSet());
 
@@ -322,7 +322,7 @@ public class AnalyzerWrapper {
             return null;
         }
 
-        List<RepoFile> trackedFiles = GitRepo.instance.getTrackedFiles();
+        List<RepoFile> trackedFiles = project.getRepo().getTrackedFiles();
         long cpgMTime;
         try {
             cpgMTime = Files.getLastModifiedTime(analyzerPath).toMillis();

@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.GitRepo;
+import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.RepoFile;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.BasicCompletion;
@@ -39,6 +40,7 @@ public class FileSelectionDialog extends JDialog {
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
     private final JButton cancelButton;
+    private final GitRepo repo;
 
     // The selected files
     private List<RepoFile> selectedFiles = new ArrayList<>();
@@ -46,9 +48,10 @@ public class FileSelectionDialog extends JDialog {
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
-    public FileSelectionDialog(Frame parent, Path root, String title) {
+    public FileSelectionDialog(Frame parent, Project project, String title) {
         super(parent, title, true); // modal dialog
-        this.rootPath = root;
+        this.rootPath = project.getRoot();
+        this.repo = project.getRepo();
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -136,7 +139,7 @@ public class FileSelectionDialog extends JDialog {
      */
     private JTree buildFileTree() {
         DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode(rootPath.getFileName().toString());
-        List<RepoFile> tracked = new ArrayList<>(GitRepo.instance.getTrackedFiles());
+        List<RepoFile> tracked = new ArrayList<>(repo.getTrackedFiles());
 
         Map<Path, DefaultMutableTreeNode> folderNodes = new HashMap<>();
         folderNodes.put(rootPath, rootNode);
@@ -210,7 +213,7 @@ public class FileSelectionDialog extends JDialog {
      */
     private CompletionProvider createFileCompletionProvider()
     {
-        Collection<RepoFile> tracked = GitRepo.instance.getTrackedFiles();
+        Collection<RepoFile> tracked = repo.getTrackedFiles();
         return new FileCompletionProvider(tracked);
     }
 
@@ -229,7 +232,7 @@ public class FileSelectionDialog extends JDialog {
             for (String filename : filenames) {
                 if (filename.isBlank()) continue;
                 
-                var expanded = Completions.expandPath(rootPath, filename);
+                var expanded = Completions.expandPath(repo, filename);
                 for (var bf : expanded) {
                     if (bf instanceof RepoFile rf) {
                         selectedFiles.add(rf);

@@ -1,7 +1,8 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Analyzer;
-import io.github.jbellis.brokk.Completions;
+import io.github.jbellis.brokk.CodeUnit;
+import io.github.jbellis.brokk.Project;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.CompletionProvider;
 
@@ -19,7 +20,7 @@ import java.util.List;
  */
 public class SymbolSelectionDialog extends JDialog {
 
-    private final Analyzer analyzer;
+    private final Project project;
     private final JTextField symbolInput;
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
@@ -31,9 +32,9 @@ public class SymbolSelectionDialog extends JDialog {
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
-    public SymbolSelectionDialog(Frame parent, Analyzer analyzer, String title) {
+    public SymbolSelectionDialog(Frame parent, Project project, String title) {
         super(parent, title, true); // modal dialog
-        this.analyzer = analyzer;
+        this.project = project;
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -58,8 +59,8 @@ public class SymbolSelectionDialog extends JDialog {
         listPanel.setBorder(BorderFactory.createTitledBorder("Available Classes"));
         
         DefaultListModel<String> classListModel = new DefaultListModel<>();
-        List<String> allClasses = new ArrayList<>(analyzer.getAllClasses().stream()
-                .map(cu -> cu.reference())
+        List<String> allClasses = new ArrayList<>(project.getAnalyzerWrapper().get().getAllClasses().stream()
+                .map(CodeUnit::reference)
                 .sorted()
                 .toList());
         for (String className : allClasses) {
@@ -137,7 +138,7 @@ public class SymbolSelectionDialog extends JDialog {
      * Create the symbol completion provider using Completions.completeClassesAndMembers
      */
     private CompletionProvider createSymbolCompletionProvider() {
-        return new SymbolCompletionProvider(analyzer);
+        return new SymbolCompletionProvider(project);
     }
 
     /**

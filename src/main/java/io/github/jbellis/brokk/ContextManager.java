@@ -103,7 +103,7 @@ public class ContextManager implements IContextManager
     public void editSources(ContextFragment fragment) {
         contextActionExecutor.submit(() -> {
             var analyzer = getAnalyzer();
-            Set<CodeUnit> sources = fragment.sources(analyzer);
+            Set<CodeUnit> sources = fragment.sources(project);
             if (!sources.isEmpty()) {
                 Set<RepoFile> files = sources.stream()
                         .map(analyzer::pathOf)
@@ -165,7 +165,7 @@ public class ContextManager implements IContextManager
         
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
-        var initialContext = new Context(project.getAnalyzerWrapper(), 5);
+        var initialContext = new Context(project, 5);
         contextHistory.add(initialContext);
         chrome.setContext(initialContext);
 
@@ -364,7 +364,7 @@ public class ContextManager implements IContextManager
      */
     private List<RepoFile> showFileSelectionDialog(String title)
     {
-        var dialog = new FileSelectionDialog(null, getRoot(), title);
+        var dialog = new FileSelectionDialog(io.getFrame(), project, title);
         SwingUtil.runOnEDT(() -> {
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());
@@ -385,7 +385,7 @@ public class ContextManager implements IContextManager
      */
     private String showSymbolSelectionDialog(String title)
     {
-        var dialog = new SymbolSelectionDialog(null, getAnalyzer(), title);
+        var dialog = new SymbolSelectionDialog(null, project, title);
         SwingUtil.runOnEDT(() -> {
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());
@@ -631,7 +631,7 @@ public class ContextManager implements IContextManager
         } else {
             // Extract sources from selected fragments
             for (var frag : selectedFragments) {
-                sources.addAll(frag.sources(getAnalyzer()));
+                sources.addAll(frag.sources(project));
             }
             sourceDescription = selectedFragments.size() + " fragments";
         }
@@ -692,7 +692,7 @@ public class ContextManager implements IContextManager
     /** request code-intel rebuild */
     public void requestRebuild()
     {
-        GitRepo.instance.refresh();
+        project.getRepo().refresh();
         project.getAnalyzerWrapper().requestRebuild();
     }
 
@@ -1113,7 +1113,7 @@ public class ContextManager implements IContextManager
      */
     public Set<RepoFile> getFilesFromFragment(ContextFragment fragment)
     {
-        var classnames = fragment.sources(getAnalyzer());
+        var classnames = fragment.sources(project);
         var files = classnames.stream()
                 .map(cu -> getAnalyzer().pathOf(cu))
                 .filter(Option::isDefined)
@@ -1227,7 +1227,7 @@ public class ContextManager implements IContextManager
             // TODO show this to user somehow
         } else {
             // do background inference
-            var tracked = GitRepo.instance.getTrackedFiles();
+            var tracked = project.getRepo().getTrackedFiles();
             var filenames = tracked.stream()
                     .map(RepoFile::toString)
                     .filter(s -> !s.contains(File.separator))

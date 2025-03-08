@@ -18,7 +18,7 @@ public interface ContextFragment {
     /** content formatted for LLM */
     String format() throws IOException;
     /** fq classes found in this fragment */
-    Set<CodeUnit> sources(Analyzer analyzer);
+    Set<CodeUnit> sources(Project project);
     /** should classes found in this fragment be included in AutoContext? */
     boolean isEligibleForAutoContext();
 
@@ -52,8 +52,8 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
-            return analyzer.getClassesInFile(file);
+        public Set<CodeUnit> sources(Project project) {
+            return project.getAnalyzerWrapper().get().getClassesInFile(file);
         }
 
         @Override
@@ -79,7 +79,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return Set.of();
         }
 
@@ -115,10 +115,10 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
-            return GitRepo.instance.getTrackedFiles().stream().parallel()
+        public Set<CodeUnit> sources(Project project) {
+            return project.getRepo().getTrackedFiles().stream().parallel()
                     .filter(f -> text().contains(f.toString()))
-                    .flatMap(f -> analyzer.getClassesInFile(f).stream())
+                    .flatMap(f -> project.getAnalyzerWrapper().get().getClassesInFile(f).stream())
                     .collect(java.util.stream.Collectors.toSet());
         }
 
@@ -175,7 +175,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return sources;
         }
 
@@ -253,7 +253,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return sources;
         }
 
@@ -294,7 +294,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return classnames;
         }
 
@@ -327,7 +327,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return sources;
         }
 
@@ -376,7 +376,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return Set.of(); // Conversation history doesn't contain code sources
         }
 
@@ -429,7 +429,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer) {
+        public Set<CodeUnit> sources(Project project) {
             return skeletons.stream().flatMap(s -> s.sources.stream()).collect(java.util.stream.Collectors.toSet());
         }
 

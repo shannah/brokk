@@ -491,7 +491,7 @@ public class ContextPanel extends JPanel {
             String referencedFiles = "";
             // Get referenced files for non-RepoPathFragment instances
             if (analyzer != null && !(frag instanceof ContextFragment.RepoPathFragment)) {
-                Set<CodeUnit> sources = frag.sources(analyzer);
+                Set<CodeUnit> sources = frag.sources(contextManager.getProject());
                 if (!sources.isEmpty()) {
                     referencedFiles = sources.stream()
                         .map(analyzer::pathOf)
@@ -533,7 +533,7 @@ public class ContextPanel extends JPanel {
      */
     public void updateSuggestCommitButton() {
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
-            List<String> uncommittedFiles = io.github.jbellis.brokk.GitRepo.instance.getUncommittedFileNames();
+            List<String> uncommittedFiles = contextManager.getProject().getRepo().getUncommittedFileNames();
             SwingUtilities.invokeLater(() -> {
                 DefaultTableModel model = (DefaultTableModel) uncommittedFilesTable.getModel();
                 model.setRowCount(0);

@@ -1307,7 +1307,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 fragment = ctx == null
                         ? new ContextFragment.StringFragment(text, "temp")
                         : ctx.getParsedOutput().parsedFragment();
-                Set<CodeUnit> sources = fragment.sources(analyzer);
+                Set<CodeUnit> sources = fragment.sources(project);
                 editReferencesButton.setEnabled(!sources.isEmpty());
 
                 // Update description with file names

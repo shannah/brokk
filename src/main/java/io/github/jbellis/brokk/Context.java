@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 public class Context {
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
 
-    final AnalyzerWrapper analyzer;
+    final Project project;
     final List<ContextFragment.RepoPathFragment> editableFiles;
     final List<ContextFragment.PathFragment> readonlyFiles;
     final List<ContextFragment.VirtualFragment> virtualFragments;
@@ -56,12 +56,12 @@ public class Context {
     /**
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
-    public Context(AnalyzerWrapper analyzer, int autoContextFileCount) {
-        this(analyzer, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture("Welcome to Brokk"));
+    public Context(Project project, int autoContextFileCount) {
+        this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture("Welcome to Brokk"));
     }
 
     private Context(
-            AnalyzerWrapper analyzer,
+            Project project,
             List<ContextFragment.RepoPathFragment> editableFiles,
             List<ContextFragment.PathFragment> readonlyFiles,
             List<ContextFragment.VirtualFragment> virtualFragments,
@@ -72,11 +72,11 @@ public class Context {
             ParsedOutput parsedOutput,
             Future<String> action
     ) {
-        assert analyzer != null;
+        assert project != null;
         assert autoContext != null;
         assert autoContextFileCount >= 0;
         assert action != null;
-        this.analyzer = analyzer;
+        this.project = project;
         this.editableFiles = List.copyOf(editableFiles);
         this.readonlyFiles = List.copyOf(readonlyFiles);
         this.virtualFragments = List.copyOf(virtualFragments);
@@ -202,7 +202,7 @@ public class Context {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
         var parsed = new ParsedOutput(llmOutputText, fragment);
-        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
+        return new Context(project, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
     }
 
     public Context convertAllToReadOnly() {
@@ -272,11 +272,11 @@ public class Context {
             return this;
         }
 
-        var newContext = new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), new ParsedOutput(), action);
+        var newContext = new Context(project, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), new ParsedOutput(), action);
         AutoContext newAutoContext = fileCount > 0 ? newContext.buildAutoContext() : AutoContext.DISABLED;
         
         return new Context(
-                analyzer,
+                project,
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
@@ -303,18 +303,18 @@ public class Context {
         // Collect ineligible classnames from fragments not eligible for auto-context
         var ineligibleSources = Streams.concat(editableFiles.stream(), readonlyFiles.stream(), virtualFragments.stream())
                 .filter(f -> !f.isEligibleForAutoContext())
-                .flatMap(f -> f.sources(analyzer.get()).stream())
+                .flatMap(f -> f.sources(project).stream())
                 .collect(Collectors.toSet());
 
         // Collect initial seeds
         var weightedSeeds = new HashMap<String, Double>();
         // editable files have a weight of 1.0, each
-        editableFiles.stream().flatMap(f -> f.sources(analyzer.get()).stream()).forEach(unit -> {
+        editableFiles.stream().flatMap(f -> f.sources(project).stream()).forEach(unit -> {
             weightedSeeds.put(unit.reference(), 1.0);
         });
         // everything else splits a weight of 1.0
         Streams.concat(readonlyFiles.stream(), virtualFragments.stream())
-                .flatMap(f -> f.sources(analyzer.get()).stream())
+                .flatMap(f -> f.sources(project).stream())
                 .forEach(unit ->
         {
             weightedSeeds.merge(unit.reference(), 1.0 / (readonlyFiles.size() + virtualFragments.size()), Double::sum);
@@ -325,7 +325,7 @@ public class Context {
             return AutoContext.EMPTY;
         }
 
-        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(analyzer.get(), weightedSeeds);
+        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(project.getAnalyzerWrapper().get(), weightedSeeds);
 
         // build skeleton lines
         var skeletons = new ArrayList<SkeletonFragment>();
@@ -335,7 +335,7 @@ public class Context {
                     || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(fqName.substring(0, fqName.indexOf('$'))))));
             
             if (eligible) {
-                var opt = analyzer.get().getSkeleton(fqName);
+                var opt = project.getAnalyzerWrapper().get().getSkeleton(fqName);
                 if (opt.isDefined()) {
                     var shortName = fqName.substring(fqName.lastIndexOf('.') + 1);
                     skeletons.add(new SkeletonFragment(List.of(shortName), Set.of(CodeUnit.cls(fqName)), opt.get()));
@@ -400,7 +400,7 @@ public class Context {
                                   Future<String> action)
     {
         return new Context(
-            analyzer, 
+                project, 
             newEditableFiles, 
             newReadonlyFiles, 
             newVirtualFragments, 
@@ -423,7 +423,7 @@ public class Context {
      */
     private Context refresh() {
         AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
-        return new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), parsedOutput, action);
+        return new Context(project, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), parsedOutput, action);
     }
 
     // Method removed in favor of toFragment(int position)
@@ -445,7 +445,7 @@ public class Context {
         var newHistory = new ArrayList<>(historyMessages);
         newHistory.addAll(newMessages);
         return new Context(
-            analyzer,
+                project,
             editableFiles,
             readonlyFiles,
             virtualFragments,
@@ -463,7 +463,7 @@ public class Context {
      */
     public Context clearHistory() {
         return new Context(
-            analyzer,
+                project,
             editableFiles,
             readonlyFiles,
             virtualFragments,
@@ -478,7 +478,7 @@ public class Context {
 
     public Context withOriginalContents(Map<RepoFile, String> fileContents) {
         return new Context(
-                analyzer,
+                project,
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
@@ -517,7 +517,7 @@ public class Context {
         newFragments.add(fragment);
         var parsed = new ParsedOutput(fragment.text(), fragment);
         var action = CompletableFuture.completedFuture(fragment.description());
-        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
+        return new Context(project, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
     }
 
     public Context addSkeletonFragment(List<String> shortClassnames, Set<CodeUnit> classnames, String skeleton) {
@@ -559,7 +559,7 @@ public class Context {
 
     public Context withParsedOutput(ParsedOutput parsedOutput, Future<String> action) {
         return new Context(
-            analyzer,
+                project,
             editableFiles,
             readonlyFiles,
             virtualFragments,

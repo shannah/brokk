@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -19,10 +20,8 @@ public class Brokk {
 
     public static void main(String[] args) {
         // Find the repository root
-        Path sourceRoot;
-        try {
-            sourceRoot = GitRepo.instance.getRoot();
-        } catch (Throwable th) {
+        Path sourceRoot = GitRepo.findGitRoot();
+        if (sourceRoot == null) {
             System.out.println("Please run Brokk from within a git repository");
             System.exit(1);
             return;
@@ -87,7 +86,8 @@ public class Brokk {
             io.shellOutput("Editor model: " + models.editModelName());
             io.shellOutput("Apply model: " + models.applyModelName());
             io.shellOutput("Quick model: " + models.quickModelName());
-            io.shellOutput("Git repo at %s with %d files".formatted(sourceRoot, GitRepo.instance.getTrackedFiles().size()));
+            var trackedFiles = contextManager.getProject().getRepo().getTrackedFiles();
+            io.shellOutput("Git repo at %s with %d files".formatted(sourceRoot, trackedFiles.size()));
         });
     }
 }

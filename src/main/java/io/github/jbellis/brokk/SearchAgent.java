@@ -71,7 +71,7 @@ public class SearchAgent {
     public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io) {
         this.query = query;
         this.contextManager = contextManager;
-        this.analyzer = contextManager.getAnalyzer();
+        this.analyzer = contextManager.getProject().getAnalyzerWrapper().get();
         this.coder = coder;
         this.io = io;
     }
@@ -173,7 +173,7 @@ public class SearchAgent {
             %s
             </fragment>
             """.stripIndent().formatted(f.description(),
-                                        (f.sources(analyzer).stream().map(CodeUnit::reference).collect(Collectors.joining(", "))),
+                                        (f.sources(contextManager.getProject()).stream().map(CodeUnit::reference).collect(Collectors.joining(", "))),
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {
@@ -1100,9 +1100,9 @@ public class SearchAgent {
             }
 
             // Get all tracked files from GitRepo and process them functionally
-            var matchingClasses = GitRepo.instance.getTrackedFiles().parallelStream().map(file -> {
+            var matchingClasses = contextManager.getProject().getRepo().getTrackedFiles().parallelStream().map(file -> {
                         try {
-                            RepoFile repoFile = new RepoFile(GitRepo.instance.getRoot(), file.toString());
+                            RepoFile repoFile = new RepoFile(contextManager.getProject().getRoot(), file.toString());
                             String fileContents = new String(Files.readAllBytes(repoFile.absPath()));
 
                             // Return the repoFile if its contents match any of the patterns, otherwise null

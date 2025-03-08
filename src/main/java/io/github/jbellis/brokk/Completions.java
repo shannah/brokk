@@ -183,9 +183,9 @@ public class Completions {
     /**
      * Expand paths that may contain wildcards (*, ?), returning all matches.
      */
-    public static List<? extends BrokkFile> expandPath(Path root, String pattern) {
+    public static List<? extends BrokkFile> expandPath(GitRepo repo, String pattern) {
         // First check if this is a single file
-        var file = maybeExternalFile(root, pattern);
+        var file = maybeExternalFile(repo.getRoot(), pattern);
         if (file.exists()) {
             return List.of(file);
         }
@@ -204,7 +204,7 @@ public class Completions {
                 return stream
                         .filter(Files::isRegularFile)
                         .filter(matcher::matches)
-                        .map(p -> maybeExternalFile(root, p.toString()))
+                        .map(p -> maybeExternalFile(repo.getRoot(), p.toString()))
                         .toList();
             } catch (IOException e) {
                 // part of the path doesn't exist
@@ -214,7 +214,7 @@ public class Completions {
 
         // If not a glob and doesn't exist directly, look for matches in git tracked files
         var filename = Path.of(pattern).getFileName().toString();
-        var matches = GitRepo.instance.getTrackedFiles().stream()
+        var matches = repo.getTrackedFiles().stream()
                 .filter(p -> p.getFileName().equals(filename))
                 .toList();
         if (matches.size() != 1) {
