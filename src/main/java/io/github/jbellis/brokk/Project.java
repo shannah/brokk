@@ -324,4 +324,77 @@ public class Project {
     public void setAnalyzerListener(AnalyzerListener listener) {
         analyzerWrapper.setListener(listener);
     }
+
+    private static final Path RECENT_PROJECTS_PATH = Path.of(System.getProperty("user.home"),
+                                                         ".config", "brokk", "projects.properties");
+
+    /**
+     * Reads the recent projects list from ~/.config/brokk/projects.properties.
+     * Returns a map of projectPath -> lastOpenedMillis.
+     * If the file doesn't exist or can't be read, returns an empty map.
+     */
+    public static Map<String, Long> loadRecentProjects()
+    {
+        var result = new HashMap<String, Long>();
+        if (!Files.exists(RECENT_PROJECTS_PATH)) {
+            return result;
+        }
+
+        var props = new Properties();
+        try (var reader = Files.newBufferedReader(RECENT_PROJECTS_PATH)) {
+            props.load(reader);
+        } catch (IOException e) {
+            logger.warn("Unable to read recent projects file: {}", e.getMessage());
+            return result;
+        }
+
+        for (String key : props.stringPropertyNames()) {
+            try {
+                var value = Long.parseLong(props.getProperty(key));
+                result.put(key, value);
+            } catch (NumberFormatException nfe) {
+                logger.warn("Invalid timestamp for key {} in projects.properties", key);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Saves the given map of projectPath -> lastOpenedMillis to
+     * ~/.config/brokk/projects.properties, trimming to the 10 most recent.
+     */
+    public static void saveRecentProjects(Map<String, Long> projects)
+    {
+        // Sort entries by lastOpened descending
+        var sorted = projects.entrySet().stream()
+            .sorted((a,b)-> Long.compare(b.getValue(), a.getValue()))
+            .limit(10)
+            .toList();
+
+        var props = new Properties();
+        for (var e : sorted) {
+            props.setProperty(e.getKey(), Long.toString(e.getValue()));
+        }
+
+        try {
+            Files.createDirectories(RECENT_PROJECTS_PATH.getParent());
+            try (var writer = Files.newBufferedWriter(RECENT_PROJECTS_PATH)) {
+                props.store(writer, "Recently opened Brokk projects");
+            }
+        } catch (IOException e) {
+            logger.error("Error saving recent projects: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Updates the projects.properties with a single entry for the given directory path,
+     * setting last opened to the current time.
+     */
+    public static void updateRecentProject(Path projectDir)
+    {
+        var abs = projectDir.toAbsolutePath().toString();
+        var currentMap = loadRecentProjects();
+        currentMap.put(abs, System.currentTimeMillis());
+        saveRecentProjects(currentMap);
+    }
 }

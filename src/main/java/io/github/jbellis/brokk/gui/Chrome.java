@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
+import io.github.jbellis.brokk.Coder;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
@@ -36,8 +37,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
-    final ContextManager contextManager;
-    private final Project project;
+    ContextManager contextManager;
+    private Project project;
 
     // Swing components:
     final JFrame frame;
@@ -83,12 +84,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     /**
      * Default constructor sets up the UI.
-     * We call this from Brokk after creating contextManager, commands, etc.,
-     * but before calling .resolveCircularReferences(...).
+     * We call this from Brokk after creating contextManager, before creating the Coder,
+     * and before calling .resolveCircularReferences(...).
+     * We allow contextManager to be null for the initial empty UI.
      */
     public Chrome(ContextManager contextManager) {
         this.contextManager = contextManager;
-        this.project = contextManager.getProject();
+        this.project = (contextManager == null) ? null : contextManager.getProject();
 
         // 1) Set FlatLaf Look & Feel
         try {
@@ -127,14 +129,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
-                project.saveMainWindowBounds(frame);
+                if (project != null) {
+                    project.saveMainWindowBounds(frame);
+                }
             }
 
             @Override
             public void componentMoved(java.awt.event.ComponentEvent e) {
-                project.saveMainWindowBounds(frame);
+                if (project != null) {
+                    project.saveMainWindowBounds(frame);
+                }
             }
         });
+
+        if (contextManager == null) {
+            disableUserActionButtons();
+            disableContextActionButtons();
+        }
     }
 
     /**
@@ -988,7 +999,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void close() {
         logger.info("Closing Chrome UI");
-        contextManager.shutdown();
+        if (contextManager != null) {
+            contextManager.shutdown();
+        }
         if (frame != null) {
             frame.dispose();
         }
@@ -1116,22 +1129,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Loads window size and position from project properties
      */
     private void loadWindowSizeAndPosition() {
-        assert project != null;
-        Rectangle bounds = project.getMainWindowBounds();
+        Rectangle bounds = project == null ? null : project.getMainWindowBounds();
 
         // Only apply saved values if they're valid
-        if (bounds.width > 0 && bounds.height > 0) {
-            frame.setSize(bounds.width, bounds.height);
-
-            // Only use the position if it was actually set (not -1)
-            if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
-                frame.setLocation(bounds.x, bounds.y);
-            } else {
-                // If not on a visible screen, center the window
-                frame.setLocationRelativeTo(null);
-            }
-        } else {
+        if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
             // If no valid size is saved, center the window
+            frame.setLocationRelativeTo(null);
+            return;
+        }
+
+        frame.setSize(bounds.width, bounds.height);
+        // Only use the position if it was actually set (not -1)
+        if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
+            frame.setLocation(bounds.x, bounds.y);
+        } else {
+            // If not on a visible screen, center the window
             frame.setLocationRelativeTo(null);
         }
     }
@@ -1298,7 +1310,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         SwingUtilities.invokeLater(() -> {
             captureTextButton.setEnabled(hasText);
-            var analyzer = contextManager.getAnalyzerNonBlocking();
+            var analyzer = contextManager == null ? null : contextManager.getAnalyzerNonBlocking();
 
             // Check for sources only if there's text
             if (hasText && analyzer != null) {
@@ -1307,7 +1319,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 fragment = ctx == null
                         ? new ContextFragment.StringFragment(text, "temp")
                         : ctx.getParsedOutput().parsedFragment();
-                Set<CodeUnit> sources = fragment.sources(project);
+                Set<CodeUnit> sources = fragment.sources(analyzer, project.getRepo());
                 editReferencesButton.setEnabled(!sources.isEmpty());
 
                 // Update description with file names
@@ -1334,8 +1346,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return SwingUtil.runOnEDT(() -> (Context) contextHistoryTable.getModel().getValueAt(selected, 1), null);
     }
     
-    private void setInitialHistoryPanelWidth()
-    {
+    private void setInitialHistoryPanelWidth() {
         // Safety checks
         if (historySplitPane == null) {
             return;
@@ -1346,7 +1357,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (editButton == null) {
             return;
         }
-        
+
         int buttonWidth = editButton.getPreferredSize().width;
         int newWidth = buttonWidth + 30;
 
@@ -1394,6 +1405,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextPanel.updateContextTable();
     }
 
+    /**
+     * Clears the context panel
+     */
+
     public ContextManager getContextManager() {
         return contextManager;
     }
@@ -1404,4 +1419,5 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public List<ContextFragment> getSelectedFragments() {
         return contextPanel.getSelectedFragments();
     }
+
 }

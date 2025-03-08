@@ -409,7 +409,7 @@ public class ContextPanel extends JPanel {
             dropButton.setText(hasSelection ? "Drop Selected" : "Drop All");
             copyButton.setText(hasSelection ? "Copy Selected" : "Copy All");
 
-            var ctx = contextManager.currentContext();
+            var ctx = contextManager == null ? null : contextManager.currentContext();
             var hasContext = (ctx != null && !ctx.isEmpty());
             dropButton.setEnabled(hasContext);
             copyButton.setEnabled(hasContext);
@@ -454,7 +454,6 @@ public class ContextPanel extends JPanel {
      */
     public void populateContextTable(Context ctx) {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
-        assert ctx != null;
 
         // Clear the existing table rows
         var tableModel = (DefaultTableModel) contextTable.getModel();
@@ -462,7 +461,7 @@ public class ContextPanel extends JPanel {
 
         updateContextButtons();
 
-        if (ctx.isEmpty()) {
+        if (ctx == null || ctx.isEmpty()) {
             ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
             revalidate();
             repaint();
@@ -491,7 +490,7 @@ public class ContextPanel extends JPanel {
             String referencedFiles = "";
             // Get referenced files for non-RepoPathFragment instances
             if (analyzer != null && !(frag instanceof ContextFragment.RepoPathFragment)) {
-                Set<CodeUnit> sources = frag.sources(contextManager.getProject());
+                Set<CodeUnit> sources = frag.sources(analyzer, contextManager.getProject().getRepo());
                 if (!sources.isEmpty()) {
                     referencedFiles = sources.stream()
                         .map(analyzer::pathOf)
@@ -532,26 +531,39 @@ public class ContextPanel extends JPanel {
      * Updates the uncommitted files table and the state of the suggest commit button
      */
     public void updateSuggestCommitButton() {
+        assert SwingUtilities.isEventDispatchThread();
+        if (contextManager == null) {
+            suggestCommitButton.setEnabled(false);
+            return;
+        }
+
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
-            List<String> uncommittedFiles = contextManager.getProject().getRepo().getUncommittedFileNames();
-            SwingUtilities.invokeLater(() -> {
-                DefaultTableModel model = (DefaultTableModel) uncommittedFilesTable.getModel();
-                model.setRowCount(0);
+            try {
+                List<String> uncommittedFiles = contextManager.getProject().getRepo().getUncommittedFileNames();
+                SwingUtilities.invokeLater(() -> {
+                    DefaultTableModel model = (DefaultTableModel) uncommittedFilesTable.getModel();
+                    model.setRowCount(0);
 
-                if (uncommittedFiles.isEmpty()) {
-                    suggestCommitButton.setEnabled(false);
-                } else {
-                    for (String filePath : uncommittedFiles) {
-                        // Split into filename and path
-                        int lastSlash = filePath.lastIndexOf('/');
-                        String filename = (lastSlash >= 0) ? filePath.substring(lastSlash + 1) : filePath;
-                        String path = (lastSlash >= 0) ? filePath.substring(0, lastSlash) : "";
+                    if (uncommittedFiles.isEmpty()) {
+                        suggestCommitButton.setEnabled(false);
+                    } else {
+                        for (String filePath : uncommittedFiles) {
+                            // Split into filename and path
+                            int lastSlash = filePath.lastIndexOf('/');
+                            String filename = (lastSlash >= 0) ? filePath.substring(lastSlash + 1) : filePath;
+                            String path = (lastSlash >= 0) ? filePath.substring(0, lastSlash) : "";
 
-                        model.addRow(new Object[]{filename, path});
+                            model.addRow(new Object[]{filename, path});
+                        }
+                        suggestCommitButton.setEnabled(true);
                     }
-                    suggestCommitButton.setEnabled(true);
-                }
-            });
+                });
+            } catch (Exception e) {
+                // Handle exception in case the repo is no longer available
+                SwingUtilities.invokeLater(() -> {
+                    suggestCommitButton.setEnabled(false);
+                });
+            }
             return null;
         });
     }

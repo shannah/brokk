@@ -258,7 +258,7 @@ public class LLM {
             if (isBuildProgressing(coder, buildErrors)) {
                 return true;
             }
-            io.toolOutput("Build errors are not improving, stopping.");
+            io.shellOutput("Build errors are not improving, stopping.");
             return false;
         }
 

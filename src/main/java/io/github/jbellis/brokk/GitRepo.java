@@ -11,11 +11,9 @@ import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,7 +27,15 @@ public class GitRepo implements Closeable {
     private final Repository repository;
     private final Git git;
     private List<RepoFile> trackedFilesCache = null;
-    
+
+    /**
+     * Returns true if the directory has a .git folder.
+     */
+    static boolean hasGitRepo(Path dir) {
+        assert dir != null;
+        return dir.resolve(".git").toFile().isDirectory();
+    }
+
     /**
      * Get the JGit instance for direct API access
      */
@@ -52,19 +58,6 @@ public class GitRepo implements Closeable {
         }
     }
 
-    /**
-     * The single place for locating .git upward from current directory.
-     */
-    public static Path findGitRoot() {
-        Path current = Path.of("").toAbsolutePath();
-        while (current != null) {
-            if (Files.exists(current.resolve(".git"))) {
-                return current;
-            }
-            current = current.getParent();
-        }
-        return null;
-    }
 
     public Path getRoot() {
         return root;
@@ -73,20 +66,6 @@ public class GitRepo implements Closeable {
     public synchronized void refresh() {
         repository.getRefDatabase().refresh();
         trackedFilesCache = null;
-    }
-
-    public synchronized List<String> logShort() {
-        try {
-            List<String> logs = new ArrayList<>();
-            git.log()
-                    .setMaxCount(50)
-                    .call()
-                    .forEach(commit ->
-                                     logs.add(commit.getName().substring(0, 7) + ":" + commit.getShortMessage()));
-            return logs;
-        } catch (GitAPIException e) {
-            throw new UncheckedIOException(new IOException(e));
-        }
     }
 
     public synchronized void add(String relName) throws IOException {

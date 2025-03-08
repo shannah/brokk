@@ -80,6 +80,27 @@ public class MenuBar {
         });
         fileMenu.add(refreshItem);
 
+        fileMenu.addSeparator();
+
+        var openProjectItem = new JMenuItem("Open Project...");
+        openProjectItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
+        openProjectItem.addActionListener(e -> {
+            // Use a directory chooser
+            var chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            chooser.setDialogTitle("Select a Git project directory");
+            int result = chooser.showOpenDialog(chrome.frame);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                var dir = chooser.getSelectedFile().toPath();
+                io.github.jbellis.brokk.Brokk.openProject(dir);
+            }
+        });
+        fileMenu.add(openProjectItem);
+
+        var recentProjectsMenu = new JMenu("Recent Projects");
+        fileMenu.add(recentProjectsMenu);
+        rebuildRecentProjectsMenu(recentProjectsMenu);
+
         menuBar.add(fileMenu);
 
         // Edit menu
@@ -141,5 +162,35 @@ public class MenuBar {
         menuBar.add(helpMenu);
 
         return menuBar;
+    }
+
+    /**
+     * Rebuilds the Recent Projects submenu using up to 5 from Project.loadRecentProjects(),
+     * sorted by lastOpened descending.
+     */
+    private static void rebuildRecentProjectsMenu(JMenu recentMenu) {
+        recentMenu.removeAll();
+
+        var map = io.github.jbellis.brokk.Project.loadRecentProjects();
+        if (map.isEmpty()) {
+            var emptyItem = new JMenuItem("(No Recent Projects)");
+            emptyItem.setEnabled(false);
+            recentMenu.add(emptyItem);
+            return;
+        }
+
+        var sorted = map.entrySet().stream()
+            .sorted((a,b)-> Long.compare(b.getValue(), a.getValue()))
+            .limit(5)
+            .toList();
+
+        for (var entry : sorted) {
+            var path = entry.getKey();
+            var item = new JMenuItem(path);
+            item.addActionListener(e -> {
+                io.github.jbellis.brokk.Brokk.openProject(java.nio.file.Path.of(path));
+            });
+            recentMenu.add(item);
+        }
     }
 }
