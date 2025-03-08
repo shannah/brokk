@@ -136,6 +136,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         updateContextButtons();
 
         frame.setVisible(true);
+        // this gets it to respect the minimum size on buttons panel, fuck it
+        frame.validate();
+        frame.repaint();
 
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
@@ -1093,8 +1096,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // Force the panel to keep at least enough vertical space for all buttons.
-        var preferredSize = buttonsPanel.getPreferredSize();
-        buttonsPanel.setMinimumSize(preferredSize);
+        buttonsPanel.setMinimumSize(new Dimension(buttonsPanel.getPreferredSize().width, (int) (1.3 * buttonsPanel.getPreferredSize().height)));
 
         return buttonsPanel;
     }
