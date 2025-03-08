@@ -98,7 +98,7 @@ public class SearchAgent {
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {
-            io.shellOutputMarkdown("Evaluating context");
+            io.shellOutput("Evaluating context");
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
             You are an expert software architect.
@@ -135,7 +135,7 @@ public class SearchAgent {
 
             // Print some debug/log info
             var explanation = tools.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
-            io.shellOutputMarkdown(explanation);
+            io.shellOutput(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
             logger.debug("Actions: {}", tools);
 
