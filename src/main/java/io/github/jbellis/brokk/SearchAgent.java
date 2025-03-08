@@ -277,12 +277,42 @@ public class SearchAgent {
     }
     
     /**
-     * Creates a unique signature for a tool call based on tool name and parameters
+     * Creates a list of unique signatures for a tool call based on tool name and parameters
+     * Each signature is of the form toolName:paramValue
      */
-    private String createToolCallSignature(ToolCall toolCall) {
+    private List<String> createToolCallSignatures(ToolCall toolCall) {
         String toolName = toolCall.getRequest().name();
-        String params = getToolParameterInfo(toolCall);
-        return toolName + ":" + params;
+        
+        try {
+            var arguments = toolCall.argumentsMap();
+            
+            return switch (toolName) {
+                case "searchSymbols", "searchSubstrings" -> getParameterListSignatures(toolName, arguments, "patterns");
+                case "getUsages" -> getParameterListSignatures(toolName, arguments, "symbols");
+                case "getRelatedClasses", "getClassSkeletons", 
+                     "getClassSources" -> getParameterListSignatures(toolName, arguments, "classNames");
+                case "getMethodSources" -> getParameterListSignatures(toolName, arguments, "methodNames");
+                case "answer", "abort" -> List.of(toolName + ":finalizing");
+                default -> List.of(toolName + ":unknown");
+            };
+        } catch (Exception e) {
+            logger.error("Error creating tool call signature", e);
+            return List.of(toolName + ":error");
+        }
+    }
+    
+    /**
+     * Helper method to extract parameter values from a list parameter and create signatures
+     */
+    private List<String> getParameterListSignatures(String toolName, Map<String, Object> arguments, String paramName) {
+        @SuppressWarnings("unchecked")
+        List<String> items = (List<String>) arguments.get(paramName);
+        if (items != null && !items.isEmpty()) {
+            return items.stream()
+                .map(item -> toolName + ":" + paramName + "=" + item)
+                .collect(Collectors.toList());
+        }
+        return List.of(toolName + ":" + paramName + "=empty");
     }
     
     /**
@@ -356,9 +386,12 @@ public class SearchAgent {
      */
     private ToolCall replaceDuplicateCallIfNeeded(ToolCall call)
     {
-        // If we already have seen this signature, forge a replacement call
-        if (toolCallSignatures.contains(createToolCallSignature(call))) {
-            logger.debug("Duplicate tool call detected: {}. Forging a getRelatedClasses call instead.", createToolCallSignature(call));
+        // Get signatures for this call
+        List<String> callSignatures = createToolCallSignatures(call);
+        
+        // If we already have seen any of these signatures, forge a replacement call
+        if (toolCallSignatures.stream().anyMatch(callSignatures::contains)) {
+            logger.debug("Duplicate tool call detected: {}. Forging a getRelatedClasses call instead.", callSignatures);
 
             // Build the arguments for the forged getRelatedClasses call.
             // We'll pass all currently tracked class names, so that the agent
@@ -393,7 +426,7 @@ public class SearchAgent {
                 .build();
             var forgedCall = new ToolCall(forgedRequest);
             // if the forged call is itself a duplicate, use the original request but force Beast Mode next
-            if (toolCallSignatures.contains(createToolCallSignature(forgedCall))) {
+            if (toolCallSignatures.containsAll(createToolCallSignatures(forgedCall))) {
                 logger.debug("Pagerank would be duplicate too!  Switching to Beast Mode.");
                 beastMode = true;
                 return call;
@@ -401,8 +434,8 @@ public class SearchAgent {
             call = forgedCall;
         }
 
-        // Remember this signature for future checks, and return the call
-        toolCallSignatures.add(createToolCallSignature(call));
+        // Remember these signatures for future checks, and return the call
+        toolCallSignatures.addAll(createToolCallSignatures(call));
         trackClassNamesFromToolCall(call);
 
         // 4. Return the original call if no duplication

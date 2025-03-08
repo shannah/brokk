@@ -36,21 +36,18 @@ public interface IConsoleIO {
     static String escapeMarkdown(String text) {
         if (text == null) return "";
 
-        return text.replace("\\", "\\\\")
+        return text
+                // Backslash itself (escape character)
+                .replace("\\", "\\\\")
+                // Backticks (code)
                 .replace("`", "\\`")
+                // Asterisks and underscores (emphasis)
                 .replace("*", "\\*")
                 .replace("_", "\\_")
-                .replace("{", "\\{")
-                .replace("}", "\\}")
+                // Square brackets and parentheses (links)
                 .replace("[", "\\[")
                 .replace("]", "\\]")
-                .replace("(", "\\(")
-                .replace(")", "\\)")
-                .replace("#", "\\#")
-                .replace("+", "\\+")
-                .replace("-", "\\-")
-                .replace(".", "\\.")
-                .replace("!", "\\!")
-                .replace("|", "\\|");
+                // Hash (headings)
+                .replace("#", "\\#");
     }
 }

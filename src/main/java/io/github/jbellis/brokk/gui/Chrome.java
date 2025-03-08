@@ -692,7 +692,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         
         llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runSearchAsync(input);
@@ -1898,12 +1898,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // need a full rebuild since the description is a string column, firing tableDataChanged won't help,
             // we need to re-populate it from the ContextFragment objects
             populateContextTable(contextManager.currentContext());
-        });
-    }
-
-    public void setSyntaxStyle(String style) {
-        SwingUtilities.invokeLater(() -> {
-            llmStreamArea.setSyntaxEditingStyle(style);
         });
     }
 

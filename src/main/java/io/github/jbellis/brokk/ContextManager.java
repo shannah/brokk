@@ -301,7 +301,6 @@ public class ContextManager implements IContextManager
                     return;
                 }
                 // run a search agent
-                chrome.setSyntaxStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
                 var agent = new SearchAgent(query, this, coder, chrome);
                 var result = agent.execute();
                 if (result == null) {
