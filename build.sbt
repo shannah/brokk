@@ -2,7 +2,7 @@ import sbt._
 import sbt.Keys._
 
 scalaVersion := "3.5.2"
-version := "0.4-SNAPSHOT"
+version := "0.4.0"
 organization := "io.github.jbellis"
 name := "brokk"
 

@@ -1,4 +1,12 @@
-0.3.0
+# 0.4.0
+## Features
+- Swing UI
+- Search is even better
+
+## Fixes
+- Too many to list
+
+# 0.3.0
 
 ## Features
 - New agentic /search command offers the most powerful code RAG anywhere
