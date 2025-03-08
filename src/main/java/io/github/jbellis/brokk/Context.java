@@ -201,7 +201,8 @@ public class Context {
     public Context addSearchFragment(ContextFragment.VirtualFragment fragment, Future<String> query, String llmOutputText) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), new ParsedOutput(llmOutputText, fragment), query).refresh();
+        var parsed = new ParsedOutput(llmOutputText, fragment);
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
     }
 
     public Context convertAllToReadOnly() {
@@ -511,9 +512,12 @@ public class Context {
         return "(Summarizing)";
     }
 
-    public Context addUsageFragment(String identifier, Set<CodeUnit> classnames, String code) {
-        var fragment = new ContextFragment.UsageFragment(identifier, classnames, code);
-        return addVirtualFragment(fragment);
+    public Context addUsageFragment(ContextFragment.UsageFragment fragment) {
+        var newFragments = new ArrayList<>(virtualFragments);
+        newFragments.add(fragment);
+        var parsed = new ParsedOutput(fragment.text(), fragment);
+        var action = CompletableFuture.completedFuture(fragment.description());
+        return new Context(analyzer, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
     }
 
     public Context addSkeletonFragment(List<String> shortClassnames, Set<CodeUnit> classnames, String skeleton) {

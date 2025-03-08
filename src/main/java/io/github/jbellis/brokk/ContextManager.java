@@ -874,7 +874,8 @@ public class ContextManager implements IContextManager
             return;
         }
         var combined = result.code();
-        pushContext(ctx -> ctx.addUsageFragment(identifier, result.sources(), combined));
+        var fragment = new ContextFragment.UsageFragment(identifier, result.sources(), combined);
+        pushContext(ctx -> ctx.addUsageFragment(fragment));
     }
 
     /** parse stacktrace */
