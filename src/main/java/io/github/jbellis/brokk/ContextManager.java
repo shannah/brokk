@@ -62,7 +62,7 @@ public class ContextManager implements IContextManager
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
     private AnalyzerWrapper analyzerWrapper;
-    private Chrome chrome; // for UI feedback
+    private Chrome io; // for UI feedback
     private Coder coder;
 
     // Convert a throwable to a string with full stack trace
@@ -82,8 +82,8 @@ public class ContextManager implements IContextManager
         return new LoggingExecutorService(toWrap, th -> {
            var thread = Thread.currentThread();
            logger.error("Uncaught exception in thread {}", thread.getName(), th);
-           if (chrome != null) {
-               chrome.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
+           if (io != null) {
+               io.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
                                           .formatted(thread.getName(), getStackTraceAsString(th)));
            }
        });
@@ -148,7 +148,7 @@ public class ContextManager implements IContextManager
      */
     public void resolveCircularReferences(Chrome chrome, Coder coder)
     {
-        this.chrome = chrome;
+        this.io = chrome;
         this.coder = coder;
         this.analyzerWrapper = new AnalyzerWrapper(project, chrome, backgroundTasks);
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
@@ -223,34 +223,34 @@ public class ContextManager implements IContextManager
 
     public Future<?> runRunCommandAsync(String input)
     {
-        assert chrome != null;
+        assert io != null;
         return userActionExecutor.submit(() -> {
             try {
-                chrome.toolOutput("Executing: " + input);
+                io.toolOutput("Executing: " + input);
                 var result = Environment.instance.captureShellCommand(input);
                 String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-                chrome.shellOutput(output);
+                io.shellOutput(output);
                 
                 // Add to context history with the output text
                 pushContext(ctx -> {
                     var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
-                    var parsed = new ParsedOutput(chrome.getLlmOutputText(), runFrag);
+                    var parsed = new ParsedOutput(io.getLlmOutputText(), runFrag);
                     return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
                 });
             } finally {
-                chrome.enableUserActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
 
     public Future<?> runCodeCommandAsync(String input)
     {
-        assert chrome != null;
+        assert io != null;
         return userActionExecutor.submit(() -> {
             try {
-                LLM.runSession(coder, chrome, getCurrentModel(coder.models), input);
+                LLM.runSession(coder, io, getCurrentModel(coder.models), input);
             } finally {
-                chrome.enableUserActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -262,9 +262,9 @@ public class ContextManager implements IContextManager
     {
         return userActionExecutor.submit(() -> {
             try {
-                if (chrome == null) return;
+                if (io == null) return;
                 if (question.isBlank()) {
-                    chrome.toolErrorRaw("Please provide a question");
+                    io.toolErrorRaw("Please provide a question");
                     return;
                 }
                 // Provide the prompt messages
@@ -272,18 +272,18 @@ public class ContextManager implements IContextManager
                 messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
                 // stream from coder
-                chrome.toolOutput("Request sent");
+                io.toolOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response.chatResponse() != null) {
                     addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
                 }
             } catch (CancellationException cex) {
-                chrome.toolOutput("Ask command canceled.");
+                io.toolOutput("Ask command canceled.");
             } catch (Exception e) {
                 logger.error("Error in ask command", e);
-                chrome.toolErrorRaw("Error in ask command: " + e.getMessage());
+                io.toolErrorRaw("Error in ask command: " + e.getMessage());
             } finally {
-                chrome.enableUserActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -293,29 +293,29 @@ public class ContextManager implements IContextManager
      */
     public Future<?> runSearchAsync(String query)
     {
-        assert chrome != null;
+        assert io != null;
         return userActionExecutor.submit(() -> {
             try {
                 if (query.isBlank()) {
-                    chrome.toolErrorRaw("Please provide a search query");
+                    io.toolErrorRaw("Please provide a search query");
                     return;
                 }
                 // run a search agent
-                var agent = new SearchAgent(query, this, coder, chrome);
+                var agent = new SearchAgent(query, this, coder, io);
                 var result = agent.execute();
                 if (result == null) {
-                    chrome.toolOutput("Search was interrupted");
+                    io.toolOutput("Search was interrupted");
                 } else {
-                    chrome.clear();
-                    chrome.setOutputSyntax(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
-                    chrome.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, result.text()));
+                    io.clear();
+                    io.setOutputSyntax(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
+                    io.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, result.text()));
                     // The search agent already creates the right fragment type
                     addSearchFragment(result);
                 }
             } catch (CancellationException cex) {
-                chrome.toolOutput("Search command canceled.");
+                io.toolOutput("Search command canceled.");
             } finally {
-                chrome.enableUserActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -329,20 +329,20 @@ public class ContextManager implements IContextManager
      */
     public Future<?> findSymbolUsageAsync()
     {
-        assert chrome != null;
+        assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
                 String symbol = showSymbolSelectionDialog("Select Symbol");
                 if (symbol != null && !symbol.isBlank()) {
                     usageForIdentifier(symbol);
                 } else {
-                    chrome.toolOutput("No symbol selected.");
+                    io.toolOutput("No symbol selected.");
                 }
             } catch (CancellationException cex) {
-                chrome.toolOutput("Symbol selection canceled.");
+                io.toolOutput("Symbol selection canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -354,8 +354,8 @@ public class ContextManager implements IContextManager
     {
         var dialog = new FileSelectionDialog(null, getRoot(), title);
         SwingUtil.runOnEDT(() -> {
-            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), 400);
-            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
+            dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
         });
         try {
@@ -364,7 +364,7 @@ public class ContextManager implements IContextManager
             }
             return List.of();
         } finally {
-            chrome.focusInput();
+            io.focusInput();
         }
     }
     
@@ -375,8 +375,8 @@ public class ContextManager implements IContextManager
     {
         var dialog = new SymbolSelectionDialog(null, getAnalyzer(), title);
         SwingUtil.runOnEDT(() -> {
-            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), 400);
-            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
+            dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
         });
         try {
@@ -385,7 +385,7 @@ public class ContextManager implements IContextManager
             }
             return null;
         } finally {
-            chrome.focusInput();
+            io.focusInput();
         }
     }
 
@@ -406,10 +406,10 @@ public class ContextManager implements IContextManager
                     case PASTE -> doPasteAction();
                 }
             } catch (CancellationException cex) {
-                chrome.toolOutput(action + " canceled.");
+                io.toolOutput(action + " canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -423,10 +423,10 @@ public class ContextManager implements IContextManager
             try {
                 doCommitAction();
             } catch (CancellationException cex) {
-                chrome.toolOutput("Commit action canceled.");
+                io.toolOutput("Commit action canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -439,7 +439,7 @@ public class ContextManager implements IContextManager
             if (!files.isEmpty()) {
                 addFiles(files);
             } else {
-                chrome.toolOutput("No files selected.");
+                io.toolOutput("No files selected.");
             }
         } else {
             var files = new HashSet<RepoFile>();
@@ -458,7 +458,7 @@ public class ContextManager implements IContextManager
             if (!files.isEmpty()) {
                 addReadOnlyFiles(files);
             } else {
-                chrome.toolOutput("No files selected.");
+                io.toolOutput("No files selected.");
             }
         } else {
             var files = new HashSet<RepoFile>();
@@ -490,7 +490,7 @@ public class ContextManager implements IContextManager
                     sb.append(frag.text()).append("\n\n");
                 } catch (IOException e) {
                     removeBadFragment(frag, e);
-                    chrome.toolErrorRaw("Error reading fragment: " + e.getMessage());
+                    io.toolErrorRaw("Error reading fragment: " + e.getMessage());
                 }
             }
             content = sb.toString();
@@ -499,7 +499,7 @@ public class ContextManager implements IContextManager
         var sel = new java.awt.datatransfer.StringSelection(content);
         var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
         cb.setContents(sel, sel);
-        chrome.toolOutput("Content copied to clipboard");
+        io.toolOutput("Content copied to clipboard");
     }
 
     private void doPasteAction()
@@ -510,16 +510,16 @@ public class ContextManager implements IContextManager
             var clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
             var contents = clipboard.getContents(null);
             if (contents == null || !contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
-                chrome.toolErrorRaw("No text on clipboard");
+                io.toolErrorRaw("No text on clipboard");
                 return;
             }
             clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
             if (clipboardText.isBlank()) {
-                chrome.toolErrorRaw("Clipboard is empty");
+                io.toolErrorRaw("Clipboard is empty");
                 return;
             }
         } catch (Exception e) {
-            chrome.toolErrorRaw("Failed to read clipboard: " + e.getMessage());
+            io.toolErrorRaw("Failed to read clipboard: " + e.getMessage());
             return;
         }
 
@@ -532,18 +532,18 @@ public class ContextManager implements IContextManager
 
         // If not a stacktrace, add as string fragment
         addPasteFragment(clipboardText, submitSummarizeTaskForPaste(clipboardText));
-        chrome.toolOutput("Clipboard content added as text");
+        io.toolOutput("Clipboard content added as text");
     }
 
     private void doDropAction(List<ContextFragment> selectedFragments)
     {
         if (selectedFragments.isEmpty()) {
             if (currentContext().isEmpty()) {
-                chrome.toolErrorRaw("No context to drop");
+                io.toolErrorRaw("No context to drop");
                 return;
             }
             dropAll();
-            chrome.toolOutput("Dropped all context");
+            io.toolOutput("Dropped all context");
         } else {
             var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
             var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
@@ -564,13 +564,13 @@ public class ContextManager implements IContextManager
             
             if (clearHistory) {
                 clearHistory();
-                chrome.toolOutput("Cleared conversation history");
+                io.toolOutput("Cleared conversation history");
             }
             
             drop(pathFragsToRemove, virtualToRemove);
             
             if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
-                chrome.toolOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
+                io.toolOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
             }
         }
     }
@@ -581,14 +581,14 @@ public class ContextManager implements IContextManager
     private void doCommitAction() {
         var messages = CommitPrompts.instance.collectMessages(this);
         if (messages.isEmpty()) {
-            chrome.toolErrorRaw("Nothing to commit");
+            io.toolErrorRaw("Nothing to commit");
             return;
         }
 
-        chrome.toolOutput("Inferring commit message");
+        io.toolOutput("Inferring commit message");
         String commitMsg = coder.sendMessage(messages);
         if (commitMsg.isEmpty()) {
-            chrome.toolErrorRaw("LLM did not provide a commit message");
+            io.toolErrorRaw("LLM did not provide a commit message");
             return;
         }
 
@@ -597,7 +597,7 @@ public class ContextManager implements IContextManager
 
         // Prefill the command input field
         String finalCommitMsg = commitMsg;
-        chrome.prefillCommand("git commit -a -m \"" + finalCommitMsg + "\"");
+        io.prefillCommand("git commit -a -m \"" + finalCommitMsg + "\"");
     }
     
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
@@ -608,7 +608,7 @@ public class ContextManager implements IContextManager
             // Show file selection dialog when nothing is selected
             var files = showFileSelectionDialog("Summarize Files");
             if (files.isEmpty()) {
-                chrome.toolOutput("No files selected for summarization");
+                io.toolOutput("No files selected for summarization");
                 return;
             }
 
@@ -625,15 +625,15 @@ public class ContextManager implements IContextManager
         }
 
         if (sources.isEmpty()) {
-            chrome.toolErrorRaw("No classes found in the selected " + (selectedFragments.isEmpty() ? "files" : "fragments"));
+            io.toolErrorRaw("No classes found in the selected " + (selectedFragments.isEmpty() ? "files" : "fragments"));
             return;
         }
 
         boolean success = summarizeClasses(sources);
         if (success) {
-            chrome.toolOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
+            io.toolOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
         } else {
-            chrome.toolErrorRaw("Failed to summarize classes");
+            io.toolErrorRaw("Failed to summarize classes");
         }
     }
 
@@ -697,7 +697,7 @@ public class ContextManager implements IContextManager
         return contextActionExecutor.submit(() -> {
             try {
                 if (contextHistory.size() <= 1) {
-                    chrome.toolErrorRaw("no undo state available");
+                    io.toolErrorRaw("no undo state available");
                     return;
                 }
                 
@@ -707,13 +707,13 @@ public class ContextManager implements IContextManager
                     redoHistory.add(redoContext);
                 }
                 
-                chrome.setContext(currentContext());
-                chrome.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
+                io.setContext(currentContext());
+                io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
-                chrome.toolOutput("Undo canceled.");
+                io.toolOutput("Undo canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -724,19 +724,19 @@ public class ContextManager implements IContextManager
         return contextActionExecutor.submit(() -> {
             try {
                 if (redoHistory.isEmpty()) {
-                    chrome.toolErrorRaw("no redo state available");
+                    io.toolErrorRaw("no redo state available");
                     return;
                 }
                 var popped = redoHistory.removeLast();
                 var undoContext = undoAndInvertChanges(popped);
                 contextHistory.add(undoContext);
-                chrome.setContext(currentContext());
-                chrome.toolOutput("Redo!");
+                io.setContext(currentContext());
+                io.toolOutput("Redo!");
             } catch (CancellationException cex) {
-                chrome.toolOutput("Redo canceled.");
+                io.toolOutput("Redo canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -751,7 +751,7 @@ public class ContextManager implements IContextManager
                 var current = Files.readString(file.absPath());
                 redoContents.put(file, current);
             } catch (IOException e) {
-                chrome.toolError("Failed reading current contents of " + file + ": " + e.getMessage());
+                io.toolError("Failed reading current contents of " + file + ": " + e.getMessage());
             }
         });
 
@@ -762,11 +762,11 @@ public class ContextManager implements IContextManager
                 Files.writeString(file.absPath(), oldText);
                 changedFiles.add(file);
             } catch (IOException e) {
-                chrome.toolError("Failed to restore file " + file + ": " + e.getMessage());
+                io.toolError("Failed to restore file " + file + ": " + e.getMessage());
             }
         });
         if (!changedFiles.isEmpty()) {
-            chrome.toolOutput("Modified " + changedFiles);
+            io.toolOutput("Modified " + changedFiles);
         }
         return original.withOriginalContents(redoContents);
     }
@@ -778,7 +778,7 @@ public class ContextManager implements IContextManager
             var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
             return ctx.addPasteFragment(fragment, summaryFuture);
         });
-        chrome.toolOutput("Added pasted content");
+        io.toolOutput("Added pasted content");
     }
 
     /** Add search fragment from agent result */
@@ -790,7 +790,7 @@ public class ContextManager implements IContextManager
         } else {
             query = CompletableFuture.completedFuture(fragment.description());
         }
-        pushContext(ctx -> ctx.addSearchFragment(fragment, query, chrome.getLlmOutputText()));
+        pushContext(ctx -> ctx.addSearchFragment(fragment, query, io.getLlmOutputText()));
     }
 
     public void addStringFragment(String description, String content)
@@ -818,18 +818,18 @@ public class ContextManager implements IContextManager
         contextActionExecutor.submit(() -> {
             try {
                 // Use reflection or pass chrome reference in constructor to avoid direct dependency
-                var selectedCtx = chrome.getSelectedContext();
+                var selectedCtx = io.getSelectedContext();
                 if (selectedCtx != null) {
                     addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
-                    chrome.toolOutput("Content captured from output");
+                    io.toolOutput("Content captured from output");
                 } else {
-                    chrome.toolErrorRaw("No content to capture");
+                    io.toolErrorRaw("No content to capture");
                 }
             } catch (CancellationException cex) {
-                chrome.toolOutput("Capture canceled.");
+                io.toolOutput("Capture canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -843,19 +843,19 @@ public class ContextManager implements IContextManager
         contextActionExecutor.submit(() -> {
             try {
                 // Use reflection or pass chrome reference in constructor to avoid direct dependency
-                var selectedCtx = chrome.getSelectedContext();
+                var selectedCtx = io.getSelectedContext();
                 if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
                     var fragment = selectedCtx.getParsedOutput().parsedFragment();
                     editSources(fragment);
-                    chrome.toolOutput("Editing files referenced in output");
+                    io.toolOutput("Editing files referenced in output");
                 } else {
-                    chrome.toolErrorRaw("No content with file references to edit");
+                    io.toolErrorRaw("No content with file references to edit");
                 }
             } catch (CancellationException cex) {
-                chrome.toolOutput("Edit files canceled.");
+                io.toolOutput("Edit files canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -865,12 +865,12 @@ public class ContextManager implements IContextManager
     {
         var uses = getAnalyzer().getUses(identifier);
         if (uses.isEmpty()) {
-            chrome.toolOutput("No uses found for " + identifier);
+            io.toolOutput("No uses found for " + identifier);
             return;
         }
         var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
         if (result.code().isEmpty()) {
-            chrome.toolOutput("No relevant uses found for " + identifier);
+            io.toolOutput("No relevant uses found for " + identifier);
             return;
         }
         var combined = result.code();
@@ -882,7 +882,7 @@ public class ContextManager implements IContextManager
     {
         var stacktrace = StackTrace.parse(stacktraceText);
         if (stacktrace == null) {
-            chrome.toolErrorRaw("unable to parse stacktrace");
+            io.toolErrorRaw("unable to parse stacktrace");
             return;
         }
         var exception = stacktrace.getExceptionType();
@@ -899,7 +899,7 @@ public class ContextManager implements IContextManager
             }
         }
         if (content.isEmpty()) {
-            chrome.toolErrorRaw("no relevant methods found in stacktrace");
+            io.toolErrorRaw("no relevant methods found in stacktrace");
             return;
         }
         pushContext(ctx -> {
@@ -959,10 +959,10 @@ public class ContextManager implements IContextManager
             try {
                 setAutoContextFiles(fileCount);
             } catch (CancellationException cex) {
-                chrome.toolOutput("Auto-context update canceled.");
+                io.toolOutput("Auto-context update canceled.");
             } finally {
-                chrome.enableContextActionButtons();
-                chrome.enableUserActionButtons();
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -1077,10 +1077,10 @@ public class ContextManager implements IContextManager
             contextHistory.removeFirst();
         }
         redoHistory.clear();
-        chrome.toolOutput(newContext.getAction());
-        chrome.setContext(newContext);
-        chrome.clearContextHistorySelection();
-        chrome.updateCaptureButtons(newContext);
+        io.toolOutput(newContext.getAction());
+        io.setContext(newContext);
+        io.clearContextHistorySelection();
+        io.updateCaptureButtons(newContext);
     }
     
     /**
@@ -1088,11 +1088,11 @@ public class ContextManager implements IContextManager
      * May be called on or off the Swing EDT
      */
     private int getSelectedHistoryIndex() {
-        assert chrome != null;
+        assert io != null;
         if (SwingUtilities.isEventDispatchThread()) {
-            return chrome.getContextHistoryTable().getSelectedRow();
+            return io.getContextHistoryTable().getSelectedRow();
         }
-        return SwingUtil.runOnEDT(() -> chrome.getContextHistoryTable().getSelectedRow(), null);
+        return SwingUtil.runOnEDT(() -> io.getContextHistoryTable().getSelectedRow(), null);
     }
 
     /**
@@ -1128,7 +1128,7 @@ public class ContextManager implements IContextManager
     public void removeBadFragment(ContextFragment f, IOException th)
     {
         logger.warn("Removing unreadable fragment {}", f.description(), th);
-        chrome.toolErrorRaw("Removing unreadable fragment " + f.description());
+        io.toolErrorRaw("Removing unreadable fragment " + f.description());
         pushContext(c -> c.removeBadFragment(f));
     }
 
@@ -1149,8 +1149,8 @@ public class ContextManager implements IContextManager
 
             @Override
             protected void done() {
-                chrome.updateContextTable();
-                chrome.updateContextHistoryTable();
+                io.updateContextTable();
+                io.updateContextHistoryTable();
             }
         };
 
@@ -1173,7 +1173,7 @@ public class ContextManager implements IContextManager
 
             @Override
             protected void done() {
-                chrome.updateContextHistoryTable();
+                io.updateContextHistoryTable();
             }
         };
 
@@ -1190,16 +1190,16 @@ public class ContextManager implements IContextManager
 
         return backgroundTasks.submit(() -> {
             try {
-                chrome.spin(taskDescription);
+                io.spin(taskDescription);
                 return task.call();
             } finally {
                 // Decrement counter when done
                 int remaining = activeTaskCount.decrementAndGet();
                 SwingUtilities.invokeLater(() -> {
                     if (remaining <= 0) {
-                        chrome.spinComplete();
+                        io.spinComplete();
                     } else {
-                        chrome.spin("Tasks running: " + remaining);
+                        io.spin("Tasks running: " + remaining);
                     }
                 });
             }
@@ -1244,7 +1244,7 @@ public class ContextManager implements IContextManager
                 }
                 var inferred = response.trim();
                 project.setBuildCommand(inferred);
-                chrome.toolOutput("Inferred build command: " + inferred);
+                io.toolOutput("Inferred build command: " + inferred);
                 return BuildCommand.success(inferred);
             });
         }
@@ -1269,7 +1269,7 @@ public class ContextManager implements IContextManager
         }
         submitBackgroundTask("Generating style guide", () -> {
             try {
-                chrome.toolOutput("Generating project style guide...");
+                io.toolOutput("Generating project style guide...");
                 var analyzer = analyzerWrapper.getForBackground();
                 var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
 
@@ -1295,7 +1295,7 @@ public class ContextManager implements IContextManager
                 }
 
                 if (codeForLLM.isEmpty()) {
-                    chrome.toolOutput("No relevant code found for style guide generation");
+                    io.toolOutput("No relevant code found for style guide generation");
                     return null;
                 }
 
@@ -1312,11 +1312,11 @@ public class ContextManager implements IContextManager
 
                 var styleGuide = coder.sendMessage(messages);
                 if (styleGuide.equals(Models.UNAVAILABLE)) {
-                    chrome.toolOutput("Failed to generate style guide: LLM unavailable");
+                    io.toolOutput("Failed to generate style guide: LLM unavailable");
                     return null;
                 }
                 project.saveStyleGuide(styleGuide);
-                chrome.toolOutput("Style guide generated and saved to .brokk/style.md");
+                io.toolOutput("Style guide generated and saved to .brokk/style.md");
             } catch (Exception e) {
                 logger.error("Error generating style guide", e);
             }
@@ -1330,13 +1330,13 @@ public class ContextManager implements IContextManager
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action)
     {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), action));
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, io.getLlmOutputText(), action));
     }
 
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, chrome.getLlmOutputText(), submitSummarizeTaskForConversation(action)));
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, io.getLlmOutputText(), submitSummarizeTaskForConversation(action)));
     }
 
     public List<Context> getContextHistory() {
