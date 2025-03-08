@@ -272,7 +272,7 @@ public class Context {
             return this;
         }
 
-        var newContext = new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), null, null);
+        var newContext = new Context(analyzer, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), new ParsedOutput(), action);
         AutoContext newAutoContext = fileCount > 0 ? newContext.buildAutoContext() : AutoContext.DISABLED;
         
         return new Context(
