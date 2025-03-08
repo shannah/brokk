@@ -32,7 +32,7 @@ When you start Brokk, you’ll see four main areas:
 1. Context Panel (Bottom): Lists active code/text fragments in your current context, specifying whether they’re read-only or editable, and has
    buttons to manipulate context.
 
-Note: as you add context, Brokk will automatically include summaries of the most closely-related classes
+As you add context, Brokk will automatically include summaries of the most closely-related classes
 as determined by a graph analysis of your codebase.  This helps the LLM avoid hallucinations when
 reasoning about your code.  You can change the number of classes included in the File menu:
 ![image](https://github.com/user-attachments/assets/009ab017-1804-4b0c-8845-50395700c1a1)
@@ -56,6 +56,8 @@ based on how long that takes.  If it is on manual refresh, this menu item is how
 - Copy, Paste: Copy snippets to your clipboard or paste external text into Brokk’s context.
   - Stacktraces get special treatment; they will be augmented with the source of referenced methods.
 - Symbol Usage: Pick a symbol (class, field, or method) and automatically gather all references into a snippet.
+
+You can doubleclick on any context to preview it.
 
 ## General Workflow
 - Add relevant code or text to your context (choose Edit for modifiable files, Read for reference-only).
