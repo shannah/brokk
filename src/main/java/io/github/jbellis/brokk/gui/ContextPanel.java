@@ -498,6 +498,8 @@ public class ContextPanel extends JPanel {
                         .filter(Option::isDefined)
                         .map(Option::get)
                         .map(RepoFile::getFileName)
+                        .distinct()
+                        .sorted()
                         .collect(Collectors.joining(", "));
                 }
             }
