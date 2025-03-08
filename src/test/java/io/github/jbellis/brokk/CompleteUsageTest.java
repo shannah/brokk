@@ -232,7 +232,7 @@ public class CompleteUsageTest {
         assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), toValues(completions));
 
         completions = Completions.completeClassesAndMembers("Do.", mock, false);
-        assertEquals(Set.of("Do.foo", "Do.bar"), toValues(completions));
+        assertEquals(Set.of("a.b.Do", "Do.foo", "Do.bar"), toValues(completions));
 
         completions = Completions.completeClassesAndMembers("Do.", mock, false);
         assertEquals(Set.of("a.b.Do", "Do.foo", "Do.bar"), toValues(completions));
