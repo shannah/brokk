@@ -531,7 +531,7 @@ public class ContextManager implements IContextManager
         }
 
         // If not a stacktrace, add as string fragment
-        addPasteFragment("Pasted text", submitSummarizeTaskForPaste(clipboardText));
+        addPasteFragment(clipboardText, submitSummarizeTaskForPaste(clipboardText));
         chrome.toolOutput("Clipboard content added as text");
     }
 
@@ -942,9 +942,29 @@ public class ContextManager implements IContextManager
                 .collect(Collectors.toSet());
     }
 
+    /**
+     * Update auto-context file count on the current executor thread (for background operations)
+     */
     public void setAutoContextFiles(int fileCount)
     {
         pushContext(ctx -> ctx.setAutoContextFiles(fileCount));
+    }
+
+    /**
+     * Asynchronous version of setAutoContextFiles to avoid blocking the UI thread
+     */
+    public Future<?> setAutoContextFilesAsync(int fileCount)
+    {
+        return contextActionExecutor.submit(() -> {
+            try {
+                setAutoContextFiles(fileCount);
+            } catch (CancellationException cex) {
+                chrome.toolOutput("Auto-context update canceled.");
+            } finally {
+                chrome.enableContextActionButtons();
+                chrome.enableUserActionButtons();
+            }
+        });
     }
 
     public List<ChatMessage> getHistoryMessages()
