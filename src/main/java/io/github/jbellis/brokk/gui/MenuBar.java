@@ -50,7 +50,7 @@ public class MenuBar {
 
             okButton.addActionListener(okEvent -> {
                 var newSize = (int) spinner.getValue();
-                chrome.contextManager.setAutoContextFiles(newSize);
+                chrome.contextManager.setAutoContextFilesAsync(newSize);
                 dialog.dispose();
             });
 
