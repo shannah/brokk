@@ -38,7 +38,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Dependencies:
     ContextManager contextManager;
-    private Project project;
+    private final Project project;
 
     // Swing components:
     final JFrame frame;

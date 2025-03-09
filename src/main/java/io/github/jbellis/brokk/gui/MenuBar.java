@@ -21,7 +21,16 @@ public class MenuBar {
 
         var editKeysItem = new JMenuItem("Edit secret keys");
         editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK));
-        editKeysItem.addActionListener(e -> chrome.showSecretKeysDialog());
+        editKeysItem.addActionListener(e -> {
+            chrome.showSecretKeysDialog();
+            if (chrome.contextManager != null) {
+                // Reopen the current project to create new Models and Coder with updated keys
+                var currentPath = chrome.contextManager.getProject().getRoot();
+                if (currentPath != null) {
+                    io.github.jbellis.brokk.Brokk.openProject(currentPath);
+                }
+            }
+        });
         fileMenu.add(editKeysItem);
 
         fileMenu.addSeparator();
