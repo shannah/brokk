@@ -24,7 +24,6 @@ public class Brokk {
         SwingUtilities.invokeLater(() -> {
             // Create an empty UI with no project
             io = new Chrome(null);
-            showWelcomeMessage();
 
             // Attempt to load the most recent project if any
             var recents = Project.loadRecentProjects();
@@ -88,8 +87,11 @@ public class Brokk {
         contextManager.resolveCircularReferences(io, coder);
         io.toolOutput("Opened project at " + projectPath);
 
+        // Show welcome message
+        showWelcomeMessage(contextManager);
+
         if (!coder.isLlmAvailable()) {
-            io.toolError("Error loading models: " + modelsError);
+            io.toolError("\nError loading models: " + modelsError);
             io.toolError("AI will not be available this session");
         }
     }
@@ -97,8 +99,9 @@ public class Brokk {
     /**
      * Show the welcome message in the LLM output area.
      */
-    private static void showWelcomeMessage() {
-        if (io == null) return;
+    private static void showWelcomeMessage(ContextManager cm) {
+        assert io != null;
+        
         try (var welcomeStream = Brokk.class.getResourceAsStream("/WELCOME.md")) {
             if (welcomeStream != null) {
                 io.shellOutput(new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8));
@@ -107,13 +110,20 @@ public class Brokk {
             throw new UncheckedIOException(e);
         }
 
+        var models = cm.getCoder().models;
+        Properties props = new Properties();
         try {
-            Properties props = new Properties();
             props.load(Brokk.class.getResourceAsStream("/version.properties"));
-            var version = props.getProperty("version");
-            io.shellOutput("\n## Environment:\nBrokk " + version);
-        } catch (Exception e) {
-            io.shellOutput("\n## Environment:\nBrokk [unknown]");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
+        var version = props.getProperty("version");
+        io.shellOutput("\n## Environment:");
+        io.shellOutput("Brokk %s".formatted(version));
+        io.shellOutput("Editor model: " + models.editModelName());
+        io.shellOutput("Apply model: " + models.applyModelName());
+        io.shellOutput("Quick model: " + models.quickModelName());
+        var trackedFiles = Brokk.contextManager.getProject().getRepo().getTrackedFiles();
+        io.shellOutput("Git repo at %s with %d files".formatted(cm.getProject().getRoot(), trackedFiles.size()));
     }
 }
