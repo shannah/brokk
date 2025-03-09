@@ -156,23 +156,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
 
-        // Add listener to save window size and position when they change
-        frame.addComponentListener(new java.awt.event.ComponentAdapter() {
-            @Override
-            public void componentResized(java.awt.event.ComponentEvent e) {
-                if (project != null) {
-                    project.saveMainWindowBounds(frame);
-                }
-            }
-
-            @Override
-            public void componentMoved(java.awt.event.ComponentEvent e) {
-                if (project != null) {
-                    project.saveMainWindowBounds(frame);
-                }
-            }
-        });
-
         if (contextManager == null) {
             disableUserActionButtons();
             disableContextActionButtons();
@@ -249,7 +232,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 4. Context panel (with border title)
         var ctxPanel = buildContextPanel();
-        bottomGbc.weighty = 0.2;
+        bottomGbc.weighty = 0.0;
         bottomGbc.gridy = 2;
         bottomPanel.add(ctxPanel, bottomGbc);
 
@@ -260,17 +243,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         bottomPanel.add(statusLabel, bottomGbc);
         
         verticalSplitPane.setBottomComponent(bottomPanel);
-        
+
         // Add the vertical split pane to the content panel
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(verticalSplitPane, gbc);
-
-        // Set initial divider position - 60% for output area, 40% for bottom
-        SwingUtilities.invokeLater(() -> {
-            int height = frame.getHeight();
-            verticalSplitPane.setDividerLocation((int)(height * 0.6));
-        });
 
         panel.add(contentPanel, BorderLayout.CENTER);
         return panel;
@@ -1177,6 +1154,46 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // If not on a visible screen, center the window
             frame.setLocationRelativeTo(null);
         }
+        
+        // Restore split pane positions after the frame has been shown and sized
+        SwingUtilities.invokeLater(() -> {
+            // Restore vertical split pane position
+            int verticalPos = project.getVerticalSplitPosition();
+            if (verticalPos > 0) {
+                verticalSplitPane.setDividerLocation(verticalPos);
+            }
+            
+            // Restore history split pane position
+            int historyPos = project.getHistorySplitPosition();
+            if (historyPos > 0) {
+                historySplitPane.setDividerLocation(historyPos);
+            } else {
+                // If no saved position, use the previous calculation
+                setInitialHistoryPanelWidth();
+            }
+
+            // Add listener to save window size and position when they change
+            frame.addComponentListener(new java.awt.event.ComponentAdapter() {
+                @Override
+                public void componentResized(java.awt.event.ComponentEvent e) {
+                    project.saveMainWindowBounds(frame);
+                }
+
+                @Override
+                public void componentMoved(java.awt.event.ComponentEvent e) {
+                    project.saveMainWindowBounds(frame);
+                }
+            });
+
+            // Add listeners to save split pane positions when they change
+            historySplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+                project.saveHistorySplitPosition(historySplitPane.getDividerLocation());
+            });
+
+            verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+                project.saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
+            });
+        });
     }
 
     /**
@@ -1380,6 +1397,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void setInitialHistoryPanelWidth() {
         // Safety checks
         if (historySplitPane == null) {
+            return;
+        }
+        
+        // Don't override if we have a saved position from project settings
+        if (project != null && project.getHistorySplitPosition() > 0) {
             return;
         }
 

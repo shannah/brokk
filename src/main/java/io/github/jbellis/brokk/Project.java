@@ -295,6 +295,50 @@ public class Project {
         saveWindowBounds("previewFrame", window);
     }
     
+    /**
+     * Save vertical split pane position
+     */
+    public void saveVerticalSplitPosition(int position) {
+        if (position > 0) {
+            props.setProperty("verticalSplitPosition", String.valueOf(position));
+            saveProperties();
+        }
+    }
+    
+    /**
+     * Get vertical split pane position
+     */
+    public int getVerticalSplitPosition() {
+        try {
+            String posStr = props.getProperty("verticalSplitPosition");
+            return posStr != null ? Integer.parseInt(posStr) : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+    
+    /**
+     * Save history split pane position
+     */
+    public void saveHistorySplitPosition(int position) {
+        if (position > 0) {
+            props.setProperty("historySplitPosition", String.valueOf(position));
+            saveProperties();
+        }
+    }
+    
+    /**
+     * Get history split pane position
+     */
+    public int getHistorySplitPosition() {
+        try {
+            String posStr = props.getProperty("historySplitPosition");
+            return posStr != null ? Integer.parseInt(posStr) : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+    
     public void saveLlmKeys(Map<String, String> keys) {
         var keysPath = getLlmKeysPath();
 
