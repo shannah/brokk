@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.gui.Chrome;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,28 @@ public class Brokk {
      * then check if there's a "most recent" project to open.
      */
     public static void main(String[] args) {
+        // 1) Load your icon
+        var iconUrl = Chrome.class.getResource("/brokk-icon.jpeg");
+        if (iconUrl != null) {
+            var icon = new ImageIcon(iconUrl);
+
+            // 2) Attempt to set icon in macOS Dock & Windows taskbar (Java 9+)
+            if (Taskbar.isTaskbarSupported()) {
+                var taskbar = Taskbar.getTaskbar();
+                try {
+                    taskbar.setIconImage(icon.getImage());
+                } catch (UnsupportedOperationException | SecurityException e) {
+                    // Log or ignore
+                    System.err.println("Unable to set taskbar icon: " + e.getMessage());
+                }
+            }
+        }
+
+        // 3) On macOS, optionally set the app name for the Dock:
+        if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+            System.setProperty("apple.awt.application.name", "Brokk");
+        }
+        
         SwingUtilities.invokeLater(() -> {
             // Create an empty UI with no project
             io = new Chrome(null);

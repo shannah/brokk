@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
-import io.github.jbellis.brokk.Coder;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
@@ -21,9 +20,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
-import javax.swing.ImageIcon;
 import java.awt.event.ActionEvent;
-import java.awt.Taskbar;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -36,22 +33,7 @@ import java.util.concurrent.Future;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
-    
-    static
-    {
-        if (Taskbar.isTaskbarSupported()) {
-            var iconUrl = Chrome.class.getResource("/brokk-icon.jpeg");
-            if (iconUrl != null) {
-                var icon = new ImageIcon(iconUrl);
-                try {
-                    Taskbar.getTaskbar().setIconImage(icon.getImage());
-                } catch (UnsupportedOperationException | SecurityException e) {
-                    logger.warn("Failed to set Dock icon early", e);
-                }
-            }
-        }
-    }
-    
+
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
