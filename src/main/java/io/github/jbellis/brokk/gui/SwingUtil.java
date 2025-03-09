@@ -13,7 +13,7 @@ public class SwingUtil {
     private static final Logger logger = LogManager.getLogger(SwingUtil.class);
 
     /**
-     * Executes a task on the EDT and handles exceptions properly
+     * Executes a Callable on the EDT and handles exceptions properly.  Use this instead of Swingutilities.invokeAndWait.
      * @param task The task to execute
      * @param <T> The return type
      * @param defaultValue Value to return if execution fails
@@ -42,7 +42,7 @@ public class SwingUtil {
         }
     }
 
-    // No-return version
+    /** Executes a Runnable on the EDT and handles exceptions properly.  Use this instead of Swingutilities.invokeAndWait. */
     public static boolean runOnEDT(Runnable task) {
         try {
             SwingUtilities.invokeAndWait(task);

@@ -1380,6 +1380,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historySplitPane.repaint();
     }
 
+    /**
+     * Be very careful to run any UI updates on the EDT
+     * It's impossible to enforce this when we just hand out the JFrame reference
+     * We should probably encapsulate what callers need and remove this
+     */
     public JFrame getFrame() {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
         return frame;

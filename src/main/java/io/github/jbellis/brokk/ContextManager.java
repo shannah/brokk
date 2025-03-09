@@ -44,6 +44,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -364,14 +365,17 @@ public class ContextManager implements IContextManager
      */
     private List<RepoFile> showFileSelectionDialog(String title)
     {
-        var dialog = new FileSelectionDialog(io.getFrame(), project, title);
+        var dialogRef = new AtomicReference<FileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
+            var dialog = new FileSelectionDialog(io.getFrame(), project, title);
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
+            dialogRef.set(dialog);
         });
         try {
-            if (dialog.isConfirmed()) {
+            var dialog = dialogRef.get();
+            if (dialog != null && dialog.isConfirmed()) {
                 return dialog.getSelectedFiles();
             }
             return List.of();
