@@ -21,7 +21,9 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
+import javax.swing.ImageIcon;
 import java.awt.event.ActionEvent;
+import java.awt.Taskbar;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -34,6 +36,22 @@ import java.util.concurrent.Future;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
+    
+    static
+    {
+        if (Taskbar.isTaskbarSupported()) {
+            var iconUrl = Chrome.class.getResource("/brokk-icon.jpeg");
+            if (iconUrl != null) {
+                var icon = new ImageIcon(iconUrl);
+                try {
+                    Taskbar.getTaskbar().setIconImage(icon.getImage());
+                } catch (UnsupportedOperationException | SecurityException e) {
+                    logger.warn("Failed to set Dock icon early", e);
+                }
+            }
+        }
+    }
+    
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
@@ -104,6 +122,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 1200);  // Taller than wide
         frame.setLayout(new BorderLayout());
+        
+        // Set application icon
+        try {
+            var iconUrl = getClass().getResource("/brokk-icon.jpeg");
+            if (iconUrl != null) {
+                var icon = new ImageIcon(iconUrl);
+                frame.setIconImage(icon.getImage());
+            } else {
+                logger.warn("Could not find brokk-icon.jpeg resource");
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to set application icon", e);
+        }
 
         // 3) Main panel (top area + bottom area)
         frame.add(buildMainPanel(), BorderLayout.CENTER);
@@ -866,7 +897,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             var newRow = new KeyValueRowPanel(Models.defaultKeyNames);
             keyRows.add(newRow);
             keysPanel.add(newRow);
-            keysPanel.revalidate();
+            keysPanel.revalidate(); 
             keysPanel.repaint();
         });
 
