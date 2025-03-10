@@ -33,7 +33,7 @@ public class Project implements IProject {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
 
-    public Project(Path root) {
+    public Project(Path root, AnalyzerWrapper.TaskRunner runner) {
         this.repo = new GitRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
@@ -64,7 +64,7 @@ public class Project implements IProject {
         }
 
         // Create the analyzer wrapper
-        this.analyzerWrapper = new AnalyzerWrapper(this, Executors.newSingleThreadExecutor());
+        this.analyzerWrapper = new AnalyzerWrapper(this, runner);
 
         // Set defaults for workspace properties if missing
         if (workspaceProps.isEmpty()) {

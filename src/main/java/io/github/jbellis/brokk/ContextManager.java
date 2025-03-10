@@ -94,7 +94,7 @@ public class ContextManager implements IContextManager
     private final ExecutorService contextActionExecutor = createLoggingExecutorService(Executors.newFixedThreadPool(2));
 
     // Internal background tasks (unrelated to user actions)
-    private final ExecutorService backgroundTasks = createLoggingExecutorService(Executors.newFixedThreadPool(2));
+    private final ExecutorService backgroundTasks = createLoggingExecutorService(Executors.newFixedThreadPool(3));
 
     private Project project;
     private final Path root;
@@ -140,7 +140,6 @@ public class ContextManager implements IContextManager
     public ContextManager(Path root)
     {
         this.root = root.toAbsolutePath();
-        this.project = new Project(root);
     }
 
     /**
@@ -150,7 +149,8 @@ public class ContextManager implements IContextManager
     {
         this.io = chrome;
         this.coder = coder;
-        
+        this.project = new Project(root, this::submitBackgroundTask);
+
         // Set up the listener for analyzer events
         project.setAnalyzerListener(new AnalyzerListener() {
             @Override

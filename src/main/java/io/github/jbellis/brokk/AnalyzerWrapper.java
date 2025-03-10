@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -34,7 +34,7 @@ public class AnalyzerWrapper {
 
     private AnalyzerListener listener; // can be null if no one is listening
     private final Path root;
-    private final ExecutorService analyzerExecutor;   // where analyzer rebuilds run
+    private final TaskRunner runner;
     private final BlockingQueue<DirectoryChangeEvent> eventQueue = new LinkedBlockingQueue<>();
     private final Project project;
 
@@ -45,16 +45,30 @@ public class AnalyzerWrapper {
     private volatile boolean externalRebuildRequested = false;
     private volatile boolean rebuildPending = false;
 
+
+    @FunctionalInterface
+    public interface TaskRunner {
+        /**
+         * Submits a background task with the given description.
+         *
+         * @param taskDescription a description of the task
+         * @param task the task to execute
+         * @param <T> the result type of the task
+         * @return a {@link Future} representing pending completion of the task
+         */
+        <T> Future<T> submit(String taskDescription, Callable<T> task);
+    }
+
     /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
-    public AnalyzerWrapper(Project project, ExecutorService analyzerExecutor) {
+    public AnalyzerWrapper(Project project, TaskRunner runner) {
         this.project = project;
-        this.analyzerExecutor = analyzerExecutor;
         this.root = project.getRoot();
+        this.runner = runner;
 
         // build the initial Analyzer
-        future = analyzerExecutor.submit(this::loadOrCreateAnalyzer);
+        future = runner.submit("Initializing code intelligence", this::loadOrCreateAnalyzer);
     }
     
     /**
@@ -365,7 +379,7 @@ public class AnalyzerWrapper {
 
         rebuildInProgress = true;
         logger.debug("Rebuilding analyzer");
-        future = analyzerExecutor.submit(() -> {
+        future = runner.submit("Rebuilding code intelligence", () -> {
             try {
                 return createAndSaveAnalyzer();
             } finally {
