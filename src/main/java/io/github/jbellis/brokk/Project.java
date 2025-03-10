@@ -214,6 +214,37 @@ public class Project implements IProject {
     }
     
     /**
+     * Saves a serialized Context object to the workspace properties
+     */
+    public void saveContext(Context context) {
+        try {
+            byte[] serialized = Context.serialize(context);
+            String encoded = java.util.Base64.getEncoder().encodeToString(serialized);
+            workspaceProps.setProperty("context", encoded);
+            saveWorkspaceProperties();
+        } catch (Exception e) {
+            logger.error("Error saving context: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Loads a serialized Context object from the workspace properties
+     * @return The loaded Context, or null if none exists
+     */
+    public Context loadContext() {
+        try {
+            String encoded = workspaceProps.getProperty("context");
+            if (encoded != null && !encoded.isEmpty()) {
+                byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
+                return Context.deserialize(serialized).withProject(this);
+            }
+        } catch (Exception e) {
+            logger.error("Error loading context: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Returns the LLM API keys stored in ~/.brokk/config/keys.properties
      * @return Map of key names to values, or empty map if file doesn't exist
      */

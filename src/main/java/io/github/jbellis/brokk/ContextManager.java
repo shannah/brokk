@@ -166,7 +166,12 @@ public class ContextManager implements IContextManager
         
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
-        var initialContext = new Context(project, 5);
+        // Load saved context or create a new one if none exists
+        // TODO rebuild autocontext off the EDT
+        var initialContext = project.loadContext();
+        if (initialContext == null) {
+            initialContext = new Context(project, 5);
+        }
         contextHistory.add(initialContext);
         chrome.setContext(initialContext);
 
@@ -1100,6 +1105,9 @@ public class ContextManager implements IContextManager
         io.setContext(newContext);
         io.clearContextHistorySelection();
         io.updateCaptureButtons(newContext);
+        
+        // Save the current context to workspace properties
+        project.saveContext(newContext);
     }
     
     /**

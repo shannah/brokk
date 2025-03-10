@@ -85,8 +85,14 @@ public class Context implements Serializable {
             Future<String> action
     ) {
         assert project != null;
+        assert editableFiles != null;
+        assert readonlyFiles != null;
+        assert virtualFragments != null;
         assert autoContext != null;
         assert autoContextFileCount >= 0;
+        assert historyMessages != null;
+        assert originalContents != null;
+        assert parsedOutput != null;
         assert action != null;
         this.project = project;
         this.editableFiles = List.copyOf(editableFiles);
@@ -619,13 +625,52 @@ public class Context implements Serializable {
         // Read non-transient fields
         ois.defaultReadObject();
 
-        // Initialize action field with the string value
         try {
-            java.lang.reflect.Field actionField = Context.class.getDeclaredField("action");
+            // Use reflection to set final fields
+            var historyField = Context.class.getDeclaredField("historyMessages");
+            historyField.setAccessible(true);
+            historyField.set(this, new ArrayList<>());
+            
+            var autoContextField = Context.class.getDeclaredField("autoContext");
+            autoContextField.setAccessible(true);
+            autoContextField.set(this, AutoContext.DISABLED);
+            
+            var originalContentsField = Context.class.getDeclaredField("originalContents");
+            originalContentsField.setAccessible(true);
+            originalContentsField.set(this, Map.of());
+            
+            var parsedOutputField = Context.class.getDeclaredField("parsedOutput");
+            parsedOutputField.setAccessible(true);
+            parsedOutputField.set(this, new ParsedOutput());
+            
+            var projectField = Context.class.getDeclaredField("project");
+            projectField.setAccessible(true);
+            projectField.set(this, null); // This will need to be set externally after deserialization
+            
+            var actionField = Context.class.getDeclaredField("action");
             actionField.setAccessible(true);
             actionField.set(this, CompletableFuture.completedFuture(WELCOME_BACK));
         } catch (NoSuchFieldException | IllegalAccessException e) {
-            throw new IOException("Failed to deserialize action field", e);
+            throw new IOException("Failed to initialize fields during deserialization", e);
         }
+    }
+
+    /**
+     * Creates a new Context with the specified project.
+     * Used to initialize the project reference after deserialization.
+     */
+    public Context withProject(IProject project) {
+        return new Context(
+                project,
+                editableFiles,
+                readonlyFiles,
+                virtualFragments,
+                AutoContext.DISABLED,
+                autoContextFileCount,
+                historyMessages,
+                originalContents,
+                parsedOutput,
+                action
+        );
     }
 }
