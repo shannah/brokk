@@ -98,13 +98,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 1) Set FlatLaf Look & Feel
         try {
-            com.formdev.flatlaf.FlatLightLaf.setup();
+            // Use theme from project properties or default to light
+            String theme = getProject() != null ? getProject().getTheme() : "light";
+            if ("dark".equalsIgnoreCase(theme)) {
+                com.formdev.flatlaf.FlatDarkLaf.setup();
+            } else {
+                com.formdev.flatlaf.FlatLightLaf.setup();
+            }
         } catch (Exception e) {
             logger.warn("Failed to set LAF, using default", e);
         }
 
         // 2) Build main window
         frame = new JFrame("Brokk: Code Intelligence for AI");
+        
+        // Create theme manager after frame is initialized
+        themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 1200);  // Taller than wide
         frame.setLayout(new BorderLayout());
@@ -330,8 +339,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     showContextHistoryPopupMenu(e);
                 }
             }
-            
-            @Override
+
+    @Override
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showContextHistoryPopupMenu(e);
@@ -431,7 +440,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Shows the context menu for the context history table
      */
-    private void showContextHistoryPopupMenu(MouseEvent e) {
+    // Theme manager
+    private GuiTheme themeManager;
+    
+    /**
+     * Switches between light and dark theme
+     * @param isDark true for dark theme, false for light theme
+     */
+    public void switchTheme(boolean isDark) {
+        themeManager.applyTheme(isDark);
+    }
+
+            private void showContextHistoryPopupMenu(MouseEvent e) {
         int row = contextHistoryTable.rowAtPoint(e.getPoint());
         if (row < 0) return;
         
@@ -478,6 +498,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         llmStreamArea.setLineWrap(true);
         llmStreamArea.setWrapStyleWord(true);
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+
+        // Apply current theme
+        if (themeManager != null) {
+            themeManager.applyCurrentThemeToComponent(llmStreamArea);
+        }
 
         var jsp = new JScrollPane(llmStreamArea);
         new SmartScroll(jsp);
@@ -1039,13 +1064,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             textArea.setCodeFoldingEnabled(true);
             textArea.setSyntaxEditingStyle(getSyntaxStyleForFragment(fragment));
 
-            try {
-                Theme.load(getClass().getResourceAsStream(
-                                "/org/fife/ui/rsyntaxtextarea/themes/default.xml"))
-                        .apply(textArea);
-            } catch (Exception e) {
-                logger.warn("Could not load theme for preview", e);
-            }
+            // Apply current theme
+            themeManager.applyCurrentThemeToComponent(textArea);
 
             var scrollPane = new JScrollPane(textArea);
             previewFrame.add(scrollPane);
