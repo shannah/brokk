@@ -684,8 +684,8 @@ public class SearchAgent {
                 <beast-mode>
                 🔥 MAXIMUM PRIORITY OVERRIDE! 🔥
                 - YOU MUST FINALIZE RESULTS NOW WITH AVAILABLE INFORMATION
-                - USE DISCOVERED CODE UNITS TO PROVIDE BEST POSSIBLE ANSWER
-                - FAILURE IS NOT AN OPTION
+                - USE DISCOVERED CODE UNITS TO PROVIDE BEST POSSIBLE ANSWER,
+                - OR EXPLAIN WHY YOU DID NOT SUCCEED
                 </beast-mode>
                 """.stripIndent();
                 // Force finalize only
