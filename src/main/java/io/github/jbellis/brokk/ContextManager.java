@@ -154,12 +154,12 @@ public class ContextManager implements IContextManager
         // Set up the listener for analyzer events
         project.setAnalyzerListener(new AnalyzerListener() {
             @Override
-            public void onAnalyzerBlocked() {
+            public void onBlocked() {
                 SwingUtilities.invokeLater(() -> io.toolOutput("Analyzer is refreshing"));
             }
 
             @Override
-            public void onAnalyzerFirstBuild(String msg) {
+            public void onFirstBuild(String msg) {
                 SwingUtilities.invokeLater(() -> io.shellOutput(msg));
             }
         });

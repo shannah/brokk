@@ -10,10 +10,10 @@ public interface AnalyzerListener
     /**
      * Called when the Analyzer is requested but it is not yet complete.
      */
-    void onAnalyzerBlocked();
+    void onBlocked();
 
     /**
-     * Called with any general messages that used to go to the UI console.
+     * Called with details of the first build, which is used to infer auto rebuild policy.
      */
-    void onAnalyzerFirstBuild(String msg);
+    void onFirstBuild(String msg);
 }

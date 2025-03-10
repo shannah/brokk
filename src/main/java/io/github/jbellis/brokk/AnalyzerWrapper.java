@@ -280,7 +280,7 @@ public class AnalyzerWrapper {
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
                 if (listener != null) {
-                    listener.onAnalyzerFirstBuild(msg);
+                    listener.onFirstBuild(msg);
                 }
                 logger.info(msg);
             } else {
@@ -290,7 +290,7 @@ public class AnalyzerWrapper {
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
                 if (listener != null) {
-                    listener.onAnalyzerFirstBuild(msg);
+                    listener.onFirstBuild(msg);
                 }
                 logger.info(msg);
                 startWatcher();
@@ -398,7 +398,7 @@ public class AnalyzerWrapper {
                 logger.debug("Blocking on analyzer creation", e);
             }
             if (listener != null) {
-                listener.onAnalyzerBlocked();
+                listener.onBlocked();
             }
         }
         try {
