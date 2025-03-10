@@ -994,6 +994,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             clearContextHistorySelection();
             updateContextHistoryTable();
             updateSuggestCommitButton();
+            updateCaptureButtons(context);
         });
     }
 

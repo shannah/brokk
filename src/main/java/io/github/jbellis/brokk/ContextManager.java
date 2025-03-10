@@ -1103,9 +1103,7 @@ public class ContextManager implements IContextManager
             io.toolOutput(newContext.getAction());
         }
         io.setContext(newContext);
-        io.clearContextHistorySelection();
-        io.updateCaptureButtons(newContext);
-        
+
         // Save the current context to workspace properties
         project.saveContext(newContext);
     }
