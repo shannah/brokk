@@ -1,12 +1,17 @@
 package io.github.jbellis.brokk;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -230,5 +235,51 @@ public class Completions {
             return new ExternalFile(p);
         }
         return new RepoFile(root, root.relativize(p));
+    }
+
+    @NotNull
+    public static List<RepoFile> getFileCompletions(String input, Collection<RepoFile> repoFiles) {
+        String partialLower = input.toLowerCase();
+        Map<String, RepoFile> baseToFullPath = new HashMap<>();
+        var uniqueCompletions = new HashSet<RepoFile>();
+
+        for (RepoFile p : repoFiles) {
+            baseToFullPath.put(p.getFileName(), p);
+        }
+
+        // Matching base filenames (priority 1)
+        baseToFullPath.forEach((base, file) -> {
+            if (base.toLowerCase().startsWith(partialLower)) {
+                uniqueCompletions.add(file);
+            }
+        });
+
+        // Camel-case completions (priority 2)
+        baseToFullPath.forEach((base, file) -> {
+            String capitals = extractCapitals(base);
+            if (capitals.toLowerCase().startsWith(partialLower)) {
+                uniqueCompletions.add(file);
+            }
+        });
+
+        // Matching full paths (priority 3)
+        for (RepoFile file : repoFiles) {
+            if (file.toString().toLowerCase().startsWith(partialLower)) {
+                uniqueCompletions.add(file);
+            }
+        }
+
+        // Sort completions by filename, then by full path
+        return uniqueCompletions.stream()
+                .sorted((f1, f2) -> {
+                    // Compare filenames first
+                    int result = f1.getFileName().compareTo(f2.getFileName());
+                    if (result == 0) {
+                        // If filenames match, compare by full path
+                        return f1.toString().compareTo(f2.toString());
+                    }
+                    return result;
+                })
+                .toList();
     }
 }

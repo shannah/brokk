@@ -306,48 +306,9 @@ public class FileSelectionDialog extends JDialog {
         @Override
         public List<Completion> getCompletions(JTextComponent tc) {
             var input = getAlreadyEnteredText(tc);
-            String partialLower = input.toLowerCase();
-            Map<String, RepoFile> baseToFullPath = new HashMap<>();
-            Map<String, Completion> uniqueCompletions = new HashMap<>();
-
-            for (RepoFile p : repoFiles) {
-                baseToFullPath.put(p.getFileName(), p);
-            }
-
-            // Matching base filenames (priority 1)
-            baseToFullPath.forEach((base, path) -> {
-                if (base.toLowerCase().startsWith(partialLower)) {
-                    uniqueCompletions.put(path.toString(), createCompletion(path));
-                }
-            });
-
-            // Camel-case completions (priority 2)
-            baseToFullPath.forEach((base, path) -> {
-                String capitals = Completions.extractCapitals(base);
-                if (capitals.toLowerCase().startsWith(partialLower)) {
-                    uniqueCompletions.putIfAbsent(path.toString(), createCompletion(path));
-                }
-            });
-
-            // Matching full paths (priority 3)
-            for (RepoFile p : repoFiles) {
-                if (p.toString().toLowerCase().startsWith(partialLower)) {
-                    uniqueCompletions.putIfAbsent(p.toString(), createCompletion(p));
-                }
-            }
-
-            // Sort completions by filename, then by full path
-            return uniqueCompletions.values().stream()
-                .sorted((c1, c2) -> {
-                    // Compare filenames first
-                    int result = c1.getSummary().compareTo(c2.getSummary());
-                    if (result == 0) {
-                        // If filenames match, compare by full path
-                        return c1.getReplacementText().compareTo(c2.getReplacementText());
-                    }
-                    return result;
-                })
-                .toList();
+            return Completions.getFileCompletions(input, repoFiles).stream()
+                    .map(this::createCompletion)
+                    .toList();
         }
 
         private Completion createCompletion(RepoFile file) {
