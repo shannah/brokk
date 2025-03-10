@@ -603,7 +603,8 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   /**
    * Searches for classes, methods, and fields matching a given regular expression pattern.
    * 
-   * @param pattern A regular expression to match against class, method, and field names
+   * @param pattern A regular expression to match against class, method, and field names.
+   *                Note: Jeoern's patterns includeimplicit ^ and $ at the start and end of the pattern
    * @return A list of CodeUnit objects representing the matches
    */
   override def getDefinitions(pattern: String): java.util.List[CodeUnit] = {

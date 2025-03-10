@@ -6,131 +6,38 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.stream.Collectors;
 
 public class Completions {
-    public static List<CodeUnit> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
-        var allCodeUnits = analyzer.getAllClasses();
-        var allClassnames = allCodeUnits.stream().map(CodeUnit::reference).toList();
+    public static List<CodeUnit> completeClassesAndMembers(String input, IAnalyzer analyzer) {
         String partial = input.trim();
-
-        var matchingClasses = findClassesForMemberAccess(input, allClassnames);
-        if (matchingClasses.size() == 1) {
-            // find matching members
-            var results = new ArrayList<CodeUnit>();
-            for (var matchedClass : matchingClasses) {
-                // Add the class itself as one of the completions
-                results.add(CodeUnit.cls(matchedClass));
-                
-                String memberPrefix = partial.substring(partial.lastIndexOf(".") + 1);
-                // Add members
-                var trueMembers = analyzer.getMembersInClass(matchedClass).stream()
-                        .filter(m -> !m.reference().contains("$"))
-                        .toList();
-                
-                for (var member : trueMembers) {
-                    String fqMember = member.reference();
-                    String shortMember = fqMember.substring(fqMember.lastIndexOf('.') + 1);
-                    if (shortMember.startsWith(memberPrefix)) {
-                        if (returnFqn) {
-                            results.add(member);
-                        } else {
-                            // For non-FQN, we reconstruct with short class name
-                            if (member.isFunction()) {
-                                results.add(CodeUnit.fn(getShortClassName(matchedClass) + "." + shortMember));
-                            } else if (member.isClass()) {
-                                results.add(CodeUnit.cls(getShortClassName(matchedClass) + "." + shortMember));
-                            } else {
-                                results.add(CodeUnit.field(getShortClassName(matchedClass) + "." + shortMember));
-                            }
-                        }
-                    }
-                }
-            }
-            return results;
-        }
-
-        // Otherwise, we're completing class names
-        String partialLower = partial.toLowerCase();
-        Set<String> matchedClassNames = new TreeSet<>();
 
         // Gather matching classes
         if (partial.isEmpty()) {
-            matchedClassNames.addAll(allClassnames);
-        } else {
-            var st = returnFqn ? allClassnames.stream() : allClassnames.stream().map(Completions::getShortClassName);
-            st.forEach(name -> {
-                if (name.toLowerCase().startsWith(partialLower)
-                        || getShortClassName(name).toLowerCase().startsWith(partialLower)) {
-                    matchedClassNames.add(name);
-                }
-            });
-
-            matchedClassNames.addAll(getClassnameMatches(partial, allClassnames));
+            return analyzer.getAllClasses().stream().toList();
         }
 
-        // Convert matched class names to CodeUnit objects
-        return matchedClassNames.stream()
-                .map(fqClass -> {
-                    String classRef = returnFqn ? fqClass : getShortClassName(fqClass);
-                    return CodeUnit.cls(classRef);
-                })
+        var matches = new HashSet<>(analyzer.getDefinitions(".*" + input + ".*"));
+        if (partial.toUpperCase().equals(partial)) {
+            // split the characters apart with .* between for camel case matches
+            String camelCasePattern = ".*%s.*".formatted(String.join(".*", partial.split("")));
+            matches.addAll(analyzer.getDefinitions(camelCasePattern));
+        }
+
+        // sort by whether the name starts with the input string (ignoring case), then alphabetically
+        return matches.stream()
+                .sorted(Comparator.<CodeUnit, Boolean>comparing(codeUnit -> 
+                    codeUnit.name().toLowerCase().startsWith(partial.toLowerCase())
+                ).reversed()
+                .thenComparing(CodeUnit::toString))
                 .toList();
     }
-
-    /**
-     * Return the FQCNs corresponding to input if it identifies an unambiguous class in [the FQ] allClasses
-     */
-    static Set<String> findClassesForMemberAccess(String input, List<String> allClasses) {
-        // suppose allClasses = [a.b.Do, a.b.Do$Re, d.Do, a.b.Do$Re$Sub]
-        // then we want
-        // a -> []
-        // a.b -> []
-        // a.b.Do -> []
-        // a.b.Do. -> [a.b.Do]
-        // Do -> []
-        // Do. -> [a.b.Do, d.Do]
-        // Do.foo -> [a.b.Do, d.Do]
-        // foo -> []
-        // Do$Re -> []
-        // Do$Re. -> [a.b.Do$Re]
-        // Do$Re$Sub -> [a.b.Do$ReSub]
-
-        // Handle empty or null inputs
-        if (input == null || input.isEmpty() || allClasses == null) {
-            return Set.of();
-        }
-
-        // first look for an unambiguous match to the entire input
-        var lowerCase = input.toLowerCase();
-        var prefixMatches = allClasses.stream()
-                .filter(className -> className.toLowerCase().startsWith(lowerCase)
-                        || getShortClassName(className).toLowerCase().startsWith(lowerCase))
-                .collect(Collectors.toSet());
-        if (prefixMatches.size() == 1) {
-            return prefixMatches;
-        }
-
-        if (input.lastIndexOf(".") < 0) {
-            return Set.of();
-        }
-
-        // see if the input-before-dot is a classname
-        String possibleClassname = input.substring(0, input.lastIndexOf("."));
-        return allClasses.stream()
-                .filter(className -> className.equalsIgnoreCase(possibleClassname)
-                        || getShortClassName(className).equalsIgnoreCase(possibleClassname))
-                .collect(Collectors.toSet());
-    }
-
+    
     /**
      * This only does syntactic parsing, if you need to verify whether the parsed element
      * is actually a class, getUniqueClass() may be what you want
@@ -155,45 +62,7 @@ public class Completions {
 
         return fqClass.substring(lastDot + 1);
     }
-
-    /**
-     * Given a non-fully qualified classname, complete it with camel case or prefix matching
-     * to a FQCN
-     */
-    static Set<String> getClassnameMatches(String partial, List<String> allClasses) {
-        var partialLower = partial.toLowerCase();
-        var nameMatches = new HashSet<String>();
-        for (String fqClass : allClasses) {
-            // fqClass = a.b.c.FooBar$LedZep
-
-            // Extract the portion after the last '.' and the last '$' if present
-            // simpleName = FooBar$LedZep
-            String simpleName = fqClass;
-            int lastDot = fqClass.lastIndexOf('.');
-            if (lastDot >= 0) {
-                simpleName = fqClass.substring(lastDot + 1);
-            }
-
-            // Now also strip off nested classes for simpler matching
-            // simpleName = LedZep
-            int lastDollar = simpleName.lastIndexOf('$');
-            if (lastDollar >= 0) {
-                simpleName = simpleName.substring(lastDollar + 1);
-            }
-
-            // Check for simple prefix match
-            if (simpleName.toLowerCase().startsWith(partialLower)) {
-                nameMatches.add(fqClass);
-            } else {
-                var capitals = extractCapitals(simpleName);
-                if (capitals.toLowerCase().startsWith(partialLower)) {
-                    nameMatches.add(fqClass);
-                }
-            }
-        }
-        return nameMatches;
-    }
-
+    
     public static String extractCapitals(String base) {
         StringBuilder capitals = new StringBuilder();
         for (char c : base.toCharArray()) {

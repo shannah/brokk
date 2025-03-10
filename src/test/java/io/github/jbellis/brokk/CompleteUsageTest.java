@@ -3,22 +3,19 @@ package io.github.jbellis.brokk;
 import org.junit.jupiter.api.Test;
 import org.msgpack.core.annotations.VisibleForTesting;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.github.jbellis.brokk.Completions.findClassesForMemberAccess;
 import static io.github.jbellis.brokk.Completions.getShortClassName;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CompleteUsageTest {
     @VisibleForTesting
     static List<CodeUnit> completeUsage(String input, IAnalyzer analyzer) {
-        return Completions.completeClassesAndMembers(input, analyzer, true);
+        return Completions.completeClassesAndMembers(input, analyzer);
     }
 
     // A simple inline "mock" analyzer: no mocking library used.
@@ -50,6 +47,38 @@ public class CompleteUsageTest {
         public List<CodeUnit> getMembersInClass(String fqClass) {
             return methodsMap.getOrDefault(fqClass, List.of());
         }
+
+        @Override
+        public List<CodeUnit> getDefinitions(String pattern) {
+            // Case-insensitive pattern matching for compatibility with Analyzer
+            var regex = "^(?i)" + pattern + "$";
+
+            // Find matching classes
+            var matchingClasses = allClasses.stream()
+                .filter(cu -> {
+                    String className = cu.reference();
+                    String shortName = getShortClassName(className);
+                    return shortName.matches(regex);
+                })
+                .toList();
+
+            // Find matching methods
+            var matchingMethods = methodsMap.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream())
+                .filter(cu -> {
+                    String methodName = cu.reference();
+                    // Extract just the method name (after last dot)
+                    String simpleName = methodName.substring(methodName.lastIndexOf('.') + 1);
+                    return simpleName.matches(regex);
+                })
+                .toList();
+
+            // Fields not tested
+
+            // Combine results
+            return Stream.concat(matchingClasses.stream(), matchingMethods.stream())
+                .toList();
+        }
     }
     
     // Helper to extract values for easy assertion
@@ -57,6 +86,11 @@ public class CompleteUsageTest {
         return candidates.stream()
                .map(CodeUnit::reference)
                .collect(Collectors.toSet());
+    }
+    private static Set<String> toShortValues(List<CodeUnit> candidates) {
+        return candidates.stream()
+                .map(CodeUnit::name)
+                .collect(Collectors.toSet());
     }
 
     @Test
@@ -83,7 +117,7 @@ public class CompleteUsageTest {
         var completions = completeUsage("d", mock);
 
         var values = toValues(completions);
-        assertEquals(Set.of("a.b.Do", "a.b.Do$Re", "a.b.Do$Re$Sub"), values);
+        assertEquals(Set.of("a.b.Do", "a.b.Do$Re", "a.b.Do$Re$Sub", "test.CamelClass.someMethod"), values);
     }
 
     @Test
@@ -92,25 +126,13 @@ public class CompleteUsageTest {
         // Input "r" -> user wants to find "a.b.Do$Re" by partial name "Re"
         var completions = completeUsage("r", mock);
         var values = toValues(completions);
-        assertEquals(Set.of("a.b.Do$Re"), values);
-    }
-
-    @Test
-    public void testQualifiedDo() {
-        var mock = new MockAnalyzer();
-        var completions = completeUsage("a.b.Do", mock);
-        var values = toValues(completions);
-        
-        assertEquals(
-            Set.of("a.b.Do", "a.b.Do$Re", "a.b.Do$Re$Sub"),
-            values
-        );
+        assertEquals(Set.of("a.b.Do$Re", "a.b.Do$Re$Sub", "a.b.Do.bar"), values);
     }
 
     @Test
     public void testNestedClassRe() {
         var mock = new MockAnalyzer();
-        var completions = completeUsage("a.b.Do$Re", mock);
+        var completions = completeUsage("Re", mock);
         var values = toValues(completions);
 
         assertEquals(Set.of("a.b.Do$Re", "a.b.Do$Re$Sub"), values);
@@ -141,165 +163,12 @@ public class CompleteUsageTest {
             values
         );
     }
-
-    @Test
-    public void testSameShortname() {
-        var mock = new MockAnalyzer();
-        // Input "Zz" -> should match both "x.y.Zz" and "w.u.Zz"
-        var matches = Completions.getClassnameMatches("Zz", mock.getAllClasses().stream().map(CodeUnit::reference).toList());
-        assertEquals(Set.of("x.y.Zz", "w.u.Zz"), matches);
-
-        var completions = completeUsage("Zz", mock);
-        var values = toValues(completions);
-        assertEquals(Set.of("x.y.Zz", "w.u.Zz"), values);
-    }
     
-    @Test
-    public void testDeepPackageHierarchyMatches() {
-        var classes = List.of(
-            "com.example.deep.package.hierarchy.MyClass",
-            "com.example.deep.other.package.OtherClass",
-            "org.different.very.deep.structure.TestClass",
-            "org.different.very.deep.structure.nested.NestedClass"
-        );
-        
-        // Test simple name match
-        var matches = Completions.getClassnameMatches("Test", classes);
-        assertEquals(Set.of("org.different.very.deep.structure.TestClass"), matches);
-        
-        // Test camel case match in deep hierarchy
-        matches = Completions.getClassnameMatches("NC", classes);
-        assertEquals(Set.of("org.different.very.deep.structure.nested.NestedClass"), matches);
-        
-        // Test exact class name match regardless of package depth
-        matches = Completions.getClassnameMatches("MyClass", classes);
-        assertEquals(Set.of("com.example.deep.package.hierarchy.MyClass"), matches);
-    }
-
-    @Test
-    public void testMultipleMatchesInDifferentPackages() {
-        var classes = List.of(
-            "com.example.util.Handler",
-            "com.example.core.Handler",
-            "com.example.web.Handler",
-            "org.other.Handler"
-        );
-        
-        var matches = Completions.getClassnameMatches("Handler", classes);
-        assertEquals(4, matches.size());
-        assertTrue(matches.containsAll(classes));
-    }
-
-    @Test 
-    public void testCamelCaseMatchingInDeepHierarchy() {
-        var classes = List.of(
-            "com.example.deep.AbstractBaseController",
-            "com.example.deeper.BaseController",
-            "com.example.deepest.SimpleBaseController",
-            "org.other.NotAController"
-        );
-        
-        // Test "ABC" matching only AbstractBaseController
-        var matches = Completions.getClassnameMatches("ABC", classes);
-        assertEquals(1, matches.size());
-        assertTrue(matches.contains("com.example.deep.AbstractBaseController"));
-        
-        // Test "SBC" matching only SimpleBaseController
-        matches = Completions.getClassnameMatches("SBC", classes);
-        assertEquals(1, matches.size());
-        assertTrue(matches.contains("com.example.deepest.SimpleBaseController"));
-    }
-
-    @Test
-    public void testClassOnlyCompletions() {
-        var mock = new MockAnalyzer();
-        
-        // Test class-only completions (no dot or $ in input)
-        var completions = Completions.completeClassesAndMembers("d", mock, false);
-        var values = toValues(completions);
-        assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), values);
-
-        // should match itself
-        var matches = Completions.getClassnameMatches("Do", List.of("Do", "Re"));
-        assertEquals(Set.of("Do"), new HashSet<>(matches));
-    }
-
     @Test
     public void testShortNameCompletions() {
         var mock = new MockAnalyzer();
 
-        var completions = Completions.completeClassesAndMembers("d", mock, false);
-        // spelling out the classname doesn't change things
-        assertEquals(completions, Completions.completeClassesAndMembers("Do", mock, false));
-        assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), toValues(completions));
-
-        completions = completeUsage("Do.", mock);
-        assertEquals(Set.of("a.b.Do", "a.b.Do.foo", "a.b.Do.bar"), toValues(completions));
-    }
-
-    //
-    // getMatchingFQCNs tests
-    //
-    private final List<String> allClasses = List.of("a.b.Do", "a.b.Do$Re", "a.b.Do$Re$Sub", "d.Do");
-
-    @Test
-    void testEmptyClass() {
-        assertTrue(findClassesForMemberAccess("", allClasses).isEmpty());
-    }
-
-    @Test
-    void testNullInput() {
-        assertTrue(findClassesForMemberAccess(null, allClasses).isEmpty());
-    }
-
-    @Test
-    void testPackageOnly() {
-        assertEquals(Set.of(), findClassesForMemberAccess("a", allClasses));
-        assertEquals(Set.of(), findClassesForMemberAccess("a.b", allClasses));
-    }
-
-    @Test
-    void testFullClassName() {
-        assertTrue(findClassesForMemberAccess("a.b.Do", allClasses).isEmpty());
-    }
-
-    @Test
-    void testClassNameWithDot() {
-        Set<String> expected = Set.of("a.b.Do", "d.Do");
-        assertEquals(expected, findClassesForMemberAccess("Do.", allClasses));
-    }
-
-    @Test
-    void testFullClassNameWithDot() {
-        Set<String> expected = Set.of("a.b.Do");
-        assertEquals(expected, findClassesForMemberAccess("a.b.Do.", allClasses));
-    }
-
-    @Test
-    void testClassWithMemberName() {
-        Set<String> expected = Set.of("a.b.Do");
-        assertEquals(expected, findClassesForMemberAccess("a.b.Do.foo", allClasses));
-    }
-
-    @Test
-    void testInnerClassReference() {
-        assertEquals(Set.of(), findClassesForMemberAccess("Do$Re", allClasses));
-        assertEquals(Set.of("a.b.Do$Re$Sub"), findClassesForMemberAccess("Do$Re$Sub", allClasses));
-    }
-
-    @Test
-    void testInnerClassWithDot() {
-        assertEquals(Set.of("a.b.Do$Re"), findClassesForMemberAccess("Do$Re.", allClasses));
-    }
-
-    @Test
-    void testNonExistentClass() {
-        assertTrue(findClassesForMemberAccess("foo", allClasses).isEmpty());
-    }
-
-    @Test
-    void testClassNameWithMember() {
-        Set<String> expected = Set.of("a.b.Do", "d.Do");
-        assertEquals(expected, findClassesForMemberAccess("Do.foo", allClasses));
+        var completions = Completions.completeClassesAndMembers("Do", mock);
+        assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), toShortValues(completions));
     }
 }

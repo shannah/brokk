@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.IAnalyzer;
@@ -36,7 +35,7 @@ public class SymbolCompletionProvider extends DefaultCompletionProvider {
         // Get completions using the brokk Completions utility
         var completions = analyzer == null
                         ? List.<CodeUnit>of()
-                        : Completions.completeClassesAndMembers(text, analyzer, true);
+                        : Completions.completeClassesAndMembers(text, analyzer);
 
         // Convert to RSTA completions
         return completions.stream()

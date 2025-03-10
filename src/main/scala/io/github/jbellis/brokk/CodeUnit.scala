@@ -2,6 +2,11 @@ package io.github.jbellis.brokk
 
 sealed trait CodeUnit extends Comparable[CodeUnit] with Serializable {
   def reference: String
+  
+  def name: String = {
+    val lastDotIndex = reference.lastIndexOf('.')
+    if (lastDotIndex == -1) reference else reference.substring(lastDotIndex + 1)
+  }
 
   def isClass: Boolean = this match {
     case _: CodeUnit.ClassType => true
