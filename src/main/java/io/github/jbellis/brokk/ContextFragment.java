@@ -18,8 +18,8 @@ public interface ContextFragment {
     /** content formatted for LLM */
     String format() throws IOException;
     /** fq classes found in this fragment */
-    default Set<CodeUnit> sources(Project project) {
-        return sources(project.getAnalyzerWrapper().get(), project.getRepo());
+    default Set<CodeUnit> sources(IProject project) {
+        return sources(project.getAnalyzer(), project.getRepo());
     }
 
     Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo);

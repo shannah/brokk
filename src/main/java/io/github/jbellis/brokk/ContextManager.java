@@ -222,11 +222,11 @@ public class ContextManager implements IContextManager
      */
     public Analyzer getAnalyzer()
     {
-        return project.getAnalyzerWrapper().get();
+        return project.getAnalyzer();
     }
 
     public Analyzer getAnalyzerNonBlocking() {
-        return project.getAnalyzerWrapper().getNonBlocking();
+        return project.getAnalyzerNonBlocking();
     }
 
     public Path getRoot()
@@ -697,7 +697,7 @@ public class ContextManager implements IContextManager
     public void requestRebuild()
     {
         project.getRepo().refresh();
-        project.getAnalyzerWrapper().requestRebuild();
+        project.rebuildAnalyzer();
     }
 
     /** undo last context change */
@@ -1289,7 +1289,7 @@ public class ContextManager implements IContextManager
         submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.toolOutput("Generating project style guide...");
-                var analyzer = project.getAnalyzerWrapper().getForBackground();
+                var analyzer = project.getAnalyzerNonBlocking();
                 var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
 
                 var codeForLLM = new StringBuilder();

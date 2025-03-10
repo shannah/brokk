@@ -71,7 +71,7 @@ public class SearchAgent {
     public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io) {
         this.query = query;
         this.contextManager = contextManager;
-        this.analyzer = contextManager.getProject().getAnalyzerWrapper().get();
+        this.analyzer = contextManager.getProject().getAnalyzer();
         this.coder = coder;
         this.io = io;
     }

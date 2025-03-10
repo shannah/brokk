@@ -70,8 +70,8 @@ You can doubleclick on any context to preview it.
 - Use the History Panel to keep track, undo, or redo changes. Forget to commit and the LLM scribbled all over your
   code in the next request? No problem, Undo includes filesystem changes too.
 
-# Example Scenarios
-Here are three example scenarios illustrating how Brokk helps with real-world tasks.
+# Examples
+Here are a few scenarios illustrating how Brokk helps with real-world tasks.
 
 ## Scenario #1: Debugging a Regression with Git Bisect
 1. Run `git bisect` to identify the commit that caused a regression.
@@ -87,13 +87,15 @@ Here are three example scenarios illustrating how Brokk helps with real-world ta
    the Instructions area and click Search.
 2. The Search output is automatically captured as context; if you want to make changes, select it and click `Edit Files.`
 
-## Scenario #3: Symbol Usage + Ask
+## Scenario #3: AI-powered refactoring
 ![image](https://github.com/user-attachments/assets/e5756f8d-9cef-4467-b3c3-43872eafe8e1)
 
-1. Invoke Symbol Usage on SSTableIndex::orderBy and SSTableIndex::search.  Optionally,
-   include SSTableIndex itself as read-only context.
-3. Type your instructions ("what is the difference between SSTableIndex::orderBy and SSTableIndex::search?") into the instructions
-   area and click Ask.  The LLM answers your questions.
+1. Invoke Symbol Usage on Project::getAnalyzerWrapper, and click Edit Files on the resulting usage context.
+   This will make all files editable that include calls to that method.
+2. Add Project itself as editable.  Brokk automatically includes a summary of AnalyzerWrapper in the
+   auto-context.
+3. Type your instructions into the instructions area and click Code:
+   Replace Project.getAnalyzerWrapper with getAnalyzer() and getAnalyzerNonBlocking() that encapsulate aw.get and aw.getNonBlocking; update the callers appropriately.
 
 ## A note on o1pro
 

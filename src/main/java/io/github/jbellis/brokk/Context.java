@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 public class Context {
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
 
-    final Project project;
+    final IProject project;
     final List<ContextFragment.RepoPathFragment> editableFiles;
     final List<ContextFragment.PathFragment> readonlyFiles;
     final List<ContextFragment.VirtualFragment> virtualFragments;
@@ -35,7 +35,7 @@ public class Context {
 
     /** backup of original contents for /undo, does not carry forward to Context children */
     final Map<RepoFile, String> originalContents;
-    
+
     /** LLM output or other parsed content, with optional fragment */
     final ParsedOutput parsedOutput;
 
@@ -57,12 +57,12 @@ public class Context {
     /**
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
-    public Context(Project project, int autoContextFileCount) {
+    public Context(IProject project, int autoContextFileCount) {
         this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture("Welcome to Brokk"));
     }
 
     private Context(
-            Project project,
+            IProject project,
             List<ContextFragment.RepoPathFragment> editableFiles,
             List<ContextFragment.PathFragment> readonlyFiles,
             List<ContextFragment.VirtualFragment> virtualFragments,
@@ -326,7 +326,7 @@ public class Context {
             return AutoContext.EMPTY;
         }
 
-        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(project.getAnalyzerWrapper().get(), weightedSeeds);
+        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(project.getAnalyzer(), weightedSeeds);
 
         // build skeleton lines
         var skeletons = new ArrayList<SkeletonFragment>();
@@ -336,7 +336,7 @@ public class Context {
                     || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(fqName.substring(0, fqName.indexOf('$'))))));
             
             if (eligible) {
-                var opt = project.getAnalyzerWrapper().get().getSkeleton(fqName);
+                var opt = project.getAnalyzer().getSkeleton(fqName);
                 if (opt.isDefined()) {
                     var shortName = fqName.substring(fqName.lastIndexOf('.') + 1);
                     skeletons.add(new SkeletonFragment(List.of(shortName), Set.of(CodeUnit.cls(fqName)), opt.get()));

@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 
-public class Project {
+public class Project implements IProject {
     private final Path propertiesFile;
     private final Path workspacePropertiesFile;
     private final Path root;
@@ -84,6 +84,7 @@ public class Project {
         }
     }
 
+    @Override
     public GitRepo getRepo() {
         return repo;
     }
@@ -386,12 +387,25 @@ public class Project {
             logger.error("Error saving LLM keys: {}", e.getMessage());
         }
     }
+
+    public void rebuildAnalyzer() {
+        analyzerWrapper.requestRebuild();
+    }
+
+    /**
+     * Gets the analyzer, blocking if necessary while it's being built
+     */
+    @Override
+    public Analyzer getAnalyzer() {
+        return analyzerWrapper.get();
+    }
     
     /**
-     * Get the analyzer wrapper
+     * Gets the analyzer without blocking, may return null if not available
      */
-    public AnalyzerWrapper getAnalyzerWrapper() {
-        return analyzerWrapper;
+    @Override
+    public Analyzer getAnalyzerNonBlocking() {
+        return analyzerWrapper.getNonBlocking();
     }
     
     /**

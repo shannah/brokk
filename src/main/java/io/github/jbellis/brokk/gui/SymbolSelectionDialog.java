@@ -36,7 +36,7 @@ public class SymbolSelectionDialog extends JDialog {
     public SymbolSelectionDialog(Frame parent, Project project, String title) {
         super(parent, title, true); // modal dialog
         this.project = project;
-        analyzer = project.getAnalyzerWrapper().get();
+        analyzer = project.getAnalyzer();
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
