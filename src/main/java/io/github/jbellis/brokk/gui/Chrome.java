@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Analyzer;
+import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
@@ -108,12 +109,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         
         // Set application icon
         try {
-            var iconUrl = getClass().getResource("/brokk-icon.jpeg");
+            var iconUrl = getClass().getResource(Brokk.ICON_RESOURCE);
             if (iconUrl != null) {
                 var icon = new ImageIcon(iconUrl);
                 frame.setIconImage(icon.getImage());
             } else {
-                logger.warn("Could not find brokk-icon.jpeg resource");
+                logger.warn("Could not find resource {}", Brokk.ICON_RESOURCE);
             }
         } catch (Exception e) {
             logger.warn("Failed to set application icon", e);

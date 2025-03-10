@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Properties;
 
 public class Brokk {
+    public static final String ICON_RESOURCE = "/brokk-icon.png";
     private static Chrome io;               // Initially null
     private static ContextManager contextManager;  // Initially null
     private static Coder coder;                    // Initially null
@@ -23,7 +24,7 @@ public class Brokk {
      */
     public static void main(String[] args) {
         // 1) Load your icon
-        var iconUrl = Chrome.class.getResource("/brokk-icon.jpeg");
+        var iconUrl = Brokk.class.getResource(ICON_RESOURCE);
         if (iconUrl != null) {
             var icon = new ImageIcon(iconUrl);
 
@@ -33,7 +34,6 @@ public class Brokk {
                 try {
                     taskbar.setIconImage(icon.getImage());
                 } catch (UnsupportedOperationException | SecurityException e) {
-                    // Log or ignore
                     System.err.println("Unable to set taskbar icon: " + e.getMessage());
                 }
             }
