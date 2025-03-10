@@ -39,7 +39,7 @@ public class Context implements Serializable {
     final List<ContextFragment.PathFragment> readonlyFiles;
     final List<ContextFragment.VirtualFragment> virtualFragments;
 
-    transient final AutoContext autoContext;
+    final AutoContext autoContext;
     final int autoContextFileCount;
     /** history messages are unusual because they are updated in place.  See comments to addHistory and clearHistory */
     transient final List<ChatMessage> historyMessages;
@@ -617,6 +617,7 @@ public class Context implements Serializable {
 
     @Serial
     private void writeObject(java.io.ObjectOutputStream oos) throws IOException {
+        // Write non-transient fields
         oos.defaultWriteObject();
     }
 
@@ -630,23 +631,19 @@ public class Context implements Serializable {
             var historyField = Context.class.getDeclaredField("historyMessages");
             historyField.setAccessible(true);
             historyField.set(this, new ArrayList<>());
-            
-            var autoContextField = Context.class.getDeclaredField("autoContext");
-            autoContextField.setAccessible(true);
-            autoContextField.set(this, AutoContext.DISABLED);
-            
+
             var originalContentsField = Context.class.getDeclaredField("originalContents");
             originalContentsField.setAccessible(true);
             originalContentsField.set(this, Map.of());
-            
+
             var parsedOutputField = Context.class.getDeclaredField("parsedOutput");
             parsedOutputField.setAccessible(true);
             parsedOutputField.set(this, new ParsedOutput());
-            
+
             var projectField = Context.class.getDeclaredField("project");
             projectField.setAccessible(true);
             projectField.set(this, null); // This will need to be set externally after deserialization
-            
+
             var actionField = Context.class.getDeclaredField("action");
             actionField.setAccessible(true);
             actionField.set(this, CompletableFuture.completedFuture(WELCOME_BACK));
@@ -665,7 +662,7 @@ public class Context implements Serializable {
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
-                AutoContext.DISABLED,
+                autoContext,
                 autoContextFileCount,
                 historyMessages,
                 originalContents,

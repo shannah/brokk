@@ -77,11 +77,14 @@ public class ContextSerializationTest {
         assertEquals(context.readonlyFiles.size(), deserialized.readonlyFiles.size());
         assertEquals(context.virtualFragments.size(), deserialized.virtualFragments.size());
         
-        // Transient fields should be null or empty
+        // Most transient fields should be initialized to empty
         assertNull(deserialized.project);
-        assertNull(deserialized.parsedOutput);
-        assertNull(deserialized.originalContents);
-        assertNull(deserialized.historyMessages);
+        assertNotNull(deserialized.parsedOutput); // Empty ParsedOutput
+        assertNotNull(deserialized.originalContents); // Empty Map
+        assertNotNull(deserialized.historyMessages); // Empty List
+        
+        // AutoContext should have been preserved
+        assertNotNull(deserialized.getAutoContext());
     }
     
     @Test
@@ -204,6 +207,7 @@ public class ContextSerializationTest {
         // Verify autoContextFileCount was preserved
         assertEquals(10, deserialized.getAutoContextFileCount());
         assertTrue(deserialized.isAutoContextEnabled());
+        assertNotNull(deserialized.getAutoContext());
     }
 
     @Test
