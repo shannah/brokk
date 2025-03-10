@@ -39,7 +39,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Dependencies:
     ContextManager contextManager;
-    private final Project project;
 
     // Swing components:
     final JFrame frame;
@@ -76,6 +75,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JScrollPane llmScrollPane;
     JTextArea captureDescriptionArea;
 
+    private Project getProject() {
+        return contextManager == null ? null : contextManager.getProject();
+    }
+
     /**
      * Enum representing the different types of context actions that can be performed.
      * This replaces the use of magic strings when calling performContextActionAsync.
@@ -92,7 +95,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public Chrome(ContextManager contextManager) {
         this.contextManager = contextManager;
-        this.project = (contextManager == null) ? null : contextManager.getProject();
 
         // 1) Set FlatLaf Look & Feel
         try {
@@ -129,6 +131,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 5) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
 
+        if (contextManager == null) {
+            disableUserActionButtons();
+            disableContextActionButtons();
+        }
+    }
+
+    public void onComplete() {
         // 6) Load saved window size and position, then show window
         loadWindowSizeAndPosition();
 
@@ -139,11 +148,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
-
-        if (contextManager == null) {
-            disableUserActionButtons();
-            disableContextActionButtons();
-        }
     }
 
     /**
@@ -817,7 +821,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Shows a dialog for editing LLM API secret keys.
      */
     void showSecretKeysDialog() {
-        if (project == null) {
+        if (getProject() == null) {
             toolErrorRaw("Project not available");
             return;
         }
@@ -831,7 +835,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-        var existingKeys = project.getLlmKeys();
+        var existingKeys = getProject().getLlmKeys();
         List<KeyValueRowPanel> keyRows = new ArrayList<>();
 
         // if empty, add one row
@@ -914,7 +918,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                                               JOptionPane.WARNING_MESSAGE);
             }
 
-            project.saveLlmKeys(newKeys);
+            getProject().saveLlmKeys(newKeys);
             toolOutput("Saved " + newKeys.size() + " API keys");
             dialog.dispose();
         });
@@ -1050,7 +1054,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             textArea.setCaretPosition(0);
 
             // Set window size from saved properties
-            Rectangle bounds = project.getPreviewWindowBounds();
+            Rectangle bounds = getProject().getPreviewWindowBounds();
             previewFrame.setSize(bounds.width, bounds.height);
 
             // Position the window, checking if position is valid
@@ -1064,12 +1068,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
                 @Override
                 public void componentResized(java.awt.event.ComponentEvent e) {
-                    project.savePreviewWindowBounds(previewFrame);
+                    getProject().savePreviewWindowBounds(previewFrame);
                 }
 
                 @Override
                 public void componentMoved(java.awt.event.ComponentEvent e) {
-                    project.savePreviewWindowBounds(previewFrame);
+                    getProject().savePreviewWindowBounds(previewFrame);
                 }
             });
 
@@ -1132,7 +1136,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Loads window size and position from project properties
      */
     private void loadWindowSizeAndPosition() {
-        Rectangle bounds = project == null ? null : project.getMainWindowBounds();
+        Rectangle bounds = getProject() == null ? null : getProject().getMainWindowBounds();
 
         // Only apply saved values if they're valid
         if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
@@ -1149,17 +1153,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // If not on a visible screen, center the window
             frame.setLocationRelativeTo(null);
         }
-        
+
         // Restore split pane positions after the frame has been shown and sized
         SwingUtilities.invokeLater(() -> {
             // Restore vertical split pane position
-            int verticalPos = project.getVerticalSplitPosition();
+            int verticalPos = getProject().getVerticalSplitPosition();
             if (verticalPos > 0) {
                 verticalSplitPane.setDividerLocation(verticalPos);
             }
             
             // Restore history split pane position
-            int historyPos = project.getHistorySplitPosition();
+            int historyPos = getProject().getHistorySplitPosition();
             if (historyPos > 0) {
                 historySplitPane.setDividerLocation(historyPos);
             } else {
@@ -1171,22 +1175,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             frame.addComponentListener(new java.awt.event.ComponentAdapter() {
                 @Override
                 public void componentResized(java.awt.event.ComponentEvent e) {
-                    project.saveMainWindowBounds(frame);
+                    getProject().saveMainWindowBounds(frame);
                 }
 
                 @Override
                 public void componentMoved(java.awt.event.ComponentEvent e) {
-                    project.saveMainWindowBounds(frame);
+                    getProject().saveMainWindowBounds(frame);
                 }
             });
 
             // Add listeners to save split pane positions when they change
             historySplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                project.saveHistorySplitPosition(historySplitPane.getDividerLocation());
+                getProject().saveHistorySplitPosition(historySplitPane.getDividerLocation());
             });
 
             verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                project.saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
+                getProject().saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
             });
         });
     }
@@ -1362,7 +1366,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 fragment = ctx == null
                         ? new ContextFragment.StringFragment(text, "temp")
                         : ctx.getParsedOutput().parsedFragment();
-                Set<CodeUnit> sources = fragment.sources(analyzer, project.getRepo());
+                Set<CodeUnit> sources = fragment.sources(analyzer, getProject().getRepo());
                 editReferencesButton.setEnabled(!sources.isEmpty());
 
                 // Update description with file names
@@ -1396,7 +1400,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
         
         // Don't override if we have a saved position from project settings
-        if (project != null && project.getHistorySplitPosition() > 0) {
+        if (getProject() != null && getProject().getHistorySplitPosition() > 0) {
             return;
         }
 

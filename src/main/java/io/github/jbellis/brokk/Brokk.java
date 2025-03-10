@@ -45,12 +45,12 @@ public class Brokk {
         }
         
         SwingUtilities.invokeLater(() -> {
-            // Create an empty UI with no project
-            io = new Chrome(null);
-
             // Attempt to load the most recent project if any
             var recents = Project.loadRecentProjects();
-            if (!recents.isEmpty()) {
+            if (recents.isEmpty()) {
+                // Create an empty UI with no project
+                io = new Chrome(null);
+            } else {
                 // find the project with the largest lastOpened time
                 var mostRecent = recents.entrySet().stream()
                         .max(Comparator.comparingLong(Map.Entry::getValue))
@@ -108,6 +108,7 @@ public class Brokk {
         
         // Resolve circular references
         contextManager.resolveCircularReferences(io, coder);
+        io.onComplete();
         io.toolOutput("Opened project at " + projectPath);
 
         // Show welcome message
