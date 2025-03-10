@@ -17,8 +17,10 @@ import java.util.concurrent.Executors;
 
 public class Project {
     private final Path propertiesFile;
+    private final Path workspacePropertiesFile;
     private final Path root;
-    private final Properties props;
+    private final Properties projectProps;
+    private final Properties workspaceProps;
     private final Path styleGuidePath;
     private final Path historyFilePath;
     private final AnalyzerWrapper analyzerWrapper;
@@ -27,7 +29,7 @@ public class Project {
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
     private static final int DEFAULT_WINDOW_WIDTH = 800;
     private static final int DEFAULT_WINDOW_HEIGHT = 1200;
-    
+
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
 
@@ -35,34 +37,47 @@ public class Project {
         this.repo = new GitRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
+        this.workspacePropertiesFile = root.resolve(".brokk").resolve("workspace.properties");
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
         this.historyFilePath = root.resolve(".brokk").resolve("linereader.txt");
-        this.props = new Properties();
-        
+        this.projectProps = new Properties();
+        this.workspaceProps = new Properties();
+
+        // Load project properties
         if (Files.exists(propertiesFile)) {
             try (var reader = Files.newBufferedReader(propertiesFile)) {
-                props.load(reader);
+                projectProps.load(reader);
             } catch (Exception e) {
                 logger.error("Error loading project properties: {}", e.getMessage());
-                props.clear();
+                projectProps.clear();
             }
         }
-        
+
+        // Load workspace properties
+        if (Files.exists(workspacePropertiesFile)) {
+            try (var reader = Files.newBufferedReader(workspacePropertiesFile)) {
+                workspaceProps.load(reader);
+            } catch (Exception e) {
+                logger.error("Error loading workspace properties: {}", e.getMessage());
+                workspaceProps.clear();
+            }
+        }
+
         // Create the analyzer wrapper
         this.analyzerWrapper = new AnalyzerWrapper(this, Executors.newSingleThreadExecutor());
 
-        // Set defaults on missing or error
-        if (props.isEmpty()) {
-            props.setProperty("autoContextFileCount", String.valueOf(DEFAULT_AUTO_CONTEXT_FILE_COUNT));
+        // Set defaults for workspace properties if missing
+        if (workspaceProps.isEmpty()) {
+            workspaceProps.setProperty("autoContextFileCount", String.valueOf(DEFAULT_AUTO_CONTEXT_FILE_COUNT));
             // Create default window positions
             var mainFrame = objectMapper.createObjectNode();
             mainFrame.put("x", -1);
             mainFrame.put("y", -1);
             mainFrame.put("width", DEFAULT_WINDOW_WIDTH);
             mainFrame.put("height", DEFAULT_WINDOW_HEIGHT);
-            
+
             try {
-                props.setProperty("mainFrame", objectMapper.writeValueAsString(mainFrame));
+                workspaceProps.setProperty("mainFrame", objectMapper.writeValueAsString(mainFrame));
             } catch (Exception e) {
                 logger.error("Error creating default window settings: {}", e.getMessage());
             }
@@ -74,36 +89,53 @@ public class Project {
     }
 
     public String getBuildCommand() {
-        return props.getProperty("buildCommand");
+        return projectProps.getProperty("buildCommand");
     }
 
     public void setBuildCommand(String command) {
-        props.setProperty("buildCommand", command);
-        saveProperties();
+        projectProps.setProperty("buildCommand", command);
+        saveProjectProperties();
     }
-    
-    public void saveProperties() {
+
+    /**
+     * Saves project-specific properties (buildCommand, cpg_refresh)
+     */
+    public void saveProjectProperties() {
+        saveProperties(propertiesFile, projectProps, "Brokk project configuration");
+    }
+
+    /**
+     * Saves workspace-specific properties (window positions, etc.)
+     */
+    public void saveWorkspaceProperties() {
+        saveProperties(workspacePropertiesFile, workspaceProps, "Brokk workspace configuration");
+    }
+
+    /**
+     * Generic method to save properties to a file
+     */
+    private void saveProperties(Path file, Properties properties, String comment) {
         try {
             // Check if properties file exists
-            if (Files.exists(propertiesFile)) {
+            if (Files.exists(file)) {
                 // Load existing properties to compare
                 Properties existingProps = new Properties();
-                try (var reader = Files.newBufferedReader(propertiesFile)) {
+                try (var reader = Files.newBufferedReader(file)) {
                     existingProps.load(reader);
                 }
-                
+
                 // Compare properties - only save if different
-                if (propsEqual(existingProps, props)) {
+                if (propsEqual(existingProps, properties)) {
                     return; // Skip saving if properties are identical
                 }
             }
-            
-            Files.createDirectories(propertiesFile.getParent());
-            try (var writer = Files.newBufferedWriter(propertiesFile)) {
-                props.store(writer, "Brokk project configuration");
+
+            Files.createDirectories(file.getParent());
+            try (var writer = Files.newBufferedWriter(file)) {
+                properties.store(writer, comment);
             }
         } catch (IOException e) {
-            logger.error("Error saving project properties: {}", e.getMessage());
+            logger.error("Error saving properties to {}: {}", file, e.getMessage());
         }
     }
     
@@ -136,7 +168,7 @@ public class Project {
     }
 
     public CpgRefresh getCpgRefresh() {
-        String value = props.getProperty("cpg_refresh");
+        String value = projectProps.getProperty("cpg_refresh");
         if (value == null) {
             return CpgRefresh.UNSET;
         }
@@ -149,8 +181,8 @@ public class Project {
 
     public void setCpgRefresh(CpgRefresh value) {
         assert value != null;
-        props.setProperty("cpg_refresh", value.name());
-        saveProperties();
+        projectProps.setProperty("cpg_refresh", value.name());
+        saveProjectProperties();
     }
 
     public String getStyleGuide() {
@@ -216,25 +248,25 @@ public class Project {
      * @param window the window to save position for
      */
     public void saveWindowBounds(String key, JFrame window) {
-        if (window == null || !window.isDisplayable() || 
+        if (window == null || !window.isDisplayable() ||
             window.getExtendedState() != java.awt.Frame.NORMAL) {
             return;
         }
-        
+
         try {
             var node = objectMapper.createObjectNode();
             node.put("x", window.getX());
             node.put("y", window.getY());
             node.put("width", window.getWidth());
             node.put("height", window.getHeight());
-            
-            props.setProperty(key, objectMapper.writeValueAsString(node));
-            saveProperties();
+
+            workspaceProps.setProperty(key, objectMapper.writeValueAsString(node));
+            saveWorkspaceProperties();
         } catch (Exception e) {
             logger.error("Error saving window bounds: {}", e.getMessage());
         }
     }
-    
+
     /**
      * Get the saved window bounds as a Rectangle
      * @param key identifier for the window
@@ -244,17 +276,17 @@ public class Project {
      */
     public java.awt.Rectangle getWindowBounds(String key, int defaultWidth, int defaultHeight) {
         var result = new java.awt.Rectangle(-1, -1, defaultWidth, defaultHeight);
-        
+
         try {
-            String json = props.getProperty(key);
+            String json = workspaceProps.getProperty(key);
             if (json != null) {
                 var node = objectMapper.readValue(json, ObjectNode.class);
-                
+
                 if (node.has("width") && node.has("height")) {
                     result.width = node.get("width").asInt();
                     result.height = node.get("height").asInt();
                 }
-                
+
                 if (node.has("x") && node.has("y")) {
                     result.x = node.get("x").asInt();
                     result.y = node.get("y").asInt();
@@ -263,7 +295,7 @@ public class Project {
         } catch (Exception e) {
             logger.error("Error reading window bounds: {}", e.getMessage());
         }
-        
+
         return result;
     }
     
@@ -300,39 +332,39 @@ public class Project {
      */
     public void saveVerticalSplitPosition(int position) {
         if (position > 0) {
-            props.setProperty("verticalSplitPosition", String.valueOf(position));
-            saveProperties();
+            workspaceProps.setProperty("verticalSplitPosition", String.valueOf(position));
+            saveWorkspaceProperties();
         }
     }
-    
+
     /**
      * Get vertical split pane position
      */
     public int getVerticalSplitPosition() {
         try {
-            String posStr = props.getProperty("verticalSplitPosition");
+            String posStr = workspaceProps.getProperty("verticalSplitPosition");
             return posStr != null ? Integer.parseInt(posStr) : -1;
         } catch (NumberFormatException e) {
             return -1;
         }
     }
-    
+
     /**
      * Save history split pane position
      */
     public void saveHistorySplitPosition(int position) {
         if (position > 0) {
-            props.setProperty("historySplitPosition", String.valueOf(position));
-            saveProperties();
+            workspaceProps.setProperty("historySplitPosition", String.valueOf(position));
+            saveWorkspaceProperties();
         }
     }
-    
+
     /**
      * Get history split pane position
      */
     public int getHistorySplitPosition() {
         try {
-            String posStr = props.getProperty("historySplitPosition");
+            String posStr = workspaceProps.getProperty("historySplitPosition");
             return posStr != null ? Integer.parseInt(posStr) : -1;
         } catch (NumberFormatException e) {
             return -1;
