@@ -5,10 +5,13 @@ import java.nio.file.Path
 /**
  * A BrokkFile that represents a file not relative to any repo, just specified by its absolute path.
  */
-class ExternalFile(private var path: Path) extends BrokkFile {
-  @transient
+class ExternalFile(@transient private var path: Path) extends BrokkFile {
   private val serialVersionUID = 1L
-  require(path.isAbsolute)
+  
+  // Constructor validation
+  if (path != null) {
+    require(path.isAbsolute)
+  }
 
   def absPath(): Path = path
 

@@ -4,6 +4,8 @@ import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -24,9 +26,13 @@ import java.util.stream.Stream;
  * Encapsulates all state that will be sent to the model (prompts, filename context, conversation history).
  */
 public class Context implements Serializable {
+    private static final Logger logger = LogManager.getLogger(Context.class);
+
     @Serial
     private static final long serialVersionUID = 1L;
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
+    private static final String WELCOME_ACTION = "Welcome to Brokk";
+    private static final String WELCOME_BACK = "Welcome back to Brokk";
 
     transient final IProject project;
     final List<ContextFragment.RepoPathFragment> editableFiles;
@@ -63,7 +69,7 @@ public class Context implements Serializable {
      * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
      */
     public Context(IProject project, int autoContextFileCount) {
-        this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture("Welcome to Brokk"));
+        this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture(WELCOME_ACTION));
     }
 
     private Context(
@@ -610,7 +616,16 @@ public class Context implements Serializable {
 
     @Serial
     private void readObject(java.io.ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        // Read non-transient fields
         ois.defaultReadObject();
-        // Initialize transient fields to safe defaults
+
+        // Initialize action field with the string value
+        try {
+            java.lang.reflect.Field actionField = Context.class.getDeclaredField("action");
+            actionField.setAccessible(true);
+            actionField.set(this, CompletableFuture.completedFuture(WELCOME_BACK));
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new IOException("Failed to deserialize action field", e);
+        }
     }
 }

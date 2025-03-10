@@ -213,7 +213,7 @@ public interface ContextFragment extends Serializable {
     class PasteFragment extends VirtualFragment {
         private static final long serialVersionUID = 1L;
         private final String text;
-        private final Future<String> descriptionFuture;
+        private transient Future<String> descriptionFuture;
 
         public PasteFragment(String text, Future<String> descriptionFuture) {
             super();
@@ -248,6 +248,29 @@ public interface ContextFragment extends Serializable {
         @Override
         public String toString() {
             return "PasteFragment('%s')".formatted(description());
+        }
+        
+        private void writeObject(java.io.ObjectOutputStream out) throws IOException {
+            out.defaultWriteObject();
+            // Serialize the description as a String
+            String description;
+            if (descriptionFuture.isDone()) {
+                try {
+                    description = descriptionFuture.get();
+                } catch (Exception e) {
+                    description = "(Error summarizing paste)";
+                }
+            } else {
+                description = "(Paste summary incomplete)";
+            }
+            out.writeObject(description);
+        }
+        
+        private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+            in.defaultReadObject();
+            // Read the description and convert it back to a CompletableFuture
+            String description = (String) in.readObject();
+            this.descriptionFuture = java.util.concurrent.CompletableFuture.completedFuture(description);
         }
     }
 

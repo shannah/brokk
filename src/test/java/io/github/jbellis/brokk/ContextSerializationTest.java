@@ -116,9 +116,18 @@ public class ContextSerializationTest {
         ContextFragment.RepoPathFragment repoFragment = deserialized.editableFiles.get(0);
         assertEquals(repoFile.toString(), repoFragment.file().toString());
         assertEquals(repoRoot.toString(), repoFragment.file().absPath().getParent().getParent().getParent().getParent().toString());
-        
+
         ContextFragment.PathFragment externalFragment = deserialized.readonlyFiles.get(0);
         assertEquals(externalFile.toString(), externalFragment.file().toString());
+        
+        // Verify the ExternalPathFragment can be read correctly after deserialization
+        assertDoesNotThrow(() -> {
+            String content = externalFragment.text();
+            assertEquals("This is external content", content);
+            String formatted = externalFragment.format();
+            assertTrue(formatted.contains("external.txt"));
+            assertTrue(formatted.contains("This is external content"));
+        });
     }
     
     @Test
@@ -195,6 +204,43 @@ public class ContextSerializationTest {
         // Verify autoContextFileCount was preserved
         assertEquals(10, deserialized.getAutoContextFileCount());
         assertTrue(deserialized.isAutoContextEnabled());
+    }
+
+    @Test
+    void testExternalPathFragmentSerialization() throws Exception {
+        // Create an external file
+        Path externalPath = tempDir.resolve("serialization-test.txt").toAbsolutePath();
+        String testContent = "External file content for serialization test";
+        Files.writeString(externalPath, testContent);
+        
+        ExternalFile externalFile = new ExternalFile(externalPath);
+        ContextFragment.ExternalPathFragment fragment = new ContextFragment.ExternalPathFragment(externalFile);
+        
+        // Add to context
+        Context context = new Context(mockProject, 5)
+            .addReadonlyFiles(List.of(fragment));
+            
+        // Serialize and deserialize
+        byte[] serialized = Context.serialize(context);
+        Context deserialized = Context.deserialize(serialized);
+        
+        // Verify the fragment was properly deserialized
+        assertEquals(1, deserialized.readonlyFiles.size());
+        ContextFragment.PathFragment deserializedFragment = deserialized.readonlyFiles.get(0);
+        
+        // Check if it's the correct type
+        assertTrue(deserializedFragment instanceof ContextFragment.ExternalPathFragment);
+        
+        // Verify path and content
+        assertEquals(externalPath.toString(), deserializedFragment.file().toString());
+        
+        // Should be able to read the file
+        assertEquals(testContent, deserializedFragment.text());
+        
+        // Check format method works
+        String formatted = deserializedFragment.format();
+        assertTrue(formatted.contains("serialization-test.txt"));
+        assertTrue(formatted.contains(testContent));
     }
 
     @Test

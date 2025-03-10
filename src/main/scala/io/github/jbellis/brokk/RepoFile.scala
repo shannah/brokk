@@ -9,13 +9,16 @@ import java.nio.file.Files
  * that different filename objects can be meaningfully compared, unlike bare Paths which may
  * or may not be absolute, or may be relative to the jvm root rather than the repo root.
  */
-class RepoFile(private var root: Path, private var relPath: Path) extends BrokkFile {
-  @transient
+class RepoFile(@transient private var root: Path, @transient private var relPath: Path) extends BrokkFile {
   private val serialVersionUID = 1L
+  
   def this(root: Path, relName: String) = this(root, Path.of(relName))
 
-  require(root.isAbsolute)
-  require(!relPath.isAbsolute)
+  // We can't rely on these being set until after deserialization
+  if (root != null && relPath != null) {
+    require(root.isAbsolute)
+    require(!relPath.isAbsolute)
+  }
 
   def absPath(): Path = root.resolve(relPath)
 
