@@ -56,7 +56,9 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.0",
 
   // Testing
-  "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test
+  "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test,
+  "org.junit.jupiter" % "junit-jupiter-engine"  % "5.10.2" % Test,
+  "com.github.sbt.junit" % "jupiter-interface"  % "0.13.3" % Test,
 )
 
 Compile / unmanagedResources := {
@@ -84,3 +86,4 @@ assembly / assemblyMergeStrategy := {
 }
 assembly / mainClass := Some("io.github.jbellis.brokk.Brokk")
 
+testFrameworks += new TestFramework("com.github.sbt.junit.JupiterFramework")
