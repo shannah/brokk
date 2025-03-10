@@ -39,7 +39,7 @@ public class SymbolCompletionProvider extends DefaultCompletionProvider {
 
         // Convert to RSTA completions
         return completions.stream()
-                .map(c -> (Completion) new BasicCompletion(this, c.reference()))
+                .map(c -> (Completion) new BasicCompletion(this, c.fqName()))
                 .toList();
     }
 }

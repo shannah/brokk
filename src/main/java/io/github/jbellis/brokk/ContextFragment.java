@@ -401,7 +401,7 @@ public interface ContextFragment extends Serializable {
             <summary classes="%s">
             %s
             </summary>
-            """.formatted(String.join(", ", sources.stream().map(CodeUnit::reference).sorted().toList()), text()).stripIndent();
+            """.formatted(String.join(", ", sources.stream().map(CodeUnit::fqName).sorted().toList()), text()).stripIndent();
         }
 
         @Override

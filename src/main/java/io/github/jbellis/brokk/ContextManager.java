@@ -937,9 +937,9 @@ public class ContextManager implements IContextManager
         var combined = new StringBuilder();
         var shortNames = new ArrayList<String>();
         for (var cu : coalescedUnits) {
-            var skeleton = getAnalyzer().getSkeleton(cu.reference());
+            var skeleton = getAnalyzer().getSkeleton(cu.fqName());
             if (skeleton.isDefined()) {
-                shortNames.add(Completions.getShortClassName(cu.reference()));
+                shortNames.add(Completions.getShortClassName(cu.fqName()));
                 if (!combined.isEmpty()) combined.append("\n\n");
                 combined.append(skeleton.get());
             }
@@ -956,10 +956,10 @@ public class ContextManager implements IContextManager
     {
         return classes.stream()
                 .filter(cu -> {
-                    var name = cu.reference();
+                    var name = cu.fqName();
                     if (!name.contains("$")) return true;
                     var parent = name.substring(0, name.indexOf('$'));
-                    return classes.stream().noneMatch(other -> other.reference().equals(parent));
+                    return classes.stream().noneMatch(other -> other.fqName().equals(parent));
                 })
                 .collect(Collectors.toSet());
     }

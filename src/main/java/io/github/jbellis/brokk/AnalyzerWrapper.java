@@ -97,9 +97,9 @@ public class AnalyzerWrapper {
         if (!methodUses.isEmpty()) {
             Map<String, List<String>> groupedMethods = new LinkedHashMap<>();
             for (var cu : methodUses) {
-                var source = analyzer.getMethodSource(cu.reference());
+                var source = analyzer.getMethodSource(cu.fqName());
                 if (source.isDefined()) {
-                    String classname = ContextFragment.toClassname(cu.reference());
+                    String classname = ContextFragment.toClassname(cu.fqName());
                     groupedMethods.computeIfAbsent(classname, k -> new ArrayList<>()).add(source.get());
                     sources.add(cu);
                 }
@@ -121,7 +121,7 @@ public class AnalyzerWrapper {
         if (!typeUses.isEmpty()) {
             code.append("Type uses:\n\n");
             for (var cu : typeUses) {
-                var skeletonHeader = analyzer.getSkeletonHeader(cu.reference());
+                var skeletonHeader = analyzer.getSkeletonHeader(cu.fqName());
                 if (skeletonHeader.isEmpty()) {
                     continue;
                 }

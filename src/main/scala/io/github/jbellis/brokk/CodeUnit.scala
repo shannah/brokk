@@ -1,11 +1,11 @@
 package io.github.jbellis.brokk
 
 sealed trait CodeUnit extends Comparable[CodeUnit] with Serializable {
-  def reference: String
+  def fqName: String
   
   def name: String = {
-    val lastDotIndex = reference.lastIndexOf('.')
-    if (lastDotIndex == -1) reference else reference.substring(lastDotIndex + 1)
+    val lastDotIndex = fqName.lastIndexOf('.')
+    if (lastDotIndex == -1) fqName else fqName.substring(lastDotIndex + 1)
   }
 
   def isClass: Boolean = this match {
@@ -24,19 +24,19 @@ sealed trait CodeUnit extends Comparable[CodeUnit] with Serializable {
     case CodeUnit.FieldType(ref) => s"FIELD[$ref]"
   }
 
-  override def hashCode(): Int = reference.hashCode()
+  override def hashCode(): Int = fqName.hashCode()
 
-  override def equals(obj: Any): Boolean = obj.isInstanceOf[CodeUnit] && this.reference == obj.asInstanceOf[CodeUnit].reference
+  override def equals(obj: Any): Boolean = obj.isInstanceOf[CodeUnit] && this.fqName == obj.asInstanceOf[CodeUnit].fqName
 
-  override def compareTo(other: CodeUnit): Int = this.reference.compareTo(other.reference)
+  override def compareTo(other: CodeUnit): Int = this.fqName.compareTo(other.fqName)
 }
 
 object CodeUnit {
-  case class ClassType(reference: String) extends CodeUnit
+  case class ClassType(fqName: String) extends CodeUnit
 
-  case class FunctionType(reference: String) extends CodeUnit
+  case class FunctionType(fqName: String) extends CodeUnit
 
-  case class FieldType(reference: String) extends CodeUnit
+  case class FieldType(fqName: String) extends CodeUnit
 
   def cls(reference: String): CodeUnit = ClassType(reference)
 

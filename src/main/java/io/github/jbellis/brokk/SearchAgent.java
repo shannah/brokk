@@ -173,7 +173,7 @@ public class SearchAgent {
             %s
             </fragment>
             """.stripIndent().formatted(f.description(),
-                                        (f.sources(contextManager.getProject()).stream().map(CodeUnit::reference).collect(Collectors.joining(", "))),
+                                        (f.sources(contextManager.getProject()).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {
@@ -797,7 +797,7 @@ public class SearchAgent {
 
         var references = new ArrayList<String>();
         for (CodeUnit definition : allDefinitions) {
-            references.add(definition.reference());
+            references.add(definition.fqName());
         }
 
         // Compress results using longest common package prefix
@@ -1122,7 +1122,7 @@ public class SearchAgent {
                         try {
                             // For each matching file, get all non-inner classes and flatten them into the stream
                             return analyzer.getClassesInFile(repoFile).stream()
-                                    .map(CodeUnit::reference)
+                                    .map(CodeUnit::fqName)
                                     .filter(reference -> !reference.contains("$"));
                         } catch (Exception e) {
                             logger.debug("Error getting classes for file {}: {}", repoFile, e.getMessage());

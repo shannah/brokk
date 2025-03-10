@@ -62,7 +62,7 @@ public class SymbolSelectionDialog extends JDialog {
         
         DefaultListModel<String> classListModel = new DefaultListModel<>();
         List<String> allClasses = new ArrayList<>(analyzer.getAllClasses().stream()
-                .map(CodeUnit::reference)
+                .map(CodeUnit::fqName)
                 .sorted()
                 .toList());
         for (String className : allClasses) {

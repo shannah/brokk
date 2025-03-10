@@ -328,14 +328,14 @@ public class Context implements Serializable {
         var weightedSeeds = new HashMap<String, Double>();
         // editable files have a weight of 1.0, each
         editableFiles.stream().flatMap(f -> f.sources(project).stream()).forEach(unit -> {
-            weightedSeeds.put(unit.reference(), 1.0);
+            weightedSeeds.put(unit.fqName(), 1.0);
         });
         // everything else splits a weight of 1.0
         Streams.concat(readonlyFiles.stream(), virtualFragments.stream())
                 .flatMap(f -> f.sources(project).stream())
                 .forEach(unit ->
         {
-            weightedSeeds.merge(unit.reference(), 1.0 / (readonlyFiles.size() + virtualFragments.size()), Double::sum);
+            weightedSeeds.merge(unit.fqName(), 1.0 / (readonlyFiles.size() + virtualFragments.size()), Double::sum);
         });
 
         // If no seeds, we can't compute pagerank

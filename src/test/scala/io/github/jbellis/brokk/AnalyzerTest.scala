@@ -250,8 +250,8 @@ class AnalyzerTest {
     val usages = analyzer.getUses(symbol)
 
     // Expect references in B.callsIntoA() because it calls a.method2("test")
-    val actualMethodRefs = asScala(usages).filter(_.isFunction).map(_.reference).toSet
-    val actualRefs = asScala(usages).map(_.reference).toSet
+    val actualMethodRefs = asScala(usages).filter(_.isFunction).map(_.fqName).toSet
+    val actualRefs = asScala(usages).map(_.fqName).toSet
     assertEquals(Set("B.callsIntoA", "AnonymousUsage.foo"), actualRefs)
   }
 
@@ -269,7 +269,7 @@ class AnalyzerTest {
     val symbol = "D.field1" // fully qualified field name
     val usages = analyzer.getUses(symbol)
 
-    val actualRefs = asScala(usages).map(_.reference).toSet
+    val actualRefs = asScala(usages).map(_.fqName).toSet
     assertEquals(Set("D.methodD2", "E.dMethod"), actualRefs)
   }
 
@@ -289,7 +289,7 @@ class AnalyzerTest {
     val usages = analyzer.getUses(symbol)
 
     // methodUses => references to A as a type in B.callsIntoA() and D.methodD1()
-    val foundRefs = asScala(usages).map(_.reference).toSet
+    val foundRefs = asScala(usages).map(_.fqName).toSet
     assertEquals(Set("B.callsIntoA", "D.methodD1", "AnonymousUsage.foo"), foundRefs)
   }
 
@@ -312,17 +312,17 @@ class AnalyzerTest {
 
     // Find classes matching "*E"
     val classMatches = analyzer.getDefinitions(".*e")
-    val classRefs = asScala(classMatches).filter(_.isClass).map(_.reference).toSet
+    val classRefs = asScala(classMatches).filter(_.isClass).map(_.fqName).toSet
     assertEquals(Set("E", "UseE", "AnonymousUsage", "java.lang.Runnable"), classRefs)
 
     // Find methods matching "method*"
     val methodMatches = analyzer.getDefinitions("method.*1")
-    val methodRefs = asScala(methodMatches).map(_.reference).toSet
+    val methodRefs = asScala(methodMatches).map(_.fqName).toSet
     assertEquals(Set("A.method1", "D.methodD1"), methodRefs)
 
     // Find fields matching "field.*"
     val fieldMatches = analyzer.getDefinitions(".*field.*")
-    val fieldRefs = asScala(fieldMatches).map(_.reference).toSet
+    val fieldRefs = asScala(fieldMatches).map(_.fqName).toSet
     assertEquals(Set("D.field1", "D.field2", "E.iField", "E.sField"), fieldRefs)
   }
 
@@ -332,7 +332,7 @@ class AnalyzerTest {
     val symbol = "E"
     val usages = analyzer.getUses(symbol)
 
-    val refs = asScala(usages).map(_.reference).toSet
+    val refs = asScala(usages).map(_.fqName).toSet
     assertEquals(Set("UseE.some", "UseE.<init>", "UseE.moreM", "UseE.moreF", "UseE"), refs)
   }
 

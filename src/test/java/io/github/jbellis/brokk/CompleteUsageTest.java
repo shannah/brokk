@@ -56,7 +56,7 @@ public class CompleteUsageTest {
             // Find matching classes
             var matchingClasses = allClasses.stream()
                 .filter(cu -> {
-                    String className = cu.reference();
+                    String className = cu.fqName();
                     String shortName = getShortClassName(className);
                     return shortName.matches(regex);
                 })
@@ -66,7 +66,7 @@ public class CompleteUsageTest {
             var matchingMethods = methodsMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream())
                 .filter(cu -> {
-                    String methodName = cu.reference();
+                    String methodName = cu.fqName();
                     // Extract just the method name (after last dot)
                     String simpleName = methodName.substring(methodName.lastIndexOf('.') + 1);
                     return simpleName.matches(regex);
@@ -84,7 +84,7 @@ public class CompleteUsageTest {
     // Helper to extract values for easy assertion
     private static Set<String> toValues(List<CodeUnit> candidates) {
         return candidates.stream()
-               .map(CodeUnit::reference)
+               .map(CodeUnit::fqName)
                .collect(Collectors.toSet());
     }
     private static Set<String> toShortValues(List<CodeUnit> candidates) {
