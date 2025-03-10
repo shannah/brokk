@@ -49,7 +49,7 @@ public class Coder {
         this.models = models;
         this.io = io;
         this.contextManager = contextManager;
-        this.historyFile = sourceRoot.resolve(".brokk").resolve("conversations.md");
+        this.historyFile = sourceRoot.resolve(".brokk").resolve("llm.log");
     }
 
     public boolean isLlmAvailable() {
