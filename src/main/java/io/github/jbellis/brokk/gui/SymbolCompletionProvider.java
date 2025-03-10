@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.Completions;
-import io.github.jbellis.brokk.Project;
 import org.fife.ui.autocomplete.BasicCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
@@ -15,10 +14,10 @@ import java.util.List;
  */
 public class SymbolCompletionProvider extends DefaultCompletionProvider {
 
-    private final Project project;
+    private final Analyzer analyzer;
 
-    public SymbolCompletionProvider(Project project) {
-        this.project = project;
+    public SymbolCompletionProvider(Analyzer analyzer) {
+        this.analyzer = analyzer;
         setAutoActivationRules(false, ".");
     }
 
@@ -33,8 +32,6 @@ public class SymbolCompletionProvider extends DefaultCompletionProvider {
         }
         
         // Get completions using the brokk Completions utility
-        var analyzer = project.getAnalyzerWrapper().getNonBlocking();
-        // TODO need a better solution than this
         var completions = analyzer == null
                         ? List.<String>of()
                         : Completions.completeClassesAndMembers(text, analyzer, true);

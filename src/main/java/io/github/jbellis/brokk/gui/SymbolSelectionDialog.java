@@ -25,6 +25,7 @@ public class SymbolSelectionDialog extends JDialog {
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
     private final JButton cancelButton;
+    private final Analyzer analyzer;
 
     // The selected symbol
     private String selectedSymbol = null;
@@ -35,13 +36,14 @@ public class SymbolSelectionDialog extends JDialog {
     public SymbolSelectionDialog(Frame parent, Project project, String title) {
         super(parent, title, true); // modal dialog
         this.project = project;
+        analyzer = project.getAnalyzerWrapper().get();
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         // Build text input with autocomplete at the top
         symbolInput = new JTextField(30);
-        var provider = createSymbolCompletionProvider();
+        var provider = createSymbolCompletionProvider(analyzer);
         autoCompletion = new AutoCompletion(provider);
         // Trigger with Ctrl+Space
         autoCompletion.setAutoActivationEnabled(false);
@@ -59,7 +61,7 @@ public class SymbolSelectionDialog extends JDialog {
         listPanel.setBorder(BorderFactory.createTitledBorder("Available Classes"));
         
         DefaultListModel<String> classListModel = new DefaultListModel<>();
-        List<String> allClasses = new ArrayList<>(project.getAnalyzerWrapper().get().getAllClasses().stream()
+        List<String> allClasses = new ArrayList<>(analyzer.getAllClasses().stream()
                 .map(CodeUnit::reference)
                 .sorted()
                 .toList());
@@ -137,8 +139,8 @@ public class SymbolSelectionDialog extends JDialog {
     /**
      * Create the symbol completion provider using Completions.completeClassesAndMembers
      */
-    private CompletionProvider createSymbolCompletionProvider() {
-        return new SymbolCompletionProvider(project);
+    private CompletionProvider createSymbolCompletionProvider(Analyzer analyzer) {
+        return new SymbolCompletionProvider(analyzer);
     }
 
     /**
