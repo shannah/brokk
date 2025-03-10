@@ -35,8 +35,6 @@ public class ContextPanel extends JPanel {
     // Context Panel components
     private JTable contextTable;
     private JPanel locSummaryLabel;
-    private JTable uncommittedFilesTable;
-    private JButton suggestCommitButton;
 
     // Context action buttons
     private JButton editButton;
@@ -194,53 +192,7 @@ public class ContextPanel extends JPanel {
         locSummaryLabel.add(innerLabel);
         locSummaryLabel.setBorder(BorderFactory.createEmptyBorder());
 
-        // Create panel for uncommitted changes with a suggest commit button to the right
-        var uncommittedPanel = new JPanel(new BorderLayout(10, 0));
-        uncommittedPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Uncommitted Changes",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-
-        // Create table for uncommitted files - fixed to 3 rows with scrollbar
-        uncommittedFilesTable = new JTable(new DefaultTableModel(
-                new Object[]{"Filename", "Path"}, 0));
-        uncommittedFilesTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        uncommittedFilesTable.setRowHeight(18);
-
-        // Set column widths
-        uncommittedFilesTable.getColumnModel().getColumn(0).setPreferredWidth(150);
-        uncommittedFilesTable.getColumnModel().getColumn(1).setPreferredWidth(450);
-
-        // Create a scroll pane with fixed height of 3 rows plus header and scrollbar
-        JScrollPane uncommittedScrollPane = new JScrollPane(uncommittedFilesTable);
-        int tableRowHeight = uncommittedFilesTable.getRowHeight();
-        int headerHeight = 22; // Approximate header height
-        int scrollbarHeight = 3; // Extra padding for scrollbar
-        uncommittedScrollPane.setPreferredSize(new Dimension(600, (tableRowHeight * 3) + headerHeight + scrollbarHeight));
-
-        // Create the suggest commit button panel on the right
-        var commitButtonPanel = new JPanel(new BorderLayout());
-        suggestCommitButton = new JButton("Suggest Commit");
-        suggestCommitButton.setEnabled(false);
-        suggestCommitButton.setMnemonic(KeyEvent.VK_C);
-        suggestCommitButton.setToolTipText("Suggest a commit message for the uncommitted changes");
-        suggestCommitButton.addActionListener(e -> {
-            chrome.disableUserActionButtons();
-            chrome.currentUserTask = contextManager.performCommitActionAsync();
-        });
-
-        // Add button to panel (width will be set later)
-        commitButtonPanel.add(suggestCommitButton, BorderLayout.NORTH);
-
-        // Add table and button to the panel
-        uncommittedPanel.add(uncommittedScrollPane, BorderLayout.CENTER);
-        uncommittedPanel.add(commitButtonPanel, BorderLayout.EAST);
-
         contextSummaryPanel.add(locSummaryLabel, BorderLayout.NORTH);
-        contextSummaryPanel.add(uncommittedPanel, BorderLayout.CENTER);
 
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
@@ -364,11 +316,6 @@ public class ContextPanel extends JPanel {
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(pasteButton);
 
-        // Set the suggestCommitButton to match the width of these context buttons
-        if (suggestCommitButton != null) {
-            suggestCommitButton.setPreferredSize(preferredSize);
-            suggestCommitButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        }
 
         // Force the panel to keep at least enough vertical space for all buttons.
         buttonsPanel.setMinimumSize(new Dimension(buttonsPanel.getPreferredSize().width, (int) (1.3 * buttonsPanel.getPreferredSize().height)));
@@ -527,46 +474,6 @@ public class ContextPanel extends JPanel {
         }
     }
 
-    /**
-     * Updates the uncommitted files table and the state of the suggest commit button
-     */
-    public void updateSuggestCommitButton() {
-        assert SwingUtilities.isEventDispatchThread();
-        if (contextManager == null) {
-            suggestCommitButton.setEnabled(false);
-            return;
-        }
-
-        contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
-            try {
-                List<String> uncommittedFiles = contextManager.getProject().getRepo().getUncommittedFileNames();
-                SwingUtilities.invokeLater(() -> {
-                    DefaultTableModel model = (DefaultTableModel) uncommittedFilesTable.getModel();
-                    model.setRowCount(0);
-
-                    if (uncommittedFiles.isEmpty()) {
-                        suggestCommitButton.setEnabled(false);
-                    } else {
-                        for (String filePath : uncommittedFiles) {
-                            // Split into filename and path
-                            int lastSlash = filePath.lastIndexOf('/');
-                            String filename = (lastSlash >= 0) ? filePath.substring(lastSlash + 1) : filePath;
-                            String path = (lastSlash >= 0) ? filePath.substring(0, lastSlash) : "";
-
-                            model.addRow(new Object[]{filename, path});
-                        }
-                        suggestCommitButton.setEnabled(true);
-                    }
-                });
-            } catch (Exception e) {
-                // Handle exception in case the repo is no longer available
-                SwingUtilities.invokeLater(() -> {
-                    suggestCommitButton.setEnabled(false);
-                });
-            }
-            return null;
-        });
-    }
     
 
     // Getters for components that might be needed by Chrome

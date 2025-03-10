@@ -59,8 +59,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JButton captureTextButton;
     private JButton editReferencesButton;
 
-    // Context Panel:
+    // Panels:
     private ContextPanel contextPanel;
+    private GitPanel gitPanel;
 
     // Buttons for the command input panel:
     private JButton codeButton;  // renamed from goButton
@@ -210,9 +211,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add the top controls to the top of the bottom panel
         bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
 
-        // 4. Context panel (with border title) in the center to get extra space
+        // 4. Create a panel to hold the context panel and git panel
+        var contextAndGitPanel = new JPanel(new BorderLayout());
+        
+        // 4a. Context panel (with border title) in the center to get extra space
         var ctxPanel = buildContextPanel();
-        bottomPanel.add(ctxPanel, BorderLayout.CENTER);
+        contextAndGitPanel.add(ctxPanel, BorderLayout.CENTER);
+        
+        // 4b. Git panel below the context panel
+        gitPanel = new GitPanel(this, contextManager);
+        contextAndGitPanel.add(gitPanel, BorderLayout.SOUTH);
+        
+        // Add the combined panel to the bottom panel
+        bottomPanel.add(contextAndGitPanel, BorderLayout.CENTER);
 
         // 5. Background status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
@@ -734,6 +745,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private JPanel buildContextPanel() {
         contextPanel = new ContextPanel(this, contextManager);
+        
+        // After creating the context panel buttons and getting their sizes,
+        // update the git panel button size to match
+        SwingUtilities.invokeLater(() -> {
+            if (gitPanel != null && contextPanel.getEditButton() != null) {
+                var editButton = contextPanel.getEditButton();
+                var preferredSize = editButton.getPreferredSize();
+                gitPanel.setSuggestCommitButtonSize(preferredSize);
+            }
+        });
+        
         return contextPanel;
     }
 
@@ -745,7 +767,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates the uncommitted files table and the state of the suggest commit button
      */
     private void updateSuggestCommitButton() {
-        contextPanel.updateSuggestCommitButton();
+        gitPanel.updateSuggestCommitButton();
     }
 
     /**
