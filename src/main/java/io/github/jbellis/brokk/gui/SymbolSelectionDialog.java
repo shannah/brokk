@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
+import io.github.jbellis.brokk.IAnalyzer;
 import io.github.jbellis.brokk.Project;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.CompletionProvider;
@@ -25,7 +25,7 @@ public class SymbolSelectionDialog extends JDialog {
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
     private final JButton cancelButton;
-    private final Analyzer analyzer;
+    private final IAnalyzer analyzer;
 
     // The selected symbol
     private String selectedSymbol = null;
@@ -139,7 +139,7 @@ public class SymbolSelectionDialog extends JDialog {
     /**
      * Create the symbol completion provider using Completions.completeClassesAndMembers
      */
-    private CompletionProvider createSymbolCompletionProvider(Analyzer analyzer) {
+    private CompletionProvider createSymbolCompletionProvider(IAnalyzer analyzer) {
         return new SymbolCompletionProvider(analyzer);
     }
 

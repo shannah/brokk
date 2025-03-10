@@ -65,7 +65,7 @@ public class AnalyzerWrapper {
     }
 
     @NotNull
-    static CodeWithSource processUsages(Analyzer analyzer, List<CodeUnit> uses) {
+    static CodeWithSource processUsages(IAnalyzer analyzer, List<CodeUnit> uses) {
         StringBuilder code = new StringBuilder();
         Set<CodeUnit> sources = new HashSet<>();
 
@@ -119,7 +119,7 @@ public class AnalyzerWrapper {
         return new CodeWithSource(code.toString(), sources);
     }
 
-    public static List<String> combinedPageRankFor(Analyzer analyzer, Map<String, Double> weightedSeeds) {
+    public static List<String> combinedPageRankFor(IAnalyzer analyzer, Map<String, Double> weightedSeeds) {
         // do forward and reverse pagerank passes
         var forwardResults = analyzer.getPagerank(weightedSeeds, 3 * Context.MAX_AUTO_CONTEXT_FILES, false);
         var reverseResults = analyzer.getPagerank(weightedSeeds, 3 * Context.MAX_AUTO_CONTEXT_FILES, true);

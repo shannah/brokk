@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk
 
-sealed trait CodeUnit extends Comparable[CodeUnit] {
+sealed trait CodeUnit extends Comparable[CodeUnit] with Serializable {
   def reference: String
 
   def isClass: Boolean = this match {

@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class GitRepo implements Closeable {
+public class GitRepo implements Closeable, IGitRepo {
 
     private final Path root;
     private final Repository repository;
@@ -59,6 +59,7 @@ public class GitRepo implements Closeable {
     }
 
 
+    @Override
     public Path getRoot() {
         return root;
     }
@@ -81,6 +82,7 @@ public class GitRepo implements Closeable {
      * including unchanged files from HEAD and any files with staged or unstaged modifications
      * (changed, modified, added, removed) from the working directory.
      */
+    @Override
     public synchronized List<RepoFile> getTrackedFiles() {
         if (trackedFilesCache != null) {
             return trackedFilesCache;

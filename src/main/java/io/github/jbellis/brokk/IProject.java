@@ -1,9 +1,9 @@
 package io.github.jbellis.brokk;
 
 public interface IProject {
-    Analyzer getAnalyzer();
+    IAnalyzer getAnalyzer();
 
-    Analyzer getAnalyzerNonBlocking();
+    IAnalyzer getAnalyzerNonBlocking();
 
-    GitRepo getRepo();
+    IGitRepo getRepo();
 }

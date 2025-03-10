@@ -6,6 +6,9 @@ import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -20,27 +23,29 @@ import java.util.stream.Stream;
 /**
  * Encapsulates all state that will be sent to the model (prompts, filename context, conversation history).
  */
-public class Context {
+public class Context implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
 
-    final IProject project;
+    transient final IProject project;
     final List<ContextFragment.RepoPathFragment> editableFiles;
     final List<ContextFragment.PathFragment> readonlyFiles;
     final List<ContextFragment.VirtualFragment> virtualFragments;
 
-    final AutoContext autoContext;
+    transient final AutoContext autoContext;
     final int autoContextFileCount;
     /** history messages are unusual because they are updated in place.  See comments to addHistory and clearHistory */
-    final List<ChatMessage> historyMessages;
+    transient final List<ChatMessage> historyMessages;
 
     /** backup of original contents for /undo, does not carry forward to Context children */
-    final Map<RepoFile, String> originalContents;
+    transient final Map<RepoFile, String> originalContents;
 
     /** LLM output or other parsed content, with optional fragment */
-    final ParsedOutput parsedOutput;
+    transient final ParsedOutput parsedOutput;
 
     /** description of the action that created this context, can be a future (like PasteFragment) */
-    final Future<String> action;
+    transient final Future<String> action;
     public static final String SUMMARIZING = "(Summarizing)";
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
@@ -575,5 +580,37 @@ public class Context {
 
     public ParsedOutput getParsedOutput() {
         return parsedOutput;
+    }
+
+    /**
+     * Serializes a Context object to a byte array
+     */
+    public static byte[] serialize(Context ctx) throws IOException {
+        try (var baos = new java.io.ByteArrayOutputStream();
+             var oos = new java.io.ObjectOutputStream(baos)) {
+            oos.writeObject(ctx);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Deserializes a Context object from a byte array
+     */
+    public static Context deserialize(byte[] data) throws IOException, ClassNotFoundException {
+        try (var bais = new java.io.ByteArrayInputStream(data);
+             var ois = new java.io.ObjectInputStream(bais)) {
+            return (Context) ois.readObject();
+        }
+    }
+
+    @Serial
+    private void writeObject(java.io.ObjectOutputStream oos) throws IOException {
+        oos.defaultWriteObject();
+    }
+
+    @Serial
+    private void readObject(java.io.ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        ois.defaultReadObject();
+        // Initialize transient fields to safe defaults
     }
 }

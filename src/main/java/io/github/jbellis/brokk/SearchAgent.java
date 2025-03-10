@@ -42,7 +42,7 @@ public class SearchAgent {
     private final Logger logger = LogManager.getLogger(SearchAgent.class);
     private static final int TOKEN_BUDGET = 64000; // 64K context window for models like R1
 
-    private final Analyzer analyzer;
+    private final IAnalyzer analyzer;
     private final ContextManager contextManager;
     private final Coder coder;
     private final IConsoleIO io;

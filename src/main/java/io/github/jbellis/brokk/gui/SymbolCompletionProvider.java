@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Completions;
+import io.github.jbellis.brokk.IAnalyzer;
 import org.fife.ui.autocomplete.BasicCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
@@ -15,9 +16,9 @@ import java.util.List;
  */
 public class SymbolCompletionProvider extends DefaultCompletionProvider {
 
-    private final Analyzer analyzer;
+    private final IAnalyzer analyzer;
 
-    public SymbolCompletionProvider(Analyzer analyzer) {
+    public SymbolCompletionProvider(IAnalyzer analyzer) {
         this.analyzer = analyzer;
         setAutoActivationRules(false, ".");
     }

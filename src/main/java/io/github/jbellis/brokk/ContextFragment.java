@@ -3,11 +3,12 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.data.message.ChatMessage;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
 
-public interface ContextFragment {
+public interface ContextFragment extends Serializable {
     /** short description in history */
     String shortDescription();
     /** longer description displayed in context table */
@@ -22,7 +23,7 @@ public interface ContextFragment {
         return sources(project.getAnalyzer(), project.getRepo());
     }
 
-    Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo);
+    Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo);
 
     /** should classes found in this fragment be included in AutoContext? */
     boolean isEligibleForAutoContext();
@@ -46,6 +47,7 @@ public interface ContextFragment {
     }
 
     record RepoPathFragment(RepoFile file) implements PathFragment {
+        private static final long serialVersionUID = 1L;
         @Override
         public String shortDescription() {
             return file().getFileName();
@@ -57,7 +59,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return analyzer.getClassesInFile(file);
         }
 
@@ -73,6 +75,7 @@ public interface ContextFragment {
     }
 
     record ExternalPathFragment(ExternalFile file) implements PathFragment {
+        private static final long serialVersionUID = 1L;
         @Override
         public String shortDescription() {
             return description();
@@ -84,7 +87,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return Set.of();
         }
 
@@ -120,7 +123,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return repo.getTrackedFiles().stream().parallel()
                     .filter(f -> text().contains(f.toString()))
                     .flatMap(f -> analyzer.getClassesInFile(f).stream())
@@ -132,11 +135,14 @@ public interface ContextFragment {
     }
 
     class StringFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final String text;
         private final String description;
 
         public StringFragment(String text, String description) {
             super();
+            assert text != null;
+            assert description != null;
             this.text = text;
             this.description = description;
         }
@@ -163,12 +169,16 @@ public interface ContextFragment {
     }
 
     class SearchFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final String query;
         private final String explanation;
         private final Set<CodeUnit> sources;
 
         public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
             super();
+            assert query != null;
+            assert explanation != null;
+            assert sources != null;
             this.query = query;
             this.explanation = explanation;
             this.sources = sources;
@@ -180,7 +190,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return sources;
         }
 
@@ -201,11 +211,14 @@ public interface ContextFragment {
     }
 
     class PasteFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final String text;
         private final Future<String> descriptionFuture;
 
         public PasteFragment(String text, Future<String> descriptionFuture) {
             super();
+            assert text != null;
+            assert descriptionFuture != null;
             this.text = text;
             this.descriptionFuture = descriptionFuture;
         }
@@ -239,6 +252,7 @@ public interface ContextFragment {
     }
 
     class StacktraceFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final Set<CodeUnit> sources;
         private final String original;
         private final String exception;
@@ -246,6 +260,10 @@ public interface ContextFragment {
 
         public StacktraceFragment(Set<CodeUnit> sources, String original, String exception, String code) {
             super();
+            assert sources != null;
+            assert original != null;
+            assert exception != null;
+            assert code != null;
             this.sources = sources;
             this.original = original;
             this.exception = exception;
@@ -258,7 +276,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return sources;
         }
 
@@ -282,12 +300,16 @@ public interface ContextFragment {
     }
 
     class UsageFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final String targetIdentifier;
         private final Set<CodeUnit> classnames;
         private final String code;
 
         public UsageFragment(String targetIdentifier, Set<CodeUnit> classnames, String code) {
             super();
+            assert targetIdentifier != null;
+            assert classnames != null;
+            assert code != null;
             this.targetIdentifier = targetIdentifier;
             this.classnames = classnames;
             this.code = code;
@@ -299,7 +321,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return classnames;
         }
 
@@ -315,12 +337,16 @@ public interface ContextFragment {
     }
 
     class SkeletonFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final List<String> shortClassnames;
         private final Set<CodeUnit> sources;
         private final String skeletonText;
 
         public SkeletonFragment(List<String> shortClassnames, Set<CodeUnit> sources, String skeletonText) {
             super();
+            assert shortClassnames != null;
+            assert sources != null;
+            assert skeletonText != null;
             this.shortClassnames = shortClassnames;
             this.sources = sources;
             this.skeletonText = skeletonText;
@@ -332,7 +358,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return sources;
         }
 
@@ -366,10 +392,12 @@ public interface ContextFragment {
      * representation (e.g. skeletons) of those classes.
      */
     class ConversationFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final List<ChatMessage> messages;
 
         public ConversationFragment(List<ChatMessage> messages) {
             super();
+            assert messages != null;
             this.messages = List.copyOf(messages);
         }
 
@@ -381,7 +409,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return Set.of(); // Conversation history doesn't contain code sources
         }
 
@@ -415,12 +443,14 @@ public interface ContextFragment {
     }
 
     class AutoContext implements ContextFragment {
+        private static final long serialVersionUID = 1L;
         public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(List.of("Enabled, but no references found"), Set.of(), "")));
         public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(List.of("Disabled"), Set.of(), "")));
 
         private final List<SkeletonFragment> skeletons;
 
         public AutoContext(List<SkeletonFragment> skeletons) {
+            assert skeletons != null;
             this.skeletons = skeletons;
         }
 
@@ -434,7 +464,7 @@ public interface ContextFragment {
         }
 
         @Override
-        public Set<CodeUnit> sources(Analyzer analyzer, GitRepo repo) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return skeletons.stream().flatMap(s -> s.sources.stream()).collect(java.util.stream.Collectors.toSet());
         }
 

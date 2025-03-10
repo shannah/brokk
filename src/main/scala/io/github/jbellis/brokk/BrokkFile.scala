@@ -1,9 +1,10 @@
 package io.github.jbellis.brokk
 
 import java.io.IOException
+import java.io.Serializable
 import java.nio.file.{Files, Path}
 
-trait BrokkFile {
+trait BrokkFile extends Serializable {
   def absPath(): Path
 
   @throws[IOException]

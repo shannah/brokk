@@ -1,10 +1,10 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IAnalyzer;
 import io.github.jbellis.brokk.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -490,7 +490,7 @@ public class ContextPanel extends JPanel {
     /**
      * Updates the description label with file names
      */
-    public void updateFilesDescriptionLabel(Set<? extends CodeUnit> sources, Analyzer analyzer) {
+    public void updateFilesDescriptionLabel(Set<? extends CodeUnit> sources, IAnalyzer analyzer) {
         if (chrome.captureDescriptionArea == null) {
             return;
         }

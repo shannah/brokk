@@ -220,12 +220,12 @@ public class ContextManager implements IContextManager
     /**
      * Return the main analyzer, building it if needed
      */
-    public Analyzer getAnalyzer()
+    public IAnalyzer getAnalyzer()
     {
         return project.getAnalyzer();
     }
 
-    public Analyzer getAnalyzerNonBlocking() {
+    public IAnalyzer getAnalyzerNonBlocking() {
         return project.getAnalyzerNonBlocking();
     }
 

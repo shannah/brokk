@@ -396,7 +396,7 @@ public class Project implements IProject {
      * Gets the analyzer, blocking if necessary while it's being built
      */
     @Override
-    public Analyzer getAnalyzer() {
+    public IAnalyzer getAnalyzer() {
         return analyzerWrapper.get();
     }
     
@@ -404,7 +404,7 @@ public class Project implements IProject {
      * Gets the analyzer without blocking, may return null if not available
      */
     @Override
-    public Analyzer getAnalyzerNonBlocking() {
+    public IAnalyzer getAnalyzerNonBlocking() {
         return analyzerWrapper.getNonBlocking();
     }
     

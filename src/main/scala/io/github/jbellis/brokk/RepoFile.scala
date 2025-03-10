@@ -9,7 +9,9 @@ import java.nio.file.Files
  * that different filename objects can be meaningfully compared, unlike bare Paths which may
  * or may not be absolute, or may be relative to the jvm root rather than the repo root.
  */
-class RepoFile(private val root: Path, private val relPath: Path) extends BrokkFile {
+class RepoFile(private var root: Path, private var relPath: Path) extends BrokkFile {
+  @transient
+  private val serialVersionUID = 1L
   def this(root: Path, relName: String) = this(root, Path.of(relName))
 
   require(root.isAbsolute)
@@ -44,4 +46,29 @@ class RepoFile(private val root: Path, private val relPath: Path) extends BrokkF
   }
 
   override def hashCode: Int = relPath.hashCode
+  
+  @throws[IOException]
+  @throws[java.io.ObjectStreamException]
+  private def writeObject(oos: java.io.ObjectOutputStream): Unit = {
+    oos.defaultWriteObject()
+    // store the string forms of root/relPath
+    oos.writeUTF(root.toString)
+    oos.writeUTF(relPath.toString)
+  }
+
+  @throws[IOException]
+  @throws[ClassNotFoundException]
+  private def readObject(ois: java.io.ObjectInputStream): Unit = {
+    // read all non-transient fields
+    ois.defaultReadObject()
+    // reconstitute root/relPath from the strings
+    val rootString = ois.readUTF()
+    val relString = ois.readUTF()
+    // both must be absolute/relative as before
+    root = Path.of(rootString)
+    require(root.isAbsolute)
+
+    relPath = Path.of(relString)
+    require(!relPath.isAbsolute)
+  }
 }

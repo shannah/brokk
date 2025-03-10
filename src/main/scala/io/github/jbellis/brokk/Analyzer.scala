@@ -123,7 +123,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     relevant.mkString(".")
   }
 
-  def getMethodSource(methodName: String): Option[String] = {
+  override def getMethodSource(methodName: String): Option[String] = {
     val resolvedMethodName = resolveMethodName(methodName)
     val methods = methodsFromName(resolvedMethodName)
 
@@ -154,7 +154,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * @param className the fully qualified class name
    * @return the full source code of the file containing the class as a String
    */
-  def getClassSource(className: String): java.lang.String = {
+  override def getClassSource(className: String): java.lang.String = {
     val classNodes = cpg.typeDecl.fullNameExact(className).l
 
     if (classNodes.isEmpty) {
@@ -277,7 +277,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * Builds a structural skeleton for a given class by name (simple or FQCN),
    * or None if the class is not found (bug in Joern).
    */
-  def getSkeleton(className: String): Option[String] = {
+  override def getSkeleton(className: String): Option[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
     if (decls.isEmpty) {
       return None // TODO log?
@@ -333,7 +333,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     adjacency.map { case (src, tgtMap) => src -> tgtMap.toMap }.toMap
   }
 
-  def pathOf(codeUnit: CodeUnit): Option[RepoFile] = {
+  override def pathOf(codeUnit: CodeUnit): Option[RepoFile] = {
     codeUnit match {
       case CodeUnit.ClassType(fullClassName) =>
         cpg.typeDecl.fullNameExact(fullClassName).headOption.flatMap(toFile)
@@ -356,7 +356,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * If validSeeds are present, seed scores and random jumps are weighted
    * by lines of code (LOC). Otherwise, use uniform seeds.
    */
-  def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[(String, java.lang.Double)] = {
+  override def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[(String, java.lang.Double)] = {
     import scala.jdk.CollectionConverters.*
     val seedWeights = seedClassWeights.asScala.view.mapValues(_.doubleValue()).toMap
     val seedSeq = seedWeights.keys.toSeq
@@ -490,7 +490,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   /**
    * Returns a set of all classes in the given .java filename.
    */
-  def getClassesInFile(file: RepoFile): java.util.Set[CodeUnit] = {
+  override def getClassesInFile(file: RepoFile): java.util.Set[CodeUnit] = {
     val matches = cpg.typeDecl.l.filter { td =>
       toFile(td).contains(file)
     }
@@ -509,12 +509,12 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     Some(RepoFile(absolutePath, relName))
   }
 
-  def isClassInProject(className: String): Boolean = {
+  override def isClassInProject(className: String): Boolean = {
     val td = cpg.typeDecl.fullNameExact(className).l
     td.nonEmpty && !(td.member.isEmpty && td.method.isEmpty && td.derivedTypeDecl.isEmpty)
   }
 
-  def getAllClasses: java.util.List[CodeUnit] = {
+  override def getAllClasses: java.util.List[CodeUnit] = {
     val results = cpg.typeDecl
       .filter(toFile(_).isDefined)
       .fullName
@@ -526,7 +526,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   /**
    * Returns just the class signature and field declarations, without method details.
    */
-  def getSkeletonHeader(className: String): Option[String] = {
+  override def getSkeletonHeader(className: String): Option[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
     if (decls.isEmpty) {
       return None
@@ -558,7 +558,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     sb.toString
   }
 
-  def getMembersInClass(className: String): java.util.List[CodeUnit] = {
+  override def getMembersInClass(className: String): java.util.List[CodeUnit] = {
     val matches = cpg.typeDecl.fullNameExact(className)
     if (matches.isEmpty) {
       throw new IllegalArgumentException(s"Class '$className' not found")
@@ -606,7 +606,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * @param pattern A regular expression to match against class, method, and field names
    * @return A list of CodeUnit objects representing the matches
    */
-  def getDefinitions(pattern: String): java.util.List[CodeUnit] = {
+  override def getDefinitions(pattern: String): java.util.List[CodeUnit] = {
     // Compile the regex pattern
     val ciPattern = "(?i)" + pattern // case-insensitive
 
@@ -753,7 +753,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    *
    * If symbol is not found at all, throws IllegalArgumentException.
    */
-  def getUses(symbol: String): java.util.List[CodeUnit] = {
+  override def getUses(symbol: String): java.util.List[CodeUnit] = {
     //
     // 1) If symbol is recognized as a method name
     //
