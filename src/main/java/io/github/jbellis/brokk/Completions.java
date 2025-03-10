@@ -17,7 +17,7 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class Completions {
-    public static List<String> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
+    public static List<CodeUnit> completeClassesAndMembers(String input, IAnalyzer analyzer, boolean returnFqn) {
         var allCodeUnits = analyzer.getAllClasses();
         var allClassnames = allCodeUnits.stream().map(CodeUnit::reference).toList();
         String partial = input.trim();
@@ -25,15 +25,33 @@ public class Completions {
         var matchingClasses = findClassesForMemberAccess(input, allClassnames);
         if (matchingClasses.size() == 1) {
             // find matching members
-            var results = new ArrayList<>(matchingClasses);
+            var results = new ArrayList<CodeUnit>();
             for (var matchedClass : matchingClasses) {
+                // Add the class itself as one of the completions
+                results.add(CodeUnit.cls(matchedClass));
+                
                 String memberPrefix = partial.substring(partial.lastIndexOf(".") + 1);
                 // Add members
-                var trueMembers = analyzer.getMembersInClass(matchedClass).stream().filter(m -> !m.reference().contains("$")).toList();
-                for (String fqMember : trueMembers.stream().map(CodeUnit::reference).toList()) {
+                var trueMembers = analyzer.getMembersInClass(matchedClass).stream()
+                        .filter(m -> !m.reference().contains("$"))
+                        .toList();
+                
+                for (var member : trueMembers) {
+                    String fqMember = member.reference();
                     String shortMember = fqMember.substring(fqMember.lastIndexOf('.') + 1);
                     if (shortMember.startsWith(memberPrefix)) {
-                        results.add(returnFqn ? fqMember : getShortClassName(matchedClass) + "." + shortMember);
+                        if (returnFqn) {
+                            results.add(member);
+                        } else {
+                            // For non-FQN, we reconstruct with short class name
+                            if (member.isFunction()) {
+                                results.add(CodeUnit.fn(getShortClassName(matchedClass) + "." + shortMember));
+                            } else if (member.isClass()) {
+                                results.add(CodeUnit.cls(getShortClassName(matchedClass) + "." + shortMember));
+                            } else {
+                                results.add(CodeUnit.field(getShortClassName(matchedClass) + "." + shortMember));
+                            }
+                        }
                     }
                 }
             }
@@ -42,29 +60,30 @@ public class Completions {
 
         // Otherwise, we're completing class names
         String partialLower = partial.toLowerCase();
-        Set<String> matchedClasses = new TreeSet<>();
+        Set<String> matchedClassNames = new TreeSet<>();
 
         // Gather matching classes
         if (partial.isEmpty()) {
-            matchedClasses.addAll(allClassnames);
+            matchedClassNames.addAll(allClassnames);
         } else {
             var st = returnFqn ? allClassnames.stream() : allClassnames.stream().map(Completions::getShortClassName);
             st.forEach(name -> {
                 if (name.toLowerCase().startsWith(partialLower)
                         || getShortClassName(name).toLowerCase().startsWith(partialLower)) {
-                    matchedClasses.add(name);
+                    matchedClassNames.add(name);
                 }
             });
 
-            matchedClasses.addAll(getClassnameMatches(partial, allClassnames));
+            matchedClassNames.addAll(getClassnameMatches(partial, allClassnames));
         }
 
-        // Return just the class names
-        return matchedClasses.stream()
+        // Convert matched class names to CodeUnit objects
+        return matchedClassNames.stream()
                 .map(fqClass -> {
-                    return returnFqn ? fqClass : getShortClassName(fqClass);
+                    String classRef = returnFqn ? fqClass : getShortClassName(fqClass);
+                    return CodeUnit.cls(classRef);
                 })
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**

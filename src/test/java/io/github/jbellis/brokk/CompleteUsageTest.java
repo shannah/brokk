@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.github.jbellis.brokk.Completions.findClassesForMemberAccess;
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CompleteUsageTest {
     @VisibleForTesting
-    static List<String> completeUsage(String input, IAnalyzer analyzer) {
+    static List<CodeUnit> completeUsage(String input, IAnalyzer analyzer) {
         return Completions.completeClassesAndMembers(input, analyzer, true);
     }
 
@@ -51,9 +52,11 @@ public class CompleteUsageTest {
         }
     }
     
-    // Helper to extract values for easy assertion (now just returns the strings)
-    private static Set<String> toValues(List<String> candidates) {
-        return new HashSet<>(candidates);
+    // Helper to extract values for easy assertion
+    private static Set<String> toValues(List<CodeUnit> candidates) {
+        return candidates.stream()
+               .map(CodeUnit::reference)
+               .collect(Collectors.toSet());
     }
 
     @Test

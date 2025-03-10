@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Analyzer;
+import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Completions;
 import org.fife.ui.autocomplete.BasicCompletion;
 import org.fife.ui.autocomplete.Completion;
@@ -33,12 +34,12 @@ public class SymbolCompletionProvider extends DefaultCompletionProvider {
         
         // Get completions using the brokk Completions utility
         var completions = analyzer == null
-                        ? List.<String>of()
+                        ? List.<CodeUnit>of()
                         : Completions.completeClassesAndMembers(text, analyzer, true);
-        
+
         // Convert to RSTA completions
         return completions.stream()
-                .map(c -> (Completion) new BasicCompletion(this, c))
+                .map(c -> (Completion) new BasicCompletion(this, c.reference()))
                 .toList();
     }
 }
