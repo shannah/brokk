@@ -41,6 +41,7 @@ public class Context {
 
     /** description of the action that created this context, can be a future (like PasteFragment) */
     final Future<String> action;
+    public static final String SUMMARIZING = "(Summarizing)";
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
@@ -509,7 +510,7 @@ public class Context {
                 return "(Error retrieving action)";
             }
         }
-        return "(Summarizing)";
+        return SUMMARIZING;
     }
 
     public Context addUsageFragment(ContextFragment.UsageFragment fragment) {

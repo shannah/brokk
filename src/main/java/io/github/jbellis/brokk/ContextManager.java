@@ -1094,7 +1094,9 @@ public class ContextManager implements IContextManager
             contextHistory.removeFirst();
         }
         redoHistory.clear();
-        io.toolOutput(newContext.getAction());
+        if (!newContext.getAction().equals(Context.SUMMARIZING)) {
+            io.toolOutput(newContext.getAction());
+        }
         io.setContext(newContext);
         io.clearContextHistorySelection();
         io.updateCaptureButtons(newContext);
