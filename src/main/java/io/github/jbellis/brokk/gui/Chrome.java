@@ -191,38 +191,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         verticalSplitPane.setTopComponent(historySplitPane);
         
         // Create a panel for everything below the output area
-        var bottomPanel = new JPanel(new GridBagLayout());
-        var bottomGbc = new GridBagConstraints();
-        bottomGbc.fill = GridBagConstraints.BOTH;
-        bottomGbc.weightx = 1.0;
-        bottomGbc.gridx = 0;
-        bottomGbc.insets = new Insets(2, 2, 2, 2);
+        var bottomPanel = new JPanel(new BorderLayout());
         
         // We will size the history panel after the frame is actually displayed
         SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
 
+        // Create a top panel for the result label and command input
+        var topControlsPanel = new JPanel(new BorderLayout(0, 2));
+        
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
-        bottomGbc.weighty = 0.0;
-        bottomGbc.gridy = 0;
-        bottomPanel.add(resultLabel, bottomGbc);
+        topControlsPanel.add(resultLabel, BorderLayout.NORTH);
 
         // 3. Command input with prompt
         var commandPanel = buildCommandInputPanel();
-        bottomGbc.gridy = 1;
-        bottomPanel.add(commandPanel, bottomGbc);
+        topControlsPanel.add(commandPanel, BorderLayout.SOUTH);
+        
+        // Add the top controls to the top of the bottom panel
+        bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
 
-        // 4. Context panel (with border title)
+        // 4. Context panel (with border title) in the center to get extra space
         var ctxPanel = buildContextPanel();
-        bottomGbc.weighty = 0.0;
-        bottomGbc.gridy = 2;
-        bottomPanel.add(ctxPanel, bottomGbc);
+        bottomPanel.add(ctxPanel, BorderLayout.CENTER);
 
-        // 5. Background status label at bottom
+        // 5. Background status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
-        bottomGbc.weighty = 0.0;
-        bottomGbc.gridy = 3;
-        bottomPanel.add(statusLabel, bottomGbc);
+        bottomPanel.add(statusLabel, BorderLayout.SOUTH);
         
         verticalSplitPane.setBottomComponent(bottomPanel);
 
@@ -495,11 +489,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         backgroundStatusLabel.setBorder(new EmptyBorder(3, 10, 3, 10));
         backgroundStatusLabel.setOpaque(true);
         backgroundStatusLabel.setBackground(new Color(240, 240, 240));
-        // Add a line border above
-        backgroundStatusLabel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
-                new EmptyBorder(5, 10, 5, 10)
-        ));
         return backgroundStatusLabel;
     }
 
