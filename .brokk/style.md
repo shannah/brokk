@@ -1,6 +1,6 @@
 Coding Style Guide
 
-1. **Java 21 features**: The codebase leverages Java features up to JDK 21. Embrace the lambdas!
+1. **Java 21 features**: The codebase leverages Java features up to JDK 21. Embrace the lambdas! and also getFirst/getLast, Collectors.toList, etc.
 1. **Prefer functional streams to manual loops**: Leverage streams for transforming collections, joining to Strings, etc.
 1. **Favor Immutable Data Structures**: Prefer `List.of` and `Map.of`, as well as the Stream Collectors.
 1. **Provide Comprehensive Logging**: The codebase makes extensive use of the `LogManager` and `Logger` classes to log relevant information, including request/response details, errors, and other important events.
