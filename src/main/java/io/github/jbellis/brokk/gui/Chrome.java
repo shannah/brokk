@@ -1452,6 +1452,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Builds the history dropdown panel with template selections
      * @return A panel containing the history dropdown button
      */
+    // Constants for the history dropdown
+    private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
+    private static final int TRUNCATION_LENGTH = 100;    // Characters - appropriate for 1000px width
+
     private JPanel buildHistoryDropdown() {
         JPanel historyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         JButton historyButton = new JButton("History ▼");
@@ -1461,32 +1465,33 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Show popup when button is clicked
         historyButton.addActionListener(e -> {
             logger.debug("History button clicked, creating menu");
-            
+
             // Create a fresh popup menu each time
             JPopupMenu historyMenu = new JPopupMenu();
-            
+
             // Get history items from project
             var project = getProject();
             if (project == null) {
                 logger.warn("Cannot show history menu: project is null");
                 return;
             }
-            
+
             List<String> historyItems = project.loadTextHistory();
             logger.debug("History items loaded: {}", historyItems.size());
-            
+
             if (historyItems.isEmpty()) {
                 JMenuItem emptyItem = new JMenuItem("(No history items)");
                 emptyItem.setEnabled(false);
                 historyMenu.add(emptyItem);
             } else {
                 for (String item : historyItems) {
-                    String displayText = item.length() > 50 ? 
-                        item.substring(0, 47) + "..." : item;
-                    
+                    // Use static truncation length
+                    String displayText = item.length() > TRUNCATION_LENGTH ?
+                        item.substring(0, TRUNCATION_LENGTH - 3) + "..." : item;
+
                     JMenuItem menuItem = new JMenuItem(displayText);
                     menuItem.setToolTipText(item); // Show full text on hover
-                    
+
                     menuItem.addActionListener(event -> {
                         commandInputField.setText(item);
                     });
@@ -1494,30 +1499,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     logger.debug("Added menu item: {}", displayText);
                 }
             }
-            
+
             // Apply theme to the menu
             if (themeManager != null) {
                 themeManager.registerPopupMenu(historyMenu);
             }
-            
-            // Set minimum width for popup menu
-            historyMenu.setMinimumSize(new Dimension(300, 0));
-            historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
-            
+
+            // Use fixed width for menu
+            historyMenu.setMinimumSize(new Dimension(DROPDOWN_MENU_WIDTH, 0));
+            historyMenu.setPreferredSize(new Dimension(DROPDOWN_MENU_WIDTH, historyMenu.getPreferredSize().height));
+
             // Pack and show
             historyMenu.pack();
-            
+
+            logger.debug("Menu width set to fixed value: {}", DROPDOWN_MENU_WIDTH);
+
             // Show above the button instead of below
             historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
-            
-            logger.debug("Menu shown with dimensions: {}x{}", 
+
+            logger.debug("Menu shown with dimensions: {}x{}",
                 historyMenu.getWidth(), historyMenu.getHeight());
         });
 
         return historyPanel;
     }
 
-    // This method is no longer needed as we create a fresh menu each time
+    // This method is no longer needed as we use fixed width
 
     private void setInitialHistoryPanelWidth() {
         // Safety checks
