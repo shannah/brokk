@@ -159,6 +159,24 @@ public class MenuBar {
         var helpMenu = new JMenu("Help");
         helpMenu.setMnemonic(KeyEvent.VK_H);
 
+        // Theme submenu
+        var themeMenu = new JMenu("Theme");
+        themeMenu.setMnemonic(KeyEvent.VK_T);
+        
+        var lightThemeItem = new JMenuItem("Light");
+        lightThemeItem.addActionListener(e -> chrome.switchTheme(false));
+        lightThemeItem.setToolTipText("Switch to light theme");
+
+        var darkThemeItem = new JMenuItem("Dark");
+        darkThemeItem.addActionListener(e -> chrome.switchTheme(true));
+        darkThemeItem.setToolTipText("Switch to dark theme");
+        
+        themeMenu.add(lightThemeItem);
+        themeMenu.add(darkThemeItem);
+        helpMenu.add(themeMenu);
+        
+        helpMenu.addSeparator();
+        
         var aboutItem = new JMenuItem("About");
         aboutItem.addActionListener(e -> {
             JOptionPane.showMessageDialog(chrome.frame,

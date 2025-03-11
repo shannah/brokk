@@ -403,6 +403,23 @@ public class Project implements IProject {
         }
     }
     
+    /**
+     * Gets the current UI theme (dark or light)
+     * @return "dark" or "light" (defaults to "dark" if not set)
+     */
+    public String getTheme() {
+        return workspaceProps.getProperty("theme", "light");
+    }
+    
+    /**
+     * Sets the UI theme
+     * @param theme "dark" or "light"
+     */
+    public void setTheme(String theme) {
+        workspaceProps.setProperty("theme", theme);
+        saveWorkspaceProperties();
+    }
+    
     public void saveLlmKeys(Map<String, String> keys) {
         var keysPath = getLlmKeysPath();
 
