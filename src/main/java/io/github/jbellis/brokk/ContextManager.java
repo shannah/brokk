@@ -1160,7 +1160,7 @@ public class ContextManager implements IContextManager
             protected String doInBackground() {
                 // This runs in background thread
                 var msgs = List.of(
-                        new UserMessage("Please summarize this content in 12 words or fewer:"),
+                        new UserMessage("Please summarize this content in 12 words or fewer. Do not reference these instructions:"),
                         new AiMessage("Ok, let's see it."),
                         new UserMessage(pastedContent)
                 );
@@ -1184,7 +1184,7 @@ public class ContextManager implements IContextManager
             protected String doInBackground() {
                 // This runs in background thread
                 var msgs = List.of(
-                        new UserMessage("Please summarize this question or task in 5 words or fewer:"),
+                        new UserMessage("Please summarize this question or task in 5 words or fewer. Do not reference these instructions:"),
                         new AiMessage("Ok, let's see it."),
                         new UserMessage(input)
                 );
