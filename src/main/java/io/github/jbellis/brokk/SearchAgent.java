@@ -804,20 +804,7 @@ public class SearchAgent {
             references.add(definition.fqName());
         }
 
-        // Compress results using longest common package prefix
-        if (!references.isEmpty()) {
-            var compressionResult = compressSymbolsWithPackagePrefix(references);
-            String commonPrefix = compressionResult._1();
-            List<String> compressedSymbols = compressionResult._2();
-            
-            if (!commonPrefix.isEmpty()) {
-                return "Relevant symbols [Common package prefix: " + commonPrefix + "] " +
-                       "(IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls): " +
-                       String.join(", ", compressedSymbols);
-            }
-        }
-
-        return "Relevant symbols: " + String.join(", ", references);
+        return formatCompressedSymbols("Relevant symbols", references);
     }
 
     /**
@@ -934,7 +921,8 @@ public class SearchAgent {
             return "No related code found via PageRank";
         }
 
-        return pageRankResults.stream().limit(50).collect(Collectors.joining(", "));
+        List<String> resultsList = pageRankResults.stream().limit(50).collect(Collectors.toList());
+        return formatCompressedSymbols("Related classes", resultsList);
     }
 
     /**
@@ -1155,6 +1143,30 @@ public class SearchAgent {
     }
 
     /**
+     * Formats a list of symbols with prefix compression if applicable.
+     *
+     * @param label The label to use in the output (e.g., "Relevant symbols", "Related classes")
+     * @param symbols The list of symbols to format
+     * @return A formatted string with compressed symbols if possible
+     */
+    private String formatCompressedSymbols(String label, List<String> symbols) {
+        if (symbols.isEmpty()) {
+            return label + ": None found";
+        }
+
+        // Compress results using longest common package prefix
+        var compressionResult = compressSymbolsWithPackagePrefix(symbols);
+        String commonPrefix = compressionResult._1();
+        List<String> compressedSymbols = compressionResult._2();
+
+        if (commonPrefix.isEmpty()) {
+            return label + ": " + String.join(", ", symbols);
+        }
+        return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
+                .formatted(label, commonPrefix, String.join(", ", compressedSymbols));
+    }
+
+    /**
      * Represents a single tool execution request and its result.
      */
     public class ToolCall {
@@ -1236,3 +1248,4 @@ public class SearchAgent {
         }
     }
 }
+
