@@ -1,3 +1,12 @@
+# 0.4.1
+
+## Features
+- Multi-project support
+- Workspace UI layout and current context are saved and restored 
+
+## Fixes
+- Improved symbol name completion for Find Usages
+
 # 0.4.0
 ## Features
 - Swing UI
