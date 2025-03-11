@@ -231,7 +231,7 @@ public class SearchAgent {
                 
                 // Start summarization for specific tools
                 var toolName = step.getRequest().name();
-                var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getRelatedClasses", "getClassSources", "searchSubstrings");
+                var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings");
                 if (toolsRequiringSummaries.contains(toolName)) {
                     step.summarizeFuture = summarizeResultAsync(query, step);
                 }
@@ -916,15 +916,10 @@ public class SearchAgent {
     @Tool("Find related classes. Use this for exploring and also when you're almost done and want to double-check that you haven't missed anything.")
     public String getRelatedClasses(
             @P(value = "List of fully qualified class names.")
-            List<String> classNames,
-            @P(value = "Explanation of the reasoning behind this request so the summarizer can see it.")
-            String reasoning
+            List<String> classNames
     ) {
         if (classNames.isEmpty()) {
             return "Cannot search pagerank: classNames is empty";
-        }
-        if (reasoning.isBlank()) {
-            return "Cannot search pagerank: missing or empty reasoning parameter";
         }
 
         // Create map of seeds from discovered units
@@ -939,8 +934,7 @@ public class SearchAgent {
             return "No related code found via PageRank";
         }
 
-        // Check if we need to filter by relevance (if results are > 10% of token budget)
-        return pageRankResults.stream().limit(100).collect(Collectors.joining(", "));
+        return pageRankResults.stream().limit(50).collect(Collectors.joining(", "));
     }
 
     /**
