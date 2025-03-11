@@ -470,16 +470,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             private void showContextHistoryPopupMenu(MouseEvent e) {
         int row = contextHistoryTable.rowAtPoint(e.getPoint());
         if (row < 0) return;
-        
+
         // Select the row under the cursor
         contextHistoryTable.setRowSelectionInterval(row, row);
-        
+
         // Create popup menu
         JPopupMenu popup = new JPopupMenu();
         JMenuItem undoToHereItem = new JMenuItem("Undo to here");
         undoToHereItem.addActionListener(event -> restoreContextFromHistory(row));
         popup.add(undoToHereItem);
         
+        // Register popup with theme manager
+        if (themeManager != null) {
+            themeManager.registerPopupMenu(popup);
+        }
+
         // Show popup menu
         popup.show(contextHistoryTable, e.getX(), e.getY());
     }
@@ -587,6 +592,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // First ensure menu is realized so it has correct dimensions
             historyMenu.pack();
             historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
+        });
+        
+        // Register popup menu with theme manager for theme updates
+        SwingUtilities.invokeLater(() -> {
+            if (themeManager != null) {
+                themeManager.registerPopupMenu(historyMenu);
+            }
         });
 
         // Add history button panel at the top of the wrapper
