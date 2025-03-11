@@ -68,7 +68,7 @@ public class Context implements Serializable {
     }
 
     /**
-     * Default constructor, with empty files/fragments and autoContext on, and a default of 5 files.
+     * Constructor for initial empty context
      */
     public Context(IProject project, int autoContextFileCount) {
         this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture(WELCOME_ACTION));

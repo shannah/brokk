@@ -171,7 +171,7 @@ public class ContextManager implements IContextManager
         // TODO rebuild autocontext off the EDT
         var initialContext = project.loadContext();
         if (initialContext == null) {
-            initialContext = new Context(project, 5);
+            initialContext = new Context(project, 10);
         }
         contextHistory.add(initialContext);
         chrome.setContext(initialContext);
