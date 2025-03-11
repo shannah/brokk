@@ -516,9 +516,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JComponent buildCommandResultLabel() {
         commandResultLabel = new JLabel(" ");
         commandResultLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        commandResultLabel.setBorder(new EmptyBorder(5, 10, 5, 10));
-        commandResultLabel.setOpaque(true);
-        commandResultLabel.setBackground(new Color(245, 245, 245));
+        commandResultLabel.setBorder(new EmptyBorder(5, 8, 5, 8));
         return commandResultLabel;
     }
 
@@ -528,9 +526,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JComponent buildBackgroundStatusLabel() {
         backgroundStatusLabel = new JLabel(BGTASK_EMPTY);
         backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        backgroundStatusLabel.setBorder(new EmptyBorder(3, 10, 3, 10));
-        backgroundStatusLabel.setOpaque(true);
-        backgroundStatusLabel.setBackground(new Color(240, 240, 240));
+        backgroundStatusLabel.setBorder(new EmptyBorder(2, 5, 2, 5));
         return backgroundStatusLabel;
     }
 
