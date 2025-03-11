@@ -116,7 +116,7 @@ public class Context implements Serializable {
         }
         var newEditable = new ArrayList<>(editableFiles);
         newEditable.addAll(toAdd);
-        
+
         String actionDetails = toAdd.stream()
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
@@ -131,7 +131,7 @@ public class Context implements Serializable {
         }
         List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
         newReadOnly.addAll(toAdd);
-        
+
         String actionDetails = toAdd.stream()
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
@@ -149,7 +149,7 @@ public class Context implements Serializable {
         if (newEditable.equals(editableFiles)) {
             return this;
         }
-        
+
         String actionDetails = fragments.stream()
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
@@ -163,7 +163,7 @@ public class Context implements Serializable {
         if (newReadOnly.equals(readonlyFiles)) {
             return this;
         }
-        
+
         String actionDetails = fragments.stream()
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
@@ -177,14 +177,14 @@ public class Context implements Serializable {
         if (newFragments.equals(virtualFragments)) {
             return this;
         }
-        
+
         String actionDetails = fragments.stream()
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         String action = "Removed " + actionDetails;
         return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
     }
-    
+
     public Context removeReadonlyFile(ContextFragment.PathFragment path) {
         return removeReadonlyFiles(List.of(path));
     }
@@ -196,14 +196,14 @@ public class Context implements Serializable {
         String action = "Added " + fragment.shortDescription();
         return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
     }
-    
+
     /**
      * Adds a virtual fragment and uses the same future for both fragment description and action
      */
     public Context addPasteFragment(ContextFragment.PasteFragment fragment, Future<String> summaryFuture) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        
+
         // Create a future that prepends "Added " to the summary
         Future<String> actionFuture = CompletableFuture.supplyAsync(() -> {
             try {
@@ -212,7 +212,7 @@ public class Context implements Serializable {
                 return "Added paste";
             }
         });
-        
+
         return withFragments(editableFiles, readonlyFiles, newFragments, actionFuture);
     }
 
@@ -229,7 +229,7 @@ public class Context implements Serializable {
                 .map(ContextFragment::shortDescription)
                 .collect(Collectors.joining(", "));
         newReadOnly.addAll(editableFiles);
-        
+
         String action = "Converted to readonly " + actionDetails;
 
         return getWithFragments(List.of(), newReadOnly, virtualFragments, action);
@@ -239,24 +239,24 @@ public class Context implements Serializable {
         if (f instanceof ContextFragment.PathFragment pf) {
             var inEditable = editableFiles.contains(pf);
             var inReadonly = readonlyFiles.contains(pf);
-            
+
             if (inEditable) {
                 var newEditable = new ArrayList<>(editableFiles);
                 newEditable.remove(pf);
                 return getWithFragments(newEditable, readonlyFiles, virtualFragments,
-                                     "Removed unreadable " + pf.description());
+                                        "Removed unreadable " + pf.description());
             } else if (inReadonly) {
                 var newReadonly = new ArrayList<>(readonlyFiles);
                 newReadonly.remove(pf);
                 return getWithFragments(editableFiles, newReadonly, virtualFragments,
-                                     "Removed unreadable " + pf.description());
+                                        "Removed unreadable " + pf.description());
             }
             return this;
         } else if (f instanceof ContextFragment.VirtualFragment vf) {
             var newFragments = new ArrayList<>(virtualFragments);
             if (newFragments.remove(vf)) {
                 return getWithFragments(editableFiles, readonlyFiles, newFragments,
-                                     "Removed unreadable " + vf.description());
+                                        "Removed unreadable " + vf.description());
             }
             return this;
         } else {
@@ -268,8 +268,7 @@ public class Context implements Serializable {
     private Context getWithFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
                                      List<ContextFragment.PathFragment> newReadonlyFiles,
                                      List<ContextFragment.VirtualFragment> newVirtualFragments,
-                                     String action)
-    {
+                                     String action) {
         return withFragments(newEditableFiles, newReadonlyFiles, newVirtualFragments, CompletableFuture.completedFuture(action));
     }
 
@@ -292,7 +291,7 @@ public class Context implements Serializable {
 
         var newContext = new Context(project, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), new ParsedOutput(), action);
         AutoContext newAutoContext = fileCount > 0 ? newContext.buildAutoContext() : AutoContext.DISABLED;
-        
+
         return new Context(
                 project,
                 editableFiles,
@@ -317,7 +316,7 @@ public class Context implements Serializable {
         if (!isAutoContextEnabled()) {
             return AutoContext.DISABLED;
         }
-        
+
         // Collect ineligible classnames from fragments not eligible for auto-context
         var ineligibleSources = Streams.concat(editableFiles.stream(), readonlyFiles.stream(), virtualFragments.stream())
                 .filter(f -> !f.isEligibleForAutoContext())
@@ -334,9 +333,9 @@ public class Context implements Serializable {
         Streams.concat(readonlyFiles.stream(), virtualFragments.stream())
                 .flatMap(f -> f.sources(project).stream())
                 .forEach(unit ->
-        {
-            weightedSeeds.merge(unit.fqName(), 1.0 / (readonlyFiles.size() + virtualFragments.size()), Double::sum);
-        });
+                         {
+                             weightedSeeds.merge(unit.fqName(), 1.0 / (readonlyFiles.size() + virtualFragments.size()), Double::sum);
+                         });
 
         // If no seeds, we can't compute pagerank
         if (weightedSeeds.isEmpty()) {
@@ -351,7 +350,7 @@ public class Context implements Serializable {
             // Check if the class or its parent is in ineligible classnames
             boolean eligible = !(ineligibleSources.contains(CodeUnit.cls(fqName))
                     || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(fqName.substring(0, fqName.indexOf('$'))))));
-            
+
             if (eligible) {
                 var opt = project.getAnalyzer().getSkeleton(fqName);
                 if (opt.isDefined()) {
@@ -415,19 +414,18 @@ public class Context implements Serializable {
     private Context withFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
                                   List<ContextFragment.PathFragment> newReadonlyFiles,
                                   List<ContextFragment.VirtualFragment> newVirtualFragments,
-                                  Future<String> action)
-    {
+                                  Future<String> action) {
         return new Context(
-                project, 
-            newEditableFiles, 
-            newReadonlyFiles, 
-            newVirtualFragments, 
-            autoContext,
-            autoContextFileCount, 
-            historyMessages, 
-            Map.of(),
-            new ParsedOutput(),
-            action
+                project,
+                newEditableFiles,
+                newReadonlyFiles,
+                newVirtualFragments,
+                autoContext,
+                autoContextFileCount,
+                historyMessages,
+                Map.of(),
+                new ParsedOutput(),
+                action
         ).refresh();
     }
 
@@ -448,9 +446,9 @@ public class Context implements Serializable {
 
     public boolean isEmpty() {
         return editableFiles.isEmpty()
-            && readonlyFiles.isEmpty()
-            && virtualFragments.isEmpty()
-            && historyMessages.isEmpty();
+                && readonlyFiles.isEmpty()
+                && virtualFragments.isEmpty()
+                && historyMessages.isEmpty();
     }
 
     /**
@@ -464,15 +462,15 @@ public class Context implements Serializable {
         newHistory.addAll(newMessages);
         return new Context(
                 project,
-            editableFiles,
-            readonlyFiles,
-            virtualFragments,
-            autoContext,
-            autoContextFileCount,
-            List.copyOf(newHistory),
-            originalContents,
-            new ParsedOutput(outputText, new ContextFragment.StringFragment(outputText, "")),
-            action
+                editableFiles,
+                readonlyFiles,
+                virtualFragments,
+                autoContext,
+                autoContextFileCount,
+                List.copyOf(newHistory),
+                originalContents,
+                new ParsedOutput(outputText, new ContextFragment.StringFragment(outputText, "")),
+                action
         ).refresh();
     }
 
@@ -482,15 +480,15 @@ public class Context implements Serializable {
     public Context clearHistory() {
         return new Context(
                 project,
-            editableFiles,
-            readonlyFiles,
-            virtualFragments,
-            autoContext,
-            autoContextFileCount,
-            List.of(),
-            Map.of(),
-            new ParsedOutput(),
-            CompletableFuture.completedFuture("Cleared conversation history")
+                editableFiles,
+                readonlyFiles,
+                virtualFragments,
+                autoContext,
+                autoContextFileCount,
+                List.of(),
+                Map.of(),
+                new ParsedOutput(),
+                CompletableFuture.completedFuture("Cleared conversation history")
         );
     }
 
@@ -557,14 +555,14 @@ public class Context implements Serializable {
         if (!historyMessages.isEmpty()) {
             result.add(new ContextFragment.ConversationFragment(historyMessages));
         }
-        
+
         // Then include autoContext
         result.add(autoContext);
-        
+
         // then read-only
         result.addAll(readonlyFiles);
         result.addAll(virtualFragments);
-        
+
         // then editable
         result.addAll(editableFiles);
 
@@ -576,18 +574,16 @@ public class Context implements Serializable {
     }
 
     public Context withParsedOutput(ParsedOutput parsedOutput, Future<String> action) {
-        return new Context(
-                project,
-            editableFiles,
-            readonlyFiles,
-            virtualFragments,
-            autoContext,
-            autoContextFileCount,
-            historyMessages,
-            originalContents,
-            parsedOutput,
-            action
-        ).refresh();
+        return new Context(project,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           autoContext,
+                           autoContextFileCount,
+                           historyMessages,
+                           originalContents,
+                           parsedOutput,
+                           action).refresh();
     }
 
     public ParsedOutput getParsedOutput() {
