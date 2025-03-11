@@ -811,17 +811,9 @@ public class ContextManager implements IContextManager
         } else {
             query = CompletableFuture.completedFuture(fragment.description());
         }
-        pushContext(ctx -> ctx.addSearchFragment(fragment, query, io.getLlmOutputText()));
+        pushContext(ctx -> ctx.addSearchFragment(query, fragment, io.getLlmOutputText()));
     }
 
-    public void addStringFragment(String description, String content)
-    {
-        pushContext(ctx -> {
-            var fragment = new ContextFragment.StringFragment(content, description);
-            return ctx.addVirtualFragment(fragment);
-        });
-    }
-    
     /**
      * Adds any virtual fragment directly 
      */

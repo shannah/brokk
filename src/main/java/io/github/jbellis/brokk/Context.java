@@ -216,23 +216,11 @@ public class Context implements Serializable {
         return withFragments(editableFiles, readonlyFiles, newFragments, actionFuture);
     }
 
-    public Context addSearchFragment(ContextFragment.VirtualFragment fragment, Future<String> query, String llmOutputText) {
+    public Context addSearchFragment(Future<String> query, ContextFragment.VirtualFragment fragment, String llmOutputText) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
         var parsed = new ParsedOutput(llmOutputText, fragment);
         return new Context(project, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
-    }
-
-    public Context convertAllToReadOnly() {
-        List<ContextFragment.PathFragment> newReadOnly = new ArrayList<>(readonlyFiles);
-        String actionDetails = editableFiles.stream()
-                .map(ContextFragment::shortDescription)
-                .collect(Collectors.joining(", "));
-        newReadOnly.addAll(editableFiles);
-
-        String action = "Converted to readonly " + actionDetails;
-
-        return getWithFragments(List.of(), newReadOnly, virtualFragments, action);
     }
 
     public Context removeBadFragment(ContextFragment f) {
