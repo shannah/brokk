@@ -41,7 +41,10 @@ import static java.lang.Math.min;
  */
 public class SearchAgent {
     private final Logger logger = LogManager.getLogger(SearchAgent.class);
-    private static final int TOKEN_BUDGET = 64000; // 64K context window for models like R1
+    // 64K context window for models like R1
+    private static final int TOKEN_BUDGET = 64000;
+    // Summarize tool responses longer than this (about 120 loc)
+    private static final int SUMMARIZE_THRESHOLD = 1000;
 
     private final IAnalyzer analyzer;
     private final ContextManager contextManager;
@@ -232,8 +235,12 @@ public class SearchAgent {
                 // Start summarization for specific tools
                 var toolName = step.getRequest().name();
                 var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings");
-                if (toolsRequiringSummaries.contains(toolName)) {
+                if (toolsRequiringSummaries.contains(toolName) && Models.getApproximateTokens(step.result) > SUMMARIZE_THRESHOLD) {
                     step.summarizeFuture = summarizeResultAsync(query, step);
+                } else if (toolName.equals("searchSymbols")) {
+                    // Apply prefix compression to searchSymbols if we're not summarizing
+                    var rawSymbols = List.of(step.result.split(", "));
+                    step.result = formatCompressedSymbols("Relevant symbols", rawSymbols);
                 }
                 
                 logger.debug("Result: {}", step);
@@ -804,7 +811,7 @@ public class SearchAgent {
             references.add(definition.fqName());
         }
 
-        return formatCompressedSymbols("Relevant symbols", references);
+        return String.join(", ", references);
     }
 
     /**
@@ -822,7 +829,7 @@ public class SearchAgent {
         // Find the package parts of each symbol
         List<String[]> packageParts = symbols.stream()
             .map(s -> s.split("\\."))
-            .collect(Collectors.toList());
+            .toList();
         
         // Find longest common prefix of package parts
         String[] firstParts = packageParts.getFirst();
