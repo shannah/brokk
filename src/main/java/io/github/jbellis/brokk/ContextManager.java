@@ -45,7 +45,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -115,7 +114,7 @@ public class ContextManager implements IContextManager
                         .collect(Collectors.toSet());
 
                 if (!files.isEmpty()) {
-                    addFiles(files);
+                    editFiles(files);
                 }
             }
         });
@@ -258,6 +257,39 @@ public class ContextManager implements IContextManager
                     return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
                 });
             } finally {
+                io.enableUserActionButtons();
+            }
+        });
+    }
+
+    public Future<?> submitUserTask(String description, Callable<?> task) {
+        return userActionExecutor.submit(() -> {
+            try {
+                io.toolOutput(description);
+                task.call();
+            } catch (CancellationException cex) {
+                io.toolOutput(description + " canceled.");
+            } catch (Exception e) {
+                logger.error("Error in " + description, e);
+                io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
+            } finally {
+                io.enableUserActionButtons();
+            }
+        });
+    }
+
+    public Future<?> submitContextTask(String description, Callable<?> task) {
+        return contextActionExecutor.submit(() -> {
+            try {
+                io.toolOutput(description);
+                task.call();
+            } catch (CancellationException cex) {
+                io.toolOutput(description + " canceled.");
+            } catch (Exception e) {
+                logger.error("Error in " + description, e);
+                io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
+            } finally {
+                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -437,14 +469,11 @@ public class ContextManager implements IContextManager
         });
     }
 
-    /**
-     * Asynchronous action for suggesting a commit message
-     */
-    public Future<?> performCommitActionAsync()
+    public Future<?> performCommitActionAsync(String diffText)
     {
         return contextActionExecutor.submit(() -> {
             try {
-                doCommitAction();
+                doCommitAction(diffText);
             } catch (CancellationException cex) {
                 io.toolOutput("Commit action canceled.");
             } finally {
@@ -460,7 +489,7 @@ public class ContextManager implements IContextManager
             // Show a file selection dialog to add new files
             var files = showFileSelectionDialog("Add Context");
             if (!files.isEmpty()) {
-                addFiles(files);
+                editFiles(files);
             } else {
                 io.toolOutput("No files selected.");
             }
@@ -469,7 +498,7 @@ public class ContextManager implements IContextManager
             for (var fragment : selectedFragments) {
                 files.addAll(getFilesFromFragment(fragment));
             }
-            addFiles(files);
+            editFiles(files);
         }
     }
 
@@ -599,10 +628,10 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Generate a commit message using the LLM and prefill the command input
+     * Generate a commit message using the LLM and prefill the command input with specified diff
      */
-    private void doCommitAction() {
-        var messages = CommitPrompts.instance.collectMessages(this);
+    private void doCommitAction(String diffText) {
+        var messages = CommitPrompts.instance.collectMessages(diffText);
         if (messages.isEmpty()) {
             io.toolErrorRaw("Nothing to commit");
             return;
@@ -618,9 +647,8 @@ public class ContextManager implements IContextManager
         // Escape quotes in the commit message
         commitMsg = commitMsg.replace("\"", "\\\"");
 
-        // Prefill the command input field
-        String finalCommitMsg = commitMsg;
-        io.prefillCommand("git commit -a -m \"" + finalCommitMsg + "\"");
+        // Set the commit message in the GitPanel
+        io.setCommitMessageText(commitMsg);
     }
 
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
@@ -666,7 +694,7 @@ public class ContextManager implements IContextManager
 
     /** Add the given files to editable. */
     @Override
-    public void addFiles(Collection<RepoFile> files)
+    public void editFiles(Collection<RepoFile> files)
     {
         var fragments = files.stream().map(ContextFragment.RepoPathFragment::new).toList();
         pushContext(ctx -> ctx.removeReadonlyFiles(fragments).addEditableFiles(fragments));

@@ -136,7 +136,7 @@ public class LLM {
             logger.debug("Auto-adding as editable: {}", filesToAdd);
             if (!filesToAdd.isEmpty()) {
                 io.shellOutput("Editing additional files " + filesToAdd);
-                coder.contextManager.addFiles(filesToAdd);
+                coder.contextManager.editFiles(filesToAdd);
             }
 
             // Attempt to apply any code edits from the LLM

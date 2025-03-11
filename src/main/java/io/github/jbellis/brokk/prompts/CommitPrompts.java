@@ -15,11 +15,14 @@ public abstract class CommitPrompts extends DefaultPrompts {
 
     @Override
     public List<ChatMessage> collectMessages(ContextManager cm) {
-        var diffTxt = cm.getProject().getRepo().diff();
+        return collectMessages(cm.getProject().getRepo().diff());
+    }
+    
+    public List<ChatMessage> collectMessages(String diffTxt) {
         if (diffTxt.isEmpty()) {
             return List.of();
         }
-
+        
         var context = """
         <diff>
         %s

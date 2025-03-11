@@ -20,7 +20,7 @@ public interface IContextManager {
     default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action) {
     }
 
-    default void addFiles(Collection<RepoFile> path) {
+    default void editFiles(Collection<RepoFile> path) {
         throw new UnsupportedOperationException();
     }
 

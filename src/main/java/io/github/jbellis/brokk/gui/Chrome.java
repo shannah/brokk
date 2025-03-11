@@ -1593,6 +1593,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             runButton.requestFocus();
         });
     }
+    
+    /**
+     * Sets the text in the commit message area
+     */
+    public void setCommitMessageText(String message) {
+        SwingUtilities.invokeLater(() -> {
+            gitPanel.setCommitMessageText(message);
+        });
+    }
 
     public void updateContextTable() {
         contextPanel.updateContextTable();
