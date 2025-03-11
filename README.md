@@ -121,18 +121,14 @@ Other languages will follow.
 
 # Getting started
 
-Requirements: Java 21+
+1. Install Java 21+.  If you don't already have a preferred way of doing this, [sdkman](https://sdkman.io/) is a good choice.
+2. Download the latest Brokk jar from the [releases page](https://github.com/jbellis/brokk/releases).
+3. Run Brokk by doubleclicking on the jar or with `java -jar /path/to/brokk/brokk-0.1.jar`.
+4. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
+5. Go to `File -> Open Project` to open your project.
 
-1. `cd /path/to/my/project`
-2. `export ANTHROPIC_API_KEY=xxy`
-   - or, `export OPENAI_API_KEY=xxy`
-   - or, `export DEEPSEEK_API_KEY=xxy`
-   - other providers and models are technically supported, making them easier to use is high priority.
-     In the meantime, look at Models.java for how to set up a ~/.config/brokk/brokk.yml file with
-     your preferred option if the defaults don't work for you.
-1. `java -jar /path/to/brokk/brokk-0.1.jar`
-
-Brokk will attempt to infer the build command for your project.  You can edit that in `.brokk/project.properties`.
+Brokk will attempt to infer a build command and style guide for your project. You can edit these 
+in `.brokk/project.properties` and `.brokk/style.md`, respectively.
 
 There is a [Brokk Discord](https://discord.gg/ugXqhRem) for questions and suggestions.
 
