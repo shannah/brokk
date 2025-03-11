@@ -1,3 +1,11 @@
+# 0.4.2
+
+## Features
+- Light + Dark themes
+
+## Fixes
+- Fix bad interaction between search summarization and prefix compression
+
 # 0.4.1
 
 ## Features
