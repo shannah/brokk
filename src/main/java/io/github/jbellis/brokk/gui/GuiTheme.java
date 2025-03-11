@@ -45,16 +45,18 @@ public class GuiTheme {
      */
     public void applyTheme(boolean isDark) {
         String themeName = isDark ? THEME_DARK : THEME_LIGHT;
+
         try {
+            // Save preference first so we know the value is stored
+            if (project != null) {
+                project.setTheme(themeName);
+            }
+
+            // Apply the theme to the Look and Feel
             if (isDark) {
                 com.formdev.flatlaf.FlatDarkLaf.setup();
             } else {
                 com.formdev.flatlaf.FlatLightLaf.setup();
-            }
-            
-            // Save preference if project exists
-            if (project != null) {
-                project.setTheme(themeName);
             }
             
             // Apply theme to RSyntaxTextArea components
