@@ -34,6 +34,7 @@ public class LLM {
 
         // Reflection loop state tracking
         int parseErrorAttempts = 0;
+        int blocksAppliedWithoutBuild = 0;
         List<String> buildErrors = new ArrayList<>();
         List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>();
 
@@ -114,7 +115,7 @@ public class LLM {
             }
 
             logger.debug("{} total blocks", blocks.size());
-            if (blocks.isEmpty()) {
+            if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
                 io.shellOutput("[No edits found in response]");
                 break;
             }
@@ -142,6 +143,7 @@ public class LLM {
             var editResult = EditBlock.applyEditBlocks(coder.contextManager, io, blocks);
             editResult.originalContents().forEach(originalContents::putIfAbsent);
             logger.debug("Failed blocks: {}", editResult.failedBlocks());
+            blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
 
             // Check for parse/match failures first
             var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
@@ -167,6 +169,7 @@ public class LLM {
 
             // If parsing succeeded, check build
             var buildReflection = getBuildReflection(coder.contextManager, io, buildErrors);
+            blocksAppliedWithoutBuild = 0;
             if (buildReflection.isEmpty()) {
                 break;
             }
