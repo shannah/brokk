@@ -559,28 +559,38 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new EmptyBorder(5, 5, 5, 5)
         ));
         
-        // Create template dropdown button
-        JButton templateButton = new JButton("Template ▼");
-        templateButton.setToolTipText("Select an instruction template");
+        // Create history dropdown button in its own panel for left alignment
+        JPanel historyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JButton historyButton = new JButton("History ▼");
+        historyButton.setToolTipText("Select an instruction template from history");
+        historyPanel.add(historyButton);
+
+        // Create popup menu with 10 dummy entries with a minimum width
+        JPopupMenu historyMenu = new JPopupMenu();
         
-        // Create popup menu with 10 dummy entries
-        JPopupMenu templateMenu = new JPopupMenu();
         for (int i = 1; i <= 10; i++) {
             final String templateText = "Template " + i + " content - this is dummy template text for demonstration purposes.";
             JMenuItem item = new JMenuItem("Template " + i);
             item.addActionListener(e -> {
                 commandInputField.setText(templateText);
             });
-            templateMenu.add(item);
+            historyMenu.add(item);
         }
         
+        // Set minimum width for popup menu after adding items
+        historyMenu.setMinimumSize(new Dimension(300, 0));
+        historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
+
         // Show popup above the button when clicked
-        templateButton.addActionListener(e -> {
-            templateMenu.show(templateButton, 0, -templateMenu.getPreferredSize().height);
+        historyButton.addActionListener(e -> {
+            // Show the popup menu above the button - calculate correct height
+            // First ensure menu is realized so it has correct dimensions
+            historyMenu.pack();
+            historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
         });
-        
-        // Add template button at the top of the wrapper
-        wrapper.add(templateButton, BorderLayout.NORTH);
+
+        // Add history button panel at the top of the wrapper
+        wrapper.add(historyPanel, BorderLayout.NORTH);
 
         commandInputField = new JTextArea(3, 40);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
