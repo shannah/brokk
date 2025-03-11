@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -80,23 +81,25 @@ public class SearchAgent {
      * Finalizes any pending summarizations in the action history by waiting for
      * CompletableFutures to complete and replacing raw results with learnings.
      */
-    private void finalizePendingSummaries() {
-        for (var step : actionHistory) {
-            // Already summarized? skip
-            if (step.learnings != null) continue;
+    private void waitForPenultimateSummary() {
+        if (actionHistory.size() <= 1) {
+            return;
+        }
 
-            // If this step has a summarizeFuture, block for result
-            if (step.summarizeFuture != null) {
-                try {
-                    var summary = step.summarizeFuture.get(); // block
-                    step.learnings = summary;
-                    // once we have learnings, we can discard the big raw result
-                    step.result = null;
-                    logger.debug("Replaced <result> with <learnings> for tool call: {}", step.request.name());
-                } catch (Exception e) {
-                    logger.error("Error waiting for summary", e);
-                    step.learnings = step.result;
-                }
+        var step = actionHistory.get(actionHistory.size() - 2);
+        // Already summarized? skip
+        if (step.learnings != null) return;
+
+        // If this step has a summarizeFuture, block for result
+        if (step.summarizeFuture != null) {
+            try {
+                // block
+                step.learnings = step.summarizeFuture.get();
+            } catch (ExecutionException e) {
+                logger.error("Error waiting for summary", e);
+                step.learnings = step.result;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
     }
@@ -191,9 +194,6 @@ public class SearchAgent {
         }
 
         while (true) {
-            // Finalize any pending summaries before determining the next actions
-            finalizePendingSummaries();
-            
             // If thread interrupted, bail out
             if (Thread.interrupted()) {
                 return null;
@@ -205,6 +205,9 @@ public class SearchAgent {
                 break;
             }
 
+            // Finalize summaries before the just-returned result
+            waitForPenultimateSummary();
+
             // Special handling based on previous steps
             updateActionControlsBasedOnContext();
 
@@ -212,7 +215,8 @@ public class SearchAgent {
             var tools = determineNextActions();
             if (tools.isEmpty()) {
                 logger.debug("No valid actions determined");
-                break;
+                io.shellOutput("No valid actions returned; retrying");
+                continue;
             }
 
             // Print some debug/log info
