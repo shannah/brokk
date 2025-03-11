@@ -96,28 +96,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public Chrome(ContextManager contextManager) {
         this.contextManager = contextManager;
 
-        // 1) Set FlatLaf Look & Feel
+        // 1) Set FlatLaf Look & Feel - we'll use light as default initially
+        // The correct theme will be applied in onComplete() when project is available
         try {
-            // Use theme from project properties or default to light
-            String theme = getProject() != null ? getProject().getTheme() : "light";
-            if ("dark".equalsIgnoreCase(theme)) {
-                com.formdev.flatlaf.FlatDarkLaf.setup();
-            } else {
-                com.formdev.flatlaf.FlatLightLaf.setup();
-            }
+            com.formdev.flatlaf.FlatLightLaf.setup();
         } catch (Exception e) {
             logger.warn("Failed to set LAF, using default", e);
         }
 
         // 2) Build main window
         frame = new JFrame("Brokk: Code Intelligence for AI");
-        
-        // Create theme manager after frame is initialized
-        themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 1200);  // Taller than wide
         frame.setLayout(new BorderLayout());
-        
+
         // Set application icon
         try {
             var iconUrl = getClass().getResource(Brokk.ICON_RESOURCE);
@@ -147,9 +139,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
+        initializeThemeManager();
+        
         // 6) Load saved window size and position, then show window
         loadWindowSizeAndPosition();
-
+        
         frame.setVisible(true);
         // this gets it to respect the minimum size on buttons panel, fuck it
         frame.validate();
@@ -157,6 +151,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
+    }
+
+    private void initializeThemeManager() {
+        // Initialize theme manager now that all components are created
+        // and contextManager should be properly set
+        themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
+
+        // Apply current theme based on project settings
+        if (getProject() != null) {
+            String currentTheme = getProject().getTheme();
+            // Apply the theme from project settings now
+            boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
+            themeManager.applyTheme(isDark);
+        }
     }
 
     /**
@@ -444,6 +452,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Theme manager
     private GuiTheme themeManager;
     
+    // Theme constants - matching GuiTheme values
+    private static final String THEME_DARK = "dark";
+    private static final String THEME_LIGHT = "light";
+    
     /**
      * Switches between light and dark theme
      * @param isDark true for dark theme, false for light theme
@@ -500,10 +512,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         llmStreamArea.setWrapStyleWord(true);
         llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-        // Apply current theme
-        if (themeManager != null) {
-            themeManager.applyCurrentThemeToComponent(llmStreamArea);
-        }
+        // Theme will be applied later when themeManager is initialized
 
         var jsp = new JScrollPane(llmStreamArea);
         new SmartScroll(jsp);
@@ -1060,8 +1069,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             textArea.setCodeFoldingEnabled(true);
             textArea.setSyntaxEditingStyle(getSyntaxStyleForFragment(fragment));
 
-            // Apply current theme
-            themeManager.applyCurrentThemeToComponent(textArea);
+            // Apply current theme to the text area
+            if (themeManager != null) {
+                themeManager.applyCurrentThemeToComponent(textArea);
+            }
 
             var scrollPane = new JScrollPane(textArea);
             previewFrame.add(scrollPane);
