@@ -1367,4 +1367,9 @@ public class ContextManager implements IContextManager
     public List<Context> getContextHistory() {
         return contextHistory;
     }
+
+    @Override
+    public void addToGit(String filename) throws IOException {
+        project.getRepo().add(filename);
+    }
 }

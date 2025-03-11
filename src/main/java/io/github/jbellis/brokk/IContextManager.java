@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -27,4 +28,5 @@ public interface IContextManager {
         return null;
     }
 
+    default void addToGit(String string) throws IOException {}
 }
