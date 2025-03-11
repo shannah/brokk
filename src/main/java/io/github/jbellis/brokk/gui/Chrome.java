@@ -1458,90 +1458,66 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historyButton.setToolTipText("Select a previous instruction from history");
         historyPanel.add(historyButton);
 
-        // Create popup menu
-        JPopupMenu historyMenu = new JPopupMenu();
-
-        // Set minimum width for popup menu
-        historyMenu.setMinimumSize(new Dimension(300, 0));
-        historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
-
-        // Register popup menu with theme manager immediately if available
-        if (themeManager != null) {
-            logger.debug("Registering history menu with theme manager immediately");
-            themeManager.registerPopupMenu(historyMenu);
-        } else {
-            logger.debug("Theme manager not available yet, will register history menu later");
-            SwingUtilities.invokeLater(() -> {
-                if (themeManager != null) {
-                    logger.debug("Registering history menu with theme manager after delay");
-                    themeManager.registerPopupMenu(historyMenu);
-                } else {
-                    logger.warn("Theme manager still null after delay");
-                }
-            });
-        }
-
-        // Show popup above the button when clicked
+        // Show popup when button is clicked
         historyButton.addActionListener(e -> {
-            logger.debug("History button clicked, updating menu items");
-            // Reload history items each time to ensure they're up to date
-            updateHistoryMenu(historyMenu);
-
-            // Show the popup menu above the button
+            logger.debug("History button clicked, creating menu");
+            
+            // Create a fresh popup menu each time
+            JPopupMenu historyMenu = new JPopupMenu();
+            
+            // Get history items from project
+            var project = getProject();
+            if (project == null) {
+                logger.warn("Cannot show history menu: project is null");
+                return;
+            }
+            
+            List<String> historyItems = project.loadTextHistory();
+            logger.debug("History items loaded: {}", historyItems.size());
+            
+            if (historyItems.isEmpty()) {
+                JMenuItem emptyItem = new JMenuItem("(No history items)");
+                emptyItem.setEnabled(false);
+                historyMenu.add(emptyItem);
+            } else {
+                for (String item : historyItems) {
+                    String displayText = item.length() > 50 ? 
+                        item.substring(0, 47) + "..." : item;
+                    
+                    JMenuItem menuItem = new JMenuItem(displayText);
+                    menuItem.setToolTipText(item); // Show full text on hover
+                    
+                    menuItem.addActionListener(event -> {
+                        commandInputField.setText(item);
+                    });
+                    historyMenu.add(menuItem);
+                    logger.debug("Added menu item: {}", displayText);
+                }
+            }
+            
+            // Apply theme to the menu
+            if (themeManager != null) {
+                themeManager.registerPopupMenu(historyMenu);
+            }
+            
+            // Set minimum width for popup menu
+            historyMenu.setMinimumSize(new Dimension(300, 0));
+            historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
+            
+            // Pack and show
             historyMenu.pack();
+            
+            // Show above the button instead of below
             historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
+            
+            logger.debug("Menu shown with dimensions: {}x{}", 
+                historyMenu.getWidth(), historyMenu.getHeight());
         });
 
         return historyPanel;
     }
 
-    /**
-     * Updates the history menu with the latest history items
-     */
-    private void updateHistoryMenu(JPopupMenu historyMenu) {
-        historyMenu.removeAll();
-
-        // Get history items from project
-        var project = getProject();
-        if (project == null) {
-            logger.warn("Cannot update history menu: project is null");
-            JMenuItem errorItem = new JMenuItem("(Error: Project not available)");
-            errorItem.setEnabled(false);
-            historyMenu.add(errorItem);
-            return;
-        }
-        
-        List<String> historyItems = project.loadTextHistory();
-        logger.debug("Updating history menu with {} items", historyItems.size());
-
-        if (historyItems.isEmpty()) {
-            JMenuItem emptyItem = new JMenuItem("(No history items)");
-            emptyItem.setEnabled(false);
-            historyMenu.add(emptyItem);
-            logger.debug("Added empty history item placeholder");
-        } else {
-            for (String item : historyItems) {
-                // Truncate very long items for display
-                String displayText = item.length() > 50 ?
-                    item.substring(0, 47) + "..." : item;
-
-                JMenuItem menuItem = new JMenuItem(displayText);
-                menuItem.setToolTipText(item); // Show full text on hover
-
-                menuItem.addActionListener(event -> {
-                    commandInputField.setText(item);
-                });
-
-                historyMenu.add(menuItem);
-                logger.debug("Added history item: {}", displayText);
-            }
-        }
-        
-        // Make sure the menu has the correct theme after adding items
-        if (themeManager != null) {
-            themeManager.registerPopupMenu(historyMenu);
-        }
-    }
+    // This method is no longer needed as we create a fresh menu each time
 
     private void setInitialHistoryPanelWidth() {
         // Safety checks
