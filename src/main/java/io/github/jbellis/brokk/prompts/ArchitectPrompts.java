@@ -30,7 +30,7 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
                Describe how to modify the code to complete the request. You need only describe the changes,
                you do not need to give entire files or classes unless that's the easiest way to describe
                what you propose.
-               YOU MUST spell out each change to be made.
+               YOU MUST give the full code for each change to be made.
                DO NOT skip steps or leave out corner cases.
                DO NOT give multiple options for solving a problem; pick the best one every time!
                """.stripIndent();
