@@ -12,6 +12,8 @@ public abstract class AskPrompts extends ArchitectPrompts {
                who are better at implementing changes and in general the user would ask them
                if that's what they wanted.  He is coming to you because he needs answers, not
                code changes.
+               
+               Format your answer with Markdown.
                """.stripIndent();
     }
 }

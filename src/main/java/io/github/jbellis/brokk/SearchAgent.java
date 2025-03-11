@@ -1057,7 +1057,7 @@ public class SearchAgent {
 
     @Tool("Provide a final answer to the query. Use this when you have enough information to fully address the query.")
     public String answer(
-            @P(value = "Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query.")
+            @P(value = "Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query. Format the entire explanation with Markdown.")
             String explanation,
             @P(value = "List of fully qualified class names (FQCNs) of ALL classes relevant to the explanation. Do not skip even minor details!")
             List<String> classNames

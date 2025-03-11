@@ -654,7 +654,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         
         llmStreamArea.setText("Ask: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runAskAsync(input);
@@ -678,7 +678,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         
         llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runSearchAsync(input);
