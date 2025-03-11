@@ -558,6 +558,29 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 ),
                 new EmptyBorder(5, 5, 5, 5)
         ));
+        
+        // Create template dropdown button
+        JButton templateButton = new JButton("Template ▼");
+        templateButton.setToolTipText("Select an instruction template");
+        
+        // Create popup menu with 10 dummy entries
+        JPopupMenu templateMenu = new JPopupMenu();
+        for (int i = 1; i <= 10; i++) {
+            final String templateText = "Template " + i + " content - this is dummy template text for demonstration purposes.";
+            JMenuItem item = new JMenuItem("Template " + i);
+            item.addActionListener(e -> {
+                commandInputField.setText(templateText);
+            });
+            templateMenu.add(item);
+        }
+        
+        // Show popup above the button when clicked
+        templateButton.addActionListener(e -> {
+            templateMenu.show(templateButton, 0, -templateMenu.getPreferredSize().height);
+        });
+        
+        // Add template button at the top of the wrapper
+        wrapper.add(templateButton, BorderLayout.NORTH);
 
         commandInputField = new JTextArea(3, 40);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
