@@ -157,6 +157,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     private void initializeThemeManager() {
+        logger.debug("Initializing theme manager");
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
         themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
@@ -164,9 +165,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Apply current theme based on project settings
         if (getProject() != null) {
             String currentTheme = getProject().getTheme();
+            logger.debug("Applying theme from project settings: {}", currentTheme);
             // Apply the theme from project settings now
             boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
             themeManager.applyTheme(isDark);
+        } else {
+            logger.warn("Project is null during theme manager initialization");
         }
     }
 
@@ -1454,28 +1458,38 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historyButton.setToolTipText("Select a previous instruction from history");
         historyPanel.add(historyButton);
 
-        // Create popup menu 
+        // Create popup menu
         JPopupMenu historyMenu = new JPopupMenu();
-        
+
         // Set minimum width for popup menu
         historyMenu.setMinimumSize(new Dimension(300, 0));
         historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
 
+        // Register popup menu with theme manager immediately if available
+        if (themeManager != null) {
+            logger.debug("Registering history menu with theme manager immediately");
+            themeManager.registerPopupMenu(historyMenu);
+        } else {
+            logger.debug("Theme manager not available yet, will register history menu later");
+            SwingUtilities.invokeLater(() -> {
+                if (themeManager != null) {
+                    logger.debug("Registering history menu with theme manager after delay");
+                    themeManager.registerPopupMenu(historyMenu);
+                } else {
+                    logger.warn("Theme manager still null after delay");
+                }
+            });
+        }
+
         // Show popup above the button when clicked
         historyButton.addActionListener(e -> {
+            logger.debug("History button clicked, updating menu items");
             // Reload history items each time to ensure they're up to date
             updateHistoryMenu(historyMenu);
-            
+
             // Show the popup menu above the button
             historyMenu.pack();
             historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
-        });
-
-        // Register popup menu with theme manager for theme updates
-        SwingUtilities.invokeLater(() -> {
-            if (themeManager != null) {
-                themeManager.registerPopupMenu(historyMenu);
-            }
         });
 
         return historyPanel;
@@ -1488,7 +1502,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historyMenu.removeAll();
 
         // Get history items from project
-        List<String> historyItems = getProject().loadTextHistory();
+        var project = getProject();
+        if (project == null) {
+            logger.warn("Cannot update history menu: project is null");
+            JMenuItem errorItem = new JMenuItem("(Error: Project not available)");
+            errorItem.setEnabled(false);
+            historyMenu.add(errorItem);
+            return;
+        }
+        
+        List<String> historyItems = project.loadTextHistory();
         logger.debug("Updating history menu with {} items", historyItems.size());
 
         if (historyItems.isEmpty()) {
@@ -1512,6 +1535,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 historyMenu.add(menuItem);
                 logger.debug("Added history item: {}", displayText);
             }
+        }
+        
+        // Make sure the menu has the correct theme after adding items
+        if (themeManager != null) {
+            themeManager.registerPopupMenu(historyMenu);
         }
     }
 
