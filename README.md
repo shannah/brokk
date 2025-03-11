@@ -123,7 +123,7 @@ Other languages will follow.
 
 1. Install Java 21+.  If you don't already have a preferred way of doing this, [sdkman](https://sdkman.io/) is a good choice.
 2. Download the latest Brokk jar from the [releases page](https://github.com/jbellis/brokk/releases).
-3. Run Brokk by doubleclicking on the jar or with `java -jar /path/to/brokk/brokk-0.1.jar`.
+3. Run Brokk by doubleclicking on the jar or with `java -jar path/to/brokk/brokk-0.X.Y.jar`.
 4. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
 5. Go to `File -> Open Project` to open your project.
 
