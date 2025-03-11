@@ -40,6 +40,8 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -80,13 +82,13 @@ public class ContextManager implements IContextManager
     @NotNull
     private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {
         return new LoggingExecutorService(toWrap, th -> {
-           var thread = Thread.currentThread();
-           logger.error("Uncaught exception in thread {}", thread.getName(), th);
-           if (io != null) {
-               io.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
-                                          .formatted(thread.getName(), getStackTraceAsString(th)));
-           }
-       });
+            var thread = Thread.currentThread();
+            logger.error("Uncaught exception in thread {}", thread.getName(), th);
+            if (io != null) {
+                io.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
+                                       .formatted(thread.getName(), getStackTraceAsString(th)));
+            }
+        });
     }
 
     // Context modification tasks (Edit/Read/Summarize/Drop/etc)
@@ -98,7 +100,7 @@ public class ContextManager implements IContextManager
 
     private Project project;
     private final Path root;
-    
+
     private Mode mode = Mode.EDIT;
 
     public void editSources(ContextFragment fragment) {
@@ -163,7 +165,7 @@ public class ContextManager implements IContextManager
                 SwingUtilities.invokeLater(() -> io.shellOutput(msg));
             }
         });
-        
+
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
         // Load saved context or create a new one if none exists
@@ -248,7 +250,7 @@ public class ContextManager implements IContextManager
                 var result = Environment.instance.captureShellCommand(input);
                 String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
                 io.shellOutput(output);
-                
+
                 // Add to context history with the output text
                 pushContext(ctx -> {
                     var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
@@ -388,7 +390,7 @@ public class ContextManager implements IContextManager
             io.focusInput();
         }
     }
-    
+
     /**
      * Show the symbol selection dialog
      */
@@ -434,7 +436,7 @@ public class ContextManager implements IContextManager
             }
         });
     }
-    
+
     /**
      * Asynchronous action for suggesting a commit message
      */
@@ -582,14 +584,14 @@ public class ContextManager implements IContextManager
                     virtualToRemove.add((VirtualFragment) frag);
                 }
             }
-            
+
             if (clearHistory) {
                 clearHistory();
                 io.toolOutput("Cleared conversation history");
             }
-            
+
             drop(pathFragsToRemove, virtualToRemove);
-            
+
             if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
                 io.toolOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
             }
@@ -620,7 +622,7 @@ public class ContextManager implements IContextManager
         String finalCommitMsg = commitMsg;
         io.prefillCommand("git commit -a -m \"" + finalCommitMsg + "\"");
     }
-    
+
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
         HashSet<CodeUnit> sources = new HashSet<>();
         String sourceDescription;
@@ -710,7 +712,7 @@ public class ContextManager implements IContextManager
     {
         return undoContextAsync(1);
     }
-    
+
     /** undo multiple context changes to reach a specific point in history */
     public Future<?> undoContextAsync(int stepsToUndo)
     {
@@ -721,13 +723,13 @@ public class ContextManager implements IContextManager
                     io.toolErrorRaw("no undo state available");
                     return;
                 }
-                
+
                 for (int i = 0; i < finalStepsToUndo; i++) {
                     var popped = contextHistory.removeLast();
                     var redoContext = undoAndInvertChanges(popped);
                     redoHistory.add(redoContext);
                 }
-                
+
                 io.setContext(currentContext());
                 io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
@@ -816,7 +818,7 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Adds any virtual fragment directly 
+     * Adds any virtual fragment directly
      */
     public void addVirtualFragment(VirtualFragment fragment)
     {
@@ -986,7 +988,7 @@ public class ContextManager implements IContextManager
     {
         return currentContext().getHistory();
     }
-    
+
     /**
      * Shutdown all executors
      */
@@ -1081,7 +1083,7 @@ public class ContextManager implements IContextManager
             }
             // Current context is now at the selected point
         }
-        
+
         var newContext = contextGenerator.apply(currentContext());
         if (newContext == currentContext()) {
             return;
@@ -1100,7 +1102,7 @@ public class ContextManager implements IContextManager
         // Save the current context to workspace properties
         project.saveContext(newContext);
     }
-    
+
     /**
      * Gets the currently selected index in the history table, or -1 if none selected
      * May be called on or off the Swing EDT
@@ -1150,7 +1152,7 @@ public class ContextManager implements IContextManager
         pushContext(c -> c.removeBadFragment(f));
     }
 
-    private final AtomicInteger activeTaskCount = new AtomicInteger(0);
+    private final ConcurrentMap<Callable<?>, String> taskDescriptions = new ConcurrentHashMap<>();
 
     public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
@@ -1203,25 +1205,36 @@ public class ContextManager implements IContextManager
      * Submits a background task to the internal background executor (non-user actions).
      */
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
-        // Increment counter before submitting
-        activeTaskCount.incrementAndGet();
-
-        return backgroundTasks.submit(() -> {
+        Future<T> future = backgroundTasks.submit(() -> {
             try {
                 io.spin(taskDescription);
                 return task.call();
             } finally {
-                // Decrement counter when done
-                int remaining = activeTaskCount.decrementAndGet();
+                // Remove this task from the map
+                taskDescriptions.remove(task);
+                int remaining = taskDescriptions.size();
                 SwingUtilities.invokeLater(() -> {
                     if (remaining <= 0) {
                         io.spinComplete();
+                        taskDescriptions.clear();
+                    } else if (remaining == 1) {
+                        // Find the last remaining task description. If there's a race just end the spin
+                        var lastTaskDescription = taskDescriptions.values().stream().findFirst().orElse("");
+                        if (lastTaskDescription.isEmpty()) {
+                            io.spinComplete();
+                        } else {
+                            io.spin(lastTaskDescription);
+                        }
                     } else {
                         io.spin("Tasks running: " + remaining);
                     }
                 });
             }
         });
+
+        // Track the future with its description
+        taskDescriptions.put(task, taskDescription);
+        return future;
     }
 
     private void ensureBuildCommand(Coder coder)
