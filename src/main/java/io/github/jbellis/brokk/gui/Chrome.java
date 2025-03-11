@@ -157,6 +157,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     private void initializeThemeManager() {
+        logger.debug("Initializing theme manager");
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
         themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
@@ -164,9 +165,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Apply current theme based on project settings
         if (getProject() != null) {
             String currentTheme = getProject().getTheme();
+            logger.debug("Applying theme from project settings: {}", currentTheme);
             // Apply the theme from project settings now
             boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
             themeManager.applyTheme(isDark);
+        } else {
+            logger.warn("Project is null during theme manager initialization");
         }
     }
 
@@ -470,16 +474,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             private void showContextHistoryPopupMenu(MouseEvent e) {
         int row = contextHistoryTable.rowAtPoint(e.getPoint());
         if (row < 0) return;
-        
+
         // Select the row under the cursor
         contextHistoryTable.setRowSelectionInterval(row, row);
-        
+
         // Create popup menu
         JPopupMenu popup = new JPopupMenu();
         JMenuItem undoToHereItem = new JMenuItem("Undo to here");
         undoToHereItem.addActionListener(event -> restoreContextFromHistory(row));
         popup.add(undoToHereItem);
         
+        // Register popup with theme manager
+        if (themeManager != null) {
+            themeManager.registerPopupMenu(popup);
+        }
+
         // Show popup menu
         popup.show(contextHistoryTable, e.getX(), e.getY());
     }
@@ -558,6 +567,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 ),
                 new EmptyBorder(5, 5, 5, 5)
         ));
+        
+        // Add history dropdown at the top of the wrapper
+        JPanel historyPanel = buildHistoryDropdown();
+        wrapper.add(historyPanel, BorderLayout.NORTH);
 
         commandInputField = new JTextArea(3, 40);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
@@ -644,6 +657,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Code: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
@@ -662,6 +678,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolError("Please enter a command to run");
         }
 
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Run: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -679,13 +698,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a question");
             return;
         }
-        
+
         // Check if LLM is available
         if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
-        
+
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Ask: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
@@ -703,13 +725,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please provide a search query");
             return;
         }
-        
+
         // Check if LLM is available
         if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
-        
+
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
@@ -1423,6 +1448,87 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return SwingUtil.runOnEDT(() -> (Context) contextHistoryTable.getModel().getValueAt(selected, 1), null);
     }
     
+    /**
+     * Builds the history dropdown panel with template selections
+     * @return A panel containing the history dropdown button
+     */
+    // Constants for the history dropdown
+    private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
+    private static final int TRUNCATION_LENGTH = 100;    // Characters - appropriate for 1000px width
+
+    private JPanel buildHistoryDropdown() {
+        JPanel historyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JButton historyButton = new JButton("History ▼");
+        historyButton.setToolTipText("Select a previous instruction from history");
+        historyPanel.add(historyButton);
+
+        // Show popup when button is clicked
+        historyButton.addActionListener(e -> {
+            logger.debug("History button clicked, creating menu");
+
+            // Create a fresh popup menu each time
+            JPopupMenu historyMenu = new JPopupMenu();
+
+            // Get history items from project
+            var project = getProject();
+            if (project == null) {
+                logger.warn("Cannot show history menu: project is null");
+                return;
+            }
+
+            List<String> historyItems = project.loadTextHistory();
+            logger.debug("History items loaded: {}", historyItems.size());
+
+            if (historyItems.isEmpty()) {
+                JMenuItem emptyItem = new JMenuItem("(No history items)");
+                emptyItem.setEnabled(false);
+                historyMenu.add(emptyItem);
+            } else {
+                // Iterate in reverse order so newest items appear at the bottom of the dropdown
+                // This creates a more natural flow when the dropdown appears above the button
+                for (int i = historyItems.size() - 1; i >= 0; i--) {
+                    String item = historyItems.get(i);
+                    // Use static truncation length
+                    String displayText = item.length() > TRUNCATION_LENGTH ?
+                        item.substring(0, TRUNCATION_LENGTH - 3) + "..." : item;
+
+                    JMenuItem menuItem = new JMenuItem(displayText);
+                    menuItem.setToolTipText(item); // Show full text on hover
+
+                    menuItem.addActionListener(event -> {
+                        commandInputField.setText(item);
+                    });
+                    historyMenu.add(menuItem);
+                    logger.debug("Added menu item: {}", displayText);
+                }
+            }
+
+            // Apply theme to the menu
+            if (themeManager != null) {
+                themeManager.registerPopupMenu(historyMenu);
+            }
+
+            // Use fixed width for menu
+            historyMenu.setMinimumSize(new Dimension(DROPDOWN_MENU_WIDTH, 0));
+            historyMenu.setPreferredSize(new Dimension(DROPDOWN_MENU_WIDTH, historyMenu.getPreferredSize().height));
+
+            // Pack and show
+            historyMenu.pack();
+
+            logger.debug("Menu width set to fixed value: {}", DROPDOWN_MENU_WIDTH);
+
+            // Show above the button instead of below
+            historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
+
+            logger.debug("Menu shown with dimensions: {}x{}",
+                historyMenu.getWidth(), historyMenu.getHeight());
+        });
+
+        return historyPanel;
+    }
+
+    // This method is no longer needed as we use fixed width
+
     private void setInitialHistoryPanelWidth() {
         // Safety checks
         if (historySplitPane == null) {

@@ -8,6 +8,8 @@ import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Manages UI theme settings and application across the application.
@@ -22,6 +24,9 @@ public class GuiTheme {
     private final JFrame frame;
     private final JScrollPane mainScrollPane;
     private final Chrome chrome;
+    
+    // Track registered popup menus that need theme updates
+    private final List<JPopupMenu> popupMenus = new ArrayList<>();
     
     /**
      * Creates a new theme manager
@@ -65,6 +70,11 @@ public class GuiTheme {
             // Update the UI
             SwingUtilities.updateComponentTreeUI(frame);
             
+            // Update registered popup menus
+            for (JPopupMenu menu : popupMenus) {
+                SwingUtilities.updateComponentTreeUI(menu);
+            }
+
             // Make sure scroll panes update properly
             if (mainScrollPane != null) {
                 mainScrollPane.revalidate();
@@ -148,6 +158,19 @@ public class GuiTheme {
         return THEME_DARK.equalsIgnoreCase(getCurrentTheme());
     }
     
+    /**
+     * Registers a popup menu to receive theme updates
+     * @param menu The popup menu to register
+     */
+    public void registerPopupMenu(JPopupMenu menu) {
+        if (!popupMenus.contains(menu)) {
+            popupMenus.add(menu);
+            
+            // Apply current theme immediately if already initialized
+            SwingUtilities.invokeLater(() -> SwingUtilities.updateComponentTreeUI(menu));
+        }
+    }
+
     /**
      * Applies the current theme to a specific RSyntaxTextArea
      * @param textArea The text area to apply theme to
