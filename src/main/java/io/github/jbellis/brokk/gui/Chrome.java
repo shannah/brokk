@@ -564,44 +564,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new EmptyBorder(5, 5, 5, 5)
         ));
         
-        // Create history dropdown button in its own panel for left alignment
-        JPanel historyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        JButton historyButton = new JButton("History ▼");
-        historyButton.setToolTipText("Select an instruction template from history");
-        historyPanel.add(historyButton);
-
-        // Create popup menu with 10 dummy entries with a minimum width
-        JPopupMenu historyMenu = new JPopupMenu();
-        
-        for (int i = 1; i <= 10; i++) {
-            final String templateText = "Template " + i + " content - this is dummy template text for demonstration purposes.";
-            JMenuItem item = new JMenuItem("Template " + i);
-            item.addActionListener(e -> {
-                commandInputField.setText(templateText);
-            });
-            historyMenu.add(item);
-        }
-        
-        // Set minimum width for popup menu after adding items
-        historyMenu.setMinimumSize(new Dimension(300, 0));
-        historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
-
-        // Show popup above the button when clicked
-        historyButton.addActionListener(e -> {
-            // Show the popup menu above the button - calculate correct height
-            // First ensure menu is realized so it has correct dimensions
-            historyMenu.pack();
-            historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
-        });
-        
-        // Register popup menu with theme manager for theme updates
-        SwingUtilities.invokeLater(() -> {
-            if (themeManager != null) {
-                themeManager.registerPopupMenu(historyMenu);
-            }
-        });
-
-        // Add history button panel at the top of the wrapper
+        // Add history dropdown at the top of the wrapper
+        JPanel historyPanel = buildHistoryDropdown();
         wrapper.add(historyPanel, BorderLayout.NORTH);
 
         commandInputField = new JTextArea(3, 40);
@@ -1468,6 +1432,50 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return SwingUtil.runOnEDT(() -> (Context) contextHistoryTable.getModel().getValueAt(selected, 1), null);
     }
     
+    /**
+     * Builds the history dropdown panel with template selections
+     * @return A panel containing the history dropdown button
+     */
+    private JPanel buildHistoryDropdown() {
+        JPanel historyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JButton historyButton = new JButton("History ▼");
+        historyButton.setToolTipText("Select an instruction template from history");
+        historyPanel.add(historyButton);
+
+        // Create popup menu with 10 dummy entries with a minimum width
+        JPopupMenu historyMenu = new JPopupMenu();
+
+        for (int i = 1; i <= 10; i++) {
+            final String templateText = "Template " + i + " content - this is dummy template text for demonstration purposes.";
+            JMenuItem item = new JMenuItem("Template " + i);
+            item.addActionListener(e -> {
+                commandInputField.setText(templateText);
+            });
+            historyMenu.add(item);
+        }
+
+        // Set minimum width for popup menu after adding items
+        historyMenu.setMinimumSize(new Dimension(300, 0));
+        historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
+
+        // Show popup above the button when clicked
+        historyButton.addActionListener(e -> {
+            // Show the popup menu above the button - calculate correct height
+            // First ensure menu is realized so it has correct dimensions
+            historyMenu.pack();
+            historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
+        });
+
+        // Register popup menu with theme manager for theme updates
+        SwingUtilities.invokeLater(() -> {
+            if (themeManager != null) {
+                themeManager.registerPopupMenu(historyMenu);
+            }
+        });
+
+        return historyPanel;
+    }
+
     private void setInitialHistoryPanelWidth() {
         // Safety checks
         if (historySplitPane == null) {
