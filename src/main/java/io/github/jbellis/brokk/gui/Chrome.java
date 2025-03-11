@@ -1484,7 +1484,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 emptyItem.setEnabled(false);
                 historyMenu.add(emptyItem);
             } else {
-                for (String item : historyItems) {
+                // Iterate in reverse order so newest items appear at the bottom of the dropdown
+                // This creates a more natural flow when the dropdown appears above the button
+                for (int i = historyItems.size() - 1; i >= 0; i--) {
+                    String item = historyItems.get(i);
                     // Use static truncation length
                     String displayText = item.length() > TRUNCATION_LENGTH ?
                         item.substring(0, TRUNCATION_LENGTH - 3) + "..." : item;
