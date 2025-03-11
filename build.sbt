@@ -87,3 +87,5 @@ assembly / assemblyMergeStrategy := {
 assembly / mainClass := Some("io.github.jbellis.brokk.Brokk")
 
 testFrameworks += new TestFramework("com.github.sbt.junit.JupiterFramework")
+
+Compile / run / fork := true
