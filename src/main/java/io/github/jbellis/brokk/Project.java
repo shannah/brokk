@@ -10,10 +10,13 @@ import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public class Project implements IProject {
     private final Path propertiesFile;
@@ -228,21 +231,92 @@ public class Project implements IProject {
     }
 
     /**
-     * Loads a serialized Context object from the workspace properties
-     * @return The loaded Context, or null if none exists
-     */
-    public Context loadContext() {
-        try {
-            String encoded = workspaceProps.getProperty("context");
-            if (encoded != null && !encoded.isEmpty()) {
-                byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
-                return Context.deserialize(serialized).withProject(this);
-            }
-        } catch (Exception e) {
-            logger.error("Error loading context: {}", e.getMessage());
+ * Loads a serialized Context object from the workspace properties
+ * @return The loaded Context, or null if none exists
+ */
+public Context loadContext() {
+    try {
+        String encoded = workspaceProps.getProperty("context");
+        if (encoded != null && !encoded.isEmpty()) {
+            byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
+            return Context.deserialize(serialized).withProject(this);
         }
-        return null;
+    } catch (Exception e) {
+        logger.error("Error loading context: {}", e.getMessage());
     }
+    return null;
+}
+
+/**
+ * Saves a list of text history items to workspace properties
+ * @param historyItems The list of text history items to save (newest first)
+ * @param maxItems Maximum number of items to store (older items are trimmed)
+ */
+public void saveTextHistory(List<String> historyItems, int maxItems) {
+    try {
+        // Limit the list to the specified maximum size
+        var limitedItems = historyItems.stream()
+            .limit(maxItems)
+            .collect(Collectors.toList());
+        
+        // Convert to JSON and store in properties
+        String json = objectMapper.writeValueAsString(limitedItems);
+        workspaceProps.setProperty("textHistory", json);
+        saveWorkspaceProperties();
+    } catch (Exception e) {
+        logger.error("Error saving text history: {}", e.getMessage());
+    }
+}
+
+/**
+ * Loads the saved text history items
+ * @return List of text history items (newest first), or empty list if none found
+ */
+public List<String> loadTextHistory() {
+    try {
+        String json = workspaceProps.getProperty("textHistory");
+        if (json != null && !json.isEmpty()) {
+            logger.debug("Loading text history from workspace properties: {}", json);
+            List<String> result = objectMapper.readValue(json,
+                objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+            logger.debug("Loaded {} history items", result.size());
+            return result;
+        }
+    } catch (Exception e) {
+        logger.error("Error loading text history: {}", e.getMessage(), e);
+    }
+    logger.debug("No text history found, returning empty list");
+    return new ArrayList<>();
+}
+
+/**
+ * Adds a new item to the text history, maintaining the maximum size
+ * @param item New item to add to history
+ * @param maxItems Maximum history size
+ * @return The updated history list
+ */
+public List<String> addToTextHistory(String item, int maxItems) {
+    if (item == null || item.trim().isEmpty()) {
+        return loadTextHistory(); // Don't add empty items
+    }
+    
+    var history = new ArrayList<>(loadTextHistory());
+    
+    // Remove item if it already exists to avoid duplicates
+    history.removeIf(i -> i.equals(item));
+    
+    // Add the new item at the beginning (newest first)
+    history.add(0, item);
+    
+    // Trim to max size
+    if (history.size() > maxItems) {
+        history = new ArrayList<>(history.subList(0, maxItems));
+    }
+    
+    // Save and return the updated list
+    saveTextHistory(history, maxItems);
+    return history;
+}
 
     /**
      * Returns the LLM API keys stored in ~/.brokk/config/keys.properties

@@ -653,6 +653,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Code: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
@@ -671,6 +674,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolError("Please enter a command to run");
         }
 
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Run: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -688,13 +694,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please enter a question");
             return;
         }
-        
+
         // Check if LLM is available
         if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
-        
+
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Ask: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
@@ -712,13 +721,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             toolErrorRaw("Please provide a search query");
             return;
         }
-        
+
         // Check if LLM is available
         if (!contextManager.getCoder().isLlmAvailable()) {
             toolError("No LLM available (missing API keys)");
             return;
         }
-        
+
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+
         llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
         commandInputField.setText("");
         llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
@@ -1439,29 +1451,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JPanel buildHistoryDropdown() {
         JPanel historyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         JButton historyButton = new JButton("History ▼");
-        historyButton.setToolTipText("Select an instruction template from history");
+        historyButton.setToolTipText("Select a previous instruction from history");
         historyPanel.add(historyButton);
 
-        // Create popup menu with 10 dummy entries with a minimum width
+        // Create popup menu 
         JPopupMenu historyMenu = new JPopupMenu();
-
-        for (int i = 1; i <= 10; i++) {
-            final String templateText = "Template " + i + " content - this is dummy template text for demonstration purposes.";
-            JMenuItem item = new JMenuItem("Template " + i);
-            item.addActionListener(e -> {
-                commandInputField.setText(templateText);
-            });
-            historyMenu.add(item);
-        }
-
-        // Set minimum width for popup menu after adding items
+        
+        // Set minimum width for popup menu
         historyMenu.setMinimumSize(new Dimension(300, 0));
         historyMenu.setPreferredSize(new Dimension(300, historyMenu.getPreferredSize().height));
 
         // Show popup above the button when clicked
         historyButton.addActionListener(e -> {
-            // Show the popup menu above the button - calculate correct height
-            // First ensure menu is realized so it has correct dimensions
+            // Reload history items each time to ensure they're up to date
+            updateHistoryMenu(historyMenu);
+            
+            // Show the popup menu above the button
             historyMenu.pack();
             historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
         });
@@ -1474,6 +1479,40 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
 
         return historyPanel;
+    }
+
+    /**
+     * Updates the history menu with the latest history items
+     */
+    private void updateHistoryMenu(JPopupMenu historyMenu) {
+        historyMenu.removeAll();
+
+        // Get history items from project
+        List<String> historyItems = getProject().loadTextHistory();
+        logger.debug("Updating history menu with {} items", historyItems.size());
+
+        if (historyItems.isEmpty()) {
+            JMenuItem emptyItem = new JMenuItem("(No history items)");
+            emptyItem.setEnabled(false);
+            historyMenu.add(emptyItem);
+            logger.debug("Added empty history item placeholder");
+        } else {
+            for (String item : historyItems) {
+                // Truncate very long items for display
+                String displayText = item.length() > 50 ?
+                    item.substring(0, 47) + "..." : item;
+
+                JMenuItem menuItem = new JMenuItem(displayText);
+                menuItem.setToolTipText(item); // Show full text on hover
+
+                menuItem.addActionListener(event -> {
+                    commandInputField.setText(item);
+                });
+
+                historyMenu.add(menuItem);
+                logger.debug("Added history item: {}", displayText);
+            }
+        }
     }
 
     private void setInitialHistoryPanelWidth() {
