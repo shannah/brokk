@@ -147,8 +147,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
-        // 6) Load saved window size and position, then show window
+        assert contextManager != null;
+
+        // Load saved window size and position, then show window
         loadWindowSizeAndPosition();
+
+        // Update frame title
+        frame.setTitle("Brokk: " + getProject().getRoot());
 
         frame.setVisible(true);
         // this gets it to respect the minimum size on buttons panel, fuck it
