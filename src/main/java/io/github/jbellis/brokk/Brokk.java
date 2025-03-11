@@ -43,22 +43,33 @@ public class Brokk {
         if (System.getProperty("os.name").toLowerCase().contains("mac")) {
             System.setProperty("apple.awt.application.name", "Brokk");
         }
-        
+
         SwingUtilities.invokeLater(() -> {
-            // Attempt to load the most recent project if any
-            var recents = Project.loadRecentProjects();
-            if (recents.isEmpty()) {
-                // Create an empty UI with no project
-                io = new Chrome(null);
+            // If a command line argument is provided, use it as project path
+            if (args.length > 0) {
+                var projectPath = Path.of(args[0]);
+                if (GitRepo.hasGitRepo(projectPath)) {
+                    openProject(projectPath);
+                } else {
+                    System.err.println("No git project found at " + projectPath);
+                    System.exit(1);
+                }
             } else {
-                // find the project with the largest lastOpened time
-                var mostRecent = recents.entrySet().stream()
-                        .max(Comparator.comparingLong(Map.Entry::getValue))
-                        .get()
-                        .getKey();
-                var path = Path.of(mostRecent);
-                if (GitRepo.hasGitRepo(path)) {
-                    openProject(path);
+                // No argument provided - attempt to load the most recent project if any
+                var recents = Project.loadRecentProjects();
+                if (recents.isEmpty()) {
+                    // Create an empty UI with no project
+                    io = new Chrome(null);
+                } else {
+                    // find the project with the largest lastOpened time
+                    var mostRecent = recents.entrySet().stream()
+                            .max(Comparator.comparingLong(Map.Entry::getValue))
+                            .get()
+                            .getKey();
+                    var path = Path.of(mostRecent);
+                    if (GitRepo.hasGitRepo(path)) {
+                        openProject(path);
+                    }
                 }
             }
         });
