@@ -252,7 +252,7 @@ public class ContextManager implements IContextManager
                 // Add to context history with the output text
                 pushContext(ctx -> {
                     var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
-                    var parsed = new ParsedOutput(io.getLlmOutputText(), runFrag);
+                    var parsed = new ParsedOutput(io.getLlmOutputText(), SyntaxConstants.SYNTAX_STYLE_NONE, runFrag);
                     return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
                 });
             } finally {
@@ -811,7 +811,8 @@ public class ContextManager implements IContextManager
         } else {
             query = CompletableFuture.completedFuture(fragment.description());
         }
-        pushContext(ctx -> ctx.addSearchFragment(query, fragment, io.getLlmOutputText()));
+        var parsed = new ParsedOutput(io.getLlmOutputText(), SyntaxConstants.SYNTAX_STYLE_MARKDOWN, fragment);
+        pushContext(ctx -> ctx.addSearchFragment(query, parsed));
     }
 
     /**
@@ -1342,18 +1343,13 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Add to the user/AI message history
+     * Add to the user/AI message history. Called by both Ask and Code.
      */
-    @Override
-    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, Future<String> action)
-    {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, io.getLlmOutputText(), action));
-    }
-
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, io.getLlmOutputText(), submitSummarizeTaskForConversation(action)));
+        var parsed = new ParsedOutput(io.getLlmOutputText(), io.getOutputStyle(), new ContextFragment.StringFragment(io.getLlmOutputText(), ""));
+        pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 
     public List<Context> getContextHistory() {

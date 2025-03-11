@@ -292,7 +292,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
                 if (row < contextManager.getContextHistory().size()) {
                     var ctx = contextManager.getContextHistory().get(row);
-                    if (ctx.getTextAreaContents() != null) {
+                    if (ctx.getParsedOutput().output() != null) {
                     // LLM conversation - use dark background
                     if (!isSelected) {
                         c.setBackground(new Color(50, 50, 50));
@@ -410,12 +410,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
 
             // If there's textarea content, restore it to the LLM output area
-            if (ctx.getTextAreaContents() == null) {
+            if (ctx.getParsedOutput().output() == null) {
                 llmStreamArea.setText("");
             } else {
-                llmStreamArea.setText(ctx.getTextAreaContents());
+                llmStreamArea.setText(ctx.getParsedOutput().output());
+                llmStreamArea.setSyntaxEditingStyle(ctx.getParsedOutput().style());
                 llmStreamArea.setCaretPosition(0);
-                if (ctx.getTextAreaContents().startsWith("Code:")) {
+                if (ctx.getParsedOutput().output().startsWith("Code:")) {
                     llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
                 }
                 // Ensure the scroll pane displays from the top
@@ -995,11 +996,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void setContext(Context context) {
         SwingUtilities.invokeLater(() -> {
-            contextPanel.populateContextTable(context);
+            loadContext(context);
             clearContextHistorySelection();
             updateContextHistoryTable();
             updateSuggestCommitButton();
-            updateCaptureButtons(context);
         });
     }
 
@@ -1477,4 +1477,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return contextPanel.getSelectedFragments();
     }
 
+    public String getOutputStyle() {
+        return llmStreamArea.getSyntaxEditingStyle();
+    }
 }
