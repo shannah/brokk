@@ -958,7 +958,7 @@ public class GitLogPanel extends JPanel {
                 });
             } catch (IOException e) {
                 logger.error("Error pushing branch: {}", branchDisplay, e);
-                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error pushing branch: " + e.getMessage()));
+                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw(e.getMessage()));
             }
             return null;
         });
