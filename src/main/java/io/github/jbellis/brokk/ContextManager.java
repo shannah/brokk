@@ -1421,6 +1421,6 @@ public class ContextManager implements IContextManager
 
     @Override
     public void addToGit(String filename) throws IOException {
-        project.getRepo().add(filename);
+        project.getRepo().add(toFile(filename));
     }
 }

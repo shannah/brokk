@@ -75,11 +75,16 @@ public class GitRepo implements Closeable, IGitRepo {
         trackedFilesCache = null;
     }
 
-    public synchronized void add(String relName) throws IOException {
+    /**
+     * Adds a single file to staging.
+     */
+    public synchronized void add(RepoFile file) throws IOException
+    {
         try {
-            git.add().addFilepattern(relName).call();
+            // Use toString() on RepoFile to get its relative path
+            git.add().addFilepattern(file.toString()).call();
         } catch (GitAPIException e) {
-            throw new IOException("Unable to add file %s to git: %s".formatted(relName, e.getMessage()));
+            throw new IOException("Unable to add file " + file + " to git: " + e.getMessage(), e);
         }
     }
 
@@ -138,35 +143,40 @@ public class GitRepo implements Closeable, IGitRepo {
      * @param filePaths List of file paths to include in the diff
      * @return String containing the diff output
      */
-    public synchronized String diffFiles(List<String> filePaths) {
+    /**
+     * Produces a combined diff of staged + unstaged changes
+     * but only for the given list of RepoFiles.
+     */
+    public synchronized String diffFiles(List<RepoFile> files)
+    {
         try (var out = new ByteArrayOutputStream()) {
-            var filters = filePaths.stream()
-                    .map(PathFilter::create)
-                    .collect(Collectors.toCollection(ArrayList::new));
+            var filters = files.stream()
+                           .map(file -> PathFilter.create(file.toString()))
+                           .collect(Collectors.toCollection(ArrayList::new));
             var filterGroup = PathFilterGroup.create(filters);
 
-            // 1) staged changes for specified files
+            // 1) staged changes
             git.diff()
-                    .setCached(true)
-                    .setShowNameAndStatusOnly(false)
-                    .setPathFilter(filterGroup)
-                    .setOutputStream(out)
-                    .call();
+               .setCached(true)
+               .setShowNameAndStatusOnly(false)
+               .setPathFilter(filterGroup)
+               .setOutputStream(out)
+               .call();
             var staged = out.toString(StandardCharsets.UTF_8);
             out.reset();
 
-            // 2) unstaged changes for specified files
+            // 2) unstaged changes
             git.diff()
-                    .setCached(false)
-                    .setShowNameAndStatusOnly(false)
-                    .setPathFilter(filterGroup)
-                    .setOutputStream(out)
-                    .call();
+               .setCached(false)
+               .setShowNameAndStatusOnly(false)
+               .setPathFilter(filterGroup)
+               .setOutputStream(out)
+               .call();
             var unstaged = out.toString(StandardCharsets.UTF_8);
 
             return Stream.of(staged, unstaged)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.joining("\n"));
+                     .filter(s -> !s.isEmpty())
+                     .collect(Collectors.joining("\n"));
         } catch (IOException | GitAPIException e) {
             throw new UncheckedIOException(new IOException(e));
         }
@@ -222,7 +232,11 @@ public class GitRepo implements Closeable, IGitRepo {
      * Gets a list of uncommitted file paths
      * @return List of file paths relative to git root
      */
-    public List<String> getUncommittedFileNames() {
+    /**
+     * Returns a list of uncommitted RepoFiles.
+     */
+    public List<RepoFile> getUncommittedFiles()
+    {
         var diffSt = diff();
         if (diffSt.isEmpty()) {
             return List.of();
@@ -234,24 +248,32 @@ public class GitRepo implements Closeable, IGitRepo {
             if (trimmed.startsWith("diff --git")) {
                 var parts = trimmed.split(" ");
                 if (parts.length >= 4) {
-                    var path = parts[3].substring(2); // skip "b/"
+                    // 'diff --git a/... b/...'
+                    // parts[3] will look like 'b/foo/Bar.java'; skip "b/"
+                    var path = parts[3].substring(2);
                     filePaths.add(path);
                 }
             }
         }
-        return new ArrayList<>(filePaths);
+        return filePaths.stream()
+                    .map(path -> new RepoFile(root, path))
+                    .collect(Collectors.toList());
     }
 
     /**
      * Commit a specific list of files
      * @return The commit ID of the new commit
      */
-    public String commitFiles(List<String> filePatterns, String message) throws IOException {
+    /**
+     * Commit a specific list of RepoFiles.
+     * @return The commit ID of the new commit
+     */
+    public String commitFiles(List<RepoFile> files, String message) throws IOException
+    {
         try {
-            for (var pattern : filePatterns) {
-                git.add().addFilepattern(pattern).call();
+            for (var file : files) {
+                git.add().addFilepattern(file.toString()).call();
             }
-
             var commitResult = git.commit().setMessage(message).call();
             var commitId = commitResult.getId().getName();
 
@@ -572,44 +594,53 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * List changed files in a specific commit
      */
-    public List<String> listChangedFilesInCommit(String commitId) {
+    /**
+     * List changed RepoFiles in a specific commit.
+     */
+    public List<RepoFile> listChangedFilesInCommit(String commitId)
+    {
         try {
             var commitObj = repository.resolve(commitId);
             try (var revWalk = new RevWalk(repository)) {
                 var commit = revWalk.parseCommit(commitObj);
                 var parentCommit = commit.getParentCount() > 0 ? commit.getParent(0) : null;
 
+                var files = new ArrayList<String>();
                 if (parentCommit == null) {
+                    // Root commit, just list everything in this tree
                     try (var treeWalk = new TreeWalk(repository)) {
                         treeWalk.addTree(commit.getTree());
                         treeWalk.setRecursive(true);
-
-                        var files = new ArrayList<String>();
                         while (treeWalk.next()) {
                             files.add(treeWalk.getPathString());
                         }
-                        return files;
                     }
                 } else {
                     parentCommit = revWalk.parseCommit(parentCommit.getId());
-                    try (var diffFormatter = new org.eclipse.jgit.diff.DiffFormatter(new ByteArrayOutputStream())) {
+                    try (var diffFormatter =
+                                 new org.eclipse.jgit.diff.DiffFormatter(new ByteArrayOutputStream()))
+                    {
                         diffFormatter.setRepository(repository);
-                        var files = new ArrayList<String>();
-
                         var diffs = diffFormatter.scan(parentCommit.getTree(), commit.getTree());
                         for (var diff : diffs) {
-                            if (diff.getNewPath() != null && !diff.getNewPath().equals("/dev/null")) {
+                            if (diff.getNewPath() != null
+                                && !diff.getNewPath().equals("/dev/null"))
+                            {
                                 files.add(diff.getNewPath());
                             }
                             if (diff.getOldPath() != null
-                                    && !diff.getOldPath().equals("/dev/null")
-                                    && !files.contains(diff.getOldPath())) {
+                                && !diff.getOldPath().equals("/dev/null")
+                                && !files.contains(diff.getOldPath()))
+                            {
                                 files.add(diff.getOldPath());
                             }
                         }
-                        return files;
                     }
                 }
+                revWalk.dispose();
+                return files.stream()
+                            .map(path -> new RepoFile(root, path))
+                            .collect(Collectors.toList());
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to list changed files in commit", e);
@@ -643,21 +674,27 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Show diff for a specific file between two commits
      */
-    public String showFileDiff(String commitIdA, String commitIdB, String filePath) {
+    /**
+     * Show diff for a specific file between two commits.
+     */
+    public String showFileDiff(String commitIdA, String commitIdB, RepoFile file)
+    {
         try (var out = new ByteArrayOutputStream()) {
+            var pathFilter = PathFilter.create(file.toString());
+
             if ("HEAD".equals(commitIdA)) {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdB))
-                        .setPathFilter(PathFilter.create(filePath))
-                        .setOutputStream(out)
-                        .call();
+                   .setOldTree(prepareTreeParser(commitIdB))
+                   .setPathFilter(pathFilter)
+                   .setOutputStream(out)
+                   .call();
             } else {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdA))
-                        .setNewTree(prepareTreeParser(commitIdB))
-                        .setPathFilter(PathFilter.create(filePath))
-                        .setOutputStream(out)
-                        .call();
+                   .setOldTree(prepareTreeParser(commitIdA))
+                   .setNewTree(prepareTreeParser(commitIdB))
+                   .setPathFilter(pathFilter)
+                   .setOutputStream(out)
+                   .call();
             }
             return out.toString(StandardCharsets.UTF_8);
         } catch (IOException | GitAPIException e) {
@@ -797,6 +834,33 @@ public class GitRepo implements Closeable, IGitRepo {
      * A record to hold stash details
      */
     public record StashInfo(String id, String message, String author, java.util.Date date, int index) {}
+
+    /**
+     * Get the commit history for a specific file
+     *
+     * @param filePath Path to the file relative to repository root
+     * @return List of commits that modified the file
+     */
+    /**
+     * Get the commit history for a specific RepoFile.
+     */
+    public List<CommitInfo> getFileHistory(RepoFile file)
+    {
+        try {
+            var commits = new ArrayList<CommitInfo>();
+            // Use addPath(...) with the relative path
+            for (var commit : git.log().addPath(file.toString()).call()) {
+                var id     = commit.getName();
+                var message= commit.getShortMessage();
+                var author = commit.getAuthorIdent().getName();
+                var date   = commit.getAuthorIdent().getWhen();
+                commits.add(new CommitInfo(id, message, author, date));
+            }
+            return commits;
+        } catch (GitAPIException e) {
+            throw new UncheckedIOException(new IOException("Failed to get file history", e));
+        }
+    }
 
     /**
      * Search commits

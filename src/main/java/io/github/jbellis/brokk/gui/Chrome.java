@@ -1615,6 +1615,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return contextPanel.getSelectedFragments();
     }
 
+    GitPanel getGitPanel() {
+        return gitPanel;
+    }
+
     public String getOutputStyle() {
         return llmStreamArea.getSyntaxEditingStyle();
     }

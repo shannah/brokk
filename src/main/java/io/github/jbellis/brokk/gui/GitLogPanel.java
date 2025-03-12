@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
  * - Search functionality
  */
 public class GitLogPanel extends JPanel {
+    
+    // Methods to expose to GitPanel for finding and selecting commits by ID
 
     private static final Logger logger = LogManager.getLogger(GitLogPanel.class);
 
@@ -164,6 +166,13 @@ public class GitLogPanel extends JPanel {
             }
         };
         commitsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        // Set percentages for main columns (60%/20%/20%)
+        int tableWidth = commitsTable.getWidth();
+        commitsTable.getColumnModel().getColumn(0).setPreferredWidth((int)(tableWidth * 0.6)); // message
+        commitsTable.getColumnModel().getColumn(1).setPreferredWidth((int)(tableWidth * 0.2)); // author
+        commitsTable.getColumnModel().getColumn(2).setPreferredWidth((int)(tableWidth * 0.2)); // date
+        
+        // Hide id and unpushed columns
         commitsTable.getColumnModel().getColumn(3).setMinWidth(0);
         commitsTable.getColumnModel().getColumn(3).setMaxWidth(0);
         commitsTable.getColumnModel().getColumn(3).setWidth(0);
@@ -203,11 +212,9 @@ public class GitLogPanel extends JPanel {
         // Context menu on commits
         JPopupMenu commitsContextMenu = new JPopupMenu();
         JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
-        JMenuItem compareWithLocalItem = new JMenuItem("Compare with Local");
         JMenuItem softResetItem = new JMenuItem("Soft Reset to Here");
         JMenuItem revertCommitItem = new JMenuItem("Revert Commit");
         commitsContextMenu.add(addToContextItem);
-        commitsContextMenu.add(compareWithLocalItem);
         commitsContextMenu.add(softResetItem);
         commitsContextMenu.add(revertCommitItem);
         commitsTable.setComponentPopupMenu(commitsContextMenu);
@@ -226,7 +233,6 @@ public class GitLogPanel extends JPanel {
                     }
                     // Update menu item states based on selection
                     int[] sel = commitsTable.getSelectedRows();
-                    compareWithLocalItem.setEnabled(sel.length == 1);
                     softResetItem.setEnabled(sel.length == 1);
                 });
             }
@@ -238,18 +244,6 @@ public class GitLogPanel extends JPanel {
             int[] selectedRows = commitsTable.getSelectedRows();
             if (selectedRows.length >= 1) {
                 addCommitRangeToContext(selectedRows);
-            }
-        });
-
-        compareWithLocalItem.addActionListener(e -> {
-            int[] selectedRows = commitsTable.getSelectedRows();
-            if (selectedRows.length == 1) {
-                String commitId = (String) commitsTableModel.getValueAt(selectedRows[0], 3);
-                String commitMessage = (String) commitsTableModel.getValueAt(selectedRows[0], 0);
-                String firstLine = commitMessage.contains("\n")
-                        ? commitMessage.substring(0, commitMessage.indexOf('\n'))
-                        : commitMessage;
-                compareCommitWithLocal(commitId, firstLine);
             }
         });
 
@@ -299,9 +293,11 @@ public class GitLogPanel extends JPanel {
         JPopupMenu changesContextMenu = new JPopupMenu();
         JMenuItem addFileToContextItem = new JMenuItem("Add Changes to Context");
         JMenuItem compareFileWithLocalItem = new JMenuItem("Compare with Local");
+        JMenuItem viewHistoryItem = new JMenuItem("View History");
         JMenuItem editFileItem = new JMenuItem("Edit File");
         changesContextMenu.add(addFileToContextItem);
         changesContextMenu.add(compareFileWithLocalItem);
+        changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(editFileItem);
         changesTree.setComponentPopupMenu(changesContextMenu);
 
@@ -324,6 +320,7 @@ public class GitLogPanel extends JPanel {
 
                     addFileToContextItem.setEnabled(hasFileSelection);
                     compareFileWithLocalItem.setEnabled(hasFileSelection && isSingleCommit);
+                    viewHistoryItem.setEnabled(hasFileSelection);
                     editFileItem.setEnabled(hasFileSelection);
                 });
             }
@@ -354,6 +351,16 @@ public class GitLogPanel extends JPanel {
                         String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
                         compareFilesWithLocal(commitId, selectedFiles);
                     }
+                }
+            }
+        });
+
+        viewHistoryItem.addActionListener(e -> {
+            TreePath[] paths = changesTree.getSelectionPaths();
+            if (paths != null && paths.length > 0) {
+                List<String> selectedFiles = getSelectedFilePaths(paths);
+                for (String filePath : selectedFiles) {
+                    viewFileHistory(filePath);
                 }
             }
         });
@@ -645,14 +652,15 @@ public class GitLogPanel extends JPanel {
     /**
      * Fills the "Changes" tree with files from the selected commits.
      */
-    private void updateChangesForCommits(int[] selectedRows) {
+    private void updateChangesForCommits(int[] selectedRows)
+    {
         contextManager.submitBackgroundTask("Fetching changes for commits", () -> {
             try {
-                Set<String> allChangedFiles = new HashSet<>();
-                for (int row : selectedRows) {
+                var allChangedFiles = new HashSet<RepoFile>();
+                for (var row : selectedRows) {
                     if (row >= 0 && row < commitsTableModel.getRowCount()) {
-                        String commitId = (String) commitsTableModel.getValueAt(row, 3);
-                        List<String> changedFiles = getRepo().listChangedFilesInCommit(commitId);
+                        var commitId = (String) commitsTableModel.getValueAt(row, 3);
+                        var changedFiles = getRepo().listChangedFilesInCommit(commitId);  // now returns List<RepoFile>
                         allChangedFiles.addAll(changedFiles);
                     }
                 }
@@ -665,20 +673,13 @@ public class GitLogPanel extends JPanel {
                     }
 
                     Map<String, List<String>> filesByDir = new HashMap<>();
-                    for (String file : allChangedFiles) {
-                        int lastSlash = file.lastIndexOf('/');
-                        if (lastSlash > 0) {
-                            String dir = file.substring(0, lastSlash);
-                            String fileName = file.substring(lastSlash + 1);
-                            filesByDir.computeIfAbsent(dir, k -> new ArrayList<>()).add(fileName);
-                        } else {
-                            filesByDir.computeIfAbsent("", k -> new ArrayList<>()).add(file);
-                        }
+                    for (var file : allChangedFiles) {
+                        filesByDir.computeIfAbsent(file.getParent(), k -> new ArrayList<>()).add(file.getFileName());
                     }
 
-                    for (Map.Entry<String, List<String>> entry : filesByDir.entrySet()) {
-                        String dirPath = entry.getKey();
-                        List<String> files = entry.getValue();
+                    for (var entry : filesByDir.entrySet()) {
+                        var dirPath = entry.getKey();
+                        var files = entry.getValue();
 
                         DefaultMutableTreeNode dirNode;
                         if (dirPath.isEmpty()) {
@@ -687,7 +688,7 @@ public class GitLogPanel extends JPanel {
                             dirNode = new DefaultMutableTreeNode(dirPath);
                             changesRootNode.add(dirNode);
                         }
-                        for (String f : files) {
+                        for (var f : files) {
                             dirNode.add(new DefaultMutableTreeNode(f));
                         }
                     }
@@ -735,8 +736,13 @@ public class GitLogPanel extends JPanel {
 
                 String firstShortHash = firstCommitId.substring(0, 7);
                 String lastShortHash = lastCommitId.substring(0, 7);
-                String description = String.format("git %s..%s: Changes across %d commits",
-                                                   firstShortHash, lastShortHash, selectedRows.length);
+                String description;
+                if (selectedRows.length > 1) {
+                    description = String.format("git %s..%s: Changes across %d commits",
+                                                firstShortHash, lastShortHash, selectedRows.length);
+                } else {
+                    description  = String.format("git %s", firstShortHash);
+                }
 
                 ContextFragment.StringFragment fragment =
                         new ContextFragment.StringFragment(diff, description);
@@ -771,8 +777,12 @@ public class GitLogPanel extends JPanel {
                 String firstCommitId = (String) commitsTableModel.getValueAt(sortedRows[0], 3);
                 String lastCommitId = (String) commitsTableModel.getValueAt(sortedRows[sortedRows.length - 1], 3);
 
-                String diffs = filePaths.stream()
-                        .map(filePath -> getRepo().showFileDiff(lastCommitId, firstCommitId + "^", filePath))
+                var repoFiles = filePaths.stream()
+                        .map(path -> new RepoFile(contextManager.getRoot(), path))
+                        .collect(Collectors.toList());
+                        
+                String diffs = repoFiles.stream()
+                        .map(file -> getRepo().showFileDiff(lastCommitId, firstCommitId + "^", file))
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.joining("\n\n"));
 
@@ -806,41 +816,19 @@ public class GitLogPanel extends JPanel {
             return null;
         });
     }
-
-    /**
-     * Compare a single commit with the local working copy.
-     */
-    private void compareCommitWithLocal(String commitId, String commitMessage) {
-        contextManager.submitContextTask("Comparing commit with local", () -> {
-            try {
-                String diff = getRepo().showDiff("HEAD", commitId);
-                String shortHash = commitId.substring(0, 7);
-                if (diff.isEmpty()) {
-                    chrome.toolOutput("No changes between commit " + shortHash + " and local working copy");
-                    return null;
-                }
-
-                String description = "git local vs " + shortHash + ": " + commitMessage;
-                ContextFragment.StringFragment fragment =
-                        new ContextFragment.StringFragment(diff, description);
-                contextManager.addVirtualFragment(fragment);
-                chrome.toolOutput("Added comparison with local to context");
-            } catch (Exception ex) {
-                logger.error("Error comparing commit with local: {}", commitId, ex);
-                chrome.toolErrorRaw("Error comparing commit with local: " + ex.getMessage());
-            }
-            return null;
-        });
-    }
-
+    
     /**
      * Compare selected files from a commit with the local working copy.
      */
     private void compareFilesWithLocal(String commitId, List<String> filePaths) {
         contextManager.submitContextTask("Comparing files with local", () -> {
             try {
-                String allDiffs = filePaths.stream()
-                        .map(filePath -> getRepo().showFileDiff("HEAD", commitId, filePath))
+                var repoFiles = filePaths.stream()
+                        .map(path -> new RepoFile(contextManager.getRoot(), path))
+                        .collect(Collectors.toList());
+                        
+                String allDiffs = repoFiles.stream()
+                        .map(file -> getRepo().showFileDiff("HEAD", commitId, file))
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.joining("\n\n"));
 
@@ -1208,11 +1196,24 @@ public class GitLogPanel extends JPanel {
     }
 
     /**
+     * Opens a file history tab for the selected file
+     */
+    private void viewFileHistory(String filePath) {
+        if (filePath == null || filePath.isEmpty()) return;
+
+        GitPanel gitPanel = chrome.getGitPanel();
+        if (gitPanel != null) {
+            var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+            gitPanel.addFileHistoryTab(repoFile);
+        }
+    }
+
+    /**
      * Edit the given file inside your IDE or editor plugin.
      */
     private void editFile(String filePath) {
         List<RepoFile> files = new ArrayList<>();
-        files.add(contextManager.toFile(filePath));
+        files.add(new RepoFile(contextManager.getRoot(), filePath));
         contextManager.editFiles(files);
     }
 
@@ -1227,5 +1228,23 @@ public class GitLogPanel extends JPanel {
         // Adjust as needed if you change order
         menu.getComponent(2).setEnabled(isLocal);
         menu.getComponent(3).setEnabled(isLocal);
+    }
+    
+    /**
+     * Selects a commit in the commits table by its ID.
+     */
+    public void selectCommitById(String commitId) {
+        for (int i = 0; i < commitsTableModel.getRowCount(); i++) {
+            String currentId = (String) commitsTableModel.getValueAt(i, 3);
+            if (commitId.equals(currentId)) {
+                commitsTable.setRowSelectionInterval(i, i);
+                commitsTable.scrollRectToVisible(commitsTable.getCellRect(i, 0, true));
+                updateChangesForCommits(new int[]{i});
+                return;
+            }
+        }
+        
+        // If not found in the current view, let the user know
+        chrome.toolOutput("Commit " + commitId.substring(0, 7) + " not found in current branch view");
     }
 }

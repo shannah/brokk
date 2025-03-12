@@ -1,14 +1,21 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.GitRepo;
+import io.github.jbellis.brokk.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -29,6 +36,10 @@ public class GitPanel extends JPanel {
     private JButton commitButton;
     private JButton stashButton;
 
+    // History tabs
+    private JTabbedPane tabbedPane;
+    private final Map<String, JTable> fileHistoryTables = new HashMap<>();
+    
     // Stash tab UI
     private JTable stashTable;
     private DefaultTableModel stashTableModel;
@@ -62,7 +73,7 @@ public class GitPanel extends JPanel {
         setMaximumSize(panelSize);
 
         // Tabbed pane
-        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane = new JTabbedPane();
         add(tabbedPane, BorderLayout.CENTER);
 
         // 1) Commit tab
@@ -124,15 +135,12 @@ public class GitPanel extends JPanel {
         suggestMessageButton.setEnabled(false);
         suggestMessageButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            var selectedFiles = getSelectedFilesFromTable();
+            List<RepoFile> selectedFiles = getSelectedFilesFromTable();
             contextManager.submitBackgroundTask("Suggesting commit message", () -> {
                 try {
-                    String diff;
-                    if (selectedFiles.isEmpty()) {
-                        diff = getRepo().diff();
-                    } else {
-                        diff = getRepo().diffFiles(selectedFiles);
-                    }
+                    var diff = selectedFiles.isEmpty()
+                            ? getRepo().diff()
+                            : getRepo().diffFiles(selectedFiles);
                     if (diff.isEmpty()) {
                         SwingUtilities.invokeLater(() -> {
                             JOptionPane.showMessageDialog(this,
@@ -175,7 +183,7 @@ public class GitPanel extends JPanel {
                     .filter(line -> !line.trim().startsWith("#"))
                     .collect(Collectors.joining("\n"))
                     .trim();
-            var selectedFiles = getSelectedFilesFromTable();
+            List<RepoFile> selectedFiles = getSelectedFilesFromTable();
 
             contextManager.submitUserTask("Stashing changes", () -> {
                 try {
@@ -183,7 +191,7 @@ public class GitPanel extends JPanel {
                         getRepo().createStash(stashDescription.isEmpty() ? null : stashDescription);
                     } else {
                         for (var file : selectedFiles) {
-                            getRepo().add(file);
+                            getRepo().add(file); // now uses add(RepoFile)
                         }
                         getRepo().createStash(stashDescription.isEmpty() ? null : stashDescription);
                     }
@@ -192,7 +200,7 @@ public class GitPanel extends JPanel {
                             chrome.toolOutput("All changes stashed successfully");
                         } else {
                             String fileList = selectedFiles.size() <= 3
-                                    ? String.join(", ", selectedFiles)
+                                    ? selectedFiles.stream().map(Object::toString).collect(Collectors.joining(", "))
                                     : selectedFiles.size() + " files";
                             chrome.toolOutput("Stashed " + fileList);
                         }
@@ -220,7 +228,7 @@ public class GitPanel extends JPanel {
         commitButton.setEnabled(false);
         commitButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            var selectedFiles = getSelectedFilesFromTable();
+            List<RepoFile> selectedFiles = getSelectedFilesFromTable();
             String msg = commitMessageArea.getText().trim();
             if (msg.isEmpty()) {
                 chrome.enableUserActionButtons();
@@ -229,7 +237,7 @@ public class GitPanel extends JPanel {
             contextManager.submitUserTask("Committing files", () -> {
                 try {
                     if (selectedFiles.isEmpty()) {
-                        var allDirtyFiles = getRepo().getUncommittedFileNames();
+                        var allDirtyFiles = getRepo().getUncommittedFiles();
                         contextManager.getProject().getRepo().commitFiles(allDirtyFiles, msg);
                     } else {
                         contextManager.getProject().getRepo().commitFiles(selectedFiles, msg);
@@ -389,30 +397,29 @@ public class GitPanel extends JPanel {
     /**
      * Populates the uncommitted files table and enables/disables commit-related buttons.
      */
-    public void updateSuggestCommitButton() {
+    public void updateSuggestCommitButton()
+    {
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             try {
-                var uncommittedFiles = getRepo().getUncommittedFileNames();
+                var uncommittedFiles = getRepo().getUncommittedFiles();
                 SwingUtilities.invokeLater(() -> {
                     var model = (DefaultTableModel) uncommittedFilesTable.getModel();
                     model.setRowCount(0);
+
                     if (uncommittedFiles.isEmpty()) {
                         suggestMessageButton.setEnabled(false);
                         commitButton.setEnabled(false);
                         stashButton.setEnabled(false);
                     } else {
-                        for (String filePath : uncommittedFiles) {
-                            int slash = filePath.lastIndexOf('/');
-                            String filename = (slash >= 0) ? filePath.substring(slash + 1) : filePath;
-                            String path = (slash >= 0) ? filePath.substring(0, slash) : "";
-                            model.addRow(new Object[]{filename, path});
+                        for (var file : uncommittedFiles) {
+                            model.addRow(new Object[]{file.getFileName(), file.getParent()});
                         }
                         suggestMessageButton.setEnabled(true);
 
-                        String text = commitMessageArea.getText().trim();
-                        boolean hasNonCommentText = Arrays.stream(text.split("\n"))
-                                .anyMatch(line -> !line.trim().isEmpty() && !line.trim().startsWith("#"));
-
+                        var text = commitMessageArea.getText().trim();
+                        var hasNonCommentText = Arrays.stream(text.split("\n"))
+                                                  .anyMatch(line -> !line.trim().isEmpty()
+                                                                    && !line.trim().startsWith("#"));
                         commitButton.setEnabled(hasNonCommentText);
                         stashButton.setEnabled(hasNonCommentText);
                     }
@@ -449,15 +456,20 @@ public class GitPanel extends JPanel {
     /**
      * Helper to get a list of selected files from the uncommittedFilesTable.
      */
-    private java.util.List<String> getSelectedFilesFromTable() {
+    private List<RepoFile> getSelectedFilesFromTable()
+    {
         var model = (DefaultTableModel) uncommittedFilesTable.getModel();
-        return Arrays.stream(uncommittedFilesTable.getSelectedRows())
-                .mapToObj(row -> {
-                    String filename = (String) model.getValueAt(row, 0);
-                    String path = (String) model.getValueAt(row, 1);
-                    return path.isEmpty() ? filename : path + "/" + filename;
-                })
-                .collect(Collectors.toList());
+        var selectedRows = uncommittedFilesTable.getSelectedRows();
+        var files = new ArrayList<RepoFile>();
+
+        for (var row : selectedRows) {
+            var filename = (String) model.getValueAt(row, 0);
+            var path     = (String) model.getValueAt(row, 1);
+            // Combine them to get the relative path
+            var combined = path.isEmpty() ? filename : path + "/" + filename;
+            files.add(new RepoFile(contextManager.getRoot(), combined));
+        }
+        return files;
     }
 
     /**
@@ -479,6 +491,281 @@ public class GitPanel extends JPanel {
 
         stashButton.setPreferredSize(preferredSize);
         stashButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+    }
+    
+    /**
+     * Creates a new tab showing the history of a specific file
+     */
+    public void addFileHistoryTab(RepoFile file) {
+        String filePath = file.toString();
+        
+        // If we already have a tab for this file, just select it
+        if (fileHistoryTables.containsKey(filePath)) {
+            for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+                if (tabbedPane.getTitleAt(i).equals(getFileTabName(filePath))) {
+                    tabbedPane.setSelectedIndex(i);
+                    return;
+                }
+            }
+        }
+
+        // Create a new tab with the file's name
+        JPanel fileHistoryPanel = new JPanel(new BorderLayout());
+
+        // Create a history table similar to the commits table but with different column proportions
+        DefaultTableModel fileHistoryModel = new DefaultTableModel(
+            new Object[]{"Message", "Author", "Date", "ID"}, 0
+        ) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+            @Override
+            public Class<?> getColumnClass(int columnIndex) { return String.class; }
+        };
+
+        JTable fileHistoryTable = new JTable(fileHistoryModel);
+        fileHistoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        fileHistoryTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        fileHistoryTable.setRowHeight(18);
+
+        // Set column widths to 80%/10%/10%
+        fileHistoryTable.getColumnModel().getColumn(0).setPreferredWidth(800); // message (80%)
+        fileHistoryTable.getColumnModel().getColumn(1).setPreferredWidth(100); // author (10%)
+        fileHistoryTable.getColumnModel().getColumn(2).setPreferredWidth(100); // date (10%)
+
+        // Hide ID column
+        fileHistoryTable.getColumnModel().getColumn(3).setMinWidth(0);
+        fileHistoryTable.getColumnModel().getColumn(3).setMaxWidth(0);
+        fileHistoryTable.getColumnModel().getColumn(3).setWidth(0);
+
+        // Add a context menu with same options as Changes tree
+        JPopupMenu historyContextMenu = new JPopupMenu();
+        JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
+        JMenuItem compareWithLocalItem = new JMenuItem("Compare with Local");
+        JMenuItem viewInLogItem = new JMenuItem("View in Log");
+        JMenuItem editFileItem = new JMenuItem("Edit File");
+
+        historyContextMenu.add(addToContextItem);
+        historyContextMenu.add(compareWithLocalItem);
+        historyContextMenu.add(viewInLogItem);
+        historyContextMenu.add(editFileItem);
+
+        // Make sure right-clicking selects row under cursor first
+        historyContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    Point point = MouseInfo.getPointerInfo().getLocation();
+                    SwingUtilities.convertPointFromScreen(point, fileHistoryTable);
+                    int row = fileHistoryTable.rowAtPoint(point);
+                    if (row >= 0) {
+                        fileHistoryTable.setRowSelectionInterval(row, row);
+                    }
+                });
+            }
+            @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
+            @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+        });
+
+        fileHistoryTable.setComponentPopupMenu(historyContextMenu);
+
+        // Add listeners to context menu items
+        addToContextItem.addActionListener(e -> {
+            int row = fileHistoryTable.getSelectedRow();
+            if (row >= 0) {
+                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
+                addFileChangeToContext(commitId, filePath);
+            }
+        });
+
+        compareWithLocalItem.addActionListener(e -> {
+            int row = fileHistoryTable.getSelectedRow();
+            if (row >= 0) {
+                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
+                compareFileWithLocal(commitId, filePath);
+            }
+        });
+
+        viewInLogItem.addActionListener(e -> {
+            int row = fileHistoryTable.getSelectedRow();
+            if (row >= 0) {
+                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
+                showCommitInLogTab(commitId);
+            }
+        });
+
+        editFileItem.addActionListener(e -> editFile(filePath));
+
+        fileHistoryPanel.add(new JScrollPane(fileHistoryTable), BorderLayout.CENTER);
+
+        // Add to tab pane with a filename title and close button
+        String tabName = getFileTabName(filePath);
+
+        // Create a custom tab component with close button
+        JPanel tabComponent = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        tabComponent.setOpaque(false);
+        JLabel titleLabel = new JLabel(tabName);
+        titleLabel.setOpaque(false);
+
+        JButton closeButton = new JButton("×");
+        closeButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        closeButton.setPreferredSize(new Dimension(24, 24));
+        closeButton.setMargin(new Insets(0, 0, 0, 0));
+        closeButton.setContentAreaFilled(false);
+        closeButton.setBorderPainted(false);
+        closeButton.setFocusPainted(false);
+        closeButton.setToolTipText("Close");
+
+        // Add visual feedback on mouse events
+        closeButton.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                closeButton.setForeground(Color.RED);
+                closeButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                closeButton.setForeground(null); // Reset to default color
+                closeButton.setCursor(Cursor.getDefaultCursor());
+            }
+        });
+
+        closeButton.addActionListener(e -> {
+            for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+                if (tabbedPane.getComponentAt(i) == fileHistoryPanel) {
+                    tabbedPane.remove(i);
+                    fileHistoryTables.remove(filePath);
+                    break;
+                }
+            }
+        });
+
+        tabComponent.add(titleLabel);
+        tabComponent.add(closeButton);
+
+        tabbedPane.addTab(tabName, fileHistoryPanel);
+        int tabIndex = tabbedPane.indexOfComponent(fileHistoryPanel);
+        tabbedPane.setTabComponentAt(tabIndex, tabComponent);
+        tabbedPane.setSelectedComponent(fileHistoryPanel);
+        fileHistoryTables.put(filePath, fileHistoryTable);
+
+        // Load the file history
+        loadFileHistory(file, fileHistoryModel);
+    }
+    
+    private String getFileTabName(String filePath) {
+        int lastSlash = filePath.lastIndexOf('/');
+        return lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
+    }
+    
+    /**
+     * Switches to the Log tab and highlights the specified commit.
+     */
+    private void showCommitInLogTab(String commitId) {
+        // Switch to Log tab
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            if (tabbedPane.getTitleAt(i).equals("Log")) {
+                tabbedPane.setSelectedIndex(i);
+                break;
+            }
+        }
+        
+        // Find and select the commit in gitLogPanel
+        gitLogPanel.selectCommitById(commitId);
+    }
+    
+    private void loadFileHistory(RepoFile file, DefaultTableModel model) {
+        contextManager.submitBackgroundTask("Loading file history: " + file, () -> {
+            try {
+                var history = getRepo().getFileHistory(file);
+                SwingUtilities.invokeLater(() -> {
+                    model.setRowCount(0);
+                    if (history.isEmpty()) {
+                        model.addRow(new Object[]{"No history found", "", "", ""});
+                        return;
+                    }
+
+                    var today = java.time.LocalDate.now();
+                    for (var commit : history) {
+                        var formattedDate = formatCommitDate(commit.date(), today);
+                        model.addRow(new Object[]{
+                            commit.message(),
+                            commit.author(),
+                            formattedDate,
+                            commit.id()
+                        });
+                    }
+                });
+            } catch (Exception e) {
+                logger.error("Error loading file history for: {}", file, e);
+                SwingUtilities.invokeLater(() -> {
+                    model.setRowCount(0);
+                    model.addRow(new Object[]{
+                        "Error loading history: " + e.getMessage(), "", "", ""
+                    });
+                });
+            }
+            return null;
+        });
+    }
+    
+    private void addFileChangeToContext(String commitId, String filePath)
+    {
+        contextManager.submitContextTask("Adding file change to context", () -> {
+            try {
+                var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+                var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
+
+                if (diff.isEmpty()) {
+                    chrome.toolOutput("No changes found for " + filePath);
+                    return null;
+                }
+
+                var shortHash  = commitId.substring(0, 7);
+                var fileName   = getFileTabName(filePath);
+                var description= "git %s (single file)".formatted(shortHash);
+
+                var fragment = new ContextFragment.StringFragment(diff, description);
+                contextManager.addVirtualFragment(fragment);
+                chrome.toolOutput("Added changes for " + fileName + " to context");
+            } catch (Exception e) {
+                logger.error("Error adding file change to context", e);
+                chrome.toolErrorRaw("Error adding file change to context: " + e.getMessage());
+            }
+            return null;
+        });
+    }
+    
+    private void compareFileWithLocal(String commitId, String filePath) {
+        contextManager.submitContextTask("Comparing file with local", () -> {
+            try {
+                var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+                var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
+
+                if (diff.isEmpty()) {
+                    chrome.toolOutput("No differences found between " + filePath + " and local working copy");
+                    return null;
+                }
+
+                var shortHash = commitId.substring(0, 7);
+                var fileName = getFileTabName(filePath);
+                var description = "git local vs " + shortHash + " [" + fileName + "]";
+
+                var fragment = new ContextFragment.StringFragment(diff, description);
+                contextManager.addVirtualFragment(fragment);
+                chrome.toolOutput("Added comparison with local for " + fileName + " to context");
+            } catch (Exception e) {
+                logger.error("Error comparing file with local", e);
+                chrome.toolErrorRaw("Error comparing file with local: " + e.getMessage());
+            }
+            return null;
+        });
+    }
+    
+    private void editFile(String filePath) {
+        List<RepoFile> files = new ArrayList<>();
+        files.add(contextManager.toFile(filePath));
+        contextManager.editFiles(files);
     }
 
     // ================ Stash Methods ==================
@@ -577,5 +864,37 @@ public class GitPanel extends JPanel {
             }
             return null;
         });
+    }
+
+    /**
+     * Format commit date to show e.g. "HH:MM:SS today" if it is today's date.
+     */
+    protected String formatCommitDate(Date date, java.time.LocalDate today) {
+        try {
+            java.time.LocalDate commitDate = date.toInstant()
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate();
+
+            String timeStr = new java.text.SimpleDateFormat("HH:mm:ss").format(date);
+
+            if (commitDate.equals(today)) {
+                // If it's today's date, just show the time with "today"
+                return "Today " + timeStr;
+            } else if (commitDate.equals(today.minusDays(1))) {
+                // If it's yesterday
+                return "Yesterday " + timeStr;
+            } else if (commitDate.isAfter(today.minusDays(7))) {
+                // If within the last week, show day of week
+                String dayName = commitDate.getDayOfWeek().toString();
+                dayName = dayName.substring(0, 1).toUpperCase() + dayName.substring(1).toLowerCase();
+                return dayName + " " + timeStr;
+            }
+
+            // Otherwise, show the standard date format
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+        } catch (Exception e) {
+            logger.debug("Could not format date: {}", date, e);
+            return date.toString();
+        }
     }
 }

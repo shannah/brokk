@@ -31,6 +31,11 @@ public class ContextPanel extends JPanel {
     // Parent reference
     private final Chrome chrome;
     private final ContextManager contextManager;
+    
+    // Add reference to GitPanel through Chrome
+    private GitPanel getGitPanel() {
+        return chrome.getGitPanel();
+    }
 
     // Context Panel components
     private JTable contextTable;
@@ -170,6 +175,45 @@ public class ContextPanel extends JPanel {
                     }
                 }
             }
+        });
+
+        // Add context menu with "View History" option for files
+        JPopupMenu contextMenu = new JPopupMenu();
+        JMenuItem viewHistoryItem = new JMenuItem("View History");
+        viewHistoryItem.addActionListener(e -> {
+            int row = contextTable.getSelectedRow();
+            if (row >= 0) {
+                var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+                if (fragment instanceof ContextFragment.RepoPathFragment(RepoFile file)) {
+                    chrome.getGitPanel().addFileHistoryTab(file);
+                }
+            }
+        });
+        contextMenu.add(viewHistoryItem);
+        
+        // Configure the popup menu to only show for repo files
+        contextTable.setComponentPopupMenu(contextMenu);
+        contextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    Point point = MouseInfo.getPointerInfo().getLocation();
+                    SwingUtilities.convertPointFromScreen(point, contextTable);
+                    int row = contextTable.rowAtPoint(point);
+                    if (row >= 0) {
+                        contextTable.setRowSelectionInterval(row, row);
+                        var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+                        // Only enable menu for repo files
+                        viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+                    } else {
+                        viewHistoryItem.setEnabled(false);
+                    }
+                });
+            }
+            @Override
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
+            @Override
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
         });
         // Set selection mode to allow multiple selection
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
