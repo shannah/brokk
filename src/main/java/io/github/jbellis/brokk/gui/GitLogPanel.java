@@ -405,18 +405,11 @@ public class GitLogPanel extends JPanel {
                 new Dimension(Integer.MAX_VALUE, resetButton.getPreferredSize().height)
         );
 
-        JButton aiSearchButton = new JButton("AI Search");
-        // Example placeholder; wire up as you see fit
-        aiSearchButton.setMaximumSize(
-                new Dimension(Integer.MAX_VALUE, aiSearchButton.getPreferredSize().height)
-        );
-
         searchButtonPanel.add(Box.createVerticalStrut(5));
         searchButtonPanel.add(textSearchButton);
         searchButtonPanel.add(Box.createVerticalStrut(5));
         searchButtonPanel.add(resetButton);
         searchButtonPanel.add(Box.createVerticalStrut(5));
-        searchButtonPanel.add(aiSearchButton);
         searchButtonPanel.add(Box.createVerticalStrut(5));
 
         searchPanel.add(searchButtonPanel, BorderLayout.SOUTH);
