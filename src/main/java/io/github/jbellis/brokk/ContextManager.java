@@ -766,8 +766,8 @@ public class ContextManager implements IContextManager
     {
         int finalStepsToUndo = Math.min(stepsToUndo, contextHistory.size() - 1);
         return contextActionExecutor.submit(() -> {
-            synchronized (ContextManager.this) {
-                try {
+            try {
+                synchronized (ContextManager.this) {
                     if (contextHistory.size() <= 1) {
                         io.toolErrorRaw("no undo state available");
                         return;
@@ -778,15 +778,15 @@ public class ContextManager implements IContextManager
                         var redoContext = undoAndInvertChanges(popped);
                         redoHistory.add(redoContext);
                     }
-
-                    io.setContext(currentContext());
-                    io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
-                } catch (CancellationException cex) {
-                    io.toolOutput("Undo canceled.");
-                } finally {
-                    io.enableContextActionButtons();
-                    io.enableUserActionButtons();
                 }
+
+                io.setContext(currentContext());
+                io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
+            } catch (CancellationException cex) {
+                io.toolOutput("Undo canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
@@ -795,8 +795,8 @@ public class ContextManager implements IContextManager
     public Future<?> redoContextAsync()
     {
         return contextActionExecutor.submit(() -> {
-            synchronized (ContextManager.this) {
-                try {
+            try {
+                synchronized (ContextManager.this) {
                     if (redoHistory.isEmpty()) {
                         io.toolErrorRaw("no redo state available");
                         return;
@@ -805,13 +805,13 @@ public class ContextManager implements IContextManager
                     var undoContext = undoAndInvertChanges(popped);
                     contextHistory.add(undoContext);
                     io.setContext(currentContext());
-                    io.toolOutput("Redo!");
-                } catch (CancellationException cex) {
-                    io.toolOutput("Redo canceled.");
-                } finally {
-                    io.enableContextActionButtons();
-                    io.enableUserActionButtons();
                 }
+                io.toolOutput("Redo!");
+            } catch (CancellationException cex) {
+                io.toolOutput("Redo canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
             }
         });
     }
