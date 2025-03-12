@@ -55,6 +55,9 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
+            if (file.getParent().isEmpty()) {
+                return file.getFileName();
+            }
             return "%s [%s]".formatted(file.getFileName(), file.getParent());
         }
 
