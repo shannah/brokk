@@ -11,6 +11,7 @@ class ExternalFile(@transient private var path: Path) extends BrokkFile {
   // Constructor validation
   if (path != null) {
     require(path.isAbsolute)
+    require(path == path.normalize())
   }
 
   def absPath(): Path = path

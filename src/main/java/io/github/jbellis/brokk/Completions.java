@@ -118,10 +118,14 @@ public class Completions {
     }
 
     public static BrokkFile maybeExternalFile(Path root, String pathStr) {
-        Path p = Path.of(pathStr).toAbsolutePath();
+        Path p = Path.of(pathStr);
+        if (!p.isAbsolute()) {
+            return new RepoFile(root, p);
+        }
         if (!p.startsWith(root)) {
             return new ExternalFile(p);
         }
+        // we have an absolute path that's part of the project
         return new RepoFile(root, root.relativize(p));
     }
 

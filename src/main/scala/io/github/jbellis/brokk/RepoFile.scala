@@ -17,6 +17,7 @@ class RepoFile(@transient private var root: Path, @transient private var relPath
   // We can't rely on these being set until after deserialization
   if (root != null && relPath != null) {
     require(root.isAbsolute)
+    require(root == root.normalize())
     require(!relPath.isAbsolute)
   }
 

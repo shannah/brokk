@@ -140,7 +140,7 @@ public class ContextManager implements IContextManager
      */
     public ContextManager(Path root)
     {
-        this.root = root.toAbsolutePath();
+        this.root = root.toAbsolutePath().normalize();
     }
 
     /**
@@ -402,11 +402,11 @@ public class ContextManager implements IContextManager
     /**
      * Show the custom file selection dialog
      */
-    private List<RepoFile> showFileSelectionDialog(String title)
+    private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles)
     {
         var dialogRef = new AtomicReference<FileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new FileSelectionDialog(io.getFrame(), project, title);
+            var dialog = new FileSelectionDialog(io.getFrame(), project, title, allowExternalFiles);
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
@@ -421,6 +421,15 @@ public class ContextManager implements IContextManager
         } finally {
             io.focusInput();
         }
+    }
+    
+    /**
+     * Cast BrokkFile to RepoFile. Will throw if ExternalFiles are present.
+     */
+    private List<RepoFile> toRepoFiles(List<BrokkFile> files) {
+        return files.stream()
+                .map(f -> (RepoFile) f)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -486,8 +495,8 @@ public class ContextManager implements IContextManager
     private void doEditAction(List<ContextFragment> selectedFragments)
     {
         if (selectedFragments.isEmpty()) {
-            // Show a file selection dialog to add new files
-            var files = showFileSelectionDialog("Add Context");
+            // Show a file selection dialog to add new files - editable files must be in the repo
+            var files = toRepoFiles(showFileSelectionDialog("Add Context", false));
             if (!files.isEmpty()) {
                 editFiles(files);
             } else {
@@ -505,8 +514,8 @@ public class ContextManager implements IContextManager
     private void doReadAction(List<ContextFragment> selectedFragments)
     {
         if (selectedFragments.isEmpty()) {
-            // Show a file selection dialog for read-only
-            var files = showFileSelectionDialog("Read Context");
+            // Show a file selection dialog for read-only - can include external files
+            var files = showFileSelectionDialog("Read Context", true);
             if (!files.isEmpty()) {
                 addReadOnlyFiles(files);
             } else {
@@ -657,7 +666,8 @@ public class ContextManager implements IContextManager
 
         if (selectedFragments.isEmpty()) {
             // Show file selection dialog when nothing is selected
-            var files = showFileSelectionDialog("Summarize Files");
+            // Only repo files can be summarized since external files aren't in the analyzer
+            var files = toRepoFiles(showFileSelectionDialog("Summarize Files", false));
             if (files.isEmpty()) {
                 io.toolOutput("No files selected for summarization");
                 return;
