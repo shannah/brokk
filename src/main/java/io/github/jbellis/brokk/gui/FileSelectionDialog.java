@@ -173,11 +173,14 @@ public class FileSelectionDialog extends JDialog {
      */
     private JTree buildFileTree() {
         DefaultMutableTreeNode rootNode;
-        
+
         if (allowExternalFiles) {
-            // For external files, start at the project directory
-            File projectDir = rootPath.toFile();
-            rootNode = new DefaultMutableTreeNode(new FileTreeNode(projectDir));
+            // For external files, show file system roots
+            rootNode = new DefaultMutableTreeNode("File System");
+            for (File root : File.listRoots()) {
+                DefaultMutableTreeNode driveNode = new DefaultMutableTreeNode(new FileTreeNode(root));
+                rootNode.add(driveNode);
+            }
         } else {
             // For repo files only, show repo hierarchy
             rootNode = new DefaultMutableTreeNode(rootPath.getFileName().toString());
@@ -210,15 +213,16 @@ public class FileSelectionDialog extends JDialog {
         tree.setRootVisible(true);
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
-        
+
         if (allowExternalFiles) {
             tree.setCellRenderer(new FileTreeCellRenderer());
             tree.setModel(new LazyLoadingTreeModel(rootNode));
-            
-            // Expand root by default and load its children
+
+            // When allowing external files, expand the tree to show the project root
             tree.expandRow(0);
-            DefaultMutableTreeNode rootTreeNode = (DefaultMutableTreeNode) tree.getModel().getRoot();
-            ((LazyLoadingTreeModel) tree.getModel()).loadChildren(rootTreeNode);
+            if (allowExternalFiles) {
+                expandTreeToProjectRoot(tree);
+            }
         }
 
         // Add double-click handler to select and confirm
@@ -229,7 +233,7 @@ public class FileSelectionDialog extends JDialog {
                     TreePath path = tree.getPathForLocation(e.getX(), e.getY());
                     if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
                         tree.setSelectionPath(path);
-                        
+
                         if (allowExternalFiles && node.getUserObject() instanceof FileTreeNode fileNode) {
                             // For external files, use absolute path
                             appendFilenameToInput(fileNode.getFile().getAbsolutePath());
@@ -411,6 +415,97 @@ public class FileSelectionDialog extends JDialog {
     /**
      * Tree model that loads directory contents on-demand when a node is expanded.
      */
+    /**
+     * Expands the tree view to show the project root path.
+     * This traverses the file system nodes to find the path to the project root.
+     */
+    private void expandTreeToProjectRoot(JTree tree) {
+        // Convert rootPath to absolute path to ensure we get the full path
+        Path absoluteRootPath = rootPath.toAbsolutePath().normalize();
+        List<String> pathSegments = new ArrayList<>();
+        
+        // Break the path into segments
+        for (Path segment : absoluteRootPath) {
+            pathSegments.add(segment.toString());
+        }
+        
+        // Start from root node
+        DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode) tree.getModel().getRoot();
+        
+        // First level are the filesystem roots
+        for (int i = 0; i < rootNode.getChildCount(); i++) {
+            DefaultMutableTreeNode driveNode = (DefaultMutableTreeNode) rootNode.getChildAt(i);
+            if (driveNode.getUserObject() instanceof FileTreeNode fileNode) {
+                File drive = fileNode.getFile();
+                // Check if this drive is part of our project path
+                if (absoluteRootPath.startsWith(drive.toPath())) {
+                    // This is our drive, expand it
+                    TreePath drivePath = new TreePath(new Object[]{rootNode, driveNode});
+                    tree.expandPath(drivePath);
+                    
+                    // Now traverse and expand each segment of the path
+                    traverseAndExpandPath(tree, driveNode, drivePath, absoluteRootPath, drive.toPath());
+                    break;
+                }
+            }
+        }
+    }
+    
+    /**
+     * Recursively traverses and expands tree nodes to reach the project root path.
+     */
+    private void traverseAndExpandPath(JTree tree, DefaultMutableTreeNode currentNode, 
+                                      TreePath currentPath, Path targetPath, Path currentAbsPath) {
+        // Load children of the current node
+        ((LazyLoadingTreeModel) tree.getModel()).loadChildren(currentNode);
+        
+        // If we've reached the target, stop
+        if (currentAbsPath.equals(targetPath)) {
+            return;
+        }
+        
+        // Get the next path segment to look for
+        Path nextSegment = null;
+        for (Path p : targetPath) {
+            Path potential = currentAbsPath.resolve(p);
+            if (potential.startsWith(currentAbsPath) && 
+                !potential.equals(currentAbsPath) && 
+                targetPath.startsWith(potential)) {
+                nextSegment = p;
+                break;
+            }
+        }
+        
+        if (nextSegment == null) {
+            // Try to get the relative next segment
+            Path relativePath = currentAbsPath.relativize(targetPath);
+            if (!relativePath.toString().isEmpty()) {
+                nextSegment = relativePath.getName(0);
+            }
+        }
+        
+        // If we found a next segment, look for it in the children
+        if (nextSegment != null) {
+            String segmentName = nextSegment.getFileName().toString();
+            
+            for (int i = 0; i < currentNode.getChildCount(); i++) {
+                DefaultMutableTreeNode childNode = (DefaultMutableTreeNode) currentNode.getChildAt(i);
+                if (childNode.getUserObject() instanceof FileTreeNode fileNode) {
+                    if (fileNode.getFile().getName().equals(segmentName)) {
+                        // Found the next segment, expand it
+                        TreePath newPath = currentPath.pathByAddingChild(childNode);
+                        tree.expandPath(newPath);
+                        
+                        // Continue traversing
+                        Path newAbsPath = currentAbsPath.resolve(segmentName);
+                        traverseAndExpandPath(tree, childNode, newPath, targetPath, newAbsPath);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     private class LazyLoadingTreeModel extends javax.swing.tree.DefaultTreeModel {
         public LazyLoadingTreeModel(DefaultMutableTreeNode root) {
             super(root);
