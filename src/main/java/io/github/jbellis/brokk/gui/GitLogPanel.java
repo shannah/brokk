@@ -232,7 +232,7 @@ public class GitLogPanel extends JPanel {
                             commitsTable.setRowSelectionInterval(row, row);
                         }
                     }
-                    // Single-commit-only items
+                    // Update menu item states based on selection
                     int[] sel = commitsTable.getSelectedRows();
                     compareWithLocalItem.setEnabled(sel.length == 1);
                     softResetItem.setEnabled(sel.length == 1);
@@ -280,6 +280,7 @@ public class GitLogPanel extends JPanel {
                 revertCommit(commitId);
             }
         });
+        
 
         commitsPanel.add(new JScrollPane(commitsTable), BorderLayout.CENTER);
 
@@ -1162,15 +1163,31 @@ public class GitLogPanel extends JPanel {
      */
     protected String formatCommitDate(String dateStr, java.time.LocalDate today) {
         try {
-            // Parse the "YYYY-MM-DD HH:MM:SS" style
-            String iso = dateStr.replace(" ", "T").replaceAll(" \\(.+\\)$", "");
-            java.time.LocalDateTime dateTime = java.time.LocalDateTime.parse(iso);
-            if (dateTime.toLocalDate().equals(today)) {
-                return String.format("%02d:%02d:%02d today",
-                                     dateTime.getHour(), dateTime.getMinute(), dateTime.getSecond());
+            // Parse the date that comes in formats like "2024-04-25 12:34:56 +0000" or "2024-04-25 12:34:56"
+            String cleanDateStr = dateStr.replaceAll("\\s+\\(.+\\)$", ""); // Remove timezone part if present
+            int spaceIndex = cleanDateStr.indexOf(' ');
+            
+            if (spaceIndex > 0) {
+                String datePart = cleanDateStr.substring(0, spaceIndex);
+                String timePart = cleanDateStr.substring(spaceIndex + 1);
+                
+                java.time.LocalDate commitDate = java.time.LocalDate.parse(datePart);
+                
+                if (commitDate.equals(today)) {
+                    // If it's today's date, just show the time with "today"
+                    return timePart.substring(0, Math.min(8, timePart.length())) + " today";
+                } else if (commitDate.equals(today.minusDays(1))) {
+                    // If it's yesterday
+                    return timePart.substring(0, Math.min(8, timePart.length())) + " yesterday";
+                } else if (commitDate.isAfter(today.minusDays(7))) {
+                    // If within the last week, show day of week
+                    return timePart.substring(0, Math.min(8, timePart.length())) + " " + 
+                           commitDate.getDayOfWeek().toString().substring(0, 3).toLowerCase();
+                }
             }
             return dateStr;
         } catch (Exception e) {
+            logger.debug("Could not parse date: {}", dateStr, e);
             return dateStr;
         }
     }
@@ -1219,6 +1236,7 @@ public class GitLogPanel extends JPanel {
     /**
      * Enables/Disables items in the local-branch context menu based on selection.
      */
+
     private void checkBranchContextMenuState(JPopupMenu menu) {
         int selectedRow = branchTable.getSelectedRow();
         boolean isLocal = (selectedRow != -1);
