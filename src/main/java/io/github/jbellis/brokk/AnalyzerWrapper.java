@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.Project.CpgRefresh;
+import java.awt.KeyboardFocusManager;
 import io.methvin.watcher.DirectoryChangeEvent;
 import io.methvin.watcher.DirectoryWatcher;
 import org.apache.logging.log4j.LogManager;
@@ -31,8 +32,10 @@ public class AnalyzerWrapper {
     private final Logger logger = LogManager.getLogger(AnalyzerWrapper.class);
 
     private static final long DEBOUNCE_DELAY_MS = 500;
+    private static final long POLL_TIMEOUT_FOCUSED_MS = 100;
+    private static final long POLL_TIMEOUT_UNFOCUSED_MS = 1000;
 
-    private AnalyzerListener listener; // can be null if no one is listening
+    private final AnalyzerListener listener; // can be null if no one is listening
     private final Path root;
     private final TaskRunner runner;
     private final BlockingQueue<DirectoryChangeEvent> eventQueue = new LinkedBlockingQueue<>();
@@ -210,7 +213,9 @@ public class AnalyzerWrapper {
         while (running) {
             try {
                 // Wait for the first event (with a timeout to let the loop exit if idle)
-                DirectoryChangeEvent firstEvent = eventQueue.poll(100, TimeUnit.MILLISECONDS);
+                // Use longer poll time if application is not in focus
+                long pollTimeout = isApplicationFocused() ? POLL_TIMEOUT_FOCUSED_MS : POLL_TIMEOUT_UNFOCUSED_MS;
+                DirectoryChangeEvent firstEvent = eventQueue.poll(pollTimeout, TimeUnit.MILLISECONDS);
                 if (firstEvent == null) {
                     if (externalRebuildRequested && !rebuildInProgress) {
                         logger.debug("External rebuild requested");
@@ -460,6 +465,15 @@ public class AnalyzerWrapper {
     public void requestRebuild() {
         externalRebuildRequested = true;
     }
+    /**
+     * Checks if any window in the application currently has focus
+     * @return true if any application window has focus, false otherwise
+     */
+    private boolean isApplicationFocused() {
+        var focusedWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+        return focusedWindow != null;
+    }
+
     private void startWatcher() {
         Thread watcherThread = new Thread(() -> beginWatching(root), "DirectoryWatcher");
         watcherThread.start();
