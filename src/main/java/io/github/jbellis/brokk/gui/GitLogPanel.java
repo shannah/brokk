@@ -70,15 +70,6 @@ public class GitLogPanel extends JPanel {
         super(new BorderLayout());
         this.chrome = chrome;
         this.contextManager = contextManager;
-
-        setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Log",
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-
         buildLogTabUI();
     }
 
