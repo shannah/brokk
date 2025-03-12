@@ -18,9 +18,15 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -153,7 +159,18 @@ public class GitLogPanel extends JPanel {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
         };
-        commitsTable = new JTable(commitsTableModel);
+        commitsTable = new JTable(commitsTableModel) {
+            // Add tooltip to show full commit message
+            @Override
+            public String getToolTipText(MouseEvent e) {
+                int row = rowAtPoint(e.getPoint());
+                int col = columnAtPoint(e.getPoint());
+                if (row >= 0 && col == 0) { // First column contains commit message
+                    return (String) getValueAt(row, col);
+                }
+                return super.getToolTipText(e);
+            }
+        };
         commitsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         commitsTable.getColumnModel().getColumn(3).setMinWidth(0);
         commitsTable.getColumnModel().getColumn(3).setMaxWidth(0);
