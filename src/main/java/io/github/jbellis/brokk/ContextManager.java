@@ -1029,9 +1029,6 @@ public class ContextManager implements IContextManager
     public List<ChatMessage> getReadOnlyMessages()
     {
         var c = currentContext();
-        if (!c.hasReadonlyFragments()) {
-            return List.of();
-        }
         var combined = Streams.concat(c.readonlyFiles(),
                                       c.virtualFragments(),
                                       Stream.of(c.getAutoContext()))
