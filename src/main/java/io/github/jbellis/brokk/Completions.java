@@ -83,16 +83,13 @@ public class Completions {
             return List.of(file);
         }
 
-        // Handle relative path
-        var repoFile = (RepoFile)file;
-        if (repoFile.exists()) {
-            return List.of(repoFile);
-        }
-
-        // Handle glob patterns
+        // Handle glob patterns [only in the last part of the path]
         if (pattern.contains("*") || pattern.contains("?")) {
-            var parent = Path.of(pattern).getParent();
-            var matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+            Path parent = file.absPath().getParent();
+            while (parent.toString().contains("*") || parent.toString().contains("?")) {
+                parent = parent.getParent();
+            }
+            var matcher = FileSystems.getDefault().getPathMatcher("glob:" + file.absPath());
             try (var stream = Files.walk(parent)) {
                 return stream
                         .filter(Files::isRegularFile)

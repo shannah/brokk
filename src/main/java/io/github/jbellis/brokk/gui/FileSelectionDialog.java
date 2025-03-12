@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.BrokkFile;
 import io.github.jbellis.brokk.Completions;
-import io.github.jbellis.brokk.ExternalFile;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.RepoFile;
@@ -52,10 +51,6 @@ public class FileSelectionDialog extends JDialog {
 
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
-
-    public FileSelectionDialog(Frame parent, Project project, String title) {
-        this(parent, project, title, false);
-    }
 
     public FileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles) {
         super(parent, title, true); // modal dialog
@@ -296,14 +291,7 @@ public class FileSelectionDialog extends JDialog {
 
             for (String filename : filenames) {
                 if (filename.isBlank()) continue;
-                
-                if (allowExternalFiles && new File(filename).isAbsolute()) {
-                    // Handle external absolute paths
-                    selectedFiles.add(new ExternalFile(Path.of(filename)));
-                } else {
-                    // Handle repo files
-                    selectedFiles.addAll(Completions.expandPath(repo, filename));
-                }
+                selectedFiles.addAll(Completions.expandPath(repo, filename));
             }
         }
         dispose();
