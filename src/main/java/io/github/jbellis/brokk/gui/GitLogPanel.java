@@ -100,7 +100,7 @@ public class GitLogPanel extends JPanel {
         // Local branches
         JPanel localBranchPanel = new JPanel(new BorderLayout());
         localBranchPanel.setBorder(BorderFactory.createTitledBorder("Local"));
-        branchTableModel = new DefaultTableModel(new Object[]{"✓", "Branch"}, 0) {
+        branchTableModel = new DefaultTableModel(new Object[]{"", "Branch"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
             @Override
@@ -546,6 +546,8 @@ public class GitLogPanel extends JPanel {
 
                     if (currentBranchRow >= 0) {
                         branchTable.setRowSelectionInterval(currentBranchRow, currentBranchRow);
+                        // Ensure active branch is visible by scrolling to it
+                        branchTable.scrollRectToVisible(branchTable.getCellRect(currentBranchRow, 0, true));
                         updateCommitsForBranch(currentBranch);
                     } else if (branchTableModel.getRowCount() > 0) {
                         branchTable.setRowSelectionInterval(0, 0);
