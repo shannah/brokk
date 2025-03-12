@@ -484,7 +484,7 @@ public class GitPanel extends JPanel {
     // ================ Stash Methods ==================
 
     public void updateStashList() {
-        contextManager.submitUserTask("Fetching stashes", () -> {
+        contextManager.submitBackgroundTask("Fetching stashes", () -> {
             try {
                 var stashes = getRepo().listStashes();
                 SwingUtilities.invokeLater(() -> {
