@@ -492,6 +492,22 @@ public class GitRepo implements Closeable, IGitRepo {
             throw new IOException("Failed to revert commit: " + e.getMessage(), e);
         }
     }
+    
+    /**
+     * Perform a soft reset to a specific commit
+     * This resets HEAD to the specified commit but keeps the changes as unstaged
+     */
+    public void softReset(String commitId) throws IOException {
+        try {
+            git.reset()
+               .setMode(org.eclipse.jgit.api.ResetCommand.ResetType.SOFT)
+               .setRef(commitId)
+               .call();
+            refresh();
+        } catch (GitAPIException e) {
+            throw new IOException("Failed to perform soft reset: " + e.getMessage(), e);
+        }
+    }
 
     /**
      * List commits

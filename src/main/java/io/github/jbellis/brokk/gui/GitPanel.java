@@ -601,10 +601,12 @@ public class GitPanel extends JPanel {
         var commitsContextMenu = new JPopupMenu();
         var addToContextItem = new JMenuItem("Add Changes to Context");
         var compareWithLocalItem = new JMenuItem("Compare with Local");
+        var softResetItem = new JMenuItem("Soft Reset to Here");
         var revertCommitItem = new JMenuItem("Revert Commit");
 
         commitsContextMenu.add(addToContextItem);
         commitsContextMenu.add(compareWithLocalItem);
+        commitsContextMenu.add(softResetItem);
         commitsContextMenu.add(revertCommitItem);
 
         commitsTable.setComponentPopupMenu(commitsContextMenu);
@@ -628,6 +630,7 @@ public class GitPanel extends JPanel {
                     // Update menu items state based on selection
                     var selectedRows = commitsTable.getSelectedRows();
                     compareWithLocalItem.setEnabled(selectedRows.length == 1);
+                    softResetItem.setEnabled(selectedRows.length == 1);
                 });
             }
 
@@ -657,6 +660,18 @@ public class GitPanel extends JPanel {
                         ? commitMessage.substring(0, commitMessage.indexOf('\n'))
                         : commitMessage;
                 compareCommitWithLocal(commitId, firstLine);
+            }
+        });
+
+        softResetItem.addActionListener(e -> {
+            int selectedRow = commitsTable.getSelectedRow();
+            if (selectedRow != -1) {
+                var commitId = (String) commitsTableModel.getValueAt(selectedRow, 3);
+                var commitMessage = (String) commitsTableModel.getValueAt(selectedRow, 0);
+                var firstLine = commitMessage.contains("\n")
+                        ? commitMessage.substring(0, commitMessage.indexOf('\n'))
+                        : commitMessage;
+                softResetToCommit(commitId, firstLine);
             }
         });
 
@@ -1405,6 +1420,43 @@ public class GitPanel extends JPanel {
     }
 
     /**
+     * Perform a soft reset to a specific commit
+     * This keeps the changes but unstages them, ready for a new commit
+     */
+    private void softResetToCommit(String commitId, String commitMessage) {
+        contextManager.submitUserTask("Soft resetting to commit: " + commitId, () -> {
+            // Get current HEAD commit ID before reset
+            final String oldHeadId = getOldHeadId();
+            try {
+                getRepo().softReset(commitId);
+
+                SwingUtilities.invokeLater(() -> {
+                    var oldHeadShort = oldHeadId.substring(0, Math.min(oldHeadId.length(), 7));
+                    var newHeadShort = commitId.substring(0, Math.min(commitId.length(), 7));
+                    chrome.shellOutput("Soft reset from " + oldHeadShort + " to " + newHeadShort + ": " + commitMessage);
+                    
+                    // Refresh the uncommitted files table
+                    updateSuggestCommitButton();
+                    
+                    // Refresh the current branch's commits
+                    var branchRow = branchTable.getSelectedRow();
+                    if (branchRow != -1) {
+                        var branchDisplay = (String) branchTableModel.getValueAt(branchRow, 1);
+                        var branchName = getBranchNameFromDisplay(branchDisplay);
+                        updateCommitsForBranch(branchName);
+                    }
+                });
+            } catch (IOException e) {
+                logger.error("Error performing soft reset to commit: {}", commitId, e);
+                SwingUtilities.invokeLater(() -> {
+                    chrome.toolErrorRaw("Error performing soft reset: " + e.getMessage());
+                });
+            }
+            return null;
+        });
+    }
+
+    /**
      * Revert a commit
      */
     private void revertCommit(String commitId) {
@@ -1886,6 +1938,17 @@ public class GitPanel extends JPanel {
             }
             return null;
         });
+    }
+
+    /**
+     * Helper method to get the current HEAD commit ID
+     */
+    private String getOldHeadId() {
+        try {
+            return getRepo().getCurrentCommitId();
+        } catch (IOException e) {
+            return "unknown";
+        }
     }
 
     /**
