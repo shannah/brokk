@@ -434,22 +434,6 @@ public class AnalyzerWrapper {
     }
 
     /**
-     * Get the analyzer without showing a spinner UI.
-     * For use in background operations.
-     */
-    public Analyzer getForBackground() {
-        return get(false);
-    }
-    
-    public void requestRebuild() {
-        externalRebuildRequested = true;
-    }
-    private void startWatcher() {
-        Thread watcherThread = new Thread(() -> beginWatching(root), "DirectoryWatcher");
-        watcherThread.start();
-    }
-
-    /**
      * @return null if analyzer is not ready yet
      */
     public Analyzer getNonBlocking() {
@@ -465,6 +449,14 @@ public class AnalyzerWrapper {
         } catch (ExecutionException e) {
             throw new RuntimeException("Failed to create analyzer", e);
         }
+    }
+
+    public void requestRebuild() {
+        externalRebuildRequested = true;
+    }
+    private void startWatcher() {
+        Thread watcherThread = new Thread(() -> beginWatching(root), "DirectoryWatcher");
+        watcherThread.start();
     }
 
     public record CodeWithSource(String code, Set<CodeUnit> sources) {
