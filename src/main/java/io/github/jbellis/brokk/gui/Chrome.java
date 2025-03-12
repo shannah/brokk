@@ -1428,16 +1428,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 contextPanel.updateFilesDescriptionLabel(sources, analyzer);
             } else {
                 editReferencesButton.setEnabled(false);
-                contextPanel.updateFilesDescriptionLabel(Set.of(), analyzer);
+                contextPanel.updateFilesDescriptionLabel(Set.of(), null);
             }
         });
-    }
-    
-    /**
-     * Updates the description label with file names
-     */
-    public void updateFilesDescriptionLabel(Set<CodeUnit> sources, Analyzer analyzer) {
-        contextPanel.updateFilesDescriptionLabel(sources, analyzer);
     }
 
     public Context getSelectedContext() {

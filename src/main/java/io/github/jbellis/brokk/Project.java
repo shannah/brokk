@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 public class Project implements IProject {
@@ -36,7 +35,7 @@ public class Project implements IProject {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
 
-    public Project(Path root, AnalyzerWrapper.TaskRunner runner) {
+    public Project(Path root, AnalyzerWrapper.TaskRunner runner, AnalyzerListener analyzerListener) {
         this.repo = new GitRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
@@ -67,7 +66,7 @@ public class Project implements IProject {
         }
 
         // Create the analyzer wrapper
-        this.analyzerWrapper = new AnalyzerWrapper(this, runner);
+        this.analyzerWrapper = new AnalyzerWrapper(this, runner, analyzerListener);
 
         // Set defaults for workspace properties if missing
         if (workspaceProps.isEmpty()) {
@@ -528,13 +527,6 @@ public List<String> addToTextHistory(String item, int maxItems) {
     @Override
     public IAnalyzer getAnalyzerNonBlocking() {
         return analyzerWrapper.getNonBlocking();
-    }
-    
-    /**
-     * Set a listener for analyzer events
-     */
-    public void setAnalyzerListener(AnalyzerListener listener) {
-        analyzerWrapper.setListener(listener);
     }
 
     private static final Path RECENT_PROJECTS_PATH = Path.of(System.getProperty("user.home"),

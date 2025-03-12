@@ -472,6 +472,7 @@ public interface ContextFragment extends Serializable {
         private static final long serialVersionUID = 1L;
         public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(List.of("Enabled, but no references found"), Set.of(), "")));
         public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(List.of("Disabled"), Set.of(), "")));
+        public static final AutoContext UNAVAILABLE  = new AutoContext(List.of(new SkeletonFragment(List.of("Unavailable"), Set.of(), "")));
 
         private final List<SkeletonFragment> skeletons;
 

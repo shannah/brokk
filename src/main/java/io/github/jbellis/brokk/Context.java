@@ -306,6 +306,11 @@ public class Context implements Serializable {
             return AutoContext.DISABLED;
         }
 
+        var analyzer = project.getAnalyzerNonBlocking();
+        if (analyzer == null) {
+            return AutoContext.UNAVAILABLE;
+        }
+
         // Collect ineligible classnames from fragments not eligible for auto-context
         var ineligibleSources = Streams.concat(editableFiles.stream(), readonlyFiles.stream(), virtualFragments.stream())
                 .filter(f -> !f.isEligibleForAutoContext())
@@ -331,7 +336,7 @@ public class Context implements Serializable {
             return AutoContext.EMPTY;
         }
 
-        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(project.getAnalyzer(), weightedSeeds);
+        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(analyzer, weightedSeeds);
 
         // build skeleton lines
         var skeletons = new ArrayList<SkeletonFragment>();
@@ -341,7 +346,7 @@ public class Context implements Serializable {
                     || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(fqName.substring(0, fqName.indexOf('$'))))));
 
             if (eligible) {
-                var opt = project.getAnalyzer().getSkeleton(fqName);
+                var opt = analyzer.getSkeleton(fqName);
                 if (opt.isDefined()) {
                     var shortName = fqName.substring(fqName.lastIndexOf('.') + 1);
                     skeletons.add(new SkeletonFragment(List.of(shortName), Set.of(CodeUnit.cls(fqName)), opt.get()));
@@ -426,7 +431,7 @@ public class Context implements Serializable {
     /**
      * Produces a new Context object with a fresh AutoContext if enabled.
      */
-    private Context refresh() {
+    public Context refresh() {
         AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
         return new Context(project, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), parsedOutput, action);
     }

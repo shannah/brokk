@@ -128,12 +128,9 @@ public class ContextManager implements IContextManager
 
     // Keep contexts for undo/redo
     private static final int MAX_UNDO_DEPTH = 100;
-    // Package-private to allow Chrome to access for context history display
+    // access to contextHistory must be synchronized since multiple threads call those methods
     final List<Context> contextHistory = new ArrayList<>();
     private final List<Context> redoHistory = new ArrayList<>();
-
-    // Possibly store an inferred buildCommand
-    private Future<BuildCommand> buildCommand;
 
     /**
      * Minimal constructor called from Brokk
@@ -150,10 +147,8 @@ public class ContextManager implements IContextManager
     {
         this.io = chrome;
         this.coder = coder;
-        this.project = new Project(root, this::submitBackgroundTask);
-
         // Set up the listener for analyzer events
-        project.setAnalyzerListener(new AnalyzerListener() {
+        var analyzerListener = new AnalyzerListener() {
             @Override
             public void onBlocked() {
                 SwingUtilities.invokeLater(() -> io.toolOutput("Analyzer is refreshing"));
@@ -163,7 +158,22 @@ public class ContextManager implements IContextManager
             public void onFirstBuild(String msg) {
                 SwingUtilities.invokeLater(() -> io.shellOutput(msg));
             }
-        });
+
+            @Override
+            public void onBuildComplete() {
+                synchronized (ContextManager.this) {
+                    for (int i = 0; i < contextHistory.size(); i++) {
+                        var old = contextHistory.get(i);
+                        if (old.autoContext == ContextFragment.AutoContext.UNAVAILABLE) {
+                            contextHistory.set(i, old.refresh());
+                        }
+                    }
+                }
+                chrome.updateContextTable();
+                chrome.updateContextHistoryTable();
+            }
+        };
+        this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
 
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
@@ -218,7 +228,7 @@ public class ContextManager implements IContextManager
     /**
      * Return the current context
      */
-    public Context currentContext()
+    public synchronized Context currentContext()
     {
         return contextHistory.isEmpty() ? null : contextHistory.getLast();
     }
@@ -756,25 +766,27 @@ public class ContextManager implements IContextManager
     {
         int finalStepsToUndo = Math.min(stepsToUndo, contextHistory.size() - 1);
         return contextActionExecutor.submit(() -> {
-            try {
-                if (contextHistory.size() <= 1) {
-                    io.toolErrorRaw("no undo state available");
-                    return;
-                }
+            synchronized (ContextManager.this) {
+                try {
+                    if (contextHistory.size() <= 1) {
+                        io.toolErrorRaw("no undo state available");
+                        return;
+                    }
 
-                for (int i = 0; i < finalStepsToUndo; i++) {
-                    var popped = contextHistory.removeLast();
-                    var redoContext = undoAndInvertChanges(popped);
-                    redoHistory.add(redoContext);
-                }
+                    for (int i = 0; i < finalStepsToUndo; i++) {
+                        var popped = contextHistory.removeLast();
+                        var redoContext = undoAndInvertChanges(popped);
+                        redoHistory.add(redoContext);
+                    }
 
-                io.setContext(currentContext());
-                io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
-            } catch (CancellationException cex) {
-                io.toolOutput("Undo canceled.");
-            } finally {
-                io.enableContextActionButtons();
-                io.enableUserActionButtons();
+                    io.setContext(currentContext());
+                    io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
+                } catch (CancellationException cex) {
+                    io.toolOutput("Undo canceled.");
+                } finally {
+                    io.enableContextActionButtons();
+                    io.enableUserActionButtons();
+                }
             }
         });
     }
@@ -783,21 +795,23 @@ public class ContextManager implements IContextManager
     public Future<?> redoContextAsync()
     {
         return contextActionExecutor.submit(() -> {
-            try {
-                if (redoHistory.isEmpty()) {
-                    io.toolErrorRaw("no redo state available");
-                    return;
+            synchronized (ContextManager.this) {
+                try {
+                    if (redoHistory.isEmpty()) {
+                        io.toolErrorRaw("no redo state available");
+                        return;
+                    }
+                    var popped = redoHistory.removeLast();
+                    var undoContext = undoAndInvertChanges(popped);
+                    contextHistory.add(undoContext);
+                    io.setContext(currentContext());
+                    io.toolOutput("Redo!");
+                } catch (CancellationException cex) {
+                    io.toolOutput("Redo canceled.");
+                } finally {
+                    io.enableContextActionButtons();
+                    io.enableUserActionButtons();
                 }
-                var popped = redoHistory.removeLast();
-                var undoContext = undoAndInvertChanges(popped);
-                contextHistory.add(undoContext);
-                io.setContext(currentContext());
-                io.toolOutput("Redo!");
-            } catch (CancellationException cex) {
-                io.toolOutput("Redo canceled.");
-            } finally {
-                io.enableContextActionButtons();
-                io.enableUserActionButtons();
             }
         });
     }
@@ -1106,7 +1120,7 @@ public class ContextManager implements IContextManager
     /**
      * push context changes with a function that modifies the current context
      */
-    private void pushContext(Function<Context, Context> contextGenerator)
+    private synchronized void pushContext(Function<Context, Context> contextGenerator)
     {
         // Check if there's a history selection that's not the current context
         int selectedIndex = getSelectedHistoryIndex();
@@ -1275,8 +1289,9 @@ public class ContextManager implements IContextManager
     private void ensureBuildCommand(Coder coder)
     {
         var loadedCommand = project.getBuildCommand();
+        // Possibly store an inferred buildCommand
         if (loadedCommand != null) {
-            buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
+            var buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
             // TODO show this to user somehow
         } else {
             // do background inference
@@ -1298,7 +1313,7 @@ public class ContextManager implements IContextManager
                     )
             );
 
-            buildCommand = submitBackgroundTask("Inferring build command", () -> {
+            var buildCommand = submitBackgroundTask("Inferring build command", () -> {
                 String response;
                 try {
                     response = coder.sendMessage(messages);
@@ -1336,7 +1351,7 @@ public class ContextManager implements IContextManager
         submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.toolOutput("Generating project style guide...");
-                var analyzer = project.getAnalyzerNonBlocking();
+                var analyzer = project.getAnalyzer();
                 var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
 
                 var codeForLLM = new StringBuilder();
@@ -1400,8 +1415,8 @@ public class ContextManager implements IContextManager
         pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 
-    public List<Context> getContextHistory() {
-        return contextHistory;
+    public synchronized List<Context> getContextHistory() {
+        return List.copyOf(contextHistory);
     }
 
     @Override

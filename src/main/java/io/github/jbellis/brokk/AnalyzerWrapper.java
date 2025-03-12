@@ -60,22 +60,33 @@ public class AnalyzerWrapper {
     }
 
     /**
+     * Helper method to schedule a task that waits for the future to complete
+     * and then notifies the listener.
+     */
+    private void notifyOnCompletion(Future<Analyzer> future) {
+        runner.submit("Updating with new Code Intelligence", () -> {
+            try {
+                future.get();
+                listener.onBuildComplete();
+            } catch (Exception e) {
+                logger.error("Error waiting for analyzer build", e);
+            }
+            return null;
+        });
+    }
+
+    /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
-    public AnalyzerWrapper(Project project, TaskRunner runner) {
+    public AnalyzerWrapper(Project project, TaskRunner runner, AnalyzerListener listener) {
         this.project = project;
         this.root = project.getRoot();
         this.runner = runner;
+        this.listener = listener;
 
         // build the initial Analyzer
         future = runner.submit("Initializing code intelligence", this::loadOrCreateAnalyzer);
-    }
-    
-    /**
-     * Set a listener to receive analyzer events
-     */
-    public void setListener(AnalyzerListener listener) {
-        this.listener = listener;
+        notifyOnCompletion(future);
     }
 
     @NotNull
@@ -293,9 +304,7 @@ public class AnalyzerWrapper {
                 (Code intelligence will still refresh once automatically at startup.)
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                if (listener != null) {
-                    listener.onFirstBuild(msg);
-                }
+                listener.onFirstBuild(msg);
                 logger.info(msg);
             } else {
                 project.setCpgRefresh(CpgRefresh.AUTO);
@@ -303,9 +312,7 @@ public class AnalyzerWrapper {
                 CPG creation was fast (%,d ms); code intelligence will refresh automatically when changes are made to tracked files.
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                if (listener != null) {
-                    listener.onFirstBuild(msg);
-                }
+                listener.onFirstBuild(msg);
                 logger.info(msg);
                 startWatcher();
             }
@@ -396,6 +403,7 @@ public class AnalyzerWrapper {
                 }
             }
         });
+        notifyOnCompletion(future);
     }
 
     /**
@@ -411,9 +419,7 @@ public class AnalyzerWrapper {
                 Exception e = new Exception("Stack trace");
                 logger.debug("Blocking on analyzer creation", e);
             }
-            if (listener != null) {
-                listener.onBlocked();
-            }
+            listener.onBlocked();
         }
         try {
             return future.get();
