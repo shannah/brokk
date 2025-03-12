@@ -175,12 +175,9 @@ public class FileSelectionDialog extends JDialog {
         DefaultMutableTreeNode rootNode;
         
         if (allowExternalFiles) {
-            // For external files, show file system roots
-            rootNode = new DefaultMutableTreeNode("File System");
-            for (File root : File.listRoots()) {
-                DefaultMutableTreeNode driveNode = new DefaultMutableTreeNode(new FileTreeNode(root));
-                rootNode.add(driveNode);
-            }
+            // For external files, start at the project directory
+            File projectDir = rootPath.toFile();
+            rootNode = new DefaultMutableTreeNode(new FileTreeNode(projectDir));
         } else {
             // For repo files only, show repo hierarchy
             rootNode = new DefaultMutableTreeNode(rootPath.getFileName().toString());
@@ -218,8 +215,10 @@ public class FileSelectionDialog extends JDialog {
             tree.setCellRenderer(new FileTreeCellRenderer());
             tree.setModel(new LazyLoadingTreeModel(rootNode));
             
-            // Expand root by default
+            // Expand root by default and load its children
             tree.expandRow(0);
+            DefaultMutableTreeNode rootTreeNode = (DefaultMutableTreeNode) tree.getModel().getRoot();
+            ((LazyLoadingTreeModel) tree.getModel()).loadChildren(rootTreeNode);
         }
 
         // Add double-click handler to select and confirm
