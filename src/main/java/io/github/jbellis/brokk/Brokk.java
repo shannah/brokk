@@ -1,6 +1,8 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.Chrome;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import java.awt.*;
@@ -13,16 +15,20 @@ import java.util.Map;
 import java.util.Properties;
 
 public class Brokk {
+    private static final Logger logger = LogManager.getLogger(Brokk.class);
+
     public static final String ICON_RESOURCE = "/brokk-icon.png";
-    private static Chrome io;               // Initially null
-    private static ContextManager contextManager;  // Initially null
-    private static Coder coder;                    // Initially null
+    private static Chrome io;
+    private static ContextManager contextManager;
+    private static Coder coder;
 
     /**
      * Main entry point: Start up Brokk with no project loaded,
      * then check if there's a "most recent" project to open.
      */
     public static void main(String[] args) {
+        logger.debug("Brokk starting");
+
         // 1) Load your icon
         var iconUrl = Brokk.class.getResource(ICON_RESOURCE);
         if (iconUrl != null) {
