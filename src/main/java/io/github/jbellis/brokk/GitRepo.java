@@ -1,13 +1,9 @@
 package io.github.jbellis.brokk;
 
-import io.github.jbellis.brokk.gui.GitPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.RebaseCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.errors.IllegalTodoFileModification;
-import org.eclipse.jgit.lib.RebaseTodoLine;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
@@ -20,10 +16,8 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -545,7 +539,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * A record to hold commit details
      */
-    public record CommitInfo(String id, String message, String author, String date) {}
+    public record CommitInfo(String id, String message, String author, java.util.Date date) {}
 
     /**
      * List commits with detailed information for a specific branch
@@ -565,7 +559,7 @@ public class GitRepo implements Closeable, IGitRepo {
                 var id = commit.getName();
                 var message = commit.getShortMessage();
                 var author = commit.getAuthorIdent().getName();
-                var date = commit.getAuthorIdent().getWhen().toString();
+                var date = commit.getAuthorIdent().getWhen();
 
                 commits.add(new CommitInfo(id, message, author, date));
             }
@@ -725,7 +719,7 @@ public class GitRepo implements Closeable, IGitRepo {
                     }
                 }
                 var author = stash.getAuthorIdent().getName();
-                var date = stash.getAuthorIdent().getWhen().toString();
+                var date = stash.getAuthorIdent().getWhen();
 
                 stashes.add(new StashInfo(id, message, author, date, index));
                 index++;
@@ -802,7 +796,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * A record to hold stash details
      */
-    public record StashInfo(String id, String message, String author, String date, int index) {}
+    public record StashInfo(String id, String message, String author, java.util.Date date, int index) {}
 
     /**
      * Search commits
@@ -824,7 +818,7 @@ public class GitRepo implements Closeable, IGitRepo {
                     var id = commit.getName();
                     var message = commit.getShortMessage();
                     var author = commit.getAuthorIdent().getName();
-                    var date = commit.getAuthorIdent().getWhen().toString();
+                    var date = commit.getAuthorIdent().getWhen();
                     commits.add(new CommitInfo(id, message, author, date));
                 }
             }

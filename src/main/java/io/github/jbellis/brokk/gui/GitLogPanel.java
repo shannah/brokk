@@ -22,6 +22,7 @@ import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1161,34 +1162,32 @@ public class GitLogPanel extends JPanel {
     /**
      * Format commit date to show e.g. "HH:MM:SS today" if it is today's date.
      */
-    protected String formatCommitDate(String dateStr, java.time.LocalDate today) {
+    protected String formatCommitDate(Date date, java.time.LocalDate today) {
         try {
-            // Parse the date that comes in formats like "2024-04-25 12:34:56 +0000" or "2024-04-25 12:34:56"
-            String cleanDateStr = dateStr.replaceAll("\\s+\\(.+\\)$", ""); // Remove timezone part if present
-            int spaceIndex = cleanDateStr.indexOf(' ');
+            java.time.LocalDate commitDate = date.toInstant()
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate();
             
-            if (spaceIndex > 0) {
-                String datePart = cleanDateStr.substring(0, spaceIndex);
-                String timePart = cleanDateStr.substring(spaceIndex + 1);
-                
-                java.time.LocalDate commitDate = java.time.LocalDate.parse(datePart);
-                
-                if (commitDate.equals(today)) {
-                    // If it's today's date, just show the time with "today"
-                    return timePart.substring(0, Math.min(8, timePart.length())) + " today";
-                } else if (commitDate.equals(today.minusDays(1))) {
-                    // If it's yesterday
-                    return timePart.substring(0, Math.min(8, timePart.length())) + " yesterday";
-                } else if (commitDate.isAfter(today.minusDays(7))) {
-                    // If within the last week, show day of week
-                    return timePart.substring(0, Math.min(8, timePart.length())) + " " + 
-                           commitDate.getDayOfWeek().toString().substring(0, 3).toLowerCase();
-                }
+            String timeStr = new java.text.SimpleDateFormat("HH:mm:ss").format(date);
+            
+            if (commitDate.equals(today)) {
+                // If it's today's date, just show the time with "today"
+                return "Today " + timeStr;
+            } else if (commitDate.equals(today.minusDays(1))) {
+                // If it's yesterday
+                return "Yesterday " + timeStr;
+            } else if (commitDate.isAfter(today.minusDays(7))) {
+                // If within the last week, show day of week
+                String dayName = commitDate.getDayOfWeek().toString();
+                dayName = dayName.substring(0, 1).toUpperCase() + dayName.substring(1).toLowerCase();
+                return dayName + " " + timeStr;
             }
-            return dateStr;
+            
+            // Otherwise, show the standard date format
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
         } catch (Exception e) {
-            logger.debug("Could not parse date: {}", dateStr, e);
-            return dateStr;
+            logger.debug("Could not format date: {}", date, e);
+            return date.toString();
         }
     }
 
