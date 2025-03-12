@@ -137,26 +137,35 @@ public class ContextPanel extends JPanel {
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(230);
         contextTable.getColumnModel().getColumn(FILES_REFERENCED_COLUMN).setPreferredWidth(250);
 
-        // Add tooltip for files referenced column
+        // Add tooltip for files referenced column and description column
         contextTable.addMouseMotionListener(new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
                 int row = contextTable.rowAtPoint(e.getPoint());
                 int col = contextTable.columnAtPoint(e.getPoint());
 
-                if (row >= 0 && col == FILES_REFERENCED_COLUMN) {
-                    var value = contextTable.getValueAt(row, col);
-                    if (value != null && !value.toString().isEmpty()) {
-                        // Format files as a multiline list by replacing commas with newlines
-                        String formattedTooltip = "<html>" +
-                            value.toString().replace(", ", "<br>") +
-                            "</html>";
-                        contextTable.setToolTipText(formattedTooltip);
-                        return;
+                if (row >= 0) {
+                    if (col == FILES_REFERENCED_COLUMN) {
+                        var value = contextTable.getValueAt(row, col);
+                        if (value != null && !value.toString().isEmpty()) {
+                            // Format files as a multiline list by replacing commas with newlines
+                            String formattedTooltip = "<html>" +
+                                value.toString().replace(", ", "<br>") +
+                                "</html>";
+                            contextTable.setToolTipText(formattedTooltip);
+                            return;
+                        }
+                    } else if (col == 1) { // Description column
+                        var value = contextTable.getValueAt(row, col);
+                        if (value != null && !value.toString().isEmpty()) {
+                            // Show the full description as tooltip
+                            contextTable.setToolTipText(value.toString());
+                            return;
+                        }
                     }
                 }
 
-                // Clear tooltip when not over files column
+                // Clear tooltip when not over tooltip-enabled columns
                 contextTable.setToolTipText(null);
             }
         });
