@@ -467,31 +467,24 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class AutoContext implements ContextFragment {
+    record AutoContext(SkeletonFragment fragment) implements ContextFragment {
         private static final long serialVersionUID = 2L;
-        public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(Map.of(CodeUnit.cls("Enabled, but no references found"), ""))));
-        public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(Map.of(CodeUnit.cls("Disabled"), ""))));
-        public static final AutoContext UNAVAILABLE  = new AutoContext(List.of(new SkeletonFragment(Map.of(CodeUnit.cls("Unavailable"), ""))));
+        public static final AutoContext EMPTY = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Enabled, but no references found"), "")));
+        public static final AutoContext DISABLED = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Disabled"), "")));
+        public static final AutoContext UNAVAILABLE = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Unavailable"), "")));
 
-        private final List<SkeletonFragment> skeletons;
-
-        public AutoContext(List<SkeletonFragment> skeletons) {
-            assert skeletons != null;
-            this.skeletons = skeletons;
-        }
-
-        public List<SkeletonFragment> getSkeletons() {
-            return skeletons;
+        public AutoContext {
+            assert fragment != null;
         }
 
         @Override
         public String text() {
-            return String.join("\n\n", skeletons.stream().map(SkeletonFragment::text).toList());
+            return fragment.text();
         }
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return skeletons.stream().flatMap(s -> s.skeletons.keySet().stream()).collect(java.util.stream.Collectors.toSet());
+            return fragment.sources(analyzer, repo);
         }
 
         /**
@@ -499,18 +492,16 @@ public interface ContextFragment extends Serializable {
          */
         @Override
         public String description() {
-            return "[Auto] " + String.join(", ", skeletons.stream()
-                                                    .flatMap(s -> s.skeletons.keySet().stream()
-                                                                .map(CodeUnit::name))
-                                                    .toList());
+            return "[Auto] " + fragment.skeletons.keySet().stream()
+                    .map(CodeUnit::name)
+                    .collect(java.util.stream.Collectors.joining(", "));
         }
 
         @Override
         public String shortDescription() {
-            return "Autosummary of " + String.join(", ", skeletons.stream()
-                                                          .flatMap(s -> s.skeletons.keySet().stream()
-                                                                      .map(CodeUnit::name))
-                                                          .toList());
+            return "Autosummary of " + fragment.skeletons.keySet().stream()
+                    .map(CodeUnit::name)
+                    .collect(java.util.stream.Collectors.joining(", "));
         }
 
         @Override
@@ -520,14 +511,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String format() throws IOException {
-            String st = "";
-            for (SkeletonFragment s : skeletons) {
-                if (!st.isEmpty()) {
-                    st += "\n";
-                }
-                st += s.format();
-            }
-            return st;
+            return fragment.format();
         }
 
         @Override

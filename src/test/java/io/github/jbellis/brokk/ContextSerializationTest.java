@@ -175,7 +175,7 @@ public class ContextSerializationTest {
         assertEquals(6, deserialized.virtualFragments.size());
         
         // Verify fragment types
-        List<Class<?>> fragmentTypes = deserialized.virtualFragments.stream()
+        var fragmentTypes = deserialized.virtualFragments.stream()
             .map(Object::getClass)
             .toList();
         

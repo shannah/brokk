@@ -359,9 +359,9 @@ public class Context implements Serializable {
             return AutoContext.EMPTY;
         }
         
-        var skeletons = List.of(new SkeletonFragment(skeletonMap));
+        var skeleton = new SkeletonFragment(skeletonMap);
 
-        return new AutoContext(skeletons);
+        return new AutoContext(skeleton);
     }
 
     // ---------------------------------------------------------
