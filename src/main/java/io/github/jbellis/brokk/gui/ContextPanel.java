@@ -18,9 +18,8 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ContextPanel extends JPanel {
@@ -31,7 +30,7 @@ public class ContextPanel extends JPanel {
     // Parent reference
     private final Chrome chrome;
     private final ContextManager contextManager;
-    
+
     // Add reference to GitPanel through Chrome
     private GitPanel getGitPanel() {
         return chrome.getGitPanel();
@@ -57,7 +56,7 @@ public class ContextPanel extends JPanel {
         super(new BorderLayout());
         this.chrome = chrome;
         this.contextManager = contextManager;
-        
+
         setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
                 "Context",
@@ -65,10 +64,10 @@ public class ContextPanel extends JPanel {
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        
+
         // Build the panel components
         buildContextPanel();
-        
+
         // Initialize with empty summary
         ((JLabel)locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
     }
@@ -89,7 +88,7 @@ public class ContextPanel extends JPanel {
                 return switch (columnIndex) {
                     case 0 -> Integer.class;
                     case 1 -> String.class;
-                    case 2 -> String.class;
+                    case 2 -> List.class;
                     case 3 -> ContextFragment.class;
                     default -> Object.class;
                 };
@@ -115,8 +114,12 @@ public class ContextPanel extends JPanel {
             }
         });
 
-        // Use default renderer for Files Referenced column - files are joined with commas
-        contextTable.setRowHeight(18);
+        // Set up file references renderer for the Files Referenced column (show nice badges for each files)
+        FileReferencesTableCellRenderer fileRenderer = new FileReferencesTableCellRenderer();
+        contextTable.getColumnModel().getColumn(FILES_REFERENCED_COLUMN).setCellRenderer(fileRenderer);
+
+        // Increase row height to accommodate the file badges
+        contextTable.setRowHeight(23);
 
         // Set up table header with custom column headers
         var tableHeader = contextTable.getTableHeader();
@@ -146,14 +149,14 @@ public class ContextPanel extends JPanel {
 
                 if (row >= 0) {
                     if (col == FILES_REFERENCED_COLUMN) {
-                        var value = contextTable.getValueAt(row, col);
-                        if (value != null && !value.toString().isEmpty()) {
-                            // Format files as a multiline list by replacing commas with newlines
-                            String formattedTooltip = "<html>" +
+                    var value = contextTable.getValueAt(row, col);
+                    if (value != null && !value.toString().isEmpty()) {
+                        // Format files as a multiline list by replacing commas with newlines
+                        String formattedTooltip = "<html>" +
                                 value.toString().replace(", ", "<br>") +
                                 "</html>";
-                            contextTable.setToolTipText(formattedTooltip);
-                            return;
+                        contextTable.setToolTipText(formattedTooltip);
+                        return;
                         }
                     } else if (col == 1) { // Description column
                         var value = contextTable.getValueAt(row, col);
@@ -199,12 +202,13 @@ public class ContextPanel extends JPanel {
             }
         });
         contextMenu.add(viewHistoryItem);
-        
+
         // Configure the popup menu to only show for repo files
         contextTable.setComponentPopupMenu(contextMenu);
         contextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
             @Override
             public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                // Defer until popup layout calculations are complete
                 SwingUtilities.invokeLater(() -> {
                     Point point = MouseInfo.getPointerInfo().getLocation();
                     SwingUtilities.convertPointFromScreen(point, contextTable);
@@ -214,15 +218,34 @@ public class ContextPanel extends JPanel {
                         var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
                         // Only enable menu for repo files
                         viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+
+                        // Remove any existing References menu before adding a new one
+                        FileReferenceMenuProvider.removeReferencedFilesMenu(contextMenu);
+                        
+                        // Get file references and update the menu
+                        var fileRefs = (List<FileReferenceData>) contextTable.getModel().getValueAt(row, FILES_REFERENCED_COLUMN);
+                        boolean updated = FileReferenceMenuProvider.updateContextMenu(contextMenu, fileRefs, chrome);
+                        // Force popup to recalculate its size if we added items
+                        if (updated) {
+                            contextMenu.pack();
+                        }
                     } else {
                         viewHistoryItem.setEnabled(false);
                     }
                 });
             }
+            
             @Override
-            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
+                // Clean up the menu when it's closed
+                FileReferenceMenuProvider.removeReferencedFilesMenu(contextMenu);
+            }
+            
             @Override
-            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
+                // Also clean up on cancel
+                FileReferenceMenuProvider.removeReferencedFilesMenu(contextMenu);
+            }
         });
         // Set selection mode to allow multiple selection
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
@@ -250,8 +273,8 @@ public class ContextPanel extends JPanel {
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
         JScrollPane tableScrollPane = new JScrollPane(contextTable,
-                                                      JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                                                      JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         // Set a preferred size to maintain height even when empty (almost works)
         tableScrollPane.setPreferredSize(new Dimension(600, 150));
         tablePanel.add(tableScrollPane, BorderLayout.CENTER);
@@ -375,7 +398,7 @@ public class ContextPanel extends JPanel {
 
         return buttonsPanel;
     }
-    
+
     /**
      * Check if any items are selected
      */
@@ -487,23 +510,28 @@ public class ContextPanel extends JPanel {
                 desc = "✏️ " + desc;  // Add pencil icon to editable files
             }
 
-            String referencedFiles = "";
-            // Get referenced files for non-RepoPathFragment instances
+            // Build file references as FileReferenceData objects instead of a string
+            List<FileReferenceData> fileReferences = new ArrayList<>();
             if (analyzer != null && !(frag instanceof ContextFragment.RepoPathFragment)) {
-                Set<CodeUnit> sources = frag.sources(analyzer, contextManager.getProject().getRepo());
-                if (!sources.isEmpty()) {
-                    referencedFiles = sources.stream()
-                        .map(analyzer::pathOf)
-                        .filter(Option::isDefined)
-                        .map(Option::get)
-                        .map(RepoFile::getFileName)
+                fileReferences = frag.sources(analyzer, contextManager.getProject().getRepo())
+                        .stream()
+                        .map(source -> {
+                            var pathOpt = analyzer.pathOf(source);
+                            return pathOpt.isDefined() 
+                                ? new FileReferenceData(
+                                    pathOpt.get().getFileName(),
+                                    pathOpt.get().toString(),
+                                    pathOpt.get(),
+                                    source)
+                                : null;
+                        })
+                        .filter(Objects::nonNull)
                         .distinct()
-                        .sorted()
-                        .collect(Collectors.joining(", "));
-                }
+                        .sorted(Comparator.comparing(FileReferenceData::getFileName))
+                        .collect(Collectors.toList());
             }
 
-            tableModel.addRow(new Object[]{loc, desc, referencedFiles, frag});
+            tableModel.addRow(new Object[]{loc, desc, fileReferences, frag});
         }
 
         var approxTokens = io.github.jbellis.brokk.Models.getApproximateTokens(fullText);
@@ -539,7 +567,7 @@ public class ContextPanel extends JPanel {
             populateContextTable(contextManager.currentContext());
         });
     }
-    
+
     /**
      * Updates the description label with file names
      */
@@ -547,7 +575,7 @@ public class ContextPanel extends JPanel {
         if (chrome.captureDescriptionArea == null) {
             return;
         }
-        
+
         if (sources.isEmpty()) {
             chrome.captureDescriptionArea.setText("Files referenced: None");
             return;
@@ -559,11 +587,11 @@ public class ContextPanel extends JPanel {
         }
 
         Set<String> fileNames = sources.stream()
-            .map(analyzer::pathOf)
-            .filter(Option::isDefined)
-            .map(Option::get)
-            .map(RepoFile::getFileName)
-            .collect(Collectors.toSet());
+                .map(analyzer::pathOf)
+                .filter(Option::isDefined)
+                .map(Option::get)
+                .map(RepoFile::getFileName)
+                .collect(Collectors.toSet());
 
         String filesText = "Files referenced: " + String.join(", ", fileNames);
         chrome.captureDescriptionArea.setText(filesText);
