@@ -948,17 +948,15 @@ public class SearchAgent {
         Set<String> processedSkeletons = new HashSet<>();
 
         for (String className : classNames) {
-            if (!className.isBlank()) {
-                var skeletonOpt = analyzer.getSkeleton(className);
-                if (skeletonOpt.isDefined()) {
-                    String skeleton = skeletonOpt.get();
-                    if (!processedSkeletons.contains(skeleton)) {
-                        processedSkeletons.add(skeleton);
-                        if (result.length() > 0) {
-                            result.append("\n\n");
-                        }
-                        result.append(skeleton);
+            var skeletonOpt = analyzer.getSkeleton(className);
+            if (skeletonOpt.isDefined()) {
+                String skeleton = skeletonOpt.get();
+                if (!processedSkeletons.contains(skeleton)) {
+                    processedSkeletons.add(skeleton);
+                    if (!result.isEmpty()) {
+                        result.append("\n\n");
                     }
+                    result.append(skeleton);
                 }
             }
         }
