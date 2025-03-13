@@ -689,6 +689,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         currentUserTask = contextManager.runRunCommandAsync(input);
     }
 
+    public String getInputText() {
+        return SwingUtil.runOnEDT(() -> commandInputField.getText(), "");
+    }
+
     /**
      * Invoked on "Ask" button
      */

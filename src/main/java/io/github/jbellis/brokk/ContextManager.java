@@ -566,7 +566,9 @@ public class ContextManager implements IContextManager
                     combined.append(Models.getText(m)).append("\n\n");
                 }
             }
-            combined.append("\n<goal>\n\n</goal>");
+            
+            // Get instructions from context
+            combined.append("\n<goal>\n").append(io.getInputText()).append("\n</goal>");
             content = combined.toString();
         } else {
             // copy only selected fragments
