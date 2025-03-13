@@ -70,8 +70,17 @@ public class Context implements Serializable {
     /**
      * Constructor for initial empty context
      */
+    public Context(IProject project, int autoContextFileCount, String initialOutputText) {
+        this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), 
+             new ParsedOutput(initialOutputText, SyntaxConstants.SYNTAX_STYLE_MARKDOWN, new ContextFragment.StringFragment(initialOutputText, "")), 
+             CompletableFuture.completedFuture(WELCOME_ACTION));
+    }
+
+    /**
+     * Constructor for initial empty context with empty output
+     */
     public Context(IProject project, int autoContextFileCount) {
-        this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), new ParsedOutput(), CompletableFuture.completedFuture(WELCOME_ACTION));
+        this(project, autoContextFileCount, "");
     }
 
     private Context(

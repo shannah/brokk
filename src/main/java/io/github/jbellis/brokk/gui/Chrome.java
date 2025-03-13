@@ -440,20 +440,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
 
             // If there's textarea content, restore it to the LLM output area
-            if (ctx.getParsedOutput().output() == null) {
-                llmStreamArea.setText("");
-            } else {
-                llmStreamArea.setText(ctx.getParsedOutput().output());
-                llmStreamArea.setSyntaxEditingStyle(ctx.getParsedOutput().style());
-                llmStreamArea.setCaretPosition(0);
-                if (ctx.getParsedOutput().output().startsWith("Code:")) {
-                    llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
-                }
-                // Ensure the scroll pane displays from the top
-                SwingUtilities.invokeLater(() -> {
-                    llmScrollPane.getVerticalScrollBar().setValue(0);
-                });
+            llmStreamArea.setText(ctx.getParsedOutput().output());
+            llmStreamArea.setSyntaxEditingStyle(ctx.getParsedOutput().style());
+            llmStreamArea.setCaretPosition(0);
+            if (ctx.getParsedOutput().output().startsWith("Code:")) {
+                llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
             }
+            // Scroll to the bottom
+            SwingUtilities.invokeLater(() -> {
+                llmScrollPane.getVerticalScrollBar().setValue(0);
+            });
 
             updateCaptureButtons(ctx);
         });

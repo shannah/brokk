@@ -36,6 +36,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -195,7 +196,8 @@ public class ContextManager implements IContextManager
         // TODO rebuild autocontext off the EDT
         var initialContext = project.loadContext();
         if (initialContext == null) {
-            initialContext = new Context(project, 10);
+            var welcomeMessage = buildWelcomeMessage(coder.models);
+            initialContext = new Context(project, 10, welcomeMessage);
         }
         contextHistory.set(List.of(initialContext));
         chrome.setContext(initialContext);
@@ -1058,6 +1060,35 @@ public class ContextManager implements IContextManager
     public List<ChatMessage> getHistoryMessages()
     {
         return currentContext().getHistory();
+    }
+
+    /**
+     * Build a welcome message with environment information
+     */
+    private String buildWelcomeMessage(Models models) {
+        var welcomeMarkdown = Brokk.readWelcomeMarkdown();
+        
+        Properties props = new Properties();
+        try {
+            props.load(getClass().getResourceAsStream("/version.properties"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        
+        var version = props.getProperty("version");
+        var sb = new StringBuilder(welcomeMarkdown);
+        
+        sb.append("\n\n## Environment:");
+        sb.append("\nBrokk ").append(version);
+        sb.append("\nEditor model: ").append(models.editModelName());
+        sb.append("\nApply model: ").append(models.applyModelName());
+        sb.append("\nQuick model: ").append(models.quickModelName());
+        
+        var trackedFiles = project.getRepo().getTrackedFiles();
+        sb.append("\nGit repo at ").append(project.getRoot())
+          .append(" with ").append(trackedFiles.size()).append(" files");
+          
+        return sb.toString();
     }
 
     /**

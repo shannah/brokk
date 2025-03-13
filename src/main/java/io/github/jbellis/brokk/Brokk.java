@@ -128,9 +128,6 @@ public class Brokk {
         io.onComplete();
         io.toolOutput("Opened project at " + projectPath);
 
-        // Show welcome message
-        showWelcomeMessage(contextManager);
-
         if (!coder.isLlmAvailable()) {
             io.toolError("\nError loading models: " + modelsError);
             io.toolError("AI will not be available this session");
@@ -138,33 +135,16 @@ public class Brokk {
     }
 
     /**
-     * Show the welcome message in the LLM output area.
+     * Read the welcome message from the resource file
      */
-    private static void showWelcomeMessage(ContextManager cm) {
-        assert io != null;
-        
+    public static String readWelcomeMarkdown() {
         try (var welcomeStream = Brokk.class.getResourceAsStream("/WELCOME.md")) {
             if (welcomeStream != null) {
-                io.llmOutput(new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8));
+                return new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8);
             }
+            return "Welcome to Brokk!";
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-
-        var models = cm.getCoder().models;
-        Properties props = new Properties();
-        try {
-            props.load(Brokk.class.getResourceAsStream("/version.properties"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        var version = props.getProperty("version");
-        io.llmOutput("\n\n## Environment:");
-        io.llmOutput("\nBrokk %s".formatted(version));
-        io.llmOutput("\nEditor model: " + models.editModelName());
-        io.llmOutput("\nApply model: " + models.applyModelName());
-        io.llmOutput("\nQuick model: " + models.quickModelName());
-        var trackedFiles = Brokk.contextManager.getProject().getRepo().getTrackedFiles();
-        io.llmOutput("\nGit repo at %s with %d files".formatted(cm.getProject().getRoot(), trackedFiles.size()));
     }
 }
