@@ -359,31 +359,28 @@ public class ContextPanel extends JPanel {
         buttonsPanel.setLayout(new BoxLayout(buttonsPanel, BoxLayout.Y_AXIS));
         buttonsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
-        editButton = new JButton("Edit All");
+        editButton = new JButton("Edit Files");
         editButton.setMnemonic(KeyEvent.VK_D);
         editButton.setToolTipText("Add project files as editable context");
         editButton.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
             chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.EDIT, selectedFragments);
+                    Chrome.ContextAction.EDIT, List.of());
         });
 
-        readOnlyButton = new JButton("Read All");
+        readOnlyButton = new JButton("Read Files");
         readOnlyButton.setMnemonic(KeyEvent.VK_R);
         readOnlyButton.setToolTipText("Add project or external files as read-only context");
         readOnlyButton.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
             chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.READ, selectedFragments);
+                    Chrome.ContextAction.READ, List.of());
         });
 
-        summarizeButton = new JButton("Summarize All");
+        summarizeButton = new JButton("Summarize Files");
         summarizeButton.setMnemonic(KeyEvent.VK_M);
         summarizeButton.setToolTipText("Summarize the classes in project files");
         summarizeButton.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
             chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.SUMMARIZE, selectedFragments);
+                    Chrome.ContextAction.SUMMARIZE, List.of());
         });
 
         dropButton = new JButton("Drop All");
@@ -391,17 +388,15 @@ public class ContextPanel extends JPanel {
         dropButton.setToolTipText("Drop all or selected context entries");
         dropButton.addActionListener(e -> {
             chrome.disableContextActionButtons();
-            var selectedFragments = getSelectedFragments();
             chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.DROP, selectedFragments);
+                    Chrome.ContextAction.DROP, List.of());
         });
 
         copyButton = new JButton("Copy All");
         copyButton.setToolTipText("Copy all or selected context entries to clipboard");
         copyButton.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
             chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.COPY, selectedFragments);
+                    Chrome.ContextAction.COPY, List.of());
         });
 
         pasteButton = new JButton("Paste");
@@ -484,17 +479,10 @@ public class ContextPanel extends JPanel {
     }
 
     /**
-     * Updates the text of context action buttons based on selection
+     * Updates the buttons based on context availability
      */
     public void updateContextButtons() {
         SwingUtilities.invokeLater(() -> {
-            boolean hasSelection = hasSelectedItems();
-            editButton.setText(hasSelection ? "Edit Selected" : "Edit Files");
-            readOnlyButton.setText(hasSelection ? "Read Selected" : "Read Files");
-            summarizeButton.setText(hasSelection ? "Summarize Selected" : "Summarize Files");
-            dropButton.setText(hasSelection ? "Drop Selected" : "Drop All");
-            copyButton.setText(hasSelection ? "Copy Selected" : "Copy All");
-
             var ctx = (contextManager == null) ? null : contextManager.currentContext();
             boolean hasContext = (ctx != null && !ctx.isEmpty());
             dropButton.setEnabled(hasContext);
