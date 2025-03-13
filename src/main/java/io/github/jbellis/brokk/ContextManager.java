@@ -45,6 +45,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -92,10 +95,19 @@ public class ContextManager implements IContextManager
 
     // Context modification tasks (Edit/Read/Summarize/Drop/etc)
     // Multiple of these can run concurrently
-    private final ExecutorService contextActionExecutor = createLoggingExecutorService(Executors.newFixedThreadPool(2));
+    private final ExecutorService contextActionExecutor = createLoggingExecutorService(
+            new ThreadPoolExecutor(2, 2,
+                                   60L, TimeUnit.SECONDS,
+                                   new LinkedBlockingQueue<>(), // Unbounded queue
+                                   Executors.defaultThreadFactory()));
 
     // Internal background tasks (unrelated to user actions)
-    private final ExecutorService backgroundTasks = createLoggingExecutorService(Executors.newFixedThreadPool(3));
+    // Use unbounded queue to prevent task rejection
+    private final ExecutorService backgroundTasks = createLoggingExecutorService(
+            new ThreadPoolExecutor(3, 3,
+                                   60L, TimeUnit.SECONDS,
+                                   new LinkedBlockingQueue<>(), // Unbounded queue to prevent rejection
+                                   Executors.defaultThreadFactory()));
 
     private Project project;
     private final Path root;
@@ -435,7 +447,7 @@ public class ContextManager implements IContextManager
             io.focusInput();
         }
     }
-    
+
     /**
      * Cast BrokkFile to RepoFile. Will throw if ExternalFiles are present.
      */
