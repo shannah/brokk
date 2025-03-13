@@ -9,7 +9,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 import javax.swing.table.DefaultTableModel;
@@ -869,7 +868,7 @@ public class GitLogPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     String oldHeadShort = oldHeadId.length() >= 7 ? oldHeadId.substring(0, 7) : oldHeadId;
                     String newHeadShort = commitId.length() >= 7 ? commitId.substring(0, 7) : commitId;
-                    chrome.shellOutput("Soft reset from " + oldHeadShort + " to " + newHeadShort + ": " + commitMessage);
+                    chrome.systemOutput("Soft reset from " + oldHeadShort + " to " + newHeadShort + ": " + commitMessage);
 
                     // Refresh uncommitted files or anything else if needed
                     // For example, if you have a method in GitPanel to update uncommitted:

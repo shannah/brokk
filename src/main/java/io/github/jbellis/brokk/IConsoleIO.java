@@ -25,7 +25,7 @@ public interface IConsoleIO {
     default void clear() {
     }
 
-    default void shellOutput(String message) {
+    default void systemOutput(String message) {
         llmOutput("\n" + message);
     }
 }

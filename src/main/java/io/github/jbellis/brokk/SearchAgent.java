@@ -183,7 +183,7 @@ public class SearchAgent {
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {
-            io.shellOutput("Evaluating context");
+            io.systemOutput("Evaluating context");
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
             You are an expert software architect.
@@ -218,13 +218,13 @@ public class SearchAgent {
             var tools = determineNextActions();
             if (tools.isEmpty()) {
                 logger.debug("No valid actions determined");
-                io.shellOutput("No valid actions returned; retrying");
+                io.systemOutput("No valid actions returned; retrying");
                 continue;
             }
 
             // Print some debug/log info
             var explanation = tools.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
-            io.shellOutput(explanation);
+            io.systemOutput(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
             logger.debug("Actions: {}", tools);
 

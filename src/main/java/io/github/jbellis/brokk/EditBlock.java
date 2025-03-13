@@ -111,9 +111,9 @@ public class EditBlock {
                     if (isCreateNew) {
                         try {
                             contextManager.addToGit(file.toString());
-                            io.shellOutput("Added to git " + file);
+                            io.systemOutput("Added to git " + file);
                         } catch (IOException e) {
-                            io.shellOutput("Failed to git add " + file + ": " + e.getMessage());
+                            io.systemOutput("Failed to git add " + file + ": " + e.getMessage());
                         }
                     }
                 }
@@ -803,7 +803,7 @@ public class EditBlock {
         // Create a simple console IO for output
         var io = new IConsoleIO() {
             @Override
-            public void shellOutput(String message) {
+            public void systemOutput(String message) {
                 System.out.println(message);
             }
 

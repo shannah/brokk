@@ -88,7 +88,7 @@ public class ContextManager implements IContextManager
             var thread = Thread.currentThread();
             logger.error("Uncaught exception in thread {}", thread.getName(), th);
             if (io != null) {
-                io.shellOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
+                io.systemOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
                                        .formatted(thread.getName(), getStackTraceAsString(th)));
             }
         });
@@ -169,7 +169,7 @@ public class ContextManager implements IContextManager
 
             @Override
             public void onFirstBuild(String msg) {
-                SwingUtilities.invokeLater(() -> io.shellOutput(msg));
+                SwingUtilities.invokeLater(() -> io.systemOutput(msg));
             }
 
             @Override
@@ -275,7 +275,7 @@ public class ContextManager implements IContextManager
                 io.toolOutput("Executing: " + input);
                 var result = Environment.instance.captureShellCommand(input);
                 String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-                io.shellOutput(output);
+                io.systemOutput(output);
 
                 // Add to context history with the output text
                 pushContext(ctx -> {

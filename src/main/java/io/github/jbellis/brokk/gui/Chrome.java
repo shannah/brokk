@@ -1067,7 +1067,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     @Override
-    public void shellOutput(String message) {
+    public void systemOutput(String message) {
         SwingUtilities.invokeLater(() -> {
             // Format timestamp as HH:MM
             String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));

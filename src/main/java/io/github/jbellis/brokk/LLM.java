@@ -116,7 +116,7 @@ public class LLM {
 
             logger.debug("{} total blocks", blocks.size());
             if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
-                io.shellOutput("[No edits found in response]");
+                io.systemOutput("[No edits found in response]");
                 break;
             }
             // Check for interruption before proceeding to edit files
@@ -135,7 +135,7 @@ public class LLM {
                     .toList();
             logger.debug("Auto-adding as editable: {}", filesToAdd);
             if (!filesToAdd.isEmpty()) {
-                io.shellOutput("Editing additional files " + filesToAdd);
+                io.systemOutput("Editing additional files " + filesToAdd);
                 coder.contextManager.editFiles(filesToAdd);
             }
 
@@ -208,7 +208,7 @@ public class LLM {
 
         var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
         var failedApplyMessage = handleFailedBlocks(suggestions, blocks.size() - failedBlocks.size());
-        io.shellOutput(failedApplyMessage);
+        io.systemOutput(failedApplyMessage);
         reflectionMsg.append(failedApplyMessage);
 
         return reflectionMsg.toString();
@@ -228,12 +228,12 @@ public class LLM {
         var result = Environment.instance.captureShellCommand(cmd);
         logger.debug("Build command result: {}", result);
         if (result.error() == null) {
-            io.shellOutput("Build successful");
+            io.systemOutput("Build successful");
             buildErrors.clear(); // Reset on successful build
             return "";
         }
 
-        io.shellOutput(result.error() + "\n\n" + result.output() + "\n\n");
+        io.systemOutput(result.error() + "\n\n" + result.output() + "\n\n");
         buildErrors.add(result.error() + "\n\n" + result.output());
 
         StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
@@ -252,7 +252,7 @@ public class LLM {
     private static boolean shouldContinue(Coder coder, int parseErrorAttempts, List<String> buildErrors, IConsoleIO io) {
         // If we have parse errors, limit to MAX_PARSE_ATTEMPTS attempts
         if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
-            io.shellOutput("Parse retry limit reached, stopping.");
+            io.systemOutput("Parse retry limit reached, stopping.");
             return false;
         }
 
@@ -261,7 +261,7 @@ public class LLM {
             if (isBuildProgressing(coder, buildErrors)) {
                 return true;
             }
-            io.shellOutput("Build errors are not improving, stopping.");
+            io.systemOutput("Build errors are not improving, stopping.");
             return false;
         }
 
