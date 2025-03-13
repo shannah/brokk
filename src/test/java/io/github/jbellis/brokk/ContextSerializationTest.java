@@ -142,8 +142,8 @@ public class ContextSerializationTest {
             .addVirtualFragment(new ContextFragment.StringFragment("string content", "String Fragment"))
             .addVirtualFragment(new ContextFragment.SearchFragment("query", "explanation", Set.of(CodeUnit.cls("Test"))))
             .addVirtualFragment(new ContextFragment.SkeletonFragment(
-                List.of("Test"), Set.of(CodeUnit.cls("com.test.Test")), "class Test {}")
-            );
+                Map.of(CodeUnit.cls("com.test.Test"), "class Test {}")
+            ));
         
         // Add fragments that use Future
         CompletableFuture<String> descFuture = CompletableFuture.completedFuture("description");

@@ -5,6 +5,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
 
@@ -15,14 +16,15 @@ public interface ContextFragment extends Serializable {
     String description();
     /** raw content */
     String text() throws IOException;
-
     /** content formatted for LLM */
     String format() throws IOException;
-    /** fq classes found in this fragment */
+
+    /** code sources found in this fragment */
     default Set<CodeUnit> sources(IProject project) {
         return sources(project.getAnalyzer(), project.getRepo());
     }
 
+    /** for when you don't want analyzer to change out from under you */
     Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo);
 
     /** should classes found in this fragment be included in AutoContext? */
@@ -363,34 +365,31 @@ public interface ContextFragment extends Serializable {
     }
 
     class SkeletonFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
-        private final List<String> shortClassnames;
-        private final Set<CodeUnit> sources;
-        private final String skeletonText;
+        private static final long serialVersionUID = 2L;
+        private final Map<CodeUnit, String> skeletons;
 
-        public SkeletonFragment(List<String> shortClassnames, Set<CodeUnit> sources, String skeletonText) {
+        public SkeletonFragment(Map<CodeUnit, String> skeletons) {
             super();
-            assert shortClassnames != null;
-            assert sources != null;
-            assert skeletonText != null;
-            this.shortClassnames = shortClassnames;
-            this.sources = sources;
-            this.skeletonText = skeletonText;
+            assert skeletons != null;
+            this.skeletons = skeletons;
         }
 
         @Override
         public String text() {
-            return skeletonText;
+            return String.join("\n\n", skeletons.values());
         }
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return sources;
+            return skeletons.keySet();
         }
 
         @Override
         public String description() {
-            return "Summary of " + String.join(", ", shortClassnames.stream().sorted().toList());
+            return "Summary of " + String.join(", ", skeletons.keySet().stream()
+                                                      .map(CodeUnit::name)
+                                                      .sorted()
+                                                      .toList());
         }
 
         @Override
@@ -404,7 +403,7 @@ public interface ContextFragment extends Serializable {
             <summary classes="%s">
             %s
             </summary>
-            """.formatted(String.join(", ", sources.stream().map(CodeUnit::fqName).sorted().toList()), text()).stripIndent();
+            """.formatted(String.join(", ", skeletons.keySet().stream().map(CodeUnit::fqName).sorted().toList()), text()).stripIndent();
         }
 
         @Override
@@ -469,10 +468,10 @@ public interface ContextFragment extends Serializable {
     }
 
     class AutoContext implements ContextFragment {
-        private static final long serialVersionUID = 1L;
-        public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(List.of("Enabled, but no references found"), Set.of(), "")));
-        public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(List.of("Disabled"), Set.of(), "")));
-        public static final AutoContext UNAVAILABLE  = new AutoContext(List.of(new SkeletonFragment(List.of("Unavailable"), Set.of(), "")));
+        private static final long serialVersionUID = 2L;
+        public static final AutoContext EMPTY = new AutoContext(List.of(new SkeletonFragment(Map.of(CodeUnit.cls("Enabled, but no references found"), ""))));
+        public static final AutoContext DISABLED  = new AutoContext(List.of(new SkeletonFragment(Map.of(CodeUnit.cls("Disabled"), ""))));
+        public static final AutoContext UNAVAILABLE  = new AutoContext(List.of(new SkeletonFragment(Map.of(CodeUnit.cls("Unavailable"), ""))));
 
         private final List<SkeletonFragment> skeletons;
 
@@ -492,7 +491,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return skeletons.stream().flatMap(s -> s.sources.stream()).collect(java.util.stream.Collectors.toSet());
+            return skeletons.stream().flatMap(s -> s.skeletons.keySet().stream()).collect(java.util.stream.Collectors.toSet());
         }
 
         /**
@@ -500,12 +499,18 @@ public interface ContextFragment extends Serializable {
          */
         @Override
         public String description() {
-            return "[Auto] " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
+            return "[Auto] " + String.join(", ", skeletons.stream()
+                                                    .flatMap(s -> s.skeletons.keySet().stream()
+                                                                .map(CodeUnit::name))
+                                                    .toList());
         }
 
         @Override
         public String shortDescription() {
-            return "Autosummary of " + String.join(", ", skeletons.stream().flatMap(s -> s.shortClassnames.stream()).toList());
+            return "Autosummary of " + String.join(", ", skeletons.stream()
+                                                          .flatMap(s -> s.skeletons.keySet().stream()
+                                                                      .map(CodeUnit::name))
+                                                          .toList());
         }
 
         @Override

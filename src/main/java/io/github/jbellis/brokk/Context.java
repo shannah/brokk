@@ -338,8 +338,8 @@ public class Context implements Serializable {
 
         var pagerankResults = AnalyzerWrapper.combinedPageRankFor(analyzer, weightedSeeds);
 
-        // build skeleton lines
-        var skeletons = new ArrayList<SkeletonFragment>();
+        // build skeleton map
+        var skeletonMap = new HashMap<CodeUnit, String>();
         for (var fqName : pagerankResults) {
             // Check if the class or its parent is in ineligible classnames
             boolean eligible = !(ineligibleSources.contains(CodeUnit.cls(fqName))
@@ -348,17 +348,18 @@ public class Context implements Serializable {
             if (eligible) {
                 var opt = analyzer.getSkeleton(fqName);
                 if (opt.isDefined()) {
-                    var shortName = fqName.substring(fqName.lastIndexOf('.') + 1);
-                    skeletons.add(new SkeletonFragment(List.of(shortName), Set.of(CodeUnit.cls(fqName)), opt.get()));
+                    skeletonMap.put(CodeUnit.cls(fqName), opt.get());
                 }
             }
-            if (skeletons.size() >= autoContextFileCount) {
+            if (skeletonMap.size() >= autoContextFileCount) {
                 break;
             }
         }
-        if (skeletons.isEmpty()) {
+        if (skeletonMap.isEmpty()) {
             return AutoContext.EMPTY;
         }
+        
+        var skeletons = List.of(new SkeletonFragment(skeletonMap));
 
         return new AutoContext(skeletons);
     }
@@ -531,7 +532,9 @@ public class Context implements Serializable {
     }
 
     public Context addSkeletonFragment(List<String> shortClassnames, Set<CodeUnit> classnames, String skeleton) {
-        var fragment = new SkeletonFragment(shortClassnames, classnames, skeleton);
+        var skeletonMap = classnames.stream()
+            .collect(Collectors.toMap(unit -> unit, unit -> skeleton));
+        var fragment = new SkeletonFragment(skeletonMap);
         return addVirtualFragment(fragment);
     }
 
