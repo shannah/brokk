@@ -96,10 +96,13 @@ public class FileSelectionDialog extends JDialog {
         inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         inputPanel.add(new JScrollPane(fileInput), BorderLayout.CENTER);
         
-        String hintText = allowExternalFiles ? 
+        JPanel labelsPanel = new JPanel(new GridLayout(2, 1));
+        String hintText = allowExternalFiles ?
             "Ctrl-space to autocomplete project filenames. External files may be selected from the tree" :
             "Ctrl-space to autocomplete project filenames";
-        inputPanel.add(new JLabel(hintText), BorderLayout.SOUTH);
+        labelsPanel.add(new JLabel(hintText));
+        labelsPanel.add(new JLabel("*/? to glob; ** to glob recursively"));
+        inputPanel.add(labelsPanel, BorderLayout.SOUTH);
         mainPanel.add(inputPanel, BorderLayout.NORTH);
 
         // File tree already built in the text input section
