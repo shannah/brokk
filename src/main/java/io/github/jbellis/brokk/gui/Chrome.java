@@ -43,9 +43,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Swing components:
     final JFrame frame;
     private RSyntaxTextArea llmStreamArea;
+    private JTextArea systemArea;
     private JLabel commandResultLabel;
     private JTextArea commandInputField;
     private JLabel backgroundStatusLabel;
+    private JScrollPane systemScrollPane;
     
     // Context History Panel
     private JTable contextHistoryTable;
@@ -192,19 +194,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.gridx = 0;
         gbc.insets = new Insets(2, 2, 2, 2);
 
-        // 1. LLM streaming area
-        // LLM streaming area in titled panel
+        // 1. LLM streaming area and system messages
         var outputPanel = new JPanel(new BorderLayout());
-        outputPanel.setBorder(BorderFactory.createTitledBorder(
+
+        // LLM streaming area with titled border directly on the scroll pane
+        llmScrollPane = buildLLMStreamScrollPane();
+        llmScrollPane.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
                 "Output",
                 javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-
-        llmScrollPane = buildLLMStreamScrollPane();
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
+
+        // Add system messages area directly to output panel
+        systemScrollPane = buildSystemMessagesArea();
+        outputPanel.add(systemScrollPane, BorderLayout.SOUTH);
 
         // Build the history panel, but don't add it to the split pane yet
         // We'll do this after we know the button size
@@ -469,6 +475,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void switchTheme(boolean isDark) {
         themeManager.applyTheme(isDark);
+        
+        // Apply theme to system area manually
+        if (systemArea != null) {
+            Color bg = isDark ? new Color(40, 40, 40) : new Color(240, 240, 240);
+            Color fg = isDark ? new Color(200, 200, 200) : new Color(30, 30, 30);
+            systemArea.setBackground(bg);
+            systemArea.setForeground(fg);
+        }
     }
 
             private void showContextHistoryPopupMenu(MouseEvent e) {
@@ -529,6 +543,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var jsp = new JScrollPane(llmStreamArea);
         new SmartScroll(jsp);
         return jsp;
+    }
+    
+    /**
+     * Builds the system messages area that appears below the LLM output area.
+     */
+    private JScrollPane buildSystemMessagesArea() {
+        // Create text area for system messages
+        systemArea = new JTextArea();
+        systemArea.setEditable(false);
+        systemArea.setLineWrap(true);
+        systemArea.setWrapStyleWord(true);
+        systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        systemArea.setRows(3);
+
+        // Create scroll pane with border and title
+        systemScrollPane = new JScrollPane(systemArea);
+        systemScrollPane.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "System Messages",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
+        ));
+        new SmartScroll(systemScrollPane);
+
+        return systemScrollPane;
     }
 
     /**
@@ -1032,10 +1072,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void shellOutput(String message) {
-        if (!llmStreamArea.getText().endsWith("\n\n")) {
-            llmStreamArea.append("\n");
-        }
-        llmStreamArea.append(message);
+        SwingUtilities.invokeLater(() -> {
+            // Format timestamp as HH:MM
+            String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+            
+            // Add newline if needed
+            if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
+                systemArea.append("\n");
+            }
+            
+            // Append timestamped message
+            systemArea.append(timestamp + ": " + message);
+        });
     }
 
     @Override

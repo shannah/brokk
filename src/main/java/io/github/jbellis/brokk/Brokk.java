@@ -145,7 +145,7 @@ public class Brokk {
         
         try (var welcomeStream = Brokk.class.getResourceAsStream("/WELCOME.md")) {
             if (welcomeStream != null) {
-                io.shellOutput(new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8));
+                io.llmOutput(new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8));
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -159,12 +159,12 @@ public class Brokk {
             throw new RuntimeException(e);
         }
         var version = props.getProperty("version");
-        io.shellOutput("\n## Environment:");
-        io.shellOutput("Brokk %s".formatted(version));
-        io.shellOutput("Editor model: " + models.editModelName());
-        io.shellOutput("Apply model: " + models.applyModelName());
-        io.shellOutput("Quick model: " + models.quickModelName());
+        io.llmOutput("\n\n## Environment:");
+        io.llmOutput("\nBrokk %s".formatted(version));
+        io.llmOutput("\nEditor model: " + models.editModelName());
+        io.llmOutput("\nApply model: " + models.applyModelName());
+        io.llmOutput("\nQuick model: " + models.quickModelName());
         var trackedFiles = Brokk.contextManager.getProject().getRepo().getTrackedFiles();
-        io.shellOutput("Git repo at %s with %d files".formatted(cm.getProject().getRoot(), trackedFiles.size()));
+        io.llmOutput("\nGit repo at %s with %d files".formatted(cm.getProject().getRoot(), trackedFiles.size()));
     }
 }
