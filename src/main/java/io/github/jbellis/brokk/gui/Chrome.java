@@ -1053,10 +1053,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void toolErrorRaw(String msg) {
-        SwingUtilities.invokeLater(() -> {
-            commandResultLabel.setText(msg);
-            logger.warn(msg);
-        });
+        systemOutput(msg);
     }
 
     @Override
