@@ -392,6 +392,11 @@ public interface ContextFragment extends Serializable {
                     )
                 ));
                 
+            // If map is empty, return empty string
+            if (skeletons.isEmpty()) {
+                return "";
+            }
+            
             // Build the text with package headers
             return skeletonsByPackage.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
