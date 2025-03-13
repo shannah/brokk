@@ -116,7 +116,7 @@ public class Coder {
                         Thread.sleep(100); // Update every 100ms
                     }
                 } catch (InterruptedException e) {
-                    io.toolOutput("Session interrupted during backoff");
+                    io.systemOutput("Session interrupted during backoff");
                     // Mark as cancelled
                     return new StreamingResult(null, true, null);
                 }
@@ -357,7 +357,7 @@ public class Coder {
                         Thread.sleep(100); // Update every 100ms
                     }
                 } catch (InterruptedException e) {
-                    io.toolOutput("Session interrupted during backoff");
+                    io.systemOutput("Session interrupted during backoff");
                     // Return a dummy with cancellation
                     return ChatResponse.builder()
                         .aiMessage(new AiMessage("Cancelled during backoff"))

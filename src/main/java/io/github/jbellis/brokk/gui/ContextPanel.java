@@ -604,11 +604,14 @@ public class ContextPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Get the fragment text or remove it if it errors out
+     */
     private String getTextSafe(ContextFragment fragment) {
         try {
             return fragment.text();
         } catch (IOException e) {
-            chrome.toolErrorRaw("Error reading fragment: " + e.getMessage());
+            chrome.systemOutput("Error reading fragment: " + e.getMessage());
             contextManager.removeBadFragment(fragment, e);
             return "";
         }

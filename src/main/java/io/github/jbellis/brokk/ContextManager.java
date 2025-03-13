@@ -383,7 +383,7 @@ public class ContextManager implements IContextManager
                 var agent = new SearchAgent(query, this, coder, io);
                 var result = agent.execute();
                 if (result == null) {
-                    io.toolOutput("Search was interrupted");
+                    io.systemOutput("Search was interrupted");
                 } else {
                     io.clear();
                     io.setOutputSyntax(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
@@ -415,7 +415,7 @@ public class ContextManager implements IContextManager
                 if (symbol != null && !symbol.isBlank()) {
                     usageForIdentifier(symbol);
                 } else {
-                    io.toolOutput("No symbol selected.");
+                    io.systemOutput("No symbol selected.");
                 }
             } catch (CancellationException cex) {
                 io.toolOutput("Symbol selection canceled.");
@@ -527,7 +527,7 @@ public class ContextManager implements IContextManager
             if (!files.isEmpty()) {
                 editFiles(files);
             } else {
-                io.toolOutput("No files selected.");
+                io.systemOutput("No files selected.");
             }
         } else {
             var files = new HashSet<RepoFile>();
@@ -589,7 +589,7 @@ public class ContextManager implements IContextManager
         var sel = new java.awt.datatransfer.StringSelection(content);
         var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
         cb.setContents(sel, sel);
-        io.toolOutput("Content copied to clipboard");
+        io.systemOutput("Content copied to clipboard");
     }
 
     private void doPasteAction()
@@ -622,7 +622,7 @@ public class ContextManager implements IContextManager
 
         // If not a stacktrace, add as string fragment
         addPasteFragment(clipboardText, submitSummarizeTaskForPaste(clipboardText));
-        io.toolOutput("Clipboard content added as text");
+        io.systemOutput("Clipboard content added as text");
     }
 
     private void doDropAction(List<ContextFragment> selectedFragments)
@@ -633,7 +633,7 @@ public class ContextManager implements IContextManager
                 return;
             }
             dropAll();
-            io.toolOutput("Dropped all context");
+            io.systemOutput("Dropped all context");
         } else {
             var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
             var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
@@ -654,13 +654,13 @@ public class ContextManager implements IContextManager
 
             if (clearHistory) {
                 clearHistory();
-                io.toolOutput("Cleared conversation history");
+                io.systemOutput("Cleared conversation history");
             }
 
             drop(pathFragsToRemove, virtualToRemove);
 
             if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
-                io.toolOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
+                io.systemOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
             }
         }
     }
@@ -698,7 +698,7 @@ public class ContextManager implements IContextManager
             // Only repo files can be summarized since external files aren't in the analyzer
             var files = toRepoFiles(showFileSelectionDialog("Summarize Files", false));
             if (files.isEmpty()) {
-                io.toolOutput("No files selected for summarization");
+                io.systemOutput("No files selected for summarization");
                 return;
             }
 
@@ -721,7 +721,7 @@ public class ContextManager implements IContextManager
 
         boolean success = summarizeClasses(sources);
         if (success) {
-            io.toolOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
+            io.systemOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
         } else {
             io.toolErrorRaw("Failed to summarize classes");
         }
@@ -803,7 +803,7 @@ public class ContextManager implements IContextManager
                 }
 
                 io.setContext(currentContext());
-                io.toolOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
+                io.systemOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
                 io.toolOutput("Undo canceled.");
             } finally {
@@ -829,7 +829,7 @@ public class ContextManager implements IContextManager
                     ch.add(undoContext);
                 }
                 io.setContext(currentContext());
-                io.toolOutput("Redo!");
+                io.systemOutput("Redo!");
             } catch (CancellationException cex) {
                 io.toolOutput("Redo canceled.");
             } finally {
@@ -876,7 +876,7 @@ public class ContextManager implements IContextManager
             var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
             return ctx.addPasteFragment(fragment, summaryFuture);
         });
-        io.toolOutput("Added pasted content");
+        io.systemOutput("Added pasted content");
     }
 
     /** Add search fragment from agent result */
@@ -956,12 +956,12 @@ public class ContextManager implements IContextManager
     {
         var uses = getAnalyzer().getUses(identifier);
         if (uses.isEmpty()) {
-            io.toolOutput("No uses found for " + identifier);
+            io.systemOutput("No uses found for " + identifier);
             return;
         }
         var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
         if (result.code().isEmpty()) {
-            io.toolOutput("No relevant uses found for " + identifier);
+            io.systemOutput("No relevant uses found for " + identifier);
             return;
         }
         var combined = result.code();

@@ -44,7 +44,7 @@ public class MenuBar {
         var refreshItem = new JMenuItem("Refresh Code Intelligence");
         refreshItem.addActionListener(e -> {
             chrome.contextManager.requestRebuild();
-            chrome.toolOutput("Code intelligence will refresh in the background");
+            chrome.systemOutput("Code intelligence will refresh in the background");
         });
         fileMenu.add(refreshItem);
 

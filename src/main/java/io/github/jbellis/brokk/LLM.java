@@ -40,12 +40,12 @@ public class LLM {
 
         // give user some feedback -- this isn't in the main loop because after the first iteration
         // we give more specific feedback when we need to make another request
-        io.toolOutput("Request sent");
+        io.systemOutput("Request sent");
 
         while (true) {
             // Check for interruption before sending to LLM
             if (Thread.currentThread().isInterrupted()) {
-                io.toolOutput("Session interrupted");
+                io.systemOutput("Session interrupted");
                 break;
             }
 
@@ -60,26 +60,26 @@ public class LLM {
 
             // 1) If user cancelled
             if (streamingResult.cancelled()) {
-                io.toolOutput("Session interrupted");
+                io.systemOutput("Session interrupted");
                 return;
             }
 
             // 2) Handle errors or empty responses
             if (streamingResult.error() != null) {
                 logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
-                io.toolOutput("LLM returned an error even after retries.");
+                io.systemOutput("LLM returned an error even after retries.");
                 return;
             }
 
             var llmResponse = streamingResult.chatResponse();
             if (llmResponse == null) {
-                io.toolOutput("Empty LLM response even after retries. Stopping session.");
+                io.systemOutput("Empty LLM response even after retries. Stopping session.");
                 return;
             }
 
             String llmText = llmResponse.aiMessage().text();
             if (llmText.isBlank()) {
-                io.toolOutput("Blank LLM response even after retries. Stopping session.");
+                io.systemOutput("Blank LLM response even after retries. Stopping session.");
                 return;
             }
 
@@ -99,7 +99,7 @@ public class LLM {
             if (parseResult.parseError() != null) {
                 if (parseResult.blocks().isEmpty()) {
                     requestMessages.add(new UserMessage(parseResult.parseError()));
-                    io.toolOutput("Failed to parse LLM response; retrying");
+                    io.systemOutput("Failed to parse LLM response; retrying");
                 } else {
                     var msg = """
                     It looks like we got cut off.  The last block I successfully parsed was
@@ -109,7 +109,7 @@ public class LLM {
                     Please continue from there (WITHOUT repeating that one).
                     """.stripIndent().formatted(parseResult.blocks().getLast());
                     requestMessages.add(new UserMessage(msg));
-                    io.toolOutput("Incomplete response after %d blocks parsed; retrying".formatted(parseResult.blocks().size()));
+                    io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(parseResult.blocks().size()));
                 }
                 continue;
             }
@@ -121,7 +121,7 @@ public class LLM {
             }
             // Check for interruption before proceeding to edit files
             if (Thread.currentThread().isInterrupted()) {
-                io.toolOutput("Session interrupted");
+                io.systemOutput("Session interrupted");
                 break;
             }
 
@@ -155,7 +155,7 @@ public class LLM {
             }
             blocks.clear(); // don't re-apply the same ones on the next loop
             if (!parseReflection.isEmpty()) {
-                io.toolOutput("Attempting to fix parse/match errors...");
+                io.systemOutput("Attempting to fix parse/match errors...");
                 model = parseErrorAttempts > 0 ? coder.models.editModel() : coder.models.applyModel();
                 requestMessages.add(new UserMessage(parseReflection));
                 continue;
@@ -163,7 +163,7 @@ public class LLM {
 
             // Check for interruption before checking build
             if (Thread.currentThread().isInterrupted()) {
-                io.toolOutput("Session interrupted");
+                io.systemOutput("Session interrupted");
                 break;
             }
 
@@ -179,7 +179,7 @@ public class LLM {
                 break;
             }
 
-            io.toolOutput("Attempting to fix build errors...");
+            io.systemOutput("Attempting to fix build errors...");
             // Use EDIT model (smarter) for build fixes
             model = coder.models.editModel();
             requestMessages.add(new UserMessage(buildReflection));
@@ -220,11 +220,11 @@ public class LLM {
     private static String getBuildReflection(IContextManager cm, IConsoleIO io, List<String> buildErrors) {
         var cmd = cm.getProject().getBuildCommand();
         if (cmd == null || cmd.isBlank()) {
-            io.toolOutput("No build command configured");
+            io.systemOutput("No build command configured");
             return "";
         }
 
-        io.toolOutput("Running " + cmd);
+        io.systemOutput("Running " + cmd);
         var result = Environment.instance.captureShellCommand(cmd);
         logger.debug("Build command result: {}", result);
         if (result.error() == null) {
