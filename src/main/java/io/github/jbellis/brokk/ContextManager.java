@@ -987,21 +987,19 @@ public class ContextManager implements IContextManager
     /** Summarize classes => adds skeleton fragments */
     public boolean summarizeClasses(Set<CodeUnit> classes)
     {
+        var skeletons = new HashMap<CodeUnit, String>();
         var coalescedUnits = coalesceInnerClasses(classes);
-        var combined = new StringBuilder();
-        var shortNames = new ArrayList<String>();
         for (var cu : coalescedUnits) {
             var skeleton = getAnalyzer().getSkeleton(cu.fqName());
             if (skeleton.isDefined()) {
-                shortNames.add(Completions.getShortClassName(cu.fqName()));
-                if (!combined.isEmpty()) combined.append("\n\n");
-                combined.append(skeleton.get());
+                skeletons.put(cu, skeleton.get());
             }
         }
-        if (combined.isEmpty()) {
+        if (skeletons.isEmpty()) {
             return false;
         }
-        pushContext(ctx -> ctx.addSkeletonFragment(shortNames, coalescedUnits, combined.toString()));
+        var skeletonFragment = new ContextFragment.SkeletonFragment(skeletons);
+        addVirtualFragment(skeletonFragment);
         return true;
     }
 

@@ -531,13 +531,6 @@ public class Context implements Serializable {
         return new Context(project, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
     }
 
-    public Context addSkeletonFragment(List<String> shortClassnames, Set<CodeUnit> classnames, String skeleton) {
-        var skeletonMap = classnames.stream()
-            .collect(Collectors.toMap(unit -> unit, unit -> skeleton));
-        var fragment = new SkeletonFragment(skeletonMap);
-        return addVirtualFragment(fragment);
-    }
-
     /**
      * Returns all fragments in display order:
      * 0 => conversation history (if not empty)
