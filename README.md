@@ -95,7 +95,26 @@ Here are a few scenarios illustrating how Brokk helps with real-world tasks.
 2. Add Project itself as editable.  Brokk automatically includes a summary of AnalyzerWrapper in the
    auto-context.
 3. Type your instructions into the instructions area and click Code:
-   Replace Project.getAnalyzerWrapper with getAnalyzer() and getAnalyzerNonBlocking() that encapsulate aw.get and aw.getNonBlocking; update the callers appropriately.
+   `Replace Project.getAnalyzerWrapper with getAnalyzer() and getAnalyzerNonBlocking() that encapsulate aw.get and aw.getNonBlocking; update the callers appropriately.`
+
+## Working with dependencies
+Often you find yourself working with poorly documented dependencies that your LLM doesn't know enough about to use without hallucinating.  Brokk can help!
+
+Check out the source code and open it as a Brokk project. Then click on `Summarize Fields` 
+and use ** globbing to select everything. (Usually you will want to target e.g. src/main and not src/ to leave out test code.)
+![image](https://github.com/user-attachments/assets/1f70c224-a3de-463f-bea0-4bfb238ea2b4)
+
+Brokk will summarize all the classes; now you can doubleclick on the context to make sure it's
+what you wanted, then copy it and either paste it directly as context into Brokk as a one-off,
+or save it as a file for re-use.  In this example, I did this twice in the Gumtree library:
+once for `core/` and again for `client/`.
+![image](https://github.com/user-attachments/assets/69f7e56d-771e-4e51-9342-ef091919c51a)
+
+If you have a more targeted idea of what you need, you can also pick just those classes and
+dial up the AutoContext size to get the surrounding infrastructure.  Here I've left the Gumtree
+`client` summary and let AutoContext=20 do its thing.  This is 5x smaller than summarizing
+all of `core`:
+![image](https://github.com/user-attachments/assets/9e025a01-b7ba-4f17-b7d8-cdaab455e7a4)
 
 ## A note on o1pro
 
