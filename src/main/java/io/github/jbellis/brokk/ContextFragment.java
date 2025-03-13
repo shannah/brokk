@@ -376,6 +376,11 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String text() {
+            // autocontext's special empty values should be completely blank and not include the placeholder package name
+            if (skeletons.size() == 1 && skeletons.values().iterator().next().isEmpty()) {
+                return "";
+            }
+
             // Group skeletons by package name
             var skeletonsByPackage = skeletons.entrySet().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
