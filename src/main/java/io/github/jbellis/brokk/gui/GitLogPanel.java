@@ -713,14 +713,14 @@ public class GitLogPanel extends JPanel {
         contextManager.submitContextTask("Adding commit range to context", () -> {
             try {
                 if (selectedRows.length == 0 || commitsTableModel.getRowCount() == 0) {
-                    chrome.toolOutput("No commits selected or commits table is empty");
+                    chrome.systemOutput("No commits selected or commits table is empty");
                     return null;
                 }
                 int[] sortedRows = selectedRows.clone();
                 Arrays.sort(sortedRows);
                 if (sortedRows[0] < 0 ||
                         sortedRows[sortedRows.length - 1] >= commitsTableModel.getRowCount()) {
-                    chrome.toolOutput("Invalid commit selection");
+                    chrome.systemOutput("Invalid commit selection");
                     return null;
                 }
 
@@ -729,7 +729,7 @@ public class GitLogPanel extends JPanel {
 
                 String diff = getRepo().showDiff(lastCommitId, firstCommitId + "^");
                 if (diff.isEmpty()) {
-                    chrome.toolOutput("No changes found in the selected commit range");
+                    chrome.systemOutput("No changes found in the selected commit range");
                     return null;
                 }
 
@@ -746,7 +746,7 @@ public class GitLogPanel extends JPanel {
                 ContextFragment.StringFragment fragment =
                         new ContextFragment.StringFragment(diff, description);
                 contextManager.addVirtualFragment(fragment);
-                chrome.toolOutput("Added changes for commit range to context");
+                chrome.systemOutput("Added changes for commit range to context");
             } catch (Exception ex) {
                 logger.error("Error adding commit range to context", ex);
                 chrome.toolErrorRaw("Error adding commit range to context: " + ex.getMessage());
@@ -762,14 +762,14 @@ public class GitLogPanel extends JPanel {
         contextManager.submitContextTask("Adding file changes from range to context", () -> {
             try {
                 if (selectedRows.length == 0 || commitsTableModel.getRowCount() == 0) {
-                    chrome.toolOutput("No commits selected or commits table is empty");
+                    chrome.systemOutput("No commits selected or commits table is empty");
                     return null;
                 }
                 int[] sortedRows = selectedRows.clone();
                 Arrays.sort(sortedRows);
                 if (sortedRows[0] < 0 ||
                         sortedRows[sortedRows.length - 1] >= commitsTableModel.getRowCount()) {
-                    chrome.toolOutput("Invalid commit selection");
+                    chrome.systemOutput("Invalid commit selection");
                     return null;
                 }
 
@@ -786,7 +786,7 @@ public class GitLogPanel extends JPanel {
                         .collect(Collectors.joining("\n\n"));
 
                 if (diffs.isEmpty()) {
-                    chrome.toolOutput("No changes found for the selected files in the commit range");
+                    chrome.systemOutput("No changes found for the selected files in the commit range");
                     return null;
                 }
 
@@ -807,7 +807,7 @@ public class GitLogPanel extends JPanel {
                 ContextFragment.StringFragment fragment =
                         new ContextFragment.StringFragment(diffs, description);
                 contextManager.addVirtualFragment(fragment);
-                chrome.toolOutput("Added changes for selected files in commit range to context");
+                chrome.systemOutput("Added changes for selected files in commit range to context");
             } catch (Exception ex) {
                 logger.error("Error adding file changes from range to context", ex);
                 chrome.toolErrorRaw("Error adding file changes from range to context: " + ex.getMessage());
@@ -832,7 +832,7 @@ public class GitLogPanel extends JPanel {
                         .collect(Collectors.joining("\n\n"));
 
                 if (allDiffs.isEmpty()) {
-                    chrome.toolOutput("No differences found between selected files and local working copy");
+                    chrome.systemOutput("No differences found between selected files and local working copy");
                     return null;
                 }
 
@@ -848,7 +848,7 @@ public class GitLogPanel extends JPanel {
                 ContextFragment.StringFragment fragment =
                         new ContextFragment.StringFragment(allDiffs, description);
                 contextManager.addVirtualFragment(fragment);
-                chrome.toolOutput("Added comparison with local for " + filePaths.size() + " file(s) to context");
+                chrome.systemOutput("Added comparison with local for " + filePaths.size() + " file(s) to context");
             } catch (Exception ex) {
                 logger.error("Error comparing files with local", ex);
                 chrome.toolErrorRaw("Error comparing files with local: " + ex.getMessage());
@@ -897,7 +897,7 @@ public class GitLogPanel extends JPanel {
         contextManager.submitUserTask("Reverting commit", () -> {
             try {
                 getRepo().revertCommit(commitId);
-                chrome.toolOutput("Commit was successfully reverted.");
+                chrome.systemOutput("Commit was successfully reverted.");
 
                 int branchRow = branchTable.getSelectedRow();
                 if (branchRow != -1) {
@@ -924,7 +924,7 @@ public class GitLogPanel extends JPanel {
             try {
                 getRepo().push();
                 SwingUtilities.invokeLater(() -> {
-                    chrome.toolOutput("Successfully pushed " + branchDisplay + " to remote");
+                    chrome.systemOutput("Successfully pushed " + branchDisplay + " to remote");
                     updateCommitsForBranch(branchDisplay);
                 });
             } catch (IOException e) {
@@ -943,7 +943,7 @@ public class GitLogPanel extends JPanel {
             try {
                 if (branchName.startsWith("origin/") || branchName.contains("/")) {
                     getRepo().checkoutRemoteBranch(branchName);
-                    chrome.toolOutput("Created local tracking branch for " + branchName);
+                    chrome.systemOutput("Created local tracking branch for " + branchName);
                 } else {
                     getRepo().checkout(branchName);
                 }
@@ -963,7 +963,7 @@ public class GitLogPanel extends JPanel {
         contextManager.submitUserTask("Merging branch: " + branchName, () -> {
             try {
                 getRepo().mergeIntoHead(branchName);
-                chrome.toolOutput("Branch '" + branchName + "' was successfully merged into HEAD.");
+                chrome.systemOutput("Branch '" + branchName + "' was successfully merged into HEAD.");
                 updateBranchList();
             } catch (IOException e) {
                 logger.error("Error merging branch: {}", branchName, e);
@@ -1055,7 +1055,7 @@ public class GitLogPanel extends JPanel {
                     getRepo().deleteBranch(branchName);
                 }
                 updateBranchList();
-                chrome.toolOutput("Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
+                chrome.systemOutput("Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
             } catch (IOException e) {
                 logger.error("Error deleting branch: {}", branchName, e);
                 chrome.toolErrorRaw(e.getMessage());
@@ -1077,7 +1077,7 @@ public class GitLogPanel extends JPanel {
                     changesTreeModel.reload();
 
                     if (searchResults.isEmpty()) {
-                        chrome.toolOutput("No commits found matching: " + query);
+                        chrome.systemOutput("No commits found matching: " + query);
                         return;
                     }
                     for (CommitInfo commit : searchResults) {
@@ -1088,7 +1088,7 @@ public class GitLogPanel extends JPanel {
                                 commit.id()
                         });
                     }
-                    chrome.toolOutput("Found " + searchResults.size() + " commits matching: " + query);
+                    chrome.systemOutput("Found " + searchResults.size() + " commits matching: " + query);
                     if (commitsTableModel.getRowCount() > 0) {
                         commitsTable.setRowSelectionInterval(0, 0);
                         updateChangesForCommits(new int[]{0});
@@ -1244,6 +1244,6 @@ public class GitLogPanel extends JPanel {
         }
         
         // If not found in the current view, let the user know
-        chrome.toolOutput("Commit " + commitId.substring(0, 7) + " not found in current branch view");
+        chrome.systemOutput("Commit " + commitId.substring(0, 7) + " not found in current branch view");
     }
 }

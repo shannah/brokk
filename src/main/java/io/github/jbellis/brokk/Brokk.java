@@ -126,7 +126,7 @@ public class Brokk {
         // Resolve circular references
         contextManager.resolveCircularReferences(io, coder);
         io.onComplete();
-        io.toolOutput("Opened project at " + projectPath);
+        io.systemOutput("Opened project at " + projectPath);
 
         if (!coder.isLlmAvailable()) {
             io.toolError("\nError loading models: " + modelsError);

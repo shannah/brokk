@@ -101,7 +101,7 @@ public class Coder {
                 long backoffSeconds = 1L << (attempt - 1);
                 backoffSeconds = Math.min(backoffSeconds, 16);
 
-                io.toolOutput(String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
+                io.systemOutput(String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
                                   attempt, maxAttempts, (double)backoffSeconds));
                 
                 // Busywait with countdown
@@ -341,7 +341,7 @@ public class Coder {
                 long backoffSeconds = 1L << (attempt - 1);
                 backoffSeconds = Math.min(backoffSeconds, 16);
 
-                io.toolOutput(
+                io.systemOutput(
                     String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
                                   attempt, maxAttempts, (double)backoffSeconds)
                 );

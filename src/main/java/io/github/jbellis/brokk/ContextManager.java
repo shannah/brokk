@@ -295,7 +295,7 @@ public class ContextManager implements IContextManager
                 io.toolOutput(description);
                 task.call();
             } catch (CancellationException cex) {
-                io.toolOutput(description + " canceled.");
+                io.systemOutput(description + " canceled.");
             } catch (Exception e) {
                 logger.error("Error in " + description, e);
                 io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
@@ -311,7 +311,7 @@ public class ContextManager implements IContextManager
                 io.toolOutput(description);
                 task.call();
             } catch (CancellationException cex) {
-                io.toolOutput(description + " canceled.");
+                io.systemOutput(description + " canceled.");
             } catch (Exception e) {
                 logger.error("Error in " + description, e);
                 io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
@@ -357,7 +357,7 @@ public class ContextManager implements IContextManager
                     addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
                 }
             } catch (CancellationException cex) {
-                io.toolOutput("Ask command canceled.");
+                io.systemOutput("Ask command canceled.");
             } catch (Exception e) {
                 logger.error("Error in ask command", e);
                 io.toolErrorRaw("Error in ask command: " + e.getMessage());
@@ -392,7 +392,7 @@ public class ContextManager implements IContextManager
                     addSearchFragment(result);
                 }
             } catch (CancellationException cex) {
-                io.toolOutput("Search command canceled.");
+                io.systemOutput("Search command canceled.");
             } finally {
                 io.enableUserActionButtons();
             }
@@ -418,7 +418,7 @@ public class ContextManager implements IContextManager
                     io.systemOutput("No symbol selected.");
                 }
             } catch (CancellationException cex) {
-                io.toolOutput("Symbol selection canceled.");
+                io.systemOutput("Symbol selection canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -497,7 +497,7 @@ public class ContextManager implements IContextManager
                     case PASTE -> doPasteAction();
                 }
             } catch (CancellationException cex) {
-                io.toolOutput(action + " canceled.");
+                io.systemOutput(action + " canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -511,7 +511,7 @@ public class ContextManager implements IContextManager
             try {
                 doCommitAction(diffText);
             } catch (CancellationException cex) {
-                io.toolOutput("Commit action canceled.");
+                io.systemOutput("Commit action canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -546,7 +546,7 @@ public class ContextManager implements IContextManager
             if (!files.isEmpty()) {
                 addReadOnlyFiles(files);
             } else {
-                io.toolOutput("No files selected.");
+                io.systemOutput("No files selected.");
             }
         } else {
             var files = new HashSet<RepoFile>();
@@ -633,7 +633,6 @@ public class ContextManager implements IContextManager
                 return;
             }
             dropAll();
-            io.systemOutput("Dropped all context");
         } else {
             var pathFragsToRemove = new ArrayList<ContextFragment.PathFragment>();
             var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
@@ -805,7 +804,7 @@ public class ContextManager implements IContextManager
                 io.setContext(currentContext());
                 io.systemOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
-                io.toolOutput("Undo canceled.");
+                io.systemOutput("Undo canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -831,7 +830,7 @@ public class ContextManager implements IContextManager
                 io.setContext(currentContext());
                 io.systemOutput("Redo!");
             } catch (CancellationException cex) {
-                io.toolOutput("Redo canceled.");
+                io.systemOutput("Redo canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -864,7 +863,7 @@ public class ContextManager implements IContextManager
             }
         });
         if (!changedFiles.isEmpty()) {
-            io.toolOutput("Modified " + changedFiles);
+            io.systemOutput("Modified " + changedFiles);
         }
         return original.withOriginalContents(redoContents);
     }
@@ -912,12 +911,12 @@ public class ContextManager implements IContextManager
                 var selectedCtx = io.getSelectedContext();
                 if (selectedCtx != null) {
                     addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
-                    io.toolOutput("Content captured from output");
+                    io.systemOutput("Content captured from output");
                 } else {
                     io.toolErrorRaw("No content to capture");
                 }
             } catch (CancellationException cex) {
-                io.toolOutput("Capture canceled.");
+                io.systemOutput("Capture canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -938,12 +937,12 @@ public class ContextManager implements IContextManager
                 if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
                     var fragment = selectedCtx.getParsedOutput().parsedFragment();
                     editSources(fragment);
-                    io.toolOutput("Editing files referenced in output");
+                    io.systemOutput("Editing files referenced in output");
                 } else {
                     io.toolErrorRaw("No content with file references to edit");
                 }
             } catch (CancellationException cex) {
-                io.toolOutput("Edit files canceled.");
+                io.systemOutput("Edit files canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -1049,7 +1048,7 @@ public class ContextManager implements IContextManager
             try {
                 setAutoContextFiles(fileCount);
             } catch (CancellationException cex) {
-                io.toolOutput("Auto-context update canceled.");
+                io.systemOutput("Auto-context update canceled.");
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -1202,7 +1201,7 @@ public class ContextManager implements IContextManager
             }
         }
         if (!newContext.getAction().equals(Context.SUMMARIZING)) {
-            io.toolOutput(newContext.getAction());
+            io.systemOutput(newContext.getAction());
         }
         io.setContext(newContext);
 
@@ -1383,7 +1382,7 @@ public class ContextManager implements IContextManager
                 }
                 var inferred = response.trim();
                 project.setBuildCommand(inferred);
-                io.toolOutput("Inferred build command: " + inferred);
+                io.systemOutput("Inferred build command: " + inferred);
                 return BuildCommand.success(inferred);
             });
         }
@@ -1408,7 +1407,7 @@ public class ContextManager implements IContextManager
         }
         submitBackgroundTask("Generating style guide", () -> {
             try {
-                io.toolOutput("Generating project style guide...");
+                io.systemOutput("Generating project style guide...");
                 var analyzer = project.getAnalyzer();
                 var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
 
@@ -1434,7 +1433,7 @@ public class ContextManager implements IContextManager
                 }
 
                 if (codeForLLM.isEmpty()) {
-                    io.toolOutput("No relevant code found for style guide generation");
+                    io.systemOutput("No relevant code found for style guide generation");
                     return null;
                 }
 
@@ -1451,11 +1450,11 @@ public class ContextManager implements IContextManager
 
                 var styleGuide = coder.sendMessage(messages);
                 if (styleGuide.equals(Models.UNAVAILABLE)) {
-                    io.toolOutput("Failed to generate style guide: LLM unavailable");
+                    io.systemOutput("Failed to generate style guide: LLM unavailable");
                     return null;
                 }
                 project.saveStyleGuide(styleGuide);
-                io.toolOutput("Style guide generated and saved to .brokk/style.md");
+                io.systemOutput("Style guide generated and saved to .brokk/style.md");
             } catch (Exception e) {
                 logger.error("Error generating style guide", e);
             }

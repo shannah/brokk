@@ -197,12 +197,12 @@ public class GitPanel extends JPanel {
                     }
                     SwingUtilities.invokeLater(() -> {
                         if (selectedFiles.isEmpty()) {
-                            chrome.toolOutput("All changes stashed successfully");
+                            chrome.systemOutput("All changes stashed successfully");
                         } else {
                             String fileList = selectedFiles.size() <= 3
                                     ? selectedFiles.stream().map(Object::toString).collect(Collectors.joining(", "))
                                     : selectedFiles.size() + " files";
-                            chrome.toolOutput("Stashed " + fileList);
+                            chrome.systemOutput("Stashed " + fileList);
                         }
                         commitMessageArea.setText("");
                         updateSuggestCommitButton();
@@ -249,9 +249,9 @@ public class GitPanel extends JPanel {
                             String firstLine = msg.contains("\n")
                                     ? msg.substring(0, msg.indexOf('\n'))
                                     : msg;
-                            chrome.toolOutput("Committed " + shortHash + ": " + firstLine);
+                            chrome.systemOutput("Committed " + shortHash + ": " + firstLine);
                         } catch (Exception ex) {
-                            chrome.toolOutput("Changes committed successfully");
+                            chrome.systemOutput("Changes committed successfully");
                         }
                         commitMessageArea.setText("");
                         updateSuggestCommitButton();
@@ -717,7 +717,7 @@ public class GitPanel extends JPanel {
                 var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
 
                 if (diff.isEmpty()) {
-                    chrome.toolOutput("No changes found for " + filePath);
+                    chrome.systemOutput("No changes found for " + filePath);
                     return null;
                 }
 
@@ -727,7 +727,7 @@ public class GitPanel extends JPanel {
 
                 var fragment = new ContextFragment.StringFragment(diff, description);
                 contextManager.addVirtualFragment(fragment);
-                chrome.toolOutput("Added changes for " + fileName + " to context");
+                chrome.systemOutput("Added changes for " + fileName + " to context");
             } catch (Exception e) {
                 logger.error("Error adding file change to context", e);
                 chrome.toolErrorRaw("Error adding file change to context: " + e.getMessage());
@@ -743,7 +743,7 @@ public class GitPanel extends JPanel {
                 var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
 
                 if (diff.isEmpty()) {
-                    chrome.toolOutput("No differences found between " + filePath + " and local working copy");
+                    chrome.systemOutput("No differences found between " + filePath + " and local working copy");
                     return null;
                 }
 
@@ -753,7 +753,7 @@ public class GitPanel extends JPanel {
 
                 var fragment = new ContextFragment.StringFragment(diff, description);
                 contextManager.addVirtualFragment(fragment);
-                chrome.toolOutput("Added comparison with local for " + fileName + " to context");
+                chrome.systemOutput("Added comparison with local for " + fileName + " to context");
             } catch (Exception e) {
                 logger.error("Error comparing file with local", e);
                 chrome.toolErrorRaw("Error comparing file with local: " + e.getMessage());
@@ -809,7 +809,7 @@ public class GitPanel extends JPanel {
             try {
                 getRepo().popStash(index);
                 SwingUtilities.invokeLater(() -> {
-                    chrome.toolOutput("Stash popped successfully");
+                    chrome.systemOutput("Stash popped successfully");
                     updateStashList();
                     updateSuggestCommitButton();
                 });
@@ -827,7 +827,7 @@ public class GitPanel extends JPanel {
             try {
                 getRepo().applyStash(index);
                 SwingUtilities.invokeLater(() -> {
-                    chrome.toolOutput("Stash applied successfully");
+                    chrome.systemOutput("Stash applied successfully");
                     updateSuggestCommitButton();
                 });
             } catch (Exception e) {
@@ -854,7 +854,7 @@ public class GitPanel extends JPanel {
             try {
                 getRepo().dropStash(index);
                 SwingUtilities.invokeLater(() -> {
-                    chrome.toolOutput("Stash dropped successfully");
+                    chrome.systemOutput("Stash dropped successfully");
                     updateStashList();
                 });
             } catch (Exception e) {
