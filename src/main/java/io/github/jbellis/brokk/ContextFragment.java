@@ -376,7 +376,31 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String text() {
-            return String.join("\n\n", skeletons.values());
+            // Group skeletons by package name
+            var skeletonsByPackage = skeletons.entrySet().stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                    entry -> {
+                        var fqName = entry.getKey().fqName();
+                        int lastDotIndex = fqName.lastIndexOf('.');
+                        return lastDotIndex == -1 ? "(default package)" : fqName.substring(0, lastDotIndex);
+                    },
+                    java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (v1, v2) -> v1,
+                        java.util.LinkedHashMap::new
+                    )
+                ));
+                
+            // Build the text with package headers
+            return skeletonsByPackage.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(packageEntry -> {
+                    String packageHeader = "package " + packageEntry.getKey() + ";";
+                    String packageSkeletons = String.join("\n\n", packageEntry.getValue().values());
+                    return packageHeader + "\n\n" + packageSkeletons;
+                })
+                .collect(java.util.stream.Collectors.joining("\n\n"));
         }
 
         @Override
