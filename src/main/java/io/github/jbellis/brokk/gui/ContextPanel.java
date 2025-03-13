@@ -207,6 +207,28 @@ public class ContextPanel extends JPanel {
         setAutoContextCustomItem.addActionListener(e ->
                                                            chrome.showSetAutoContextSizeDialog());
 
+        // Create menu items for handling all references in a cell
+        JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
+        editAllRefsItem.addActionListener(e -> {
+            var selectedFragments = getSelectedFragments();
+            chrome.currentUserTask = contextManager.performContextActionAsync(
+                    Chrome.ContextAction.EDIT, selectedFragments);
+        });
+        
+        JMenuItem readAllRefsItem = new JMenuItem("Read All References");
+        readAllRefsItem.addActionListener(e -> {
+            var selectedFragments = getSelectedFragments();
+            chrome.currentUserTask = contextManager.performContextActionAsync(
+                    Chrome.ContextAction.READ, selectedFragments);
+        });
+        
+        JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
+        summarizeAllRefsItem.addActionListener(e -> {
+            var selectedFragments = getSelectedFragments();
+            chrome.currentUserTask = contextManager.performContextActionAsync(
+                    Chrome.ContextAction.SUMMARIZE, selectedFragments);
+        });
+
         // Add a mouse listener so we control exactly when the popup shows
         contextTable.addMouseListener(new MouseAdapter() {
             @Override
@@ -245,7 +267,8 @@ public class ContextPanel extends JPanel {
                             viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
                         }
 
-                        // If the user right-clicked on the references column, add single-file items
+                        // If the user right-clicked on the references column, show reference options
+                        var fileActionsAdded = false;
                         if (col == FILES_REFERENCED_COLUMN) {
                             @SuppressWarnings("unchecked")
                             List<FileReferenceData> references =
@@ -253,12 +276,23 @@ public class ContextPanel extends JPanel {
                             if (references != null && !references.isEmpty()) {
                                 FileReferenceData targetRef = findClickedReference(e.getPoint(), row, col, references);
                                 if (targetRef != null) {
+                                    // If clicking on a specific file reference, show specific file options
                                     contextMenu.addSeparator();
                                     contextMenu.add(buildAddMenuItem(targetRef));
                                     contextMenu.add(buildReadMenuItem(targetRef));
                                     contextMenu.add(buildSummarizeMenuItem(targetRef));
+                                } else {
                                 }
                             }
+                            fileActionsAdded = true;
+                        }
+
+                        if (!fileActionsAdded) {
+                            // If clicking in the cell but not on a specific reference, show "all references" options
+                            contextMenu.addSeparator();
+                            contextMenu.add(editAllRefsItem);
+                            contextMenu.add(readAllRefsItem);
+                            contextMenu.add(summarizeAllRefsItem);
                         }
                     } else {
                         // If no row is selected, we only show "View History" but disable it
@@ -662,7 +696,7 @@ public class ContextPanel extends JPanel {
      * Build "Add file" menu item for a single file reference
      */
     private JMenuItem buildAddMenuItem(FileReferenceData fileRef) {
-        JMenuItem addItem = new JMenuItem("Add " + fileRef.getFullPath());
+        JMenuItem addItem = new JMenuItem("Edit " + fileRef.getFullPath());
         addItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
                 chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
@@ -670,10 +704,7 @@ public class ContextPanel extends JPanel {
                         List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
                 );
             } else {
-                JOptionPane.showMessageDialog(null,
-                                              "Cannot add file: " + fileRef.getFullPath() + " - no RepoFile available",
-                                              "Add File Action",
-                                              JOptionPane.WARNING_MESSAGE);
+                chrome.toolErrorRaw("Cannot add file: " + fileRef.getFullPath() + " - no RepoFile available");
             }
         });
         return addItem;
@@ -691,10 +722,7 @@ public class ContextPanel extends JPanel {
                         List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
                 );
             } else {
-                JOptionPane.showMessageDialog(null,
-                                              "Cannot read file: " + fileRef.getFullPath() + " - no RepoFile available",
-                                              "Read File Action",
-                                              JOptionPane.WARNING_MESSAGE);
+                chrome.toolErrorRaw("Cannot read file: " + fileRef.getFullPath() + " - no RepoFile available");
             }
         });
         return readItem;
@@ -712,10 +740,7 @@ public class ContextPanel extends JPanel {
                         List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
                 );
             } else {
-                JOptionPane.showMessageDialog(null,
-                                              "Cannot summarize: " + fileRef.getFullPath() + " - file information not available",
-                                              "Summarize File Action",
-                                              JOptionPane.WARNING_MESSAGE);
+                chrome.toolErrorRaw("Cannot summarize: " + fileRef.getFullPath() + " - file information not available");
             }
         });
         return summarizeItem;
