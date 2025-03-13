@@ -35,51 +35,10 @@ public class MenuBar {
 
         fileMenu.addSeparator();
 
-        var setAutoContextItem = new JMenuItem("Set autocontext size");
-        setAutoContextItem.addActionListener(e -> {
-            // Simple spinner dialog
-            var dialog = new JDialog(chrome.frame, "Set Autocontext Size", true);
-            dialog.setLayout(new BorderLayout());
-
-            var panel = new JPanel(new BorderLayout());
-            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-            var label = new JLabel("Enter autocontext size (0-100):");
-            panel.add(label, BorderLayout.NORTH);
-
-            var spinner = new JSpinner(new SpinnerNumberModel(
-                    chrome.contextManager.currentContext().getAutoContextFileCount(),
-                    0, 100, 1
-            ));
-            panel.add(spinner, BorderLayout.CENTER);
-
-            var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            var okButton = new JButton("OK");
-            var cancelButton = new JButton("Cancel");
-
-            okButton.addActionListener(okEvent -> {
-                var newSize = (int) spinner.getValue();
-                chrome.contextManager.setAutoContextFilesAsync(newSize);
-                dialog.dispose();
-            });
-
-            cancelButton.addActionListener(cancelEvent -> dialog.dispose());
-            buttonPanel.add(okButton);
-            buttonPanel.add(cancelButton);
-            panel.add(buttonPanel, BorderLayout.SOUTH);
-
-            dialog.getRootPane().setDefaultButton(okButton);
-            dialog.getRootPane().registerKeyboardAction(
-                    evt -> dialog.dispose(),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                    JComponent.WHEN_IN_FOCUSED_WINDOW
-            );
-
-            dialog.add(panel);
-            dialog.pack();
-            dialog.setLocationRelativeTo(chrome.frame);
-            dialog.setVisible(true);
-        });
+        var setAutoContextItem = new JMenuItem("Set AutoContext Size");
+        setAutoContextItem.addActionListener(e ->
+            chrome.showSetAutoContextSizeDialog()
+        );
         fileMenu.add(setAutoContextItem);
 
         var refreshItem = new JMenuItem("Refresh Code Intelligence");

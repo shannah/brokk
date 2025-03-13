@@ -186,7 +186,7 @@ public class ContextPanel extends JPanel {
             }
         });
 
-        // Add context menu with "View History" option for files
+        // Add context menu with "View History" option for files and AutoContext options
         JPopupMenu contextMenu = new JPopupMenu();
         JMenuItem viewHistoryItem = new JMenuItem("View History");
         viewHistoryItem.addActionListener(e -> {
@@ -199,31 +199,69 @@ public class ContextPanel extends JPanel {
             }
         });
         contextMenu.add(viewHistoryItem);
-        
-        // Configure the popup menu to only show for repo files
-        contextTable.setComponentPopupMenu(contextMenu);
-        contextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+
+        // Create AutoContext menu items
+        JMenuItem setAutoContext5Item = new JMenuItem("Set AutoContext to 5");
+        JMenuItem setAutoContext10Item = new JMenuItem("Set AutoContext to 10");
+        JMenuItem setAutoContext20Item = new JMenuItem("Set AutoContext to 20");
+        JMenuItem setAutoContextCustomItem = new JMenuItem("Set AutoContext...");
+
+        setAutoContext5Item.addActionListener(e -> 
+            chrome.contextManager.setAutoContextFilesAsync(5));
+        setAutoContext10Item.addActionListener(e -> 
+            chrome.contextManager.setAutoContextFilesAsync(10));
+        setAutoContext20Item.addActionListener(e -> 
+            chrome.contextManager.setAutoContextFilesAsync(20));
+        setAutoContextCustomItem.addActionListener(e ->
+            chrome.showSetAutoContextSizeDialog());
+
+        // Add mouse listener for context menu
+        contextTable.addMouseListener(new MouseAdapter() {
             @Override
-            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
-                SwingUtilities.invokeLater(() -> {
-                    Point point = MouseInfo.getPointerInfo().getLocation();
-                    SwingUtilities.convertPointFromScreen(point, contextTable);
-                    int row = contextTable.rowAtPoint(point);
+            public void mousePressed(MouseEvent e) {
+                handlePopup(e);
+            }
+            
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                handlePopup(e);
+            }
+            
+            private void handlePopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = contextTable.rowAtPoint(e.getPoint());
+                    
+                    // Clear previous menu items
+                    contextMenu.removeAll();
+                    
                     if (row >= 0) {
                         contextTable.setRowSelectionInterval(row, row);
                         var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
-                        // Only enable menu for repo files
-                        viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+                        
+                        // If this is the AutoContext row, add AutoContext options
+                        if (fragment instanceof ContextFragment.AutoContext) {
+                            contextMenu.add(setAutoContext5Item);
+                            contextMenu.add(setAutoContext10Item);
+                            contextMenu.add(setAutoContext20Item);
+                            contextMenu.addSeparator();
+                            contextMenu.add(setAutoContextCustomItem);
+                        } else {
+                            // For non-AutoContext rows, add the View History option
+                            contextMenu.add(viewHistoryItem);
+                            viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+                        }
                     } else {
+                        // If no row is selected, we still show "View History", but disabled
                         viewHistoryItem.setEnabled(false);
+                        contextMenu.add(viewHistoryItem);
                     }
-                });
+                    
+                    // Show the popup menu
+                    contextMenu.show(contextTable, e.getX(), e.getY());
+                }
             }
-            @Override
-            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
-            @Override
-            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
         });
+
         // Set selection mode to allow multiple selection
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
@@ -415,7 +453,7 @@ public class ContextPanel extends JPanel {
             copyButton.setEnabled(hasContext);
         });
     }
-
+    
     /**
      * Disables the context action buttons while an action is in progress
      */
@@ -539,7 +577,7 @@ public class ContextPanel extends JPanel {
             populateContextTable(contextManager.currentContext());
         });
     }
-    
+
     /**
      * Updates the description label with file names
      */
