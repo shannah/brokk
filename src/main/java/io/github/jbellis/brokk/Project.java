@@ -24,7 +24,6 @@ public class Project implements IProject {
     private final Properties projectProps;
     private final Properties workspaceProps;
     private final Path styleGuidePath;
-    private final Path historyFilePath;
     private final AnalyzerWrapper analyzerWrapper;
     private final GitRepo repo;
 
@@ -41,7 +40,6 @@ public class Project implements IProject {
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
         this.workspacePropertiesFile = root.resolve(".brokk").resolve("workspace.properties");
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
-        this.historyFilePath = root.resolve(".brokk").resolve("linereader.txt");
         this.projectProps = new Properties();
         this.workspaceProps = new Properties();
 
@@ -133,10 +131,8 @@ public class Project implements IProject {
                 }
             }
 
-            Files.createDirectories(file.getParent());
-            try (var writer = Files.newBufferedWriter(file)) {
-                properties.store(writer, comment);
-            }
+            // Use atomic save method
+            FileUtil.atomicSaveProperties(file, properties, comment);
         } catch (IOException e) {
             logger.error("Error saving properties to {}: {}", file, e.getMessage());
         }
@@ -146,7 +142,6 @@ public class Project implements IProject {
      * Compares two Properties objects to see if they have the same key-value pairs
      * @return true if properties are equal
      */
-    @NotNull
     private boolean propsEqual(Properties p1, Properties p2) {
         if (p1.size() != p2.size()) {
             return false;
@@ -167,7 +162,7 @@ public class Project implements IProject {
     public enum CpgRefresh {
         AUTO,
         MANUAL,
-        UNSET;
+        UNSET
     }
 
     public CpgRefresh getCpgRefresh() {
@@ -202,19 +197,12 @@ public class Project implements IProject {
     public void saveStyleGuide(String styleGuide) {
         try {
             Files.createDirectories(styleGuidePath.getParent());
-            Files.writeString(styleGuidePath, styleGuide);
+            FileUtil.atomicOverwrite(styleGuidePath, styleGuide);
         } catch (IOException e) {
             logger.error("Error saving style guide: {}", e.getMessage());
         }
     }
-    
-    /**
-     * Returns the path to the command history file
-     */
-    public Path getHistoryFilePath() {
-        return historyFilePath;
-    }
-    
+
     /**
      * Saves a serialized Context object to the workspace properties
      */
@@ -305,7 +293,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
     history.removeIf(i -> i.equals(item));
     
     // Add the new item at the beginning (newest first)
-    history.add(0, item);
+    history.addFirst(item);
     
     // Trim to max size
     if (history.size() > maxItems) {
@@ -344,9 +332,6 @@ public List<String> addToTextHistory(String item, int maxItems) {
         return Path.of(System.getProperty("user.home"), ".config", "brokk", "keys.properties");
     }
 
-    /**
-     * @param keys Map of key names to values
-     */
     /**
      * Save a window's position and size
      * @param key identifier for the window
@@ -497,13 +482,9 @@ public List<String> addToTextHistory(String item, int maxItems) {
         var keysPath = getLlmKeysPath();
 
         try {
-            Files.createDirectories(keysPath.getParent());
             Properties keyProps = new Properties();
             keys.forEach(keyProps::setProperty);
-
-            try (var writer = Files.newBufferedWriter(keysPath)) {
-                keyProps.store(writer, "Brokk LLM API keys");
-            }
+            FileUtil.atomicSaveProperties(keysPath, keyProps, "Brokk LLM API keys");
         } catch (IOException e) {
             logger.error("Error saving LLM keys: {}", e.getMessage());
         }
@@ -581,10 +562,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
         }
 
         try {
-            Files.createDirectories(RECENT_PROJECTS_PATH.getParent());
-            try (var writer = Files.newBufferedWriter(RECENT_PROJECTS_PATH)) {
-                props.store(writer, "Recently opened Brokk projects");
-            }
+            FileUtil.atomicSaveProperties(RECENT_PROJECTS_PATH, props, "Recently opened Brokk projects");
         } catch (IOException e) {
             logger.error("Error saving recent projects: {}", e.getMessage());
         }
