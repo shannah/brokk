@@ -281,19 +281,36 @@ public class ContextPanel extends JPanel {
                                     contextMenu.add(buildAddMenuItem(targetRef));
                                     contextMenu.add(buildReadMenuItem(targetRef));
                                     contextMenu.add(buildSummarizeMenuItem(targetRef));
-                                } else {
                                 }
                             }
                             fileActionsAdded = true;
                         }
 
+                        // If clicking in the row but not on a specific reference, show "all references" options
                         if (!fileActionsAdded) {
-                            // If clicking in the cell but not on a specific reference, show "all references" options
                             contextMenu.addSeparator();
                             contextMenu.add(editAllRefsItem);
                             contextMenu.add(readAllRefsItem);
                             contextMenu.add(summarizeAllRefsItem);
                         }
+
+                        // Add Copy and Drop actions with a separator
+                        contextMenu.addSeparator();
+                        JMenuItem copySelectionItem = new JMenuItem("Copy");
+                        copySelectionItem.addActionListener(ev -> {
+                            var selectedFragments = getSelectedFragments();
+                            chrome.currentUserTask = contextManager.performContextActionAsync(
+                                    Chrome.ContextAction.COPY, selectedFragments);
+                        });
+                        contextMenu.add(copySelectionItem);
+
+                        JMenuItem dropSelectionItem = new JMenuItem("Drop");
+                        dropSelectionItem.addActionListener(ev -> {
+                            var selectedFragments = getSelectedFragments();
+                            chrome.currentUserTask = contextManager.performContextActionAsync(
+                                    Chrome.ContextAction.DROP, selectedFragments);
+                        });
+                        contextMenu.add(dropSelectionItem);
                     } else {
                         // If no row is selected, we only show "View History" but disable it
                         contextMenu.add(viewHistoryItem);
