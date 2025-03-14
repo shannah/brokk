@@ -250,7 +250,10 @@ public class ContextPanel extends JPanel {
                     contextMenu.removeAll();
 
                     if (row >= 0) {
-                        contextTable.setRowSelectionInterval(row, row);
+                        // Only select the row if nothing is currently selected
+                        if (contextTable.getSelectedRowCount() == 0) {
+                            contextTable.setRowSelectionInterval(row, row);
+                        }
                         var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
 
                         // If this is the AutoContext row, show AutoContext items
