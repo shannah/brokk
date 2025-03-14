@@ -79,12 +79,9 @@ public class GuiTheme {
             if (mainScrollPane != null) {
                 mainScrollPane.revalidate();
             }
-            
-            // Notify user
-            chrome.toolOutput("Switched to " + (isDark ? "dark" : "light") + " theme");
         } catch (Exception e) {
             logger.error("Failed to switch theme", e);
-            chrome.toolError("Failed to switch theme: " + e.getMessage());
+            chrome.toolErrorRaw("Failed to switch theme: " + e.getMessage());
         }
     }
     
