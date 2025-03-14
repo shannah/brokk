@@ -103,9 +103,10 @@ public class ContextManager implements IContextManager
                                    Executors.defaultThreadFactory()));
 
     // Internal background tasks (unrelated to user actions)
+    // Lots of threads allowed since AutoContext updates get dropped here
     // Use unbounded queue to prevent task rejection
     private final ExecutorService backgroundTasks = createLoggingExecutorService(
-            new ThreadPoolExecutor(3, 3,
+            new ThreadPoolExecutor(3, 12,
                                    60L, TimeUnit.SECONDS,
                                    new LinkedBlockingQueue<>(), // Unbounded queue to prevent rejection
                                    Executors.defaultThreadFactory()));
@@ -194,16 +195,43 @@ public class ContextManager implements IContextManager
         // before adding the Context sentinel to history
         // Load saved context or create a new one if none exists
         // TODO rebuild autocontext off the EDT
-        var initialContext = project.loadContext();
+        var initialContext = project.loadContext(this);
         if (initialContext == null) {
             var welcomeMessage = buildWelcomeMessage(coder.models);
-            initialContext = new Context(project, 10, welcomeMessage);
+            initialContext = new Context(this, 10, welcomeMessage);
         }
         contextHistory.set(List.of(initialContext));
         chrome.setContext(initialContext);
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
+    }
+
+    @Override
+    public void replaceContext(Context context, Context replacement) {
+        synchronized (ContextManager.this) {
+            var ch = new ArrayList<>(contextHistory.get());
+            long start = System.currentTimeMillis();
+            while (System.currentTimeMillis() - start < 1_000) {
+                var i = ch.indexOf(context);
+                if (i == -1) {
+                    // AutoContext build finished before we added it to history
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    continue;
+                }
+
+                ch.set(i, replacement);
+                contextHistory.set(List.copyOf(ch));
+                break;
+            }
+        }
+
+        io.updateContextHistoryTable();
+        io.updateContextTable();
     }
 
     /**
@@ -248,18 +276,6 @@ public class ContextManager implements IContextManager
     {
         var ch = contextHistory.get();
         return ch.isEmpty() ? null : ch.getLast();
-    }
-
-    /**
-     * Return the main analyzer, building it if needed
-     */
-    public IAnalyzer getAnalyzer()
-    {
-        return project.getAnalyzer();
-    }
-
-    public IAnalyzer getAnalyzerNonBlocking() {
-        return project.getAnalyzerNonBlocking();
     }
 
     public Path getRoot()
@@ -1310,6 +1326,7 @@ public class ContextManager implements IContextManager
     /**
      * Submits a background task to the internal background executor (non-user actions).
      */
+    @Override
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
         Future<T> future = backgroundTasks.submit(() -> {
             try {

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -137,7 +136,7 @@ public class Project implements IProject {
             logger.error("Error saving properties to {}: {}", file, e.getMessage());
         }
     }
-    
+
     /**
      * Compares two Properties objects to see if they have the same key-value pairs
      * @return true if properties are equal
@@ -146,13 +145,13 @@ public class Project implements IProject {
         if (p1.size() != p2.size()) {
             return false;
         }
-        
+
         return p1.entrySet().stream()
-            .allMatch(e -> {
-                String key = (String) e.getKey();
-                String value = (String) e.getValue();
-                return value.equals(p2.getProperty(key));
-            });
+                .allMatch(e -> {
+                    String key = (String) e.getKey();
+                    String value = (String) e.getValue();
+                    return value.equals(p2.getProperty(key));
+                });
     }
 
     public Path getRoot() {
@@ -218,92 +217,92 @@ public class Project implements IProject {
     }
 
     /**
- * Loads a serialized Context object from the workspace properties
- * @return The loaded Context, or null if none exists
- */
-public Context loadContext() {
-    try {
-        String encoded = workspaceProps.getProperty("context");
-        if (encoded != null && !encoded.isEmpty()) {
-            byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
-            return Context.deserialize(serialized).withProject(this);
+     * Loads a serialized Context object from the workspace properties
+     * @return The loaded Context, or null if none exists
+     */
+    public Context loadContext(IContextManager contextManager) {
+        try {
+            String encoded = workspaceProps.getProperty("context");
+            if (encoded != null && !encoded.isEmpty()) {
+                byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
+                return Context.deserialize(serialized).withContextManager(contextManager);
+            }
+        } catch (Exception e) {
+            logger.error("Error loading context: {}", e.getMessage());
         }
-    } catch (Exception e) {
-        logger.error("Error loading context: {}", e.getMessage());
+        return null;
     }
-    return null;
-}
 
-/**
- * Saves a list of text history items to workspace properties
- * @param historyItems The list of text history items to save (newest first)
- * @param maxItems Maximum number of items to store (older items are trimmed)
- */
-public void saveTextHistory(List<String> historyItems, int maxItems) {
-    try {
-        // Limit the list to the specified maximum size
-        var limitedItems = historyItems.stream()
-            .limit(maxItems)
-            .collect(Collectors.toList());
-        
-        // Convert to JSON and store in properties
-        String json = objectMapper.writeValueAsString(limitedItems);
-        workspaceProps.setProperty("textHistory", json);
-        saveWorkspaceProperties();
-    } catch (Exception e) {
-        logger.error("Error saving text history: {}", e.getMessage());
-    }
-}
+    /**
+     * Saves a list of text history items to workspace properties
+     * @param historyItems The list of text history items to save (newest first)
+     * @param maxItems Maximum number of items to store (older items are trimmed)
+     */
+    public void saveTextHistory(List<String> historyItems, int maxItems) {
+        try {
+            // Limit the list to the specified maximum size
+            var limitedItems = historyItems.stream()
+                    .limit(maxItems)
+                    .collect(Collectors.toList());
 
-/**
- * Loads the saved text history items
- * @return List of text history items (newest first), or empty list if none found
- */
-public List<String> loadTextHistory() {
-    try {
-        String json = workspaceProps.getProperty("textHistory");
-        if (json != null && !json.isEmpty()) {
-            logger.debug("Loading text history from workspace properties: {}", json);
-            List<String> result = objectMapper.readValue(json,
-                objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
-            logger.debug("Loaded {} history items", result.size());
-            return result;
+            // Convert to JSON and store in properties
+            String json = objectMapper.writeValueAsString(limitedItems);
+            workspaceProps.setProperty("textHistory", json);
+            saveWorkspaceProperties();
+        } catch (Exception e) {
+            logger.error("Error saving text history: {}", e.getMessage());
         }
-    } catch (Exception e) {
-        logger.error("Error loading text history: {}", e.getMessage(), e);
     }
-    logger.debug("No text history found, returning empty list");
-    return new ArrayList<>();
-}
 
-/**
- * Adds a new item to the text history, maintaining the maximum size
- * @param item New item to add to history
- * @param maxItems Maximum history size
- * @return The updated history list
- */
-public List<String> addToTextHistory(String item, int maxItems) {
-    if (item == null || item.trim().isEmpty()) {
-        return loadTextHistory(); // Don't add empty items
+    /**
+     * Loads the saved text history items
+     * @return List of text history items (newest first), or empty list if none found
+     */
+    public List<String> loadTextHistory() {
+        try {
+            String json = workspaceProps.getProperty("textHistory");
+            if (json != null && !json.isEmpty()) {
+                logger.debug("Loading text history from workspace properties: {}", json);
+                List<String> result = objectMapper.readValue(json,
+                                                             objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+                logger.debug("Loaded {} history items", result.size());
+                return result;
+            }
+        } catch (Exception e) {
+            logger.error("Error loading text history: {}", e.getMessage(), e);
+        }
+        logger.debug("No text history found, returning empty list");
+        return new ArrayList<>();
     }
-    
-    var history = new ArrayList<>(loadTextHistory());
-    
-    // Remove item if it already exists to avoid duplicates
-    history.removeIf(i -> i.equals(item));
-    
-    // Add the new item at the beginning (newest first)
-    history.addFirst(item);
-    
-    // Trim to max size
-    if (history.size() > maxItems) {
-        history = new ArrayList<>(history.subList(0, maxItems));
+
+    /**
+     * Adds a new item to the text history, maintaining the maximum size
+     * @param item New item to add to history
+     * @param maxItems Maximum history size
+     * @return The updated history list
+     */
+    public List<String> addToTextHistory(String item, int maxItems) {
+        if (item == null || item.trim().isEmpty()) {
+            return loadTextHistory(); // Don't add empty items
+        }
+
+        var history = new ArrayList<>(loadTextHistory());
+
+        // Remove item if it already exists to avoid duplicates
+        history.removeIf(i -> i.equals(item));
+
+        // Add the new item at the beginning (newest first)
+        history.addFirst(item);
+
+        // Trim to max size
+        if (history.size() > maxItems) {
+            history = new ArrayList<>(history.subList(0, maxItems));
+        }
+
+        // Save and return the updated list
+        saveTextHistory(history, maxItems);
+        return history;
     }
-    
-    // Save and return the updated list
-    saveTextHistory(history, maxItems);
-    return history;
-}
 
     /**
      * Returns the LLM API keys stored in ~/.brokk/config/keys.properties
@@ -324,7 +323,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
                 logger.error("Error loading LLM keys: {}", e.getMessage());
             }
         }
-        
+
         return keys;
     }
 
@@ -339,7 +338,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
      */
     public void saveWindowBounds(String key, JFrame window) {
         if (window == null || !window.isDisplayable() ||
-            window.getExtendedState() != java.awt.Frame.NORMAL) {
+                window.getExtendedState() != java.awt.Frame.NORMAL) {
             return;
         }
 
@@ -388,42 +387,42 @@ public List<String> addToTextHistory(String item, int maxItems) {
 
         return result;
     }
-    
+
     /**
      * Gets the saved main window bounds
      */
     public java.awt.Rectangle getMainWindowBounds() {
         return getWindowBounds("mainFrame", DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
     }
-    
+
     /**
      * Gets the saved preview window bounds
      */
     public java.awt.Rectangle getPreviewWindowBounds() {
         return getWindowBounds("previewFrame", 600, 400);
     }
-    
+
     /**
      * Gets the saved diff window bounds
      */
     public java.awt.Rectangle getDiffWindowBounds() {
         return getWindowBounds("diffFrame", 900, 600);
     }
-    
+
     /**
      * Save main window bounds
      */
     public void saveMainWindowBounds(JFrame window) {
         saveWindowBounds("mainFrame", window);
     }
-    
+
     /**
      * Save preview window bounds
      */
     public void savePreviewWindowBounds(JFrame window) {
         saveWindowBounds("previewFrame", window);
     }
-    
+
     /**
      * Save diff window bounds
      */
@@ -445,7 +444,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
             logger.error("Error saving diff window bounds: {}", e.getMessage());
         }
     }
-    
+
     /**
      * Save vertical split pane position
      */
@@ -489,7 +488,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
             return -1;
         }
     }
-    
+
     /**
      * Gets the current UI theme (dark or light)
      * @return "dark" or "light" (defaults to "dark" if not set)
@@ -497,7 +496,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
     public String getTheme() {
         return workspaceProps.getProperty("theme", "light");
     }
-    
+
     /**
      * Sets the UI theme
      * @param theme "dark" or "light"
@@ -506,7 +505,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
         workspaceProps.setProperty("theme", theme);
         saveWorkspaceProperties();
     }
-    
+
     public void saveLlmKeys(Map<String, String> keys) {
         var keysPath = getLlmKeysPath();
 
@@ -530,7 +529,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
     public IAnalyzer getAnalyzer() {
         return analyzerWrapper.get();
     }
-    
+
     /**
      * Gets the analyzer without blocking, may return null if not available
      */
@@ -540,15 +539,14 @@ public List<String> addToTextHistory(String item, int maxItems) {
     }
 
     private static final Path RECENT_PROJECTS_PATH = Path.of(System.getProperty("user.home"),
-                                                         ".config", "brokk", "projects.properties");
+                                                             ".config", "brokk", "projects.properties");
 
     /**
      * Reads the recent projects list from ~/.config/brokk/projects.properties.
      * Returns a map of projectPath -> lastOpenedMillis.
      * If the file doesn't exist or can't be read, returns an empty map.
      */
-    public static Map<String, Long> loadRecentProjects()
-    {
+    public static Map<String, Long> loadRecentProjects() {
         var result = new HashMap<String, Long>();
         if (!Files.exists(RECENT_PROJECTS_PATH)) {
             return result;
@@ -577,13 +575,12 @@ public List<String> addToTextHistory(String item, int maxItems) {
      * Saves the given map of projectPath -> lastOpenedMillis to
      * ~/.config/brokk/projects.properties, trimming to the 10 most recent.
      */
-    public static void saveRecentProjects(Map<String, Long> projects)
-    {
+    public static void saveRecentProjects(Map<String, Long> projects) {
         // Sort entries by lastOpened descending
         var sorted = projects.entrySet().stream()
-            .sorted((a,b)-> Long.compare(b.getValue(), a.getValue()))
-            .limit(10)
-            .toList();
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(10)
+                .toList();
 
         var props = new Properties();
         for (var e : sorted) {
@@ -601,8 +598,7 @@ public List<String> addToTextHistory(String item, int maxItems) {
      * Updates the projects.properties with a single entry for the given directory path,
      * setting last opened to the current time.
      */
-    public static void updateRecentProject(Path projectDir)
-    {
+    public static void updateRecentProject(Path projectDir) {
         var abs = projectDir.toAbsolutePath().toString();
         var currentMap = loadRecentProjects();
         currentMap.put(abs, System.currentTimeMillis());

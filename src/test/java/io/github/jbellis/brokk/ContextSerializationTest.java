@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import scala.Option;
 import scala.Tuple2;
 
 import java.nio.file.Files;
@@ -14,17 +13,22 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ContextSerializationTest {
     @TempDir
     Path tempDir;
-    private IProject mockProject;
+    private IContextManager mockContextManager;
 
     @BeforeEach
     void setup() {
-        // Setup mock project
-        mockProject = new IProject() {
+        // Setup mock context manager
+        mockContextManager = new IContextManager() {
             @Override
             public IAnalyzer getAnalyzer() {
                 return new IAnalyzer() {
@@ -38,11 +42,6 @@ public class ContextSerializationTest {
                         return List.of();
                     }
                 };
-            }
-
-            @Override
-            public IAnalyzer getAnalyzerNonBlocking() {
-                return getAnalyzer();
             }
 
             @Override
@@ -65,7 +64,7 @@ public class ContextSerializationTest {
     @Test
     void testBasicContextSerialization() throws Exception {
         // Create a context with minimal state
-        Context context = new Context(mockProject, 5);
+        Context context = new Context(mockContextManager, 5);
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
@@ -78,7 +77,7 @@ public class ContextSerializationTest {
         assertEquals(context.virtualFragments.size(), deserialized.virtualFragments.size());
         
         // Most transient fields should be initialized to empty
-        assertNull(deserialized.project);
+        assertNull(deserialized.contextManager);
         assertNotNull(deserialized.parsedOutput); // Empty ParsedOutput
         assertNotNull(deserialized.originalContents); // Empty Map
         assertNotNull(deserialized.historyMessages); // Empty List
@@ -101,7 +100,7 @@ public class ContextSerializationTest {
         Files.writeString(externalFile.absPath(), "This is external content");
         
         // Create context with fragments
-        Context context = new Context(mockProject, 5)
+        Context context = new Context(mockContextManager, 5)
             .addEditableFiles(List.of(new ContextFragment.RepoPathFragment(repoFile)))
             .addReadonlyFiles(List.of(new ContextFragment.ExternalPathFragment(externalFile)))
             .addVirtualFragment(new ContextFragment.StringFragment("virtual content", "Virtual Fragment"));
@@ -135,7 +134,7 @@ public class ContextSerializationTest {
     
     @Test
     void testAllVirtualFragmentTypes() throws Exception {
-        Context context = new Context(mockProject, 5);
+        Context context = new Context(mockContextManager, 5);
         
         // Add examples of each VirtualFragment type
         context = context
@@ -197,7 +196,7 @@ public class ContextSerializationTest {
     @Test
     void testAutoContextSerialization() throws Exception {
         // Create a context with auto-context
-        Context context = new Context(mockProject, 5)
+        Context context = new Context(mockContextManager, 5)
             .setAutoContextFiles(10);
         
         // Serialize and deserialize
@@ -221,7 +220,7 @@ public class ContextSerializationTest {
         ContextFragment.ExternalPathFragment fragment = new ContextFragment.ExternalPathFragment(externalFile);
         
         // Add to context
-        Context context = new Context(mockProject, 5)
+        Context context = new Context(mockContextManager, 5)
             .addReadonlyFiles(List.of(fragment));
             
         // Serialize and deserialize
@@ -233,7 +232,7 @@ public class ContextSerializationTest {
         ContextFragment.PathFragment deserializedFragment = deserialized.readonlyFiles.get(0);
         
         // Check if it's the correct type
-        assertTrue(deserializedFragment instanceof ContextFragment.ExternalPathFragment);
+        assertInstanceOf(ContextFragment.ExternalPathFragment.class, deserializedFragment);
         
         // Verify path and content
         assertEquals(externalPath.toString(), deserializedFragment.file().toString());
@@ -271,7 +270,7 @@ public class ContextSerializationTest {
             ));
         }
         
-        Context context = new Context(mockProject, 50);
+        Context context = new Context(mockContextManager, 50);
         
         // Add all fragments
         context = context.addEditableFiles(editableFiles);

@@ -17,7 +17,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -35,7 +34,7 @@ public class Context implements Serializable {
     private static final String WELCOME_ACTION = "Welcome to Brokk";
     private static final String WELCOME_BACK = "Welcome back to Brokk";
 
-    transient final IProject project;
+    transient final IContextManager contextManager;
     final List<ContextFragment.RepoPathFragment> editableFiles;
     final List<ContextFragment.PathFragment> readonlyFiles;
     final List<ContextFragment.VirtualFragment> virtualFragments;
@@ -70,21 +69,21 @@ public class Context implements Serializable {
     /**
      * Constructor for initial empty context
      */
-    public Context(IProject project, int autoContextFileCount, String initialOutputText) {
-        this(project, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(), 
-             new ParsedOutput(initialOutputText, SyntaxConstants.SYNTAX_STYLE_MARKDOWN, new ContextFragment.StringFragment(initialOutputText, "")), 
+    public Context(IContextManager contextManager, int autoContextFileCount, String initialOutputText) {
+        this(contextManager, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(),
+             new ParsedOutput(initialOutputText, SyntaxConstants.SYNTAX_STYLE_MARKDOWN, new ContextFragment.StringFragment(initialOutputText, "")),
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
 
     /**
      * Constructor for initial empty context with empty output
      */
-    public Context(IProject project, int autoContextFileCount) {
-        this(project, autoContextFileCount, "");
+    public Context(IContextManager contextManager, int autoContextFileCount) {
+        this(contextManager, autoContextFileCount, "");
     }
 
     private Context(
-            IProject project,
+            IContextManager contextManager,
             List<ContextFragment.RepoPathFragment> editableFiles,
             List<ContextFragment.PathFragment> readonlyFiles,
             List<ContextFragment.VirtualFragment> virtualFragments,
@@ -95,7 +94,7 @@ public class Context implements Serializable {
             ParsedOutput parsedOutput,
             Future<String> action
     ) {
-        assert project != null;
+        assert contextManager != null;
         assert editableFiles != null;
         assert readonlyFiles != null;
         assert virtualFragments != null;
@@ -105,7 +104,7 @@ public class Context implements Serializable {
         assert originalContents != null;
         assert parsedOutput != null;
         assert action != null;
-        this.project = project;
+        this.contextManager = contextManager;
         this.editableFiles = List.copyOf(editableFiles);
         this.readonlyFiles = List.copyOf(readonlyFiles);
         this.virtualFragments = List.copyOf(virtualFragments);
@@ -148,10 +147,6 @@ public class Context implements Serializable {
                 .collect(Collectors.joining(", "));
         String action = "Read " + actionDetails;
         return getWithFragments(editableFiles, newReadOnly, virtualFragments, action);
-    }
-
-    public Context removeEditableFile(ContextFragment.PathFragment fragment) {
-        return removeEditableFiles(List.of(fragment));
     }
 
     public Context removeEditableFiles(List<ContextFragment.PathFragment> fragments) {
@@ -230,7 +225,7 @@ public class Context implements Serializable {
     public Context addSearchFragment(Future<String> query, ParsedOutput parsed) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(parsed.parsedFragment);
-        return new Context(project, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
+        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
     }
 
     public Context removeBadFragment(ContextFragment f) {
@@ -287,7 +282,7 @@ public class Context implements Serializable {
             return this;
         }
 
-        return new Context(project,
+        return new Context(contextManager,
                            editableFiles,
                            readonlyFiles,
                            virtualFragments,
@@ -310,11 +305,11 @@ public class Context implements Serializable {
             return AutoContext.DISABLED;
         }
 
-        var analyzer = project.getAnalyzerNonBlocking();
+        var analyzer = contextManager.getAnalyzer();
         if (analyzer == null) {
             return AutoContext.UNAVAILABLE;
         }
-        var repo = project.getRepo();
+        var repo = contextManager.getRepo();
 
         // Collect ineligible classnames from fragments not eligible for auto-context
         var ineligibleSources = Streams.concat(editableFiles.stream(), readonlyFiles.stream(), virtualFragments.stream())
@@ -412,7 +407,7 @@ public class Context implements Serializable {
                                   List<ContextFragment.VirtualFragment> newVirtualFragments,
                                   Future<String> action) {
         return new Context(
-                project,
+                contextManager,
                 newEditableFiles,
                 newReadonlyFiles,
                 newVirtualFragments,
@@ -434,8 +429,34 @@ public class Context implements Serializable {
      * Produces a new Context object with a fresh AutoContext if enabled.
      */
     public Context refresh() {
-        AutoContext newAutoContext = isAutoContextEnabled() ? buildAutoContext() : AutoContext.DISABLED;
-        return new Context(project, editableFiles, readonlyFiles, virtualFragments, newAutoContext, autoContextFileCount, historyMessages, Map.of(), parsedOutput, action);
+        AutoContext acPlaceholder = isAutoContextEnabled() ? AutoContext.REBUILDING : AutoContext.DISABLED;
+        var newContext = new Context(contextManager,
+                                     editableFiles,
+                                     readonlyFiles,
+                                     virtualFragments,
+                                     acPlaceholder,
+                                     autoContextFileCount,
+                                     historyMessages,
+                                     Map.of(),
+                                     parsedOutput,
+                                     action);
+        contextManager.submitBackgroundTask("Computing AutoContext", () -> {
+            var newAutoContext = buildAutoContext();
+            var replacement = new Context(contextManager,
+                                          editableFiles,
+                                          readonlyFiles,
+                                          virtualFragments,
+                                          newAutoContext,
+                                          autoContextFileCount,
+                                          historyMessages,
+                                          Map.of(),
+                                          parsedOutput,
+                                          action);
+            contextManager.replaceContext(newContext, replacement);
+            return null;
+        });
+
+        return newContext;
     }
 
     // Method removed in favor of toFragment(int position)
@@ -457,7 +478,7 @@ public class Context implements Serializable {
         var newHistory = new ArrayList<>(historyMessages);
         newHistory.addAll(newMessages);
         return new Context(
-                project,
+                contextManager,
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
@@ -475,7 +496,7 @@ public class Context implements Serializable {
      */
     public Context clearHistory() {
         return new Context(
-                project,
+                contextManager,
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
@@ -490,7 +511,7 @@ public class Context implements Serializable {
 
     public Context withOriginalContents(Map<RepoFile, String> fileContents) {
         return new Context(
-                project,
+                contextManager,
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
@@ -529,7 +550,7 @@ public class Context implements Serializable {
         newFragments.add(fragment);
         var parsed = new ParsedOutput(fragment.text(), SyntaxConstants.SYNTAX_STYLE_JAVA, fragment);
         var action = CompletableFuture.completedFuture(fragment.description());
-        return new Context(project, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
+        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
     }
 
     /**
@@ -561,7 +582,7 @@ public class Context implements Serializable {
     }
 
     public Context withParsedOutput(ParsedOutput parsedOutput, Future<String> action) {
-        return new Context(project,
+        return new Context(contextManager,
                            editableFiles,
                            readonlyFiles,
                            virtualFragments,
@@ -623,9 +644,9 @@ public class Context implements Serializable {
             parsedOutputField.setAccessible(true);
             parsedOutputField.set(this, new ParsedOutput());
 
-            var projectField = Context.class.getDeclaredField("project");
-            projectField.setAccessible(true);
-            projectField.set(this, null); // This will need to be set externally after deserialization
+            var contextManagerField = Context.class.getDeclaredField("contextManager");
+            contextManagerField.setAccessible(true);
+            contextManagerField.set(this, null); // This will need to be set externally after deserialization
 
             var actionField = Context.class.getDeclaredField("action");
             actionField.setAccessible(true);
@@ -636,12 +657,12 @@ public class Context implements Serializable {
     }
 
     /**
-     * Creates a new Context with the specified project.
-     * Used to initialize the project reference after deserialization.
+     * Creates a new Context with the specified context manager.
+     * Used to initialize the context manager reference after deserialization.
      */
-    public Context withProject(IProject project) {
+    public Context withContextManager(IContextManager contextManager) {
         return new Context(
-                project,
+                contextManager,
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
