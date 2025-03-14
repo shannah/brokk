@@ -459,7 +459,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Shows the context menu for the context history table
      */
     // Theme manager
-    private GuiTheme themeManager;
+    GuiTheme themeManager;
     
     // Theme constants - matching GuiTheme values
     private static final String THEME_DARK = "dark";

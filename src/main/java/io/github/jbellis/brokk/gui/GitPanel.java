@@ -379,6 +379,16 @@ public class GitPanel extends JPanel {
 
         // Context menu for stash
         JPopupMenu stashContextMenu = new JPopupMenu();
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(stashContextMenu);
+        } else {
+            // Register this popup menu later when the theme manager is available
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(stashContextMenu);
+                }
+            });
+        }
         JMenuItem popStashItem = new JMenuItem("Pop Stash");
         JMenuItem applyStashItem = new JMenuItem("Apply Stash");
         JMenuItem dropStashItem = new JMenuItem("Drop Stash");
@@ -591,6 +601,16 @@ public class GitPanel extends JPanel {
 
         // Add a context menu with same options as Changes tree
         JPopupMenu historyContextMenu = new JPopupMenu();
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(historyContextMenu);
+        } else {
+            // Register this popup menu later when the theme manager is available
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(historyContextMenu);
+                }
+            });
+        }
         JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
         JMenuItem compareWithLocalItem = new JMenuItem("Compare with Local");
         JMenuItem viewInLogItem = new JMenuItem("View in Log");

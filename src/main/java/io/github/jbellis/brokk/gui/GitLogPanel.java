@@ -210,6 +210,16 @@ public class GitLogPanel extends JPanel {
 
         // Context menu on commits
         JPopupMenu commitsContextMenu = new JPopupMenu();
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(commitsContextMenu);
+        } else {
+            // Register this popup menu later when the theme manager is available
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(commitsContextMenu);
+                }
+            });
+        }
         JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
         JMenuItem softResetItem = new JMenuItem("Soft Reset to Here");
         JMenuItem revertCommitItem = new JMenuItem("Revert Commit");
@@ -290,6 +300,16 @@ public class GitLogPanel extends JPanel {
 
         // Context menu on changes tree
         JPopupMenu changesContextMenu = new JPopupMenu();
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(changesContextMenu);
+        } else {
+            // Register this popup menu later when the theme manager is available
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(changesContextMenu);
+                }
+            });
+        }
         JMenuItem addFileToContextItem = new JMenuItem("Add Changes to Context");
         JMenuItem compareFileWithLocalItem = new JMenuItem("Compare with Local");
         JMenuItem viewDiffItem = new JMenuItem("Show Diff");
@@ -482,6 +502,16 @@ public class GitLogPanel extends JPanel {
 
         // Context menu for local branch table
         JPopupMenu branchContextMenu = new JPopupMenu();
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(branchContextMenu);
+        } else {
+            // Register this popup menu later when the theme manager is available
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(branchContextMenu);
+                }
+            });
+        }
         JMenuItem checkoutItem = new JMenuItem("Checkout");
         JMenuItem mergeItem = new JMenuItem("Merge into HEAD");
         JMenuItem renameItem = new JMenuItem("Rename");
