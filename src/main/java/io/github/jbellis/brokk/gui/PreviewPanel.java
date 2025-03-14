@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
+import org.fife.ui.rsyntaxtextarea.Theme;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
 import org.fife.ui.rtextarea.SearchContext;
@@ -27,13 +28,24 @@ public class PreviewPanel extends JPanel
     private final JTextField searchField;
     private final JButton nextButton;
     private final JButton previousButton;
-
+    
+    /**
+     * Updates the theme of this panel
+     * @param guiTheme The theme manager to use
+     */
+    public void updateTheme(GuiTheme guiTheme) {
+        if (guiTheme != null) {
+            guiTheme.applyCurrentThemeToComponent(textArea);
+        }
+    }
+    
     /**
      * Constructs a new PreviewPanel with the given content and syntax style.
      * @param content     The text content to display
      * @param syntaxStyle For example, SyntaxConstants.SYNTAX_STYLE_JAVA
+     * @param guiTheme    The theme manager to use for styling the text area
      */
-    public PreviewPanel(String content, String syntaxStyle)
+    public PreviewPanel(String content, String syntaxStyle, GuiTheme guiTheme)
     {
         super(new BorderLayout());
 
@@ -61,6 +73,11 @@ public class PreviewPanel extends JPanel
         // Put the text area in a scroll pane
         RTextScrollPane scrollPane = new RTextScrollPane(textArea);
         scrollPane.setFoldIndicatorEnabled(true);
+        
+        // Apply the current theme to the text area
+        if (guiTheme != null) {
+            guiTheme.applyCurrentThemeToComponent(textArea);
+        }
 
         // Add top search panel + text area to this panel
         add(searchPanel, BorderLayout.NORTH);
