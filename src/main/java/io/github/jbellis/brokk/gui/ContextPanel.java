@@ -181,53 +181,16 @@ public class ContextPanel extends JPanel {
 
         // Create a single JPopupMenu for the table
         JPopupMenu contextMenu = new JPopupMenu();
-        // "View History" for the main row fragment, if it is a RepoPathFragment
-        JMenuItem viewHistoryItem = new JMenuItem("View History");
-        viewHistoryItem.addActionListener(ev -> {
-            int row = contextTable.getSelectedRow();
-            if (row >= 0) {
-                var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
-                if (fragment instanceof ContextFragment.RepoPathFragment(RepoFile f)) {
-                    chrome.getGitPanel().addFileHistoryTab(f);
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(contextMenu);
+        } else {
+            // Register this popup menu later when the theme manager is available
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(contextMenu);
                 }
-            }
-        });
-
-        // AutoContext menu items
-        JMenuItem setAutoContext5Item = new JMenuItem("Set AutoContext to 5");
-        setAutoContext5Item.addActionListener(e ->
-                                                      chrome.contextManager.setAutoContextFilesAsync(5));
-        JMenuItem setAutoContext10Item = new JMenuItem("Set AutoContext to 10");
-        setAutoContext10Item.addActionListener(e ->
-                                                       chrome.contextManager.setAutoContextFilesAsync(10));
-        JMenuItem setAutoContext20Item = new JMenuItem("Set AutoContext to 20");
-        setAutoContext20Item.addActionListener(e ->
-                                                       chrome.contextManager.setAutoContextFilesAsync(20));
-        JMenuItem setAutoContextCustomItem = new JMenuItem("Set AutoContext...");
-        setAutoContextCustomItem.addActionListener(e ->
-                                                           chrome.showSetAutoContextSizeDialog());
-
-        // Create menu items for handling all references in a cell
-        JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
-        editAllRefsItem.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.EDIT, selectedFragments);
-        });
-        
-        JMenuItem readAllRefsItem = new JMenuItem("Read All References");
-        readAllRefsItem.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.READ, selectedFragments);
-        });
-        
-        JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
-        summarizeAllRefsItem.addActionListener(e -> {
-            var selectedFragments = getSelectedFragments();
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.SUMMARIZE, selectedFragments);
-        });
+            });
+        }
 
         // Add a mouse listener so we control exactly when the popup shows
         contextTable.addMouseListener(new MouseAdapter() {
@@ -261,6 +224,22 @@ public class ContextPanel extends JPanel {
 
                         // If this is the AutoContext row, show AutoContext items
                         if (fragment instanceof ContextFragment.AutoContext) {
+                            JMenuItem setAutoContext5Item = new JMenuItem("Set AutoContext to 5");
+                            setAutoContext5Item.addActionListener(e1 ->
+                                    chrome.contextManager.setAutoContextFilesAsync(5));
+                            
+                            JMenuItem setAutoContext10Item = new JMenuItem("Set AutoContext to 10");
+                            setAutoContext10Item.addActionListener(e1 ->
+                                    chrome.contextManager.setAutoContextFilesAsync(10));
+                            
+                            JMenuItem setAutoContext20Item = new JMenuItem("Set AutoContext to 20");
+                            setAutoContext20Item.addActionListener(e1 ->
+                                    chrome.contextManager.setAutoContextFilesAsync(20));
+                            
+                            JMenuItem setAutoContextCustomItem = new JMenuItem("Set AutoContext...");
+                            setAutoContextCustomItem.addActionListener(e1 ->
+                                    chrome.showSetAutoContextSizeDialog());
+                                    
                             contextMenu.add(setAutoContext5Item);
                             contextMenu.add(setAutoContext10Item);
                             contextMenu.add(setAutoContext20Item);
@@ -269,6 +248,16 @@ public class ContextPanel extends JPanel {
 
                         } else {
                             // Otherwise, show "View History" if it's a RepoPathFragment
+                            JMenuItem viewHistoryItem = new JMenuItem("View History");
+                            viewHistoryItem.addActionListener(ev -> {
+                                int selectedRow = contextTable.getSelectedRow();
+                                if (selectedRow >= 0) {
+                                    var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
+                                    if (selectedFragment instanceof ContextFragment.RepoPathFragment(RepoFile f)) {
+                                        chrome.getGitPanel().addFileHistoryTab(f);
+                                    }
+                                }
+                            });
                             contextMenu.add(viewHistoryItem);
                             viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
                         }
@@ -295,6 +284,28 @@ public class ContextPanel extends JPanel {
                         // If clicking in the row but not on a specific reference, show "all references" options
                         if (!fileActionsAdded) {
                             contextMenu.addSeparator();
+                            
+                            JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
+                            editAllRefsItem.addActionListener(e1 -> {
+                                var selectedFragments = getSelectedFragments();
+                                chrome.currentUserTask = contextManager.performContextActionAsync(
+                                        Chrome.ContextAction.EDIT, selectedFragments);
+                            });
+                            
+                            JMenuItem readAllRefsItem = new JMenuItem("Read All References");
+                            readAllRefsItem.addActionListener(e1 -> {
+                                var selectedFragments = getSelectedFragments();
+                                chrome.currentUserTask = contextManager.performContextActionAsync(
+                                        Chrome.ContextAction.READ, selectedFragments);
+                            });
+                            
+                            JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
+                            summarizeAllRefsItem.addActionListener(e1 -> {
+                                var selectedFragments = getSelectedFragments();
+                                chrome.currentUserTask = contextManager.performContextActionAsync(
+                                        Chrome.ContextAction.SUMMARIZE, selectedFragments);
+                            });
+                            
                             contextMenu.add(editAllRefsItem);
                             contextMenu.add(readAllRefsItem);
                             contextMenu.add(summarizeAllRefsItem);
@@ -319,11 +330,16 @@ public class ContextPanel extends JPanel {
                         contextMenu.add(dropSelectionItem);
                     } else {
                         // If no row is selected, we only show "View History" but disable it
-                        contextMenu.add(viewHistoryItem);
+                        JMenuItem viewHistoryItem = new JMenuItem("View History");
                         viewHistoryItem.setEnabled(false);
+                        contextMenu.add(viewHistoryItem);
                     }
 
-                    contextMenu.show(contextTable, e.getX(), e.getY());
+                    // Final theme registration before showing
+                        if (chrome.themeManager != null) {
+                            chrome.themeManager.registerPopupMenu(contextMenu);
+                        }
+                        contextMenu.show(contextTable, e.getX(), e.getY());
                 }
             }
         });
