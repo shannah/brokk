@@ -182,6 +182,9 @@ public class ContextManager implements IContextManager
         if (initialContext == null) {
             var welcomeMessage = buildWelcomeMessage(coder.models);
             initialContext = new Context(this, 10, welcomeMessage);
+        } else {
+            // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization
+            initialContext = initialContext.refresh();
         }
         contextHistory.set(List.of(initialContext));
         chrome.setContext(initialContext);
