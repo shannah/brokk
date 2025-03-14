@@ -292,13 +292,30 @@ public class GitLogPanel extends JPanel {
         JPopupMenu changesContextMenu = new JPopupMenu();
         JMenuItem addFileToContextItem = new JMenuItem("Add Changes to Context");
         JMenuItem compareFileWithLocalItem = new JMenuItem("Compare with Local");
+        JMenuItem viewDiffItem = new JMenuItem("Show Diff");
         JMenuItem viewHistoryItem = new JMenuItem("View History");
         JMenuItem editFileItem = new JMenuItem("Edit File");
         changesContextMenu.add(addFileToContextItem);
         changesContextMenu.add(compareFileWithLocalItem);
+        changesContextMenu.add(viewDiffItem);
         changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(editFileItem);
         changesTree.setComponentPopupMenu(changesContextMenu);
+        
+        // Add double-click handler to show diff
+        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2)
+                {
+                    var path = changesTree.getPathForLocation(e.getX(), e.getY());
+                    if (path != null)
+                    {
+                        viewDiffForChangesTree(path);
+                    }
+                }
+            }
+        });
 
         changesContextMenu.addPopupMenuListener(new PopupMenuListener() {
             @Override
@@ -354,6 +371,14 @@ public class GitLogPanel extends JPanel {
             }
         });
 
+        // We only show a single-file diff if there is exactly one commit selected
+        viewDiffItem.addActionListener(e -> {
+            TreePath[] paths = changesTree.getSelectionPaths();
+            if (paths != null && paths.length == 1) {
+                viewDiffForChangesTree(paths[0]);
+            }
+        });
+        
         viewHistoryItem.addActionListener(e -> {
             TreePath[] paths = changesTree.getSelectionPaths();
             if (paths != null && paths.length > 0) {
@@ -1214,6 +1239,46 @@ public class GitLogPanel extends JPanel {
         List<RepoFile> files = new ArrayList<>();
         files.add(new RepoFile(contextManager.getRoot(), filePath));
         contextManager.editFiles(files);
+    }
+    
+    /**
+     * Shows the diff for a file in a commit.
+     */
+    /**
+     * Shows a diff for a single file in the changes tree (if exactly one commit is selected).
+     */
+    private void viewDiffForChangesTree(TreePath path)
+    {
+        var node = (DefaultMutableTreeNode) path.getLastPathComponent();
+        if (node == changesRootNode || node.getParent() == changesRootNode) {
+            return; // It's the root or a directory, not a file
+        }
+        var fileName = node.getUserObject().toString();
+        var parentNode = (DefaultMutableTreeNode) node.getParent();
+        var dirPath = parentNode.getUserObject().toString();
+        var filePath = dirPath.isEmpty() ? fileName : dirPath + "/" + fileName;
+
+        int[] selRows = commitsTable.getSelectedRows();
+        if (selRows.length == 1)
+        {
+            var commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+            showFileDiff(commitId, filePath);
+        }
+    }
+
+    /**
+     * Shows the diff for a file in a commit.
+     */
+    private void showFileDiff(String commitId, String filePath) {
+        RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
+        java.awt.Rectangle bounds = contextManager.getProject().getDiffWindowBounds();
+        DiffPanel diffPanel = new DiffPanel(contextManager, bounds);
+
+        String shortCommitId = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
+        String dialogTitle = "Diff: " + file.getFileName() + " (" + shortCommitId + ")";
+
+        diffPanel.showFileDiff(commitId, file);
+        diffPanel.showInDialog(this, dialogTitle);
     }
 
     /**

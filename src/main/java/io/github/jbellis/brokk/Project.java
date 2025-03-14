@@ -404,6 +404,13 @@ public List<String> addToTextHistory(String item, int maxItems) {
     }
     
     /**
+     * Gets the saved diff window bounds
+     */
+    public java.awt.Rectangle getDiffWindowBounds() {
+        return getWindowBounds("diffFrame", 900, 600);
+    }
+    
+    /**
      * Save main window bounds
      */
     public void saveMainWindowBounds(JFrame window) {
@@ -415,6 +422,28 @@ public List<String> addToTextHistory(String item, int maxItems) {
      */
     public void savePreviewWindowBounds(JFrame window) {
         saveWindowBounds("previewFrame", window);
+    }
+    
+    /**
+     * Save diff window bounds
+     */
+    public void saveDiffWindowBounds(JDialog dialog) {
+        if (dialog == null || !dialog.isDisplayable()) {
+            return;
+        }
+
+        try {
+            var node = objectMapper.createObjectNode();
+            node.put("x", dialog.getX());
+            node.put("y", dialog.getY());
+            node.put("width", dialog.getWidth());
+            node.put("height", dialog.getHeight());
+
+            workspaceProps.setProperty("diffFrame", objectMapper.writeValueAsString(node));
+            saveWorkspaceProperties();
+        } catch (Exception e) {
+            logger.error("Error saving diff window bounds: {}", e.getMessage());
+        }
     }
     
     /**
