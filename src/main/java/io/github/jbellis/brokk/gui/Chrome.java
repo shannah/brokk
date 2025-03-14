@@ -1121,71 +1121,49 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Opens a preview window for a context fragment
      * @param fragment The fragment to preview
+     * @param syntaxType The syntax highlighting style to use
      */
-    public void openFragmentPreview(ContextFragment fragment) {
-        String text;
+    public void openFragmentPreview(ContextFragment fragment, String syntaxType)
+    {
+        // Hardcode reading the text from the fragment (handles IO errors)
+        String content;
         try {
-            text = fragment.text();
+            content = fragment.text();
         } catch (IOException e) {
-            contextManager.removeBadFragment(fragment, e);
+            systemOutput("Error reading fragment: " + e.getMessage());
             return;
         }
-        SwingUtilities.invokeLater(() -> {
-            // Create a new window
-            var previewFrame = new JFrame(fragment.description());
-            previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
-            // Create syntax text area
-            var textArea = new RSyntaxTextArea();
-            textArea.setText(text);
-            textArea.setEditable(false);
-            textArea.setCodeFoldingEnabled(true);
-            textArea.setSyntaxEditingStyle(getSyntaxStyleForFragment(fragment));
+        // Create a JFrame to hold the new PreviewPanel
+        var frame = new JFrame("Preview: " + fragment.shortDescription());
+        var previewPanel = new PreviewPanel(content, syntaxType);
+        frame.setContentPane(previewPanel);
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
-            // Apply current theme to the text area
-            if (themeManager != null) {
-                themeManager.applyCurrentThemeToComponent(textArea);
+        // Load location/dimensions from Project (if any)
+        var project = contextManager.getProject();
+        var storedBounds = project.getPreviewWindowBounds();
+        if (storedBounds != null) {
+            frame.setBounds(storedBounds);
+        } else {
+            frame.setSize(800, 600);
+            frame.setLocationRelativeTo(this.getFrame());
+        }
+
+        // When the user moves or resizes, store in Project
+        frame.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e) {
+                project.savePreviewWindowBounds(frame);
             }
 
-            var scrollPane = new JScrollPane(textArea);
-            previewFrame.add(scrollPane);
-
-            // Ensure text area starts scrolled to the top
-            textArea.setCaretPosition(0);
-
-            // Set window size from saved properties
-            Rectangle bounds = getProject().getPreviewWindowBounds();
-            previewFrame.setSize(bounds.width, bounds.height);
-
-            // Position the window, checking if position is valid
-            if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
-                previewFrame.setLocation(bounds.x, bounds.y);
-            } else {
-                previewFrame.setLocationRelativeTo(frame);
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                project.savePreviewWindowBounds(frame);
             }
-
-            // Add component listener to save position
-            previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
-                @Override
-                public void componentResized(java.awt.event.ComponentEvent e) {
-                    getProject().savePreviewWindowBounds(previewFrame);
-                }
-
-                @Override
-                public void componentMoved(java.awt.event.ComponentEvent e) {
-                    getProject().savePreviewWindowBounds(previewFrame);
-                }
-            });
-
-            // Add Escape key to close
-            previewFrame.getRootPane().registerKeyboardAction(
-                    e -> previewFrame.dispose(),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                    JComponent.WHEN_IN_FOCUSED_WINDOW
-            );
-
-            previewFrame.setVisible(true);
         });
+
+        frame.setVisible(true);
     }
 
     /**

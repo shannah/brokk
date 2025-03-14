@@ -172,7 +172,7 @@ public class ContextPanel extends JPanel {
                         var fragment = (ContextFragment) contextTable.getModel()
                                 .getValueAt(row, FRAGMENT_COLUMN);
                         if (fragment != null) {
-                            chrome.openFragmentPreview(fragment);
+                            chrome.openFragmentPreview(fragment, "text/java");
                         }
                     }
                 }
