@@ -27,9 +27,11 @@ public class FileReferencesTableCellRenderer implements TableCellRenderer {
         if (isSelected) {
             component.setBackground(table.getSelectionBackground());
             component.setForeground(table.getSelectionForeground());
+            component.setSelected(true);
         } else {
             component.setBackground(table.getBackground());
             component.setForeground(table.getForeground());
+            component.setSelected(false);
         }
         
         // Ensure the component is properly painted in the table

@@ -1,5 +1,4 @@
 package io.github.jbellis.brokk.gui;
-
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -12,10 +11,13 @@ import java.util.List;
  */
 public class FileReferenceList extends JPanel {
     private final List<FileReferenceData> fileReferences = new ArrayList<>();
+    private boolean selected = false;
 
     private static final Color BADGE_BORDER = new Color(66, 139, 202);
     private static final Color BADGE_FOREGROUND = new Color(66, 139, 202);
     private static final Color BADGE_HOVER_BORDER = new Color(51, 122, 183);
+    private static final Color SELECTED_BADGE_BORDER = Color.BLACK;  // for better contrast
+    private static final Color SELECTED_BADGE_FOREGROUND = Color.BLACK;  // for better contrast
     private static final int BADGE_ARC_WIDTH = 10;
     private static final float BORDER_THICKNESS = 1.5f;
     
@@ -64,6 +66,36 @@ public class FileReferenceList extends JPanel {
         return new ArrayList<>(fileReferences);
     }
     
+    /**
+     * Sets the selection state of this component
+     * @param selected true if this component is in a selected table row
+     */
+    public void setSelected(boolean selected) {
+        if (this.selected == selected) {
+            return; // No change needed
+        }
+
+        this.selected = selected;
+
+        // Just update the badges directly - we're already on the EDT when this is called
+        removeAll();
+        for (FileReferenceData file : this.fileReferences) {
+            JLabel fileLabel = createBadgeLabel(file.getFileName());
+            fileLabel.setOpaque(false);
+            fileLabel.setToolTipText(file.getFullPath());
+            add(fileLabel);
+        }
+        revalidate();
+        repaint();
+    }
+    
+    /**
+     * Returns whether this component is currently selected
+     */
+    public boolean isSelected() {
+        return selected;
+    }
+    
     private JLabel createBadgeLabel(String text) {
         JLabel label = new JLabel(text) {
             @Override
@@ -74,8 +106,14 @@ public class FileReferenceList extends JPanel {
                 // Determine if hovering
                 boolean isHovered = getMousePosition() != null;
 
-                // Set border color based on hover state
-                g2d.setColor(isHovered ? BADGE_HOVER_BORDER : BADGE_BORDER);
+                // Set border color based on selection state and hover state
+                Color borderColor;
+                if (selected) {
+                    borderColor = isHovered ? SELECTED_BADGE_BORDER.brighter() : SELECTED_BADGE_BORDER;
+                } else {
+                    borderColor = isHovered ? BADGE_HOVER_BORDER : BADGE_BORDER;
+                }
+                g2d.setColor(borderColor);
 
                 // Use a thicker stroke for the border
                 g2d.setStroke(new BasicStroke(BORDER_THICKNESS));
@@ -95,7 +133,8 @@ public class FileReferenceList extends JPanel {
         // Style the badge - use a smaller font for table cell
         float fontSize = label.getFont().getSize() * 0.85f;
         label.setFont(label.getFont().deriveFont(Font.PLAIN, fontSize));
-        label.setForeground(BADGE_FOREGROUND);
+        // Set foreground color based on selection state
+        label.setForeground(selected ? SELECTED_BADGE_FOREGROUND : BADGE_FOREGROUND);
         label.setBorder(new EmptyBorder(1, 6, 1, 6));
 
         return label;
