@@ -31,6 +31,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.nio.file.Path;
 
 /**
  * A file selection dialog that presents a tree view and a text input with autocomplete.
@@ -295,10 +296,19 @@ public class FileSelectionDialog extends JDialog {
             // Split by whitespace to get multiple filenames
             String[] filenames = typed.split("\\s+");
 
+            // Use a map to deduplicate files by their absolute path
+            Map<Path, BrokkFile> uniqueFiles = new HashMap<>();
+            
             for (String filename : filenames) {
                 if (filename.isBlank()) continue;
-                selectedFiles.addAll(Completions.expandPath(repo, filename));
+                for (BrokkFile file : Completions.expandPath(repo, filename)) {
+                    // Use the absolute path as the key to deduplicate
+                    uniqueFiles.put(file.absPath(), file);
+                }
             }
+            
+            // Add all unique files to the selected files list
+            selectedFiles.addAll(uniqueFiles.values());
         }
         dispose();
     }
