@@ -121,7 +121,7 @@ public class GitPanel extends JPanel {
         JPanel messagePanel = new JPanel(new BorderLayout());
         messagePanel.add(new JLabel("Commit/Stash Description:"), BorderLayout.NORTH);
 
-        commitMessageArea = new JTextArea(5, 50);
+        commitMessageArea = new JTextArea(2, 50);
         commitMessageArea.setLineWrap(true);
         commitMessageArea.setWrapStyleWord(true);
         messagePanel.add(new JScrollPane(commitMessageArea), BorderLayout.CENTER);
