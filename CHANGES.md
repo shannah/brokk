@@ -1,3 +1,14 @@
+# 0.5.0
+
+## Features
+- Git log and stash
+- Search in fragment preview
+- Add individual references to context
+
+## Fixes
+- AutoContext builds asynchronously now instead of blocking operations in large codebases
+- Symbol Usage autocomplete is more intutive now
+
 # 0.4.2
 
 ## Features
