@@ -1121,6 +1121,7 @@ public class ContextManager implements IContextManager
                                       Stream.of(c.getAutoContext()))
                 .map(this::formattedOrNull)
                 .filter(Objects::nonNull)
+                .filter(st -> !st.isBlank())
                 .collect(Collectors.joining("\n\n"));
         if (combined.isEmpty()) {
             return List.of();
@@ -1163,6 +1164,7 @@ public class ContextManager implements IContextManager
         return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
                               c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
                               Stream.of(c.getAutoContext().fragment()).map(ContextFragment.SkeletonFragment::description))
+                .filter(st -> !st.isBlank())
                 .collect(Collectors.joining(", "));
     }
 

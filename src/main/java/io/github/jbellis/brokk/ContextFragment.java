@@ -377,7 +377,7 @@ public interface ContextFragment extends Serializable {
         @Override
         public String text() {
             // autocontext's special empty values should be completely blank and not include the placeholder package name
-            if (skeletons.size() == 1 && skeletons.values().iterator().next().isEmpty()) {
+            if (isEmpty()) {
                 return "";
             }
 
@@ -413,6 +413,10 @@ public interface ContextFragment extends Serializable {
                 .collect(java.util.stream.Collectors.joining("\n\n"));
         }
 
+        private boolean isEmpty() {
+            return skeletons.size() == 1 && skeletons.values().iterator().next().isEmpty();
+        }
+
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return skeletons.keySet();
@@ -420,6 +424,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
+            assert !isEmpty(); // skeleton in autocontext can be empty, but doesn't call this
             return "Summary of " + String.join(", ", skeletons.keySet().stream()
                                                       .map(CodeUnit::name)
                                                       .sorted()
@@ -433,6 +438,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String format() throws IOException {
+            assert !isEmpty(); // skeleton in autocontext can be empty, but doesn't call this
             return """
             <summary classes="%s">
             %s
@@ -533,6 +539,9 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String shortDescription() {
+            if (fragment.isEmpty()) {
+                return "Autosummary " + fragment.skeletons.keySet().stream().findFirst().orElseThrow();
+            }
             return "Autosummary of " + fragment.skeletons.keySet().stream()
                     .map(CodeUnit::name)
                     .collect(java.util.stream.Collectors.joining(", "));
@@ -545,6 +554,9 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String format() throws IOException {
+            if (fragment.isEmpty()) {
+                return "";
+            }
             return fragment.format();
         }
 
