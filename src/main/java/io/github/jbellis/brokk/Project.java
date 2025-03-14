@@ -488,6 +488,28 @@ public class Project implements IProject {
             return -1;
         }
     }
+    
+    /**
+     * Save context/git split pane position
+     */
+    public void saveContextGitSplitPosition(int position) {
+        if (position > 0) {
+            workspaceProps.setProperty("contextGitSplitPosition", String.valueOf(position));
+            saveWorkspaceProperties();
+        }
+    }
+
+    /**
+     * Get context/git split pane position
+     */
+    public int getContextGitSplitPosition() {
+        try {
+            String posStr = workspaceProps.getProperty("contextGitSplitPosition");
+            return posStr != null ? Integer.parseInt(posStr) : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
 
     /**
      * Gets the current UI theme (dark or light)

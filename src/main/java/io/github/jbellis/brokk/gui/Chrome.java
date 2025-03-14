@@ -56,6 +56,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Track the horizontal split that holds the history panel
     private JSplitPane historySplitPane;
     private JSplitPane verticalSplitPane;
+    private JSplitPane contextGitSplitPane;
 
     // Capture panel buttons
     private JButton captureTextButton;
@@ -246,19 +247,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add the top controls to the top of the bottom panel
         bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
 
-        // 4. Create a panel to hold the context panel and git panel
-        var contextAndGitPanel = new JPanel(new BorderLayout());
-        
-        // 4a. Context panel (with border title) in the center to get extra space
+        // 4. Create a vertical split pane to hold the context panel and git panel
+        // 4a. Context panel (with border title) at the top
         var ctxPanel = buildContextPanel();
-        contextAndGitPanel.add(ctxPanel, BorderLayout.CENTER);
-        
-        // 4b. Git panel below the context panel
+        this.contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        contextGitSplitPane.setTopComponent(ctxPanel);
+
+        // 4b. Git panel at the bottom
         gitPanel = new GitPanel(this, contextManager);
-        contextAndGitPanel.add(gitPanel, BorderLayout.SOUTH);
+        contextGitSplitPane.setBottomComponent(gitPanel);
         
-        // Add the combined panel to the bottom panel
-        bottomPanel.add(contextAndGitPanel, BorderLayout.CENTER);
+        // Set resize weight so context panel gets extra space
+        contextGitSplitPane.setResizeWeight(0.7); // 70% to context, 30% to git
+
+        // Add the split pane to the bottom panel
+        bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
 
         // 5. Background status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
@@ -1239,7 +1242,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             if (verticalPos > 0) {
                 verticalSplitPane.setDividerLocation(verticalPos);
             }
-            
+
             // Restore history split pane position
             int historyPos = getProject().getHistorySplitPosition();
             if (historyPos > 0) {
@@ -1247,6 +1250,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             } else {
                 // If no saved position, use the previous calculation
                 setInitialHistoryPanelWidth();
+            }
+            
+            // Restore context/git split pane position
+            int contextGitPos = getProject().getContextGitSplitPosition();
+            if (contextGitPos > 0) {
+                contextGitSplitPane.setDividerLocation(contextGitPos);
             }
 
             // Add listener to save window size and position when they change
@@ -1269,6 +1278,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
                 getProject().saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
+            });
+            
+            contextGitSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+                getProject().saveContextGitSplitPosition(contextGitSplitPane.getDividerLocation());
             });
         });
     }
