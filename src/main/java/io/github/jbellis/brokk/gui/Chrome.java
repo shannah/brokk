@@ -1468,14 +1468,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
     }
-
-    public Context getSelectedContext() {
-        var selected = SwingUtil.runOnEDT(() -> contextHistoryTable.getSelectedRow(), -1);
-        if (selected < 0) {
-            return contextManager.currentContext();
-        }
-        return SwingUtil.runOnEDT(() -> (Context) contextHistoryTable.getModel().getValueAt(selected, 1), null);
-    }
     
     /**
      * Builds the history dropdown panel with template selections
@@ -1675,7 +1667,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Current AutoContext file count as the spinner's initial value
         var spinner = new JSpinner(new SpinnerNumberModel(
-                contextManager.currentContext().getAutoContextFileCount(),
+                contextManager.selectedContext().getAutoContextFileCount(),
                 0, 100, 1
         ));
         panel.add(spinner, BorderLayout.CENTER);

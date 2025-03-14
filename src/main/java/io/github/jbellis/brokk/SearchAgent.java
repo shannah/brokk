@@ -166,7 +166,7 @@ public class SearchAgent {
      */
     public ContextFragment.VirtualFragment execute() {
         // Initialize
-        var contextWithClasses = contextManager.currentContext().allFragments().map(f -> {
+        var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {
             String text;
             try {
                 text = f.text();

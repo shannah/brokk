@@ -256,12 +256,24 @@ public class ContextManager implements IContextManager
     }
 
     /**
-     * Return the current context
+     * Return the top context in the history stack
      */
-    public Context currentContext()
+    public Context topContext()
     {
         var ch = contextHistory.get();
         return ch.isEmpty() ? null : ch.getLast();
+    }
+
+    /**
+     * Return the currently selected context in the UI, or the top context if none selected
+     */
+    public Context selectedContext()
+    {
+        var selected = getSelectedHistoryIndex();
+        if (selected < 0 || selected >= contextHistory.get().size()) {
+            return topContext();
+        }
+        return contextHistory.get().get(selected);
     }
 
     public Path getRoot()
@@ -630,7 +642,7 @@ public class ContextManager implements IContextManager
     private void doDropAction(List<ContextFragment> selectedFragments)
     {
         if (selectedFragments.isEmpty()) {
-            if (currentContext().isEmpty()) {
+            if (topContext().isEmpty()) {
                 io.toolErrorRaw("No context to drop");
                 return;
             }
@@ -803,7 +815,7 @@ public class ContextManager implements IContextManager
                     contextHistory.set(List.copyOf(ch));
                 }
 
-                io.setContext(currentContext());
+                io.setContext(topContext());
                 io.systemOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
                 io.systemOutput("Undo canceled.");
@@ -829,7 +841,7 @@ public class ContextManager implements IContextManager
                     var undoContext = undoAndInvertChanges(popped);
                     ch.add(undoContext);
                 }
-                io.setContext(currentContext());
+                io.setContext(topContext());
                 io.systemOutput("Redo!");
             } catch (CancellationException cex) {
                 io.systemOutput("Redo canceled.");
@@ -910,7 +922,7 @@ public class ContextManager implements IContextManager
         contextActionExecutor.submit(() -> {
             try {
                 // Use reflection or pass chrome reference in constructor to avoid direct dependency
-                var selectedCtx = io.getSelectedContext();
+                var selectedCtx = selectedContext();
                 if (selectedCtx != null) {
                     addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
                     io.systemOutput("Content captured from output");
@@ -935,7 +947,7 @@ public class ContextManager implements IContextManager
         contextActionExecutor.submit(() -> {
             try {
                 // Use reflection or pass chrome reference in constructor to avoid direct dependency
-                var selectedCtx = io.getSelectedContext();
+                var selectedCtx = selectedContext();
                 if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
                     var fragment = selectedCtx.getParsedOutput().parsedFragment();
                     editSources(fragment);
@@ -1060,7 +1072,7 @@ public class ContextManager implements IContextManager
 
     public List<ChatMessage> getHistoryMessages()
     {
-        return currentContext().getHistory();
+        return selectedContext().getHistory();
     }
 
     /**
@@ -1103,7 +1115,7 @@ public class ContextManager implements IContextManager
 
     public List<ChatMessage> getReadOnlyMessages()
     {
-        var c = currentContext();
+        var c = selectedContext();
         var combined = Streams.concat(c.readonlyFiles(),
                                       c.virtualFragments(),
                                       Stream.of(c.getAutoContext()))
@@ -1125,7 +1137,7 @@ public class ContextManager implements IContextManager
 
     public List<ChatMessage> getEditableMessages()
     {
-        var combined = currentContext().editableFiles()
+        var combined = selectedContext().editableFiles()
                 .map(this::formattedOrNull)
                 .filter(Objects::nonNull)
                 .collect(Collectors.joining("\n\n"));
@@ -1147,7 +1159,7 @@ public class ContextManager implements IContextManager
 
     public String getReadOnlySummary()
     {
-        var c = currentContext();
+        var c = selectedContext();
         return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
                               c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
                               Stream.of(c.getAutoContext().fragment()).map(ContextFragment.SkeletonFragment::description))
@@ -1156,14 +1168,14 @@ public class ContextManager implements IContextManager
 
     public String getEditableSummary()
     {
-        return currentContext().editableFiles()
+        return selectedContext().editableFiles()
                 .map(p -> p.file().toString())
                 .collect(Collectors.joining(", "));
     }
 
     public Set<RepoFile> getEditableFiles()
     {
-        return currentContext().editableFiles()
+        return selectedContext().editableFiles()
                 .map(ContextFragment.RepoPathFragment::file)
                 .collect(Collectors.toSet());
     }
@@ -1188,8 +1200,8 @@ public class ContextManager implements IContextManager
                     // Current context is now at the selected point
                 }
 
-                newContext = contextGenerator.apply(currentContext());
-                if (newContext == currentContext()) {
+                newContext = contextGenerator.apply(topContext());
+                if (newContext == topContext()) {
                     return;
                 }
 

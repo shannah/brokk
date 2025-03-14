@@ -522,7 +522,7 @@ public class ContextPanel extends JPanel {
      */
     public void updateContextButtons() {
         SwingUtilities.invokeLater(() -> {
-            var ctx = (contextManager == null) ? null : contextManager.currentContext();
+            var ctx = (contextManager == null) ? null : contextManager.selectedContext();
             boolean hasContext = (ctx != null && !ctx.isEmpty());
             dropButton.setEnabled(hasContext);
             copyButton.setEnabled(hasContext);
@@ -648,7 +648,7 @@ public class ContextPanel extends JPanel {
      */
     public void updateContextTable() {
         SwingUtilities.invokeLater(() -> {
-            populateContextTable(contextManager.currentContext());
+            populateContextTable(contextManager.selectedContext());
         });
     }
 
