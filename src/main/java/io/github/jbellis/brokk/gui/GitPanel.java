@@ -244,9 +244,7 @@ public class GitPanel extends JPanel {
                     if (selectedFiles.isEmpty()) {
                         getRepo().createStash(stashDescription.isEmpty() ? null : stashDescription);
                     } else {
-                        for (var file : selectedFiles) {
-                            getRepo().add(file); // now uses add(RepoFile)
-                        }
+                        getRepo().add(selectedFiles);
                         getRepo().createStash(stashDescription.isEmpty() ? null : stashDescription);
                     }
                     SwingUtilities.invokeLater(() -> {

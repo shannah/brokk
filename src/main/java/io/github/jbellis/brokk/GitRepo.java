@@ -76,15 +76,23 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * Adds a single file to staging.
+     * Adds files to staging.
      */
-    public synchronized void add(RepoFile file) throws IOException
+    public synchronized void add(List<RepoFile> files) throws IOException
     {
         try {
-            // Use toString() on RepoFile to get its relative path
-            git.add().addFilepattern(file.toString()).call();
+            var addCommand = git.add();
+            
+            // Add each file pattern to the command
+            for (var file : files) {
+                // Use toString() on RepoFile to get its relative path
+                addCommand.addFilepattern(file.toString());
+            }
+            
+            // Execute the command once for all files
+            addCommand.call();
         } catch (GitAPIException e) {
-            throw new IOException("Unable to add file " + file + " to git: " + e.getMessage(), e);
+            throw new IOException("Unable to add files to git: " + e.getMessage(), e);
         }
     }
 
@@ -271,9 +279,7 @@ public class GitRepo implements Closeable, IGitRepo {
     public String commitFiles(List<RepoFile> files, String message) throws IOException
     {
         try {
-            for (var file : files) {
-                git.add().addFilepattern(file.toString()).call();
-            }
+            add(files);
             var commitResult = git.commit().setMessage(message).call();
             var commitId = commitResult.getId().getName();
 
@@ -722,7 +728,6 @@ public class GitRepo implements Closeable, IGitRepo {
         try {
             logger.debug("Creating stash with message: {}", message);
             var stashId = git.stashCreate()
-                    .setIncludeUntracked(true)
                     .setWorkingDirectoryMessage(message)
                     .call();
             logger.debug("Stash created with ID: {}", (stashId != null ? stashId.getName() : "none"));
