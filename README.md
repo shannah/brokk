@@ -149,7 +149,7 @@ Other languages will follow.
 Brokk will attempt to infer a build command and style guide for your project. You can edit these 
 in `.brokk/project.properties` and `.brokk/style.md`, respectively.
 
-There is a [Brokk Discord](https://discord.gg/ugXqhRem) for questions and suggestions.
+There is a [Brokk Discord](https://discord.gg/QjhQDK8kAj) for questions and suggestions.
 
 ## Finer points on some commands
 
