@@ -35,12 +35,6 @@ public class MenuBar {
 
         fileMenu.addSeparator();
 
-        var setAutoContextItem = new JMenuItem("Set AutoContext Size");
-        setAutoContextItem.addActionListener(e ->
-            chrome.showSetAutoContextSizeDialog()
-        );
-        fileMenu.add(setAutoContextItem);
-
         var refreshItem = new JMenuItem("Refresh Code Intelligence");
         refreshItem.addActionListener(e -> {
             chrome.contextManager.requestRebuild();
