@@ -95,15 +95,6 @@ public class Environment {
         return new ProcessResult(null, output);
     }
 
-    public static void createDirIfNotExists(Path path) throws IOException {
-        if (Files.exists(path)) {
-            return;
-        }
-        if (!path.toFile().mkdir()) {
-            throw new IOException("mkdir failed");
-        }
-    }
-
     public record ProcessResult(String error, String output) {
         public ProcessResult {
             assert output != null : "Output cannot be null";

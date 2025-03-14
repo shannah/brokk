@@ -233,7 +233,8 @@ public class LLM {
             return "";
         }
 
-        io.systemOutput(result.error() + "\n\n" + result.output() + "\n\n");
+        io.systemOutput("Build failed (details above)");
+        io.llmOutput(result.error() + "\n\n" + result.output() + "\n\n");
         buildErrors.add(result.error() + "\n\n" + result.output());
 
         StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");

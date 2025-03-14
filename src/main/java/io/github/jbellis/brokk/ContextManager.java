@@ -275,7 +275,7 @@ public class ContextManager implements IContextManager
                 io.toolOutput("Executing: " + input);
                 var result = Environment.instance.captureShellCommand(input);
                 String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-                io.systemOutput(output);
+                io.llmOutput("\n" + output);
 
                 // Add to context history with the output text
                 pushContext(ctx -> {
