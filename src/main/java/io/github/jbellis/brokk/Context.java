@@ -287,21 +287,16 @@ public class Context implements Serializable {
             return this;
         }
 
-        var newContext = new Context(project, editableFiles, readonlyFiles, virtualFragments, autoContext, fileCount, historyMessages, Map.of(), new ParsedOutput(), action);
-        AutoContext newAutoContext = fileCount > 0 ? newContext.buildAutoContext() : AutoContext.DISABLED;
-
-        return new Context(
-                project,
-                editableFiles,
-                readonlyFiles,
-                virtualFragments,
-                newAutoContext,
-                fileCount,
-                historyMessages,
-                Map.of(),
-                new ParsedOutput(),
-                action
-        );
+        return new Context(project,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           autoContext,
+                           fileCount,
+                           historyMessages,
+                           Map.of(),
+                           new ParsedOutput(),
+                           action).refresh();
     }
 
     /**
@@ -394,10 +389,6 @@ public class Context implements Serializable {
         return Streams.concat(editableFiles.stream(),
                               readonlyFiles.stream(),
                               virtualFragments.stream());
-    }
-
-    public boolean hasReadonlyFragments() {
-        return !readonlyFiles.isEmpty() || !virtualFragments.isEmpty();
     }
 
     public boolean isAutoContextEnabled() {
