@@ -1163,7 +1163,7 @@ public class ContextManager implements IContextManager
         var c = selectedContext();
         return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
                               c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
-                              Stream.of(c.getAutoContext().fragment()).map(ContextFragment.SkeletonFragment::description))
+                              Stream.of(c.getAutoContext().isEmpty() ? "" : c.getAutoContext().description()))
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining(", "));
     }

@@ -38,20 +38,25 @@ public abstract class DefaultPrompts {
                 </style_guide>
                 """.stripIndent().formatted(styleGuide);
                 
+        var workspaceBuilder = new StringBuilder();
+        workspaceBuilder.append("- Root: ").append(cm.getRoot().getFileName());
+        if (!editableContents.isBlank()) {
+            workspaceBuilder.append("\n- Editable files: ").append(editableContents);
+        }
+        if (!readOnlyContents.isBlank()) {
+            workspaceBuilder.append("\n- Read-only snippets: ").append(readOnlyContents);
+        }
+        
         return """
                 <instructions>
                 %s
                 </instructions>
                 <workspace>
-                - Root: %s
-                - Editable files: %s
-                - Read-only snippets: %s
+                %s
                 </workspace>
                 %s
                 """.stripIndent().formatted(systemIntro(),
-                                            cm.getRoot().getFileName(),
-                                            editableContents,
-                                            readOnlyContents,
+                                            workspaceBuilder.toString(),
                                             styleGuildeContents).trim();
     }
 

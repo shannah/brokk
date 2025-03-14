@@ -516,6 +516,10 @@ public interface ContextFragment extends Serializable {
         public AutoContext {
             assert fragment != null;
         }
+        
+        public boolean isEmpty() {
+            return fragment.isEmpty();
+        }
 
         @Override
         public String text() {
@@ -529,6 +533,7 @@ public interface ContextFragment extends Serializable {
 
         /**
          * Returns a comma-separated list of short class names (no package).
+         * Used in UI and also in the Workspace summary provided to the LLM.
          */
         @Override
         public String description() {
@@ -539,7 +544,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String shortDescription() {
-            if (fragment.isEmpty()) {
+            if (isEmpty()) {
                 return "Autosummary " + fragment.skeletons.keySet().stream().findFirst().orElseThrow();
             }
             return "Autosummary of " + fragment.skeletons.keySet().stream()
@@ -554,7 +559,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String format() throws IOException {
-            if (fragment.isEmpty()) {
+            if (isEmpty()) {
                 return "";
             }
             return fragment.format();
