@@ -16,9 +16,4 @@ public interface AnalyzerListener
      * Called with details of the first build, which is used to infer auto rebuild policy.
      */
     void onFirstBuild(String msg);
-
-    /**
-     * Called for every complete build
-     */
-    void onBuildComplete();
 }

@@ -172,29 +172,12 @@ public class ContextManager implements IContextManager
             public void onFirstBuild(String msg) {
                 SwingUtilities.invokeLater(() -> io.systemOutput(msg));
             }
-
-            @Override
-            public void onBuildComplete() {
-                synchronized (ContextManager.this) {
-                    var ch = new ArrayList<>(contextHistory.get());
-                    for (int i = 0; i < ch.size(); i++) {
-                        var old = ch.get(i);
-                        if (old.autoContext == ContextFragment.AutoContext.UNAVAILABLE) {
-                            ch.set(i, old.refresh());
-                        }
-                    }
-                    contextHistory.set(List.copyOf(ch));
-                }
-                chrome.updateContextTable();
-                chrome.updateContextHistoryTable();
-            }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
 
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
         // Load saved context or create a new one if none exists
-        // TODO rebuild autocontext off the EDT
         var initialContext = project.loadContext(this);
         if (initialContext == null) {
             var welcomeMessage = buildWelcomeMessage(coder.models);
