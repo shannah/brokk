@@ -210,6 +210,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
             case "javascript" -> SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT;
             default -> SyntaxConstants.SYNTAX_STYLE_NONE;
         });
+        codeArea.setHighlightCurrentLine(false);
         
         // Apply appropriate theme to the code area
         try {
