@@ -292,9 +292,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
 
-        // Create table model with columns - just one visible column
+        // Create table model with columns - first two columns are visible, third is hidden
         contextHistoryModel = new DefaultTableModel(
-                new Object[]{"", "Context"}, 0) {
+                new Object[]{"", "Action", "Context"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -307,36 +307,36 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Remove table header
         contextHistoryTable.setTableHeader(null);
-
-        // Set up multi-line cell renderer for the first column
-        contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new MultiLineCellRenderer(this));
-
-        // Set up column rendering for LLM conversation rows
-        contextHistoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+        
+        // Set up tooltip renderer for description column (index 1)
+        contextHistoryTable.getColumnModel().getColumn(1).setCellRenderer(new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value,
-                                                           boolean isSelected, boolean hasFocus, int row, int column) {
-                Component c = super.getTableCellRendererComponent(
+                                                          boolean isSelected, boolean hasFocus, int row, int column) {
+                JLabel label = (JLabel)super.getTableCellRendererComponent(
                         table, value, isSelected, hasFocus, row, column);
-
-                if (row < contextManager.getContextHistory().size()) {
-                    var ctx = contextManager.getContextHistory().get(row);
-                    if (ctx.getParsedOutput() == null) {
-                        if (!isSelected) {
-                            // Regular context - use normal colors
-                            c.setBackground(table.getBackground());
-                            c.setForeground(table.getForeground());
-                        }
-                    } else {
-                        if (!isSelected) {
-                            // LLM conversation - use dark background
-                            c.setBackground(new Color(50, 50, 50));
-                            c.setForeground(new Color(220, 220, 220));
-                        }
-                    }
+                
+                // Set the tooltip to show the full text
+                if (value != null) {
+                    label.setToolTipText(value.toString());
                 }
+                
+                return label;
+            }
+        });
 
-                return c;
+        // Set up emoji renderer for first column
+        contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                                                          boolean isSelected, boolean hasFocus, int row, int column) {
+                JLabel label = (JLabel)super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
+                
+                // Center-align the emoji
+                label.setHorizontalAlignment(JLabel.CENTER);
+                
+                return label;
             }
         });
 
@@ -368,11 +368,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        // Adjust column widths - hide the context object column
-        contextHistoryTable.getColumnModel().getColumn(0).setPreferredWidth(150);
-        contextHistoryTable.getColumnModel().getColumn(1).setMinWidth(0);
-        contextHistoryTable.getColumnModel().getColumn(1).setMaxWidth(0);
-        contextHistoryTable.getColumnModel().getColumn(1).setWidth(0);
+        // Adjust column widths - set emoji column width and hide the context object column
+        contextHistoryTable.getColumnModel().getColumn(0).setPreferredWidth(30);
+        contextHistoryTable.getColumnModel().getColumn(0).setMinWidth(30);
+        contextHistoryTable.getColumnModel().getColumn(0).setMaxWidth(30);
+        contextHistoryTable.getColumnModel().getColumn(1).setPreferredWidth(150);
+        contextHistoryTable.getColumnModel().getColumn(2).setMinWidth(0);
+        contextHistoryTable.getColumnModel().getColumn(2).setMaxWidth(0);
+        contextHistoryTable.getColumnModel().getColumn(2).setWidth(0);
 
         // Add table to scroll pane with SmartScroll
         var scrollPane = new JScrollPane(contextHistoryTable);
@@ -516,7 +519,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     private JScrollPane buildLLMStreamScrollPane() {
-        // Replace the old RSyntaxTextArea with our new MarkdownOutputPanel
         llmStreamArea = new MarkdownOutputPanel();
 
         // Wrap it in a scroll pane so it can scroll if content is large
@@ -1268,7 +1270,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             // Add rows for each context in history
             for (var ctx : contextManager.getContextHistory()) {
+                // Add emoji for AI responses, empty for user actions
+                String emoji = (ctx.getParsedOutput() != null) ? "🤖" : "";
                 contextHistoryModel.addRow(new Object[]{
+                        emoji,
                         ctx.getAction(),
                         ctx // We store the actual context object in hidden column
                 });

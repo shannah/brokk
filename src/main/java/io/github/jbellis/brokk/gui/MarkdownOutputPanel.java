@@ -37,8 +37,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     public MarkdownOutputPanel()
     {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-
-        // NEW: Make sure the panel is opaque and will paint its own background
         setOpaque(true);
 
         // Build the Flexmark parser
