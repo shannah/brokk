@@ -630,7 +630,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         searchButton.addActionListener(e -> runSearchCommand());
 
         runButton = new JButton("Run in Shell");
-        runButton.setMnemonic(KeyEvent.VK_R);
+        runButton.setMnemonic(KeyEvent.VK_N);
         runButton.setToolTipText("Execute the current instructions as a shell command");
         runButton.addActionListener(e -> runRunCommand());
 
