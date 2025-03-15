@@ -22,6 +22,8 @@ import java.io.IOException;
 class MarkdownOutputPanel extends JPanel implements Scrollable {
     private final java.util.List<Runnable> textChangeListeners = new java.util.ArrayList<>();
     private final StringBuilder markdownBuffer = new StringBuilder();
+    private Timer regenerationTimer;
+    private static final int REGENERATION_DELAY = 100; // Delay in milliseconds
 
     private final Parser parser;
     private final HtmlRenderer renderer;
@@ -42,6 +44,12 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         // Build the Flexmark parser
         parser = Parser.builder().build();
         renderer = HtmlRenderer.builder().build();
+        
+        // Initialize the regeneration timer
+        regenerationTimer = new Timer(REGENERATION_DELAY, e -> {
+            doRegenerateComponents();
+        });
+        regenerationTimer.setRepeats(false);
     }
     
     /**
@@ -80,7 +88,8 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         }
 
         // Regenerate all components with the new theme
-        regenerateComponents();
+        // (It's okay to do this immediately instead of scheduled)
+        doRegenerateComponents();
     }
 
     /**
@@ -88,7 +97,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
      */
     public void clear() {
         markdownBuffer.setLength(0);
-        regenerateComponents();
+        scheduleRegeneration();
     }
 
     /**
@@ -98,7 +107,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         assert text != null;
         if (!text.isEmpty()) {
             markdownBuffer.append(text);
-            regenerateComponents();
+            scheduleRegeneration();
         }
     }
 
@@ -109,7 +118,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         assert text != null;
         markdownBuffer.setLength(0);
         markdownBuffer.append(text);
-        regenerateComponents();
+        scheduleRegeneration();
     }
 
     /**
@@ -126,10 +135,15 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         textChangeListeners.add(listener);
     }
 
+    private void scheduleRegeneration()
+    {
+        regenerationTimer.restart();
+    }
+
     /**
      * Completely rebuilds this panel's subcomponents from markdownBuffer.
      */
-    private void regenerateComponents() {
+    private void doRegenerateComponents() {
         removeAll();
         var htmlBuilder = new StringBuilder();
 
