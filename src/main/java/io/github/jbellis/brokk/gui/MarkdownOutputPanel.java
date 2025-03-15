@@ -32,8 +32,12 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     private Color codeBackgroundColor = null;
     private Color codeBorderColor = null;
 
-    public MarkdownOutputPanel() {
+    public MarkdownOutputPanel()
+    {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+
+        // NEW: Make sure the panel is opaque and will paint its own background
+        setOpaque(true);
 
         // Build the Flexmark parser
         parser = Parser.builder().build();
@@ -45,9 +49,10 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
      * 
      * @param isDark true if dark theme is being used
      */
-    public void updateTheme(boolean isDark) {
+    public void updateTheme(boolean isDark)
+    {
         this.isDarkTheme = isDark;
-        
+
         if (isDark) {
             textBackgroundColor = new Color(40, 40, 40);
             codeBackgroundColor = new Color(50, 50, 50);
@@ -57,10 +62,23 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
             codeBackgroundColor = new Color(240, 240, 240);
             codeBorderColor = Color.GRAY;
         }
-        
-        // Update our background to match text background
+
+        // Ensure we paint our own background, then update the theme color
+        setOpaque(true);
         setBackground(textBackgroundColor);
-        
+
+        // NEW: Also update the scroll pane’s background if we’re inside a JScrollPane
+        var parent = getParent();
+        if (parent instanceof JViewport vp) {
+            vp.setOpaque(true);
+            vp.setBackground(textBackgroundColor);
+            var gp = vp.getParent();
+            if (gp instanceof JScrollPane sp) {
+                sp.setOpaque(true);
+                sp.setBackground(textBackgroundColor);
+            }
+        }
+
         // Regenerate all components with the new theme
         regenerateComponents();
     }
@@ -212,7 +230,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
 
         // Create a nested panel to add padding inside the border
         var textAreaPanel = new JPanel(new BorderLayout());
-        textAreaPanel.setBorder(BorderFactory.createEmptyBorder(10, 8, 8, 8));
+        textAreaPanel.setBorder(BorderFactory.createEmptyBorder(15, 8, 8, 8));
         textAreaPanel.setBackground(codeBackgroundColor);
         textAreaPanel.add(textArea);
         textAreaPanel.setBorder(BorderFactory.createLineBorder(codeBorderColor, 3, true));
