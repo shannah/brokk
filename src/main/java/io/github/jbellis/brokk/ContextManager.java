@@ -897,7 +897,7 @@ public class ContextManager implements IContextManager
             try {
                 // Use reflection or pass chrome reference in constructor to avoid direct dependency
                 var selectedCtx = selectedContext();
-                if (selectedCtx != null) {
+                if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
                     addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
                     io.systemOutput("Content captured from output");
                 } else {
@@ -925,7 +925,6 @@ public class ContextManager implements IContextManager
                 if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
                     var fragment = selectedCtx.getParsedOutput().parsedFragment();
                     editSources(fragment);
-                    io.systemOutput("Editing files referenced in output");
                 } else {
                     io.toolErrorRaw("No content with file references to edit");
                 }
@@ -1452,7 +1451,7 @@ public class ContextManager implements IContextManager
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        var parsed = new ParsedOutput(io.getLlmOutputText(), new ContextFragment.StringFragment(io.getLlmOutputText(), ""));
+        var parsed = new ParsedOutput(io.getLlmOutputText(), new ContextFragment.StringFragment(io.getLlmOutputText(), "ai Response"));
         pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 

@@ -56,11 +56,8 @@ public class Context implements Serializable {
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
             assert output != null;
+            assert !output.isBlank(); // at the very least we should have the preamble we populate it with
             assert parsedFragment != null;
-        }
-
-        public ParsedOutput() {
-            this("", new ContextFragment.StringFragment("", ""));
         }
     }
 
@@ -69,7 +66,7 @@ public class Context implements Serializable {
      */
     public Context(IContextManager contextManager, int autoContextFileCount, String initialOutputText) {
         this(contextManager, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(),
-             new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "")),
+             new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "Welcome")),
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
 
@@ -100,7 +97,6 @@ public class Context implements Serializable {
         assert autoContextFileCount >= 0;
         assert historyMessages != null;
         assert originalContents != null;
-        assert parsedOutput != null;
         assert action != null;
         this.contextManager = contextManager;
         this.editableFiles = List.copyOf(editableFiles);
@@ -284,7 +280,7 @@ public class Context implements Serializable {
                            fileCount,
                            historyMessages,
                            Map.of(),
-                           new ParsedOutput(),
+                           null,
                            action).refresh();
     }
 
@@ -406,7 +402,7 @@ public class Context implements Serializable {
                 autoContextFileCount,
                 historyMessages,
                 Map.of(),
-                new ParsedOutput(),
+                null,
                 action
         ).refresh();
     }
@@ -495,7 +491,7 @@ public class Context implements Serializable {
                 autoContextFileCount,
                 List.of(),
                 Map.of(),
-                new ParsedOutput(),
+                null,
                 CompletableFuture.completedFuture("Cleared conversation history")
         );
     }
@@ -630,10 +626,6 @@ public class Context implements Serializable {
             var originalContentsField = Context.class.getDeclaredField("originalContents");
             originalContentsField.setAccessible(true);
             originalContentsField.set(this, Map.of());
-
-            var parsedOutputField = Context.class.getDeclaredField("parsedOutput");
-            parsedOutputField.setAccessible(true);
-            parsedOutputField.set(this, new ParsedOutput());
 
             var contextManagerField = Context.class.getDeclaredField("contextManager");
             contextManagerField.setAccessible(true);

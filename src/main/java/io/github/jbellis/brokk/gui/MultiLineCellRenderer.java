@@ -44,7 +44,7 @@ public class MultiLineCellRenderer extends JTextArea implements TableCellRendere
                 // Check if the row is a valid index in the context history
                 if (chrome != null && row < chrome.getContextManager().getContextHistory().size()) {
                     var ctx = chrome.getContextManager().getContextHistory().get(row);
-                    if (!ctx.getParsedOutput().output().isBlank()) {
+                    if (ctx.getParsedOutput() != null) {
                         // LLM conversation - use dark background
                         bg = new Color(50, 50, 50);
                         fg = new Color(220, 220, 220);

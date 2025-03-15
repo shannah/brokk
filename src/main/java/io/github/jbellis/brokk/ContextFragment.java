@@ -124,6 +124,7 @@ public interface ContextFragment extends Serializable {
         @Override
         public String shortDescription() {
             assert !description().isEmpty();
+            // lowercase the first letter in description()
             return description().substring(0, 1).toLowerCase() + description().substring(1);
         }
 

@@ -321,17 +321,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
                 if (row < contextManager.getContextHistory().size()) {
                     var ctx = contextManager.getContextHistory().get(row);
-                    if (ctx.getParsedOutput().output() != null) {
-                        // LLM conversation - use dark background
+                    if (ctx.getParsedOutput() == null) {
                         if (!isSelected) {
-                            c.setBackground(new Color(50, 50, 50));
-                            c.setForeground(new Color(220, 220, 220));
-                        }
-                    } else {
-                        // Regular context - use normal colors
-                        if (!isSelected) {
+                            // Regular context - use normal colors
                             c.setBackground(table.getBackground());
                             c.setForeground(table.getForeground());
+                        }
+                    } else {
+                        if (!isSelected) {
+                            // LLM conversation - use dark background
+                            c.setBackground(new Color(50, 50, 50));
+                            c.setForeground(new Color(220, 220, 220));
                         }
                     }
                 }
@@ -430,7 +430,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
 
             // If there's textarea content, restore it to the LLM output area
-            llmStreamArea.setText(ctx.getParsedOutput().output());
+            llmStreamArea.setText(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
 
             // Scroll to the top
             SwingUtilities.invokeLater(() -> {
@@ -1384,6 +1384,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     /**
      * Updates the state of capture buttons based on textarea content
+     * 
+     * If `ctx` is null it means we're processing a new response from the LLM
+     * and we should parse our raw text for references instead
      */
     public void updateCaptureButtons(Context ctx) {
         String text = llmStreamArea.getText();
@@ -1400,9 +1403,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 fragment = ctx == null
                         ? new ContextFragment.StringFragment(text, "temp")
                         : ctx.getParsedOutput().parsedFragment();
-                Set<CodeUnit> sources = fragment.sources(analyzer, getProject().getRepo());
+                // parsedOutput can be null (no text to capture for that action)
+                var sources = fragment == null 
+                        ? Set.<CodeUnit>of() 
+                        : fragment.sources(analyzer, getProject().getRepo());
                 editReferencesButton.setEnabled(!sources.isEmpty());
-
                 // Update description with file names
                 updateFilesDescriptionLabel(sources);
             } else {
