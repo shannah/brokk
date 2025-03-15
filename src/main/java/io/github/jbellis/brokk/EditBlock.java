@@ -121,7 +121,7 @@ public class EditBlock {
         }
 
         if (!succeeded.isEmpty()) {
-            io.llmOutput(succeeded.size() + " SEARCH/REPLACE blocks applied.");
+            io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.");
         }
         return new EditResult(changedFiles, failed);
     }
