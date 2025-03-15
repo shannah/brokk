@@ -1030,7 +1030,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
 
             getProject().saveLlmKeys(newKeys);
-            actionOutput("Saved " + newKeys.size() + " API keys");
+            systemOutput("Saved " + newKeys.size() + " API keys");
             dialog.dispose();
         });
 
@@ -1064,6 +1064,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     @Override
+    public void actionComplete() {
+        SwingUtilities.invokeLater(() -> commandResultLabel.setText(""));
+    }
+
+    @Override
     public void toolErrorRaw(String msg) {
         systemOutput(msg);
     }
@@ -1091,15 +1096,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
-    public void spin(String message) {
+    public void backgroundOutput(String message) {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(message));
     }
-
-    @Override
-    public void actionComplete() {
-        SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(BGTASK_EMPTY));
-    }
-
+    
     /**
      * Repopulate the unified context table from the given context.
      */

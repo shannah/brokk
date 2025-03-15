@@ -49,7 +49,7 @@ public class EditBlock {
         for (SearchReplaceBlock block : blocks) {
             // Shell commands remain unchanged
             if (block.shellCommand() != null) {
-                io.actionOutput("Shell command from LLM:\n" + block.shellCommand());
+                io.systemOutput("Shell command from LLM:\n" + block.shellCommand());
                 continue;
             }
 
@@ -873,27 +873,27 @@ public class EditBlock {
 
         var blocks = parseResult.blocks();
         if (blocks.isEmpty()) {
-            io.actionOutput("No SEARCH/REPLACE blocks found in input");
+            io.systemOutput("No SEARCH/REPLACE blocks found in input");
             System.exit(0);
         }
 
-        io.actionOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
+        io.systemOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
 
         // Apply the edit blocks
         var editResult = applyEditBlocks(contextManager, io, blocks);
 
         // Report any failures
         if (!editResult.failedBlocks().isEmpty()) {
-            io.toolError(editResult.failedBlocks().size() + " blocks failed to apply:");
+            io.systemOutput(editResult.failedBlocks().size() + " blocks failed to apply:");
             var suggestions = collectSuggestions(editResult.failedBlocks(), contextManager);
 
             for (var failed : editResult.failedBlocks()) {
-                io.toolError("Failed to apply block for file: " +
+                io.systemOutput("Failed to apply block for file: " +
                                      (failed.block().filename() == null ? "(none)" : failed.block().filename()) +
                                      " Reason: " + failed.reason());
 
                 if (suggestions.containsKey(failed)) {
-                    io.actionOutput(suggestions.get(failed));
+                    io.systemOutput(suggestions.get(failed));
                 }
             }
         }

@@ -769,14 +769,14 @@ public class GitLogPanel extends JPanel {
             try {
                 if (selectedRows.length == 0 || commitsTableModel.getRowCount() == 0) {
                     chrome.systemOutput("No commits selected or commits table is empty");
-                    return null;
+                    return;
                 }
                 int[] sortedRows = selectedRows.clone();
                 Arrays.sort(sortedRows);
                 if (sortedRows[0] < 0 ||
                         sortedRows[sortedRows.length - 1] >= commitsTableModel.getRowCount()) {
                     chrome.systemOutput("Invalid commit selection");
-                    return null;
+                    return;
                 }
 
                 String firstCommitId = (String) commitsTableModel.getValueAt(sortedRows[0], 3);
@@ -785,7 +785,7 @@ public class GitLogPanel extends JPanel {
                 String diff = getRepo().showDiff(lastCommitId, firstCommitId + "^");
                 if (diff.isEmpty()) {
                     chrome.systemOutput("No changes found in the selected commit range");
-                    return null;
+                    return;
                 }
 
                 String firstShortHash = firstCommitId.substring(0, 7);
@@ -806,7 +806,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error adding commit range to context", ex);
                 chrome.toolErrorRaw("Error adding commit range to context: " + ex.getMessage());
             }
-            return null;
         });
     }
 
@@ -818,14 +817,14 @@ public class GitLogPanel extends JPanel {
             try {
                 if (selectedRows.length == 0 || commitsTableModel.getRowCount() == 0) {
                     chrome.systemOutput("No commits selected or commits table is empty");
-                    return null;
+                    return;
                 }
                 int[] sortedRows = selectedRows.clone();
                 Arrays.sort(sortedRows);
                 if (sortedRows[0] < 0 ||
                         sortedRows[sortedRows.length - 1] >= commitsTableModel.getRowCount()) {
                     chrome.systemOutput("Invalid commit selection");
-                    return null;
+                    return;
                 }
 
                 String firstCommitId = (String) commitsTableModel.getValueAt(sortedRows[0], 3);
@@ -833,7 +832,7 @@ public class GitLogPanel extends JPanel {
 
                 var repoFiles = filePaths.stream()
                         .map(path -> new RepoFile(contextManager.getRoot(), path))
-                        .collect(Collectors.toList());
+                        .toList();
                         
                 String diffs = repoFiles.stream()
                         .map(file -> getRepo().showFileDiff(lastCommitId, firstCommitId + "^", file))
@@ -842,7 +841,7 @@ public class GitLogPanel extends JPanel {
 
                 if (diffs.isEmpty()) {
                     chrome.systemOutput("No changes found for the selected files in the commit range");
-                    return null;
+                    return;
                 }
 
                 String firstShortHash = firstCommitId.substring(0, 7);
@@ -867,7 +866,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error adding file changes from range to context", ex);
                 chrome.toolErrorRaw("Error adding file changes from range to context: " + ex.getMessage());
             }
-            return null;
         });
     }
     
@@ -875,11 +873,11 @@ public class GitLogPanel extends JPanel {
      * Compare selected files from a commit with the local working copy.
      */
     private void compareFilesWithLocal(String commitId, List<String> filePaths) {
-        contextManager.submitContextTask("Comparing files with local", () -> {
+        contextManager.submitUserTask("Comparing files with local", () -> {
             try {
                 var repoFiles = filePaths.stream()
                         .map(path -> new RepoFile(contextManager.getRoot(), path))
-                        .collect(Collectors.toList());
+                        .toList();
                         
                 String allDiffs = repoFiles.stream()
                         .map(file -> getRepo().showFileDiff("HEAD", commitId, file))
@@ -888,13 +886,13 @@ public class GitLogPanel extends JPanel {
 
                 if (allDiffs.isEmpty()) {
                     chrome.systemOutput("No differences found between selected files and local working copy");
-                    return null;
+                    return;
                 }
 
                 String shortHash = commitId.substring(0, 7);
                 StringBuilder fileList = new StringBuilder();
                 for (String fp : filePaths) {
-                    if (fileList.length() > 0) fileList.append(", ");
+                    if (!fileList.isEmpty()) fileList.append(", ");
                     int lastSlash = fp.lastIndexOf('/');
                     fileList.append(lastSlash >= 0 ? fp.substring(lastSlash + 1) : fp);
                 }
@@ -908,7 +906,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error comparing files with local", ex);
                 chrome.toolErrorRaw("Error comparing files with local: " + ex.getMessage());
             }
-            return null;
         });
     }
 
@@ -941,7 +938,6 @@ public class GitLogPanel extends JPanel {
                 SwingUtilities.invokeLater(() ->
                                                    chrome.toolErrorRaw("Error performing soft reset: " + e.getMessage()));
             }
-            return null;
         });
     }
 
@@ -963,7 +959,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error reverting commit: {}", commitId, e);
                 chrome.toolErrorRaw("Error reverting commit: " + e.getMessage());
             }
-            return null;
         });
     }
 
@@ -1007,7 +1002,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error checking out branch: {}", branchName, e);
                 chrome.toolErrorRaw(e.getMessage());
             }
-            return null;
         });
     }
 
@@ -1024,7 +1018,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error merging branch: {}", branchName, e);
                 chrome.toolErrorRaw(e.getMessage());
             }
-            return null;
         });
     }
 
@@ -1047,7 +1040,6 @@ public class GitLogPanel extends JPanel {
                     logger.error("Error renaming branch: {}", branchName, e);
                     chrome.toolErrorRaw("Error renaming branch: " + e.getMessage());
                 }
-                return null;
             });
         }
     }
@@ -1094,7 +1086,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error checking branch merge status: {}", branchName, e);
                 chrome.toolErrorRaw("Error checking branch status: " + e.getMessage());
             }
-            return null;
         });
     }
 
@@ -1115,7 +1106,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error deleting branch: {}", branchName, e);
                 chrome.toolErrorRaw(e.getMessage());
             }
-            return null;
         });
     }
 
@@ -1153,7 +1143,6 @@ public class GitLogPanel extends JPanel {
                 logger.error("Error searching commits: {}", query, e);
                 SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error searching commits: " + e.getMessage()));
             }
-            return null;
         });
     }
 
@@ -1271,9 +1260,6 @@ public class GitLogPanel extends JPanel {
         contextManager.editFiles(files);
     }
     
-    /**
-     * Shows the diff for a file in a commit.
-     */
     /**
      * Shows a diff for a single file in the changes tree (if exactly one commit is selected).
      */

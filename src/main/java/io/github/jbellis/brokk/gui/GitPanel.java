@@ -205,7 +205,7 @@ public class GitPanel extends JPanel {
                         return null;
                     }
                     // Trigger LLM-based commit message generation
-                    contextManager.performCommitActionAsync(diff);
+                    contextManager.inferCommitMessageAsync(diff);
                     SwingUtilities.invokeLater(chrome::enableUserActionButtons);
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
@@ -268,7 +268,6 @@ public class GitPanel extends JPanel {
                         chrome.enableUserActionButtons();
                     });
                 }
-                return null;
             });
         });
         buttonPanel.add(stashButton);
@@ -318,7 +317,6 @@ public class GitPanel extends JPanel {
                         chrome.enableUserActionButtons();
                     });
                 }
-                return null;
             });
         });
         buttonPanel.add(commitButton);
@@ -804,7 +802,7 @@ public class GitPanel extends JPanel {
 
                 if (diff.isEmpty()) {
                     chrome.systemOutput("No changes found for " + filePath);
-                    return null;
+                    return;
                 }
 
                 var shortHash  = commitId.substring(0, 7);
@@ -818,19 +816,18 @@ public class GitPanel extends JPanel {
                 logger.error("Error adding file change to context", e);
                 chrome.toolErrorRaw("Error adding file change to context: " + e.getMessage());
             }
-            return null;
         });
     }
     
     private void compareFileWithLocal(String commitId, String filePath) {
-        contextManager.submitContextTask("Comparing file with local", () -> {
+        contextManager.submitUserTask("Comparing file with local", () -> {
             try {
                 var repoFile = new RepoFile(contextManager.getRoot(), filePath);
                 var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
 
                 if (diff.isEmpty()) {
                     chrome.systemOutput("No differences found between " + filePath + " and local working copy");
-                    return null;
+                    return;
                 }
 
                 var shortHash = commitId.substring(0, 7);
@@ -844,7 +841,6 @@ public class GitPanel extends JPanel {
                 logger.error("Error comparing file with local", e);
                 chrome.toolErrorRaw("Error comparing file with local: " + e.getMessage());
             }
-            return null;
         });
     }
     
@@ -919,7 +915,6 @@ public class GitPanel extends JPanel {
                 SwingUtilities.invokeLater(() ->
                                                    chrome.toolErrorRaw("Error popping stash: " + e.getMessage()));
             }
-            return null;
         });
     }
 
@@ -936,7 +931,6 @@ public class GitPanel extends JPanel {
                 SwingUtilities.invokeLater(() ->
                                                    chrome.toolErrorRaw("Error applying stash: " + e.getMessage()));
             }
-            return null;
         });
     }
 
@@ -963,18 +957,11 @@ public class GitPanel extends JPanel {
                 SwingUtilities.invokeLater(() ->
                                                    chrome.toolErrorRaw("Error dropping stash: " + e.getMessage()));
             }
-            return null;
         });
     }
 
     /**
-     * Format commit date to show e.g. "HH:MM:SS today" if it is today's date.
-     */
-    /**
      * Shows the diff for an uncommitted file.
-     */
-    /**
-     * Displays the "uncommitted diff" dialog for the file in the given row.
      */
     private void viewDiffForUncommittedRow(int row)
     {

@@ -70,17 +70,10 @@ public class ContextManager implements IContextManager
     private Chrome io; // for UI feedback
     private Coder coder;
 
-    // Convert a throwable to a string with full stack trace
-    private String getStackTraceAsString(Throwable throwable) {
-        var sw = new java.io.StringWriter();
-        var pw = new java.io.PrintWriter(sw);
-        throwable.printStackTrace(pw);
-        return sw.toString();
-    }
-
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
     private final ExecutorService userActionExecutor = createLoggingExecutorService(Executors.newSingleThreadExecutor());
+    private final AtomicReference<Thread> userActionThread = new AtomicReference<>();
 
     @NotNull
     private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {
@@ -152,6 +145,9 @@ public class ContextManager implements IContextManager
     public ContextManager(Path root)
     {
         this.root = root.toAbsolutePath().normalize();
+        userActionExecutor.submit(() -> {
+            userActionThread.set(Thread.currentThread());
+        });
     }
 
     /**
@@ -165,7 +161,9 @@ public class ContextManager implements IContextManager
         var analyzerListener = new AnalyzerListener() {
             @Override
             public void onBlocked() {
-                SwingUtilities.invokeLater(() -> io.actionOutput("Analyzer is refreshing"));
+                if (Thread.currentThread() == userActionThread.get()) {
+                    SwingUtilities.invokeLater(() -> io.actionOutput("Waiting for Code Intelligence"));
+                }
             }
 
             @Override
@@ -284,30 +282,25 @@ public class ContextManager implements IContextManager
     public Future<?> runRunCommandAsync(String input)
     {
         assert io != null;
-        return userActionExecutor.submit(() -> {
-            try {
-                io.actionOutput("Executing: " + input);
-                var result = Environment.instance.captureShellCommand(input);
-                String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-                io.llmOutput("\n" + output);
+        return submitUserTask("Executing: " + input, () -> {
+            var result = Environment.instance.captureShellCommand(input);
+            String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
+            io.llmOutput("\n" + output);
 
-                // Add to context history with the output text
-                pushContext(ctx -> {
-                    var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
-                    var parsed = new ParsedOutput(io.getLlmOutputText(), SyntaxConstants.SYNTAX_STYLE_NONE, runFrag);
-                    return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
-                });
-            } finally {
-                io.enableUserActionButtons();
-            }
+            // Add to context history with the output text
+            pushContext(ctx -> {
+                var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
+                var parsed = new ParsedOutput(io.getLlmOutputText(), SyntaxConstants.SYNTAX_STYLE_NONE, runFrag);
+                return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
+            });
         });
     }
 
-    public Future<?> submitUserTask(String description, Callable<?> task) {
+    public Future<?> submitUserTask(String description, Runnable task) {
         return userActionExecutor.submit(() -> {
             try {
                 io.actionOutput(description);
-                task.call();
+                task.run();
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
             } catch (Exception e) {
@@ -320,11 +313,10 @@ public class ContextManager implements IContextManager
         });
     }
 
-    public Future<?> submitContextTask(String description, Callable<?> task) {
+    public Future<?> submitContextTask(String description, Runnable task) {
         return contextActionExecutor.submit(() -> {
             try {
-                io.actionOutput(description);
-                task.call();
+                task.run();
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
             } catch (Exception e) {
@@ -354,7 +346,7 @@ public class ContextManager implements IContextManager
      */
     public Future<?> runAskAsync(String question)
     {
-        return userActionExecutor.submit(() -> {
+        return submitUserTask("Asking the LLM", () -> {
             try {
                 if (io == null) return;
                 if (question.isBlank()) {
@@ -366,7 +358,6 @@ public class ContextManager implements IContextManager
                 messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
                 // stream from coder
-                io.actionOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response.chatResponse() != null) {
                     addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
@@ -376,8 +367,6 @@ public class ContextManager implements IContextManager
             } catch (Exception e) {
                 logger.error("Error in ask command", e);
                 io.toolErrorRaw("Error in ask command: " + e.getMessage());
-            } finally {
-                io.enableUserActionButtons();
             }
         });
     }
@@ -520,17 +509,27 @@ public class ContextManager implements IContextManager
         });
     }
 
-    public Future<?> performCommitActionAsync(String diffText)
+    public Future<?> inferCommitMessageAsync(String diffText)
     {
-        return contextActionExecutor.submit(() -> {
-            try {
-                doCommitAction(diffText);
-            } catch (CancellationException cex) {
-                io.systemOutput("Commit action canceled.");
-            } finally {
-                io.enableContextActionButtons();
-                io.enableUserActionButtons();
+        return submitBackgroundTask("Inferring commit message", () -> {
+            var messages = CommitPrompts.instance.collectMessages(diffText);
+            if (messages.isEmpty()) {
+                io.systemOutput("Nothing to commit");
+                return null;
             }
+
+            String commitMsg = coder.sendMessage(messages);
+            if (commitMsg.isEmpty()) {
+                io.systemOutput("LLM did not provide a commit message");
+                return null;
+            }
+
+            // Escape quotes in the commit message
+            commitMsg = commitMsg.replace("\"", "\\\"");
+
+            // Set the commit message in the GitPanel
+            io.setCommitMessageText(commitMsg);
+            return null;
         });
     }
 
@@ -677,30 +676,6 @@ public class ContextManager implements IContextManager
                 io.systemOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
             }
         }
-    }
-
-    /**
-     * Generate a commit message using the LLM and prefill the command input with specified diff
-     */
-    private void doCommitAction(String diffText) {
-        var messages = CommitPrompts.instance.collectMessages(diffText);
-        if (messages.isEmpty()) {
-            io.toolErrorRaw("Nothing to commit");
-            return;
-        }
-
-        io.actionOutput("Inferring commit message");
-        String commitMsg = coder.sendMessage(messages);
-        if (commitMsg.isEmpty()) {
-            io.toolErrorRaw("LLM did not provide a commit message");
-            return;
-        }
-
-        // Escape quotes in the commit message
-        commitMsg = commitMsg.replace("\"", "\\\"");
-
-        // Set the commit message in the GitPanel
-        io.setCommitMessageText(commitMsg);
     }
 
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
@@ -1329,9 +1304,11 @@ public class ContextManager implements IContextManager
      */
     @Override
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
+        assert taskDescription != null;
+        assert !taskDescription.isBlank();
         Future<T> future = backgroundTasks.submit(() -> {
             try {
-                io.actionOutput(taskDescription);
+                io.backgroundOutput(taskDescription);
                 return task.call();
             } finally {
                 // Remove this task from the map
@@ -1339,17 +1316,13 @@ public class ContextManager implements IContextManager
                 int remaining = taskDescriptions.size();
                 SwingUtilities.invokeLater(() -> {
                     if (remaining <= 0) {
-                        io.actionComplete();
+                        io.backgroundOutput("");
                     } else if (remaining == 1) {
                         // Find the last remaining task description. If there's a race just end the spin
                         var lastTaskDescription = taskDescriptions.values().stream().findFirst().orElse("");
-                        if (lastTaskDescription.isEmpty()) {
-                            io.actionComplete();
-                        } else {
-                            io.actionOutput(lastTaskDescription);
-                        }
+                        io.backgroundOutput(lastTaskDescription);
                     } else {
-                        io.actionOutput("Tasks running: " + remaining);
+                        io.backgroundOutput("Tasks running: " + remaining);
                     }
                 });
             }
@@ -1365,8 +1338,7 @@ public class ContextManager implements IContextManager
         var loadedCommand = project.getBuildCommand();
         // Possibly store an inferred buildCommand
         if (loadedCommand != null) {
-            var buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
-            io.systemOutput("Using saved build command `%s`".formatted(buildCommand));
+            io.systemOutput("Using saved build command `%s`".formatted(loadedCommand));
         } else {
             // do background inference
             var tracked = project.getRepo().getTrackedFiles();
@@ -1387,7 +1359,7 @@ public class ContextManager implements IContextManager
                     )
             );
 
-            var buildCommand = submitBackgroundTask("Inferring build command", () -> {
+            submitBackgroundTask("Inferring build command", () -> {
                 String response;
                 try {
                     response = coder.sendMessage(messages);
@@ -1496,5 +1468,13 @@ public class ContextManager implements IContextManager
     @Override
     public void addToGit(String filename) throws IOException {
         project.getRepo().add(List.of(toFile(filename)));
+    }
+
+    // Convert a throwable to a string with full stack trace
+    private String getStackTraceAsString(Throwable throwable) {
+        var sw = new java.io.StringWriter();
+        var pw = new java.io.PrintWriter(sw);
+        throwable.printStackTrace(pw);
+        return sw.toString();
     }
 }

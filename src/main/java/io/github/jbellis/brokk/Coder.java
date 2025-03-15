@@ -120,7 +120,8 @@ public class Coder {
                     // Mark as cancelled
                     return new StreamingResult(null, true, null);
                 }
-                io.actionOutput("");
+                // TODO restore the previous description
+                io.actionComplete();
                 // Retry
                 continue;
             }
