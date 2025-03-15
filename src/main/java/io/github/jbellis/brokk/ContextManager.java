@@ -184,7 +184,7 @@ public class ContextManager implements IContextManager
             initialContext = initialContext.refresh();
         }
         contextHistory.set(List.of(initialContext));
-        chrome.setContext(initialContext);
+        chrome.onContextHistoryChanged();
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
@@ -789,7 +789,7 @@ public class ContextManager implements IContextManager
                     contextHistory.set(List.copyOf(ch));
                 }
 
-                io.setContext(topContext());
+                io.onContextHistoryChanged();
                 io.systemOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
                 io.systemOutput("Undo canceled.");
@@ -815,7 +815,7 @@ public class ContextManager implements IContextManager
                     var undoContext = undoAndInvertChanges(popped);
                     ch.add(undoContext);
                 }
-                io.setContext(topContext());
+                io.onContextHistoryChanged();
                 io.systemOutput("Redo!");
             } catch (CancellationException cex) {
                 io.systemOutput("Redo canceled.");
@@ -1189,7 +1189,7 @@ public class ContextManager implements IContextManager
                 contextHistory.set(List.copyOf(ch));
             }
         }
-        io.setContext(newContext);
+        io.onContextHistoryChanged();
 
         // Save the current context to workspace properties
         project.saveContext(newContext);

@@ -346,7 +346,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 int row = contextHistoryTable.getSelectedRow();
                 if (row >= 0 && row < contextManager.getContextHistory().size()) {
                     var ctx = contextManager.getContextHistory().get(row);
-                    previewContextFromHistory(ctx);
+                    loadContext(ctx);
                 }
             }
         });
@@ -411,14 +411,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.add(buttonPanel, BorderLayout.SOUTH);
 
         return panel;
-    }
-
-    /**
-     * Previews a context from history without fully restoring it
-     */
-    private void previewContextFromHistory(Context ctx) {
-        assert ctx != null;
-        loadContext(ctx);
     }
 
     /**
@@ -1072,14 +1064,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Repopulate the unified context table from the given context.
+     * Repopulate the unified context table from ContextManager's history.
      * 
      * Called when we add a new Context or undo/redo to a different one.
      * 
      * NOT called when we select an earlier context.
      */
-    public void setContext(Context context) {
-        assert context != null;
+    public void onContextHistoryChanged() {
         SwingUtilities.invokeLater(() -> {
             updateContextHistoryTable(contextManager.getContextHistory().size() - 1);
             updateSuggestCommitButton();
