@@ -474,13 +474,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void switchTheme(boolean isDark) {
         themeManager.applyTheme(isDark);
-        
+
         // Apply theme to system area manually
         if (systemArea != null) {
             Color bg = isDark ? new Color(40, 40, 40) : new Color(240, 240, 240);
             Color fg = isDark ? new Color(200, 200, 200) : new Color(30, 30, 30);
             systemArea.setBackground(bg);
             systemArea.setForeground(fg);
+        }
+        
+        // Update themes in all preview windows (if there are open ones)
+        for (Window window : Window.getWindows()) {
+            if (window instanceof JFrame && window != frame) {
+                Container contentPane = ((JFrame) window).getContentPane();
+                if (contentPane instanceof PreviewPanel) {
+                    ((PreviewPanel) contentPane).updateTheme(themeManager);
+                }
+            }
         }
     }
 
@@ -1139,7 +1149,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Create a JFrame to hold the new PreviewPanel
         var frame = new JFrame("Preview: " + fragment.shortDescription());
-        var previewPanel = new PreviewPanel(content, syntaxType);
+        // Pass the theme manager to properly style the preview
+        var previewPanel = new PreviewPanel(content, syntaxType, themeManager);
         frame.setContentPane(previewPanel);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
