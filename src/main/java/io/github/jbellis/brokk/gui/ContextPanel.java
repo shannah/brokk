@@ -243,7 +243,6 @@ public class ContextPanel extends JPanel {
                             contextMenu.add(setAutoContext5Item);
                             contextMenu.add(setAutoContext10Item);
                             contextMenu.add(setAutoContext20Item);
-                            contextMenu.addSeparator();
                             contextMenu.add(setAutoContextCustomItem);
 
                         } else {
