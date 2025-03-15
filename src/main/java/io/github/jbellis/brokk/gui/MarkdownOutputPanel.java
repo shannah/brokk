@@ -5,19 +5,19 @@ import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
-import javax.swing.text.Document;
-import javax.swing.text.Element;
-import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
-import javax.swing.text.html.StyleSheet;
 import java.awt.*;
+import java.io.IOException;
 
 /**
  * A panel that stores Markdown text and displays it as a sequence of Swing components:
  * - JEditorPane for normal text.
  * - RSyntaxTextArea for code fences.
+ * 
+ * This panel supports both light and dark themes.
  */
 class MarkdownOutputPanel extends JPanel implements Scrollable {
     private final java.util.List<Runnable> textChangeListeners = new java.util.ArrayList<>();
@@ -25,6 +25,12 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
 
     private final Parser parser;
     private final HtmlRenderer renderer;
+    
+    // Theme-related fields
+    private boolean isDarkTheme = false;
+    private Color textBackgroundColor = null;
+    private Color codeBackgroundColor = null;
+    private Color codeBorderColor = null;
 
     public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -32,6 +38,31 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         // Build the Flexmark parser
         parser = Parser.builder().build();
         renderer = HtmlRenderer.builder().build();
+    }
+    
+    /**
+     * Updates the theme colors used by this panel.  Must be called before adding text.
+     * 
+     * @param isDark true if dark theme is being used
+     */
+    public void updateTheme(boolean isDark) {
+        this.isDarkTheme = isDark;
+        
+        if (isDark) {
+            textBackgroundColor = new Color(40, 40, 40);
+            codeBackgroundColor = new Color(50, 50, 50);
+            codeBorderColor = new Color(80, 80, 80);
+        } else {
+            textBackgroundColor = Color.WHITE;
+            codeBackgroundColor = new Color(240, 240, 240);
+            codeBorderColor = Color.GRAY;
+        }
+        
+        // Update our background to match text background
+        setBackground(textBackgroundColor);
+        
+        // Regenerate all components with the new theme
+        regenerateComponents();
     }
 
     /**
@@ -92,7 +123,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
                 }
 
                 var fenceInfo = fenced.getInfo().toString().trim().toLowerCase();
-                var content = fenced.getContentChars().toString();
+                var content = fenced.getContentChars().toString().stripTrailing();
                 var codeArea = createConfiguredCodeArea(fenceInfo, content);
                 add(codeAreaInPanel(codeArea));
             } else {
@@ -147,24 +178,44 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
             case "javascript" -> SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT;
             default -> SyntaxConstants.SYNTAX_STYLE_NONE;
         });
+        
+        // Apply appropriate theme to the code area
+        try {
+            if (isDarkTheme) {
+                Theme darkTheme = Theme.load(getClass().getResourceAsStream(
+                    "/org/fife/ui/rsyntaxtextarea/themes/dark.xml"));
+                darkTheme.apply(codeArea);
+            } else {
+                Theme lightTheme = Theme.load(getClass().getResourceAsStream(
+                    "/org/fife/ui/rsyntaxtextarea/themes/default.xml"));
+                lightTheme.apply(codeArea);
+            }
+        } catch (IOException e) {
+            // Fallback to manual colors if theme loading fails
+            if (isDarkTheme) {
+                codeArea.setBackground(new Color(50, 50, 50));
+                codeArea.setForeground(new Color(230, 230, 230));
+            }
+        }
+        
         return codeArea;
     }
 
     private JPanel codeAreaInPanel(RSyntaxTextArea textArea) {
         var panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(245, 245, 245)); // Match the code area background
+        panel.setBackground(codeBackgroundColor);
         panel.setAlignmentX(LEFT_ALIGNMENT);
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, textArea.getPreferredSize().height));
-        
+
         // Add vertical spacing above code block
         panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 0, 0));
-        
+
         // Create a nested panel to add padding inside the border
         var textAreaPanel = new JPanel(new BorderLayout());
         textAreaPanel.setBorder(BorderFactory.createEmptyBorder(10, 8, 8, 8));
-        textAreaPanel.setBackground(new Color(245, 245, 245));
+        textAreaPanel.setBackground(codeBackgroundColor);
         textAreaPanel.add(textArea);
-        textAreaPanel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 3, true));
+        textAreaPanel.setBorder(BorderFactory.createLineBorder(codeBorderColor, 3, true));
 
         panel.add(textAreaPanel);
         return panel;
@@ -176,25 +227,30 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     private JEditorPane createHtmlPane(String htmlContent) {
         var htmlPane = new JEditorPane();
         htmlPane.setContentType("text/html");
-        
-        // Apply stylesheet with word wrapping and white background
-        var kit = (HTMLEditorKit) htmlPane.getEditorKit();
-        var ss = kit.getStyleSheet();
-        ss.addRule("body { font-family: sans-serif; background-color: white; }");
-        ss.addRule("p { word-wrap: break-word; }");
-        ss.addRule("pre { word-wrap: break-word; }");
-        ss.addRule("code { word-wrap: break-word; }");
-
-        // Now load the HTML
-        htmlPane.setText("<html><body>" + htmlContent + "</body></html>");
-        
         htmlPane.setEditable(false);
         htmlPane.setAlignmentX(LEFT_ALIGNMENT);
+        htmlPane.setBackground(textBackgroundColor);
 
-        // Let the pane expand vertically under BoxLayout:
-        htmlPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Short.MAX_VALUE));
+        var kit = new HTMLEditorKit();
+        var styleSheet = ((HTMLEditorKit) htmlPane.getEditorKit()).getStyleSheet();
 
+        String bgColorHex = String.format("#%02x%02x%02x",
+                                          textBackgroundColor.getRed(),
+                                          textBackgroundColor.getGreen(),
+                                          textBackgroundColor.getBlue());
+
+        String textColor = isDarkTheme ? "#e6e6e6" : "#000000";
+        String linkColor = isDarkTheme ? "#88b3ff" : "#0366d6";
+
+        var ss = ((HTMLEditorKit)htmlPane.getEditorKit()).getStyleSheet();
+        ss.addRule("body { font-family: sans-serif; background-color: " + bgColorHex + "; color: " + textColor + "; }");
+        ss.addRule("a { color: " + linkColor + "; }");
+        ss.addRule("code { padding: 2px; background-color: " + (isDarkTheme ? "#3c3f41" : "#f6f8fa") + "; }");
+
+        // Load HTML content wrapped in proper tags
+        htmlPane.setText("<html><body>" + htmlContent + "</body></html>");
+
+        htmlPane.setBackground(textBackgroundColor);
         return htmlPane;
     }
-
 }

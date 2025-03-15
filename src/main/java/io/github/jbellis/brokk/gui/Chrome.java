@@ -44,11 +44,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JTextArea commandInputField;
     private JLabel backgroundStatusLabel;
     private JScrollPane systemScrollPane;
-    
+
     // Context History Panel
     private JTable contextHistoryTable;
     private DefaultTableModel contextHistoryModel;
-    
+
     // Track the horizontal split that holds the history panel
     private JSplitPane historySplitPane;
     private JSplitPane verticalSplitPane;
@@ -156,30 +156,29 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     private void initializeThemeManager() {
+        assert getProject() != null;
+
         logger.debug("Initializing theme manager");
         // Initialize theme manager now that all components are created
-        // and contextManager should be properly set
+        // and conmtextManager should be properly set
         themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
 
         // Apply current theme based on project settings
-        if (getProject() != null) {
-            String currentTheme = getProject().getTheme();
-            logger.debug("Applying theme from project settings: {}", currentTheme);
-            // Apply the theme from project settings now
-            boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
-            themeManager.applyTheme(isDark);
-        } else {
-            logger.warn("Project is null during theme manager initialization");
-        }
+        String currentTheme = getProject().getTheme();
+        logger.debug("Applying theme from project settings: {}", currentTheme);
+        // Apply the theme from project settings now
+        boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
+        themeManager.applyTheme(isDark);
+        llmStreamArea.updateTheme(isDark);
     }
 
     /**
      * Build the main panel that includes:
-     *  - the LLM stream (top)
-     *  - the command result label
-     *  - the command input
-     *  - the context panel
-     *  - the background status label at bottom
+     * - the LLM stream (top)
+     * - the command result label
+     * - the command input
+     * - the context panel
+     * - the background status label at bottom
      */
     private JPanel buildMainPanel() {
         var panel = new JPanel(new BorderLayout());
@@ -227,16 +226,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Create a split pane with output+history in top and command+context+status in bottom
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         verticalSplitPane.setTopComponent(historySplitPane);
-        
+
         // Create a panel for everything below the output area
         var bottomPanel = new JPanel(new BorderLayout());
-        
+
         // We will size the history panel after the frame is actually displayed
         SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
 
         // Create a top panel for the result label and command input
         var topControlsPanel = new JPanel(new BorderLayout(0, 2));
-        
+
         // 2. Command result label
         var resultLabel = buildCommandResultLabel();
         topControlsPanel.add(resultLabel, BorderLayout.NORTH);
@@ -244,7 +243,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 3. Command input with prompt
         var commandPanel = buildCommandInputPanel();
         topControlsPanel.add(commandPanel, BorderLayout.SOUTH);
-        
+
         // Add the top controls to the top of the bottom panel
         bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
 
@@ -257,7 +256,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 4b. Git panel at the bottom
         gitPanel = new GitPanel(this, contextManager);
         contextGitSplitPane.setBottomComponent(gitPanel);
-        
+
         // Set resize weight so context panel gets extra space
         contextGitSplitPane.setResizeWeight(0.7); // 70% to context, 30% to git
 
@@ -267,7 +266,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 5. Background status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
         bottomPanel.add(statusLabel, BorderLayout.SOUTH);
-        
+
         verticalSplitPane.setBottomComponent(bottomPanel);
 
         // Add the vertical split pane to the content panel
@@ -316,8 +315,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value,
-                                                           boolean isSelected, boolean hasFocus, int row, int column)
-            {
+                                                           boolean isSelected, boolean hasFocus, int row, int column) {
                 Component c = super.getTableCellRendererComponent(
                         table, value, isSelected, hasFocus, row, column);
 
@@ -411,7 +409,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         return panel;
     }
-    
+
     /**
      * Previews a context from history without fully restoring it
      */
@@ -433,7 +431,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             // If there's textarea content, restore it to the LLM output area
             llmStreamArea.setText(ctx.getParsedOutput().output());
-            
+
             // Scroll to the top
             SwingUtilities.invokeLater(() -> {
                 llmScrollPane.getVerticalScrollBar().setValue(0);
@@ -448,26 +446,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     // Theme manager
     GuiTheme themeManager;
-    
+
     // Theme constants - matching GuiTheme values
     private static final String THEME_DARK = "dark";
     private static final String THEME_LIGHT = "light";
 
     /**
      * Switches between light and dark theme
+     *
      * @param isDark true for dark theme, false for light theme
      */
     public void switchTheme(boolean isDark) {
         themeManager.applyTheme(isDark);
 
-        // Apply theme to system area manually
-        if (systemArea != null) {
-            Color bg = isDark ? new Color(40, 40, 40) : new Color(240, 240, 240);
-            Color fg = isDark ? new Color(200, 200, 200) : new Color(30, 30, 30);
-            systemArea.setBackground(bg);
-            systemArea.setForeground(fg);
-        }
-        
+        // And the output
+        llmStreamArea.updateTheme(isDark);
+
         // Update themes in all preview windows (if there are open ones)
         for (Window window : Window.getWindows()) {
             if (window instanceof JFrame && window != frame) {
@@ -479,7 +473,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
-            private void showContextHistoryPopupMenu(MouseEvent e) {
+    private void showContextHistoryPopupMenu(MouseEvent e) {
         int row = contextHistoryTable.rowAtPoint(e.getPoint());
         if (row < 0) return;
 
@@ -491,7 +485,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         JMenuItem undoToHereItem = new JMenuItem("Undo to here");
         undoToHereItem.addActionListener(event -> restoreContextFromHistory(row));
         popup.add(undoToHereItem);
-        
+
         // Register popup with theme manager
         if (themeManager != null) {
             themeManager.registerPopupMenu(popup);
@@ -500,7 +494,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Show popup menu
         popup.show(contextHistoryTable, e.getX(), e.getY());
     }
-    
+
     /**
      * Restore context to a specific point in history
      */
@@ -524,7 +518,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JScrollPane buildLLMStreamScrollPane() {
         // Replace the old RSyntaxTextArea with our new MarkdownOutputPanel
         llmStreamArea = new MarkdownOutputPanel();
-        
+
         // Wrap it in a scroll pane so it can scroll if content is large
         var jsp = new JScrollPane(llmStreamArea);
         jsp.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
@@ -536,7 +530,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         return jsp;
     }
-    
+
     /**
      * Builds the system messages area that appears below the LLM output area.
      */
@@ -599,7 +593,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 ),
                 new EmptyBorder(5, 5, 5, 5)
         ));
-        
+
         // Add history dropdown at the top of the wrapper
         JPanel historyPanel = buildHistoryDropdown();
         wrapper.add(historyPanel, BorderLayout.NORTH);
@@ -836,7 +830,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private JPanel buildContextPanel() {
         contextPanel = new ContextPanel(this, contextManager);
-        
+
         // After creating the context panel buttons and getting their sizes,
         // update the git panel button size to match
         SwingUtilities.invokeLater(() -> {
@@ -846,7 +840,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 gitPanel.setSuggestCommitButtonSize(preferredSize);
             }
         });
-        
+
         return contextPanel;
     }
 
@@ -958,7 +952,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             var newRow = new KeyValueRowPanel(Models.defaultKeyNames);
             keyRows.add(newRow);
             keysPanel.add(newRow);
-            keysPanel.revalidate(); 
+            keysPanel.revalidate();
             keysPanel.repaint();
         });
 
@@ -1060,12 +1054,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         SwingUtilities.invokeLater(() -> {
             // Format timestamp as HH:MM
             String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-            
+
             // Add newline if needed
             if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
                 systemArea.append("\n");
             }
-            
+
             // Append timestamped message
             systemArea.append(timestamp + ": " + message);
         });
@@ -1074,7 +1068,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void backgroundOutput(String message) {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(message));
     }
-    
+
     /**
      * Repopulate the unified context table from the given context.
      */
@@ -1101,11 +1095,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     /**
      * Opens a preview window for a context fragment
-     * @param fragment The fragment to preview
+     *
+     * @param fragment   The fragment to preview
      * @param syntaxType The syntax highlighting style to use
      */
-    public void openFragmentPreview(ContextFragment fragment, String syntaxType)
-    {
+    public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
         // Hardcode reading the text from the fragment (handles IO errors)
         String content;
         try {
@@ -1230,7 +1224,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 // If no saved position, use the previous calculation
                 setInitialHistoryPanelWidth();
             }
-            
+
             // Restore context/git split pane position
             int contextGitPos = getProject().getContextGitSplitPosition();
             if (contextGitPos > 0) {
@@ -1258,7 +1252,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
                 getProject().saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
             });
-            
+
             contextGitSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
                 getProject().saveContextGitSplitPosition(contextGitSplitPane.getDividerLocation());
             });
@@ -1279,28 +1273,28 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         ctx // We store the actual context object in hidden column
                 });
             }
-            
+
             // Update row heights based on content
             for (int row = 0; row < contextHistoryTable.getRowCount(); row++) {
                 adjustRowHeight(row);
             }
         });
     }
-    
+
     /**
      * Adjusts the height of a row based on its content
      */
     private void adjustRowHeight(int row) {
         if (row >= contextHistoryTable.getRowCount()) return;
-        
+
         // Get the cell renderer component for the visible column
         var renderer = contextHistoryTable.getCellRenderer(row, 0);
         var comp = contextHistoryTable.prepareRenderer(renderer, row, 0);
-        
+
         // Calculate the preferred height
         int preferredHeight = comp.getPreferredSize().height;
         preferredHeight = Math.max(preferredHeight, 20); // Minimum height
-        
+
         // Set the row height if it differs from current height
         if (contextHistoryTable.getRowHeight(row) != preferredHeight) {
             contextHistoryTable.setRowHeight(row, preferredHeight);
@@ -1312,7 +1306,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextHistoryTable.clearSelection();
         });
     }
-    
+
     /**
      * Gets the context history table for selection checks
      */
@@ -1342,7 +1336,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JPanel buildCaptureOutputPanel() {
         var panel = new JPanel(new BorderLayout(5, 3));
         panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
-        
+
         // References label in center - will get all extra space
         captureDescriptionArea = new JTextArea("No references found");
         captureDescriptionArea.setEditable(false);
@@ -1355,7 +1349,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Buttons panel on the right
         var buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        
+
         // "Capture Text" button
         captureTextButton = new JButton("Capture Text");
         captureTextButton.setMnemonic(KeyEvent.VK_T);
@@ -1378,7 +1372,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Set minimum size
         editReferencesButton.setMinimumSize(editReferencesButton.getPreferredSize());
         buttonsPanel.add(editReferencesButton);
-        
+
         // Add buttons panel to the right
         panel.add(buttonsPanel, BorderLayout.EAST);
 
@@ -1417,9 +1411,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
     }
-    
+
     /**
      * Builds the history dropdown panel with template selections
+     *
      * @return A panel containing the history dropdown button
      */
     // Constants for the history dropdown
@@ -1460,7 +1455,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     String item = historyItems.get(i);
                     // Use static truncation length
                     String displayText = item.length() > TRUNCATION_LENGTH ?
-                        item.substring(0, TRUNCATION_LENGTH - 3) + "..." : item;
+                            item.substring(0, TRUNCATION_LENGTH - 3) + "..." : item;
 
                     JMenuItem menuItem = new JMenuItem(displayText);
                     menuItem.setToolTipText(item); // Show full text on hover
@@ -1491,7 +1486,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
 
             logger.debug("Menu shown with dimensions: {}x{}",
-                historyMenu.getWidth(), historyMenu.getHeight());
+                         historyMenu.getWidth(), historyMenu.getHeight());
         });
 
         return historyPanel;
@@ -1504,7 +1499,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (historySplitPane == null) {
             return;
         }
-        
+
         // Don't override if we have a saved position from project settings
         if (getProject() != null && getProject().getHistorySplitPosition() > 0) {
             return;
@@ -1563,7 +1558,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             runButton.requestFocus();
         });
     }
-    
+
     /**
      * Sets the text in the commit message area
      */
@@ -1584,14 +1579,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 captureDescriptionArea.setToolTipText(null);
                 return;
             }
-            
+
             // Build both the short version (for display) and full version (for tooltip)
             var fileNames = sources.stream()
-                .map(CodeUnit::name)
-                .toList();
-                
+                    .map(CodeUnit::name)
+                    .toList();
+
             StringBuilder displayText = new StringBuilder();
-            
+
             if (fileNames.size() <= 3) {
                 // Show all references if 3 or fewer
                 displayText.append(String.join(", ", fileNames));
@@ -1600,10 +1595,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 displayText.append(String.join(", ", fileNames.subList(0, 3)));
                 displayText.append(", ...");
             }
-            
+
             // Set the text and tooltip
             captureDescriptionArea.setText(displayText.toString());
-            
+
             // Only set tooltip if there are more than 3 files
             if (fileNames.size() > 3) {
                 captureDescriptionArea.setToolTipText(String.join("\n", fileNames));
@@ -1612,7 +1607,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
     }
-    
+
     public void updateContextTable() {
         contextPanel.updateContextTable();
     }
@@ -1639,8 +1634,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Shows a dialog for setting a custom AutoContext size (0-100).
      */
-    public void showSetAutoContextSizeDialog()
-    {
+    public void showSetAutoContextSizeDialog() {
         var dialog = new JDialog(getFrame(), "Set AutoContext Size", true);
         dialog.setLayout(new BorderLayout());
 
