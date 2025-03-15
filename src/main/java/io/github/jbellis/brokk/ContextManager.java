@@ -814,6 +814,7 @@ public class ContextManager implements IContextManager
                     var popped = redoHistory.removeLast();
                     var undoContext = undoAndInvertChanges(popped);
                     ch.add(undoContext);
+                    contextHistory.set(List.copyOf(ch));
                 }
                 io.onContextHistoryChanged();
                 io.systemOutput("Redo!");
