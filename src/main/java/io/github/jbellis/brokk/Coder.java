@@ -250,9 +250,7 @@ public class Coder {
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
         // Also needed for our DeepSeek emulation if it returns a response without a tool call
         while (!tools.isEmpty() && !response.aiMessage().hasToolExecutionRequests()) {
-            if (io.isSpinning()) {
-                io.actionOutput("Enforcing tool selection");
-            }
+            io.systemOutput("Enforcing tool selection");
             var extraMessages = new ArrayList<>(messages);
             extraMessages.add(response.aiMessage());
 

@@ -1100,11 +1100,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(BGTASK_EMPTY));
     }
 
-    @Override
-    public boolean isSpinning() {
-        return !backgroundStatusLabel.getText().equals(BGTASK_EMPTY);
-    }
-
     /**
      * Repopulate the unified context table from the given context.
      */

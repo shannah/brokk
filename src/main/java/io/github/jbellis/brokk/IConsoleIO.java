@@ -14,10 +14,6 @@ public interface IConsoleIO {
     default void actionComplete() {
     }
 
-    default boolean isSpinning() {
-        return false;
-    }
-
     default void clear() {
     }
 

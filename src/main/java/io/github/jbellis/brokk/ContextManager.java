@@ -314,6 +314,7 @@ public class ContextManager implements IContextManager
                 logger.error("Error in " + description, e);
                 io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
             } finally {
+                io.actionComplete();
                 io.enableUserActionButtons();
             }
         });
