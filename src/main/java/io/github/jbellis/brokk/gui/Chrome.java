@@ -219,9 +219,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Store this horizontal split in our class field
         this.historySplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        historySplitPane.setLeftComponent(outputPanel);
-        historySplitPane.setRightComponent(contextHistoryPanel);
-        historySplitPane.setResizeWeight(0.8); // 80% to output, 20% to history
+        historySplitPane.setLeftComponent(contextHistoryPanel);
+        historySplitPane.setRightComponent(outputPanel);
+        historySplitPane.setResizeWeight(0.2); // 80% to output, 20% to history
 
         // Create a split pane with output+history in top and command+context+status in bottom
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
