@@ -378,8 +378,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable.getColumnModel().getColumn(1).setMaxWidth(0);
         contextHistoryTable.getColumnModel().getColumn(1).setWidth(0);
 
-        // Add table to scroll pane
+        // Add table to scroll pane with SmartScroll
         var scrollPane = new JScrollPane(contextHistoryTable);
+        new SmartScroll(scrollPane);
 
         // Add undo/redo buttons at the bottom
         var buttonPanel = new JPanel(new GridLayout(2, 1, 0, 5));
