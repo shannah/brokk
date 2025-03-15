@@ -31,7 +31,7 @@ public class Context implements Serializable {
     private static final long serialVersionUID = 1L;
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
     private static final String WELCOME_ACTION = "Welcome to Brokk";
-    private static final String WELCOME_BACK = "Welcome back to Brokk";
+    private static final String WELCOME_BACK = "Welcome back";
 
     transient final IContextManager contextManager;
     final List<ContextFragment.RepoPathFragment> editableFiles;
@@ -66,8 +66,12 @@ public class Context implements Serializable {
      */
     public Context(IContextManager contextManager, int autoContextFileCount, String initialOutputText) {
         this(contextManager, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(),
-             new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "Welcome")),
+             getWelcomeOutput(initialOutputText),
              CompletableFuture.completedFuture(WELCOME_ACTION));
+    }
+
+    private static @NotNull ParsedOutput getWelcomeOutput(String initialOutputText) {
+        return new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "Welcome"));
     }
 
     /**
@@ -599,10 +603,20 @@ public class Context implements Serializable {
     /**
      * Deserializes a Context object from a byte array
      */
-    public static Context deserialize(byte[] data) throws IOException, ClassNotFoundException {
+    public static Context deserialize(byte[] data, String welcomeMessage) throws IOException, ClassNotFoundException {
         try (var bais = new java.io.ByteArrayInputStream(data);
-             var ois = new java.io.ObjectInputStream(bais)) {
-            return (Context) ois.readObject();
+             var ois = new java.io.ObjectInputStream(bais))
+        {
+            var ctx = (Context) ois.readObject();
+            // inject our welcome message as parsed output
+            var parsedOutputField = Context.class.getDeclaredField("parsedOutput");
+            parsedOutputField.setAccessible(true);
+            parsedOutputField.set(ctx, getWelcomeOutput(welcomeMessage));
+            return ctx;
+        } catch (NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

@@ -175,9 +175,9 @@ public class ContextManager implements IContextManager
         // Context's analyzer reference is retained for the whole chain so wait until we have that ready
         // before adding the Context sentinel to history
         // Load saved context or create a new one if none exists
-        var initialContext = project.loadContext(this);
+        var welcomeMessage = buildWelcomeMessage(coder.models);
+        var initialContext = project.loadContext(this, welcomeMessage);
         if (initialContext == null) {
-            var welcomeMessage = buildWelcomeMessage(coder.models);
             initialContext = new Context(this, 10, welcomeMessage);
         } else {
             // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization

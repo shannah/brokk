@@ -68,7 +68,7 @@ public class ContextSerializationTest {
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
-        Context deserialized = Context.deserialize(serialized);
+        Context deserialized = Context.deserialize(serialized, welcomeMessage);
         
         // Verify non-transient fields were preserved
         assertEquals(context.getAutoContextFileCount(), deserialized.getAutoContextFileCount());
@@ -107,7 +107,7 @@ public class ContextSerializationTest {
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
-        Context deserialized = Context.deserialize(serialized);
+        Context deserialized = Context.deserialize(serialized, welcomeMessage);
         
         // Verify fragment counts
         assertEquals(1, deserialized.editableFiles.size());
@@ -168,7 +168,7 @@ public class ContextSerializationTest {
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
-        Context deserialized = Context.deserialize(serialized);
+        Context deserialized = Context.deserialize(serialized, welcomeMessage);
         
         // Verify all fragments were preserved
         assertEquals(6, deserialized.virtualFragments.size());
@@ -201,7 +201,7 @@ public class ContextSerializationTest {
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
-        Context deserialized = Context.deserialize(serialized);
+        Context deserialized = Context.deserialize(serialized, welcomeMessage);
         
         // Verify autoContextFileCount was preserved
         assertEquals(10, deserialized.getAutoContextFileCount());
@@ -225,7 +225,7 @@ public class ContextSerializationTest {
             
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
-        Context deserialized = Context.deserialize(serialized);
+        Context deserialized = Context.deserialize(serialized, welcomeMessage);
         
         // Verify the fragment was properly deserialized
         assertEquals(1, deserialized.readonlyFiles.size());
@@ -280,7 +280,7 @@ public class ContextSerializationTest {
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
-        Context deserialized = Context.deserialize(serialized);
+        Context deserialized = Context.deserialize(serialized, welcomeMessage);
         
         // Verify counts
         assertEquals(20, deserialized.editableFiles.size());

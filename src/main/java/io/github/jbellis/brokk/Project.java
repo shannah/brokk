@@ -220,17 +220,24 @@ public class Project implements IProject {
      * Loads a serialized Context object from the workspace properties
      * @return The loaded Context, or null if none exists
      */
-    public Context loadContext(IContextManager contextManager) {
+    public Context loadContext(IContextManager contextManager, String welcomeMessage) {
         try {
             String encoded = workspaceProps.getProperty("context");
             if (encoded != null && !encoded.isEmpty()) {
                 byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
-                return Context.deserialize(serialized).withContextManager(contextManager);
+                return Context.deserialize(serialized, welcomeMessage).withContextManager(contextManager);
             }
         } catch (Exception e) {
             logger.error("Error loading context: {}", e.getMessage());
+            clearSavedContext();
         }
         return null;
+    }
+
+    private void clearSavedContext() {
+        workspaceProps.remove("context");
+        saveWorkspaceProperties();
+        logger.debug("Cleared saved context from workspace properties");
     }
 
     /**
