@@ -70,7 +70,6 @@ public class GitPanel extends JPanel {
         int preferredWidth = 1000;
         Dimension panelSize = new Dimension(preferredWidth, totalHeight);
         setPreferredSize(panelSize);
-        setMaximumSize(panelSize);
 
         // Tabbed pane
         tabbedPane = new JTabbedPane();

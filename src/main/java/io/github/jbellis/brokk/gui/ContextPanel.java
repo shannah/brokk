@@ -487,22 +487,10 @@ public class ContextPanel extends JPanel {
         buttonsPanel.add(copyButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(pasteButton);
-
-        buttonsPanel.setMinimumSize(new Dimension(
-                buttonsPanel.getPreferredSize().width,
-                (int) (1.3 * buttonsPanel.getPreferredSize().height)
-        ));
-
+        
         return buttonsPanel;
     }
-
-    /**
-     * Whether any row(s) are selected in the context table
-     */
-    public boolean hasSelectedItems() {
-        return contextTable.getSelectedRowCount() > 0;
-    }
-
+    
     /**
      * Gets the list of selected fragments
      */
