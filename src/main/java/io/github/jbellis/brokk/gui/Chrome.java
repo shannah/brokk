@@ -193,12 +193,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.gridx = 0;
         gbc.insets = new Insets(2, 2, 2, 2);
 
-        // 1. LLM streaming area and system messages
-        var outputPanel = new JPanel(new BorderLayout());
+        var rightPanel = new JPanel(new BorderLayout());
 
-        // LLM streaming area with titled border directly on the scroll pane
+        // LLM streaming area 
         llmScrollPane = buildLLMStreamScrollPane();
-        llmScrollPane.setBorder(BorderFactory.createTitledBorder(
+        var outputPanel = new JPanel(new BorderLayout());
+        outputPanel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
                 "Output",
                 javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
@@ -207,9 +207,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         ));
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
 
-        // Add system messages area directly to output panel
+        // Add capture output panel in the middle
+        var capturePanel = buildCaptureOutputPanel();
+        outputPanel.add(capturePanel, BorderLayout.SOUTH);
+
+        // Add system messages area at the bottom
         systemScrollPane = buildSystemMessagesArea();
-        outputPanel.add(systemScrollPane, BorderLayout.SOUTH);
+        rightPanel.add(outputPanel, BorderLayout.CENTER);
+        rightPanel.add(systemScrollPane, BorderLayout.SOUTH);
 
         // Build the history panel, but don't add it to the split pane yet
         // We'll do this after we know the button size
@@ -218,7 +223,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Store this horizontal split in our class field
         this.historySplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         historySplitPane.setLeftComponent(contextHistoryPanel);
-        historySplitPane.setRightComponent(outputPanel);
+        historySplitPane.setRightComponent(rightPanel);
         historySplitPane.setResizeWeight(0.2); // 80% to output, 20% to history
 
         // Create a split pane with output+history in top and command+context+status in bottom
@@ -280,9 +285,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Builds the Context History panel that shows past contexts
      */
     private JPanel buildContextHistoryPanel() {
-        // Create a parent panel to contain both history and capture panels
-        var parentPanel = new JPanel(new BorderLayout());
-        
         // Create history panel
         var panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder(
@@ -305,37 +307,37 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable = new JTable(contextHistoryModel);
         contextHistoryTable.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
         contextHistoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        
+
         // Remove table header
         contextHistoryTable.setTableHeader(null);
-        
+
         // Set up multi-line cell renderer for the first column
         contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new MultiLineCellRenderer(this));
-        
+
         // Set up column rendering for LLM conversation rows
         contextHistoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value,
-                    boolean isSelected, boolean hasFocus, int row, int column) {
-
+                                                           boolean isSelected, boolean hasFocus, int row, int column)
+            {
                 Component c = super.getTableCellRendererComponent(
                         table, value, isSelected, hasFocus, row, column);
 
                 if (row < contextManager.getContextHistory().size()) {
                     var ctx = contextManager.getContextHistory().get(row);
                     if (ctx.getParsedOutput().output() != null) {
-                    // LLM conversation - use dark background
-                    if (!isSelected) {
-                        c.setBackground(new Color(50, 50, 50));
-                        c.setForeground(new Color(220, 220, 220));
+                        // LLM conversation - use dark background
+                        if (!isSelected) {
+                            c.setBackground(new Color(50, 50, 50));
+                            c.setForeground(new Color(220, 220, 220));
+                        }
+                    } else {
+                        // Regular context - use normal colors
+                        if (!isSelected) {
+                            c.setBackground(table.getBackground());
+                            c.setForeground(table.getForeground());
+                        }
                     }
-                } else {
-                    // Regular context - use normal colors
-                    if (!isSelected) {
-                        c.setBackground(table.getBackground());
-                        c.setForeground(table.getForeground());
-                    }
-                }
                 }
 
                 return c;
@@ -352,7 +354,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
             }
         });
-        
+
         // Add right-click context menu for history operations
         contextHistoryTable.addMouseListener(new MouseAdapter() {
             @Override
@@ -362,7 +364,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
             }
 
-    @Override
+            @Override
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showContextHistoryPopupMenu(e);
@@ -378,6 +380,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Add table to scroll pane with SmartScroll
         var scrollPane = new JScrollPane(contextHistoryTable);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         new SmartScroll(scrollPane);
 
         // Add undo/redo buttons at the bottom
@@ -404,22 +407,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         buttonPanel.add(undoButton);
         buttonPanel.add(redoButton);
-        
+
         panel.add(scrollPane, BorderLayout.CENTER);
         panel.add(buttonPanel, BorderLayout.SOUTH);
 
-        // Create capture output panel
-        var capturePanel = buildCaptureOutputPanel();
-
-        // Add both panels to parent with a vertical split
-        var splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        splitPane.setTopComponent(panel);
-        splitPane.setBottomComponent(capturePanel);
-        splitPane.setResizeWeight(0.7); // 70% to history, 30% to capture
-
-        parentPanel.add(splitPane, BorderLayout.CENTER);
-
-        return parentPanel;
+        return panel;
     }
     
     /**
@@ -549,6 +541,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Theme will be applied later when themeManager is initialized
 
         var jsp = new JScrollPane(llmStreamArea);
+        jsp.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         new SmartScroll(jsp);
         return jsp;
     }
@@ -1361,57 +1354,38 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Builds the "Capture Output" panel with a 5-line references area
-     * and two full-width buttons stacked at the bottom.
+     * Builds the "Capture Output" panel with a horizontal layout:
+     * [References Label] [Capture Text] [Edit References]
      */
     private JPanel buildCaptureOutputPanel() {
-        var panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Capture Output",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-
-        // 1) Multiline references text area (5 rows).
-        //    Wrap it in a scroll pane so if references exceed 5 lines, a scrollbar appears.
-        captureDescriptionArea = new JTextArea("Files referenced: None", 5, 50);
+        var panel = new JPanel(new BorderLayout(5, 3));
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
+        
+        // References label in center - will get all extra space
+        captureDescriptionArea = new JTextArea("No references found");
         captureDescriptionArea.setEditable(false);
+        captureDescriptionArea.setBackground(panel.getBackground());
+        captureDescriptionArea.setBorder(null);
+        captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
         captureDescriptionArea.setLineWrap(true);
         captureDescriptionArea.setWrapStyleWord(true);
-        captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
+        panel.add(captureDescriptionArea, BorderLayout.CENTER);
 
-        // Create scroll pane for references area
-        var referencesScrollPane = new JScrollPane(captureDescriptionArea,
-                                                   JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                                                   JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-
-        // Make it expand to full width
-        referencesScrollPane.setAlignmentX(Component.CENTER_ALIGNMENT);
-        referencesScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE,
-                                                          captureDescriptionArea.getPreferredSize().height));
-
-        // 2) Add the references area at the top
-        panel.add(referencesScrollPane);
-
-        // 3) Add "glue" so everything below is pushed to the bottom
-        panel.add(Box.createVerticalGlue());
-
-        // 4) "Capture Text" button, full width
+        // Buttons panel on the right
+        var buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        
+        // "Capture Text" button
         captureTextButton = new JButton("Capture Text");
         captureTextButton.setMnemonic(KeyEvent.VK_T);
         captureTextButton.setToolTipText("Capture the output as context");
         captureTextButton.addActionListener(e -> {
             contextManager.captureTextFromContextAsync();
         });
-        captureTextButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        captureTextButton.setMaximumSize(
-                new Dimension(Integer.MAX_VALUE, captureTextButton.getPreferredSize().height)
-        );
+        // Set minimum size
+        captureTextButton.setMinimumSize(captureTextButton.getPreferredSize());
+        buttonsPanel.add(captureTextButton);
 
-        // 5) "Edit References" button, full width
+        // "Edit References" button
         editReferencesButton = new JButton("Edit References");
         editReferencesButton.setToolTipText("Edit the files referenced by the output");
         editReferencesButton.setMnemonic(KeyEvent.VK_F);
@@ -1419,18 +1393,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         editReferencesButton.addActionListener(e -> {
             contextManager.editFilesFromContextAsync();
         });
-        editReferencesButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        editReferencesButton.setMaximumSize(
-                new Dimension(Integer.MAX_VALUE, editReferencesButton.getPreferredSize().height)
-        );
+        // Set minimum size
+        editReferencesButton.setMinimumSize(editReferencesButton.getPreferredSize());
+        buttonsPanel.add(editReferencesButton);
+        
+        // Add buttons panel to the right
+        panel.add(buttonsPanel, BorderLayout.EAST);
 
-        // 6) Stack both buttons at the bottom
-        panel.add(captureTextButton);
-        panel.add(Box.createVerticalStrut(5));  // small gap
-        panel.add(editReferencesButton);
-
-        // 7) Add a DocumentListener to the main llmStreamArea so these buttons
-        //    update when that text changes
+        // Add a DocumentListener to the main llmStreamArea so these buttons
+        // update when that text changes
         llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             @Override
             public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
@@ -1465,10 +1436,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 editReferencesButton.setEnabled(!sources.isEmpty());
 
                 // Update description with file names
-                contextPanel.updateFilesDescriptionLabel(sources, analyzer);
+                updateFilesDescriptionLabel(sources);
             } else {
                 editReferencesButton.setEnabled(false);
-                contextPanel.updateFilesDescriptionLabel(Set.of(), null);
+                updateFilesDescriptionLabel(Set.of());
             }
         });
     }
@@ -1628,6 +1599,46 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
+    /**
+     * Updates the references description label with a formatted list of files
+     * Shows up to 3 file names, with "..." if there are more, and sets a tooltip with all names
+     */
+    private void updateFilesDescriptionLabel(Set<CodeUnit> sources) {
+        SwingUtilities.invokeLater(() -> {
+            if (sources == null || sources.isEmpty()) {
+                captureDescriptionArea.setText("No references found");
+                captureDescriptionArea.setToolTipText(null);
+                return;
+            }
+            
+            // Build both the short version (for display) and full version (for tooltip)
+            var fileNames = sources.stream()
+                .map(CodeUnit::name)
+                .toList();
+                
+            StringBuilder displayText = new StringBuilder();
+            
+            if (fileNames.size() <= 3) {
+                // Show all references if 3 or fewer
+                displayText.append(String.join(", ", fileNames));
+            } else {
+                // Show first 3 references + "..." if more than 3
+                displayText.append(String.join(", ", fileNames.subList(0, 3)));
+                displayText.append(", ...");
+            }
+            
+            // Set the text and tooltip
+            captureDescriptionArea.setText(displayText.toString());
+            
+            // Only set tooltip if there are more than 3 files
+            if (fileNames.size() > 3) {
+                captureDescriptionArea.setToolTipText(String.join("\n", fileNames));
+            } else {
+                captureDescriptionArea.setToolTipText(null);
+            }
+        });
+    }
+    
     public void updateContextTable() {
         contextPanel.updateContextTable();
     }
