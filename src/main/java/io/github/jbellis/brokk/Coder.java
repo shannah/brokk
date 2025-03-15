@@ -222,28 +222,17 @@ public class Coder {
 
     /**
      * Send a message to the default quick model
-     * 
+     *
      * @param messages The messages to send
      * @return The LLM response as a string
      */
     public String sendMessage(List<ChatMessage> messages) {
-        return sendMessage((String) null, messages);
-    }
-
-    /**
-     * Send a message to the default quick model with a description
-     * 
-     * @param description Description of the request (logged to console)
-     * @param messages The messages to send
-     * @return The LLM response as a string
-     */
-    public String sendMessage(String description, List<ChatMessage> messages) {
-        var R = sendMessage(models.quickModel(), description, messages, List.of());
+        var R = sendMessage(models.quickModel(), messages, List.of());
         return R.aiMessage().text().trim();
     }
 
     public ChatResponse sendMessage(ChatLanguageModel model, List<ChatMessage> messages) {
-        return sendMessage(model, null, messages, List.of());
+        return sendMessage(model, messages, List.of());
     }
     
 
@@ -251,15 +240,11 @@ public class Coder {
      * Send a message to a specific model with tool support
      *
      * @param model       The model to use
-     * @param description Description of the request (logged to console)
      * @param messages    The messages to send
      * @param tools       List of tools to enable for the LLM
      * @return The LLM response as a string
      */
-    public ChatResponse sendMessage(ChatLanguageModel model, String description, List<ChatMessage> messages, List<ToolSpecification> tools) {
-        if (description != null) {
-            io.toolOutput(description);
-        }
+    public ChatResponse sendMessage(ChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools) {
 
         var response = sendMessageInternal(model, messages, tools, false);
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)

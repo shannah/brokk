@@ -576,7 +576,7 @@ public class SearchAgent {
 
         // Ask LLM for next action with tools
         var tools = createToolSpecifications();
-        var response = coder.sendMessage(coder.models.searchModel(), null, messages, tools);
+        var response = coder.sendMessage(coder.models.searchModel(), messages, tools);
         totalUsage = TokenUsage.sum(totalUsage, response.tokenUsage());
 
         // Parse response into potentially multiple actions
