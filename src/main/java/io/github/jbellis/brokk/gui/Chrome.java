@@ -1073,16 +1073,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     /**
      * Repopulate the unified context table from the given context.
+     * 
+     * Called when we add a new Context or undo/redo to a different one.
+     * 
+     * NOT called when we select an earlier context.
      */
     public void setContext(Context context) {
+        assert context != null;
         SwingUtilities.invokeLater(() -> {
-            loadContext(context);
-            clearContextHistorySelection();
-            updateContextHistoryTable();
+            updateContextHistoryTable(contextManager.getContextHistory().size() - 1);
             updateSuggestCommitButton();
         });
     }
-
+    
     @Override
     public void close() {
         logger.info("Closing Chrome UI");
@@ -1261,10 +1264,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
+    public void updateContextHistoryTable() {
+        int selectedRow = contextHistoryTable.getSelectedRow();
+        updateContextHistoryTable(selectedRow);
+    }
+
     /**
      * Updates the context history table with the current context history
      */
-    public void updateContextHistoryTable() {
+    public void updateContextHistoryTable(int selectedRow) {
         SwingUtilities.invokeLater(() -> {
             contextHistoryModel.setRowCount(0);
 
@@ -1277,6 +1285,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         ctx.getAction(),
                         ctx // We store the actual context object in hidden column
                 });
+            }
+
+            // set the selected row
+            if (selectedRow >= 0) {
+                contextHistoryTable.setRowSelectionInterval(selectedRow, selectedRow);
+                contextHistoryTable.scrollRectToVisible(contextHistoryTable.getCellRect(selectedRow, 0, true));
             }
 
             // Update row heights based on content
@@ -1305,13 +1319,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextHistoryTable.setRowHeight(row, preferredHeight);
         }
     }
-
-    public void clearContextHistorySelection() {
-        SwingUtilities.invokeLater(() -> {
-            contextHistoryTable.clearSelection();
-        });
-    }
-
+    
     /**
      * Gets the context history table for selection checks
      */
