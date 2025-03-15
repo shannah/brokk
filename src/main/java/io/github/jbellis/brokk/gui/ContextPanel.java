@@ -168,13 +168,13 @@ public class ContextPanel extends JPanel {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
                     int row = contextTable.rowAtPoint(e.getPoint());
-                    if (row >= 0) {
-                        var fragment = (ContextFragment) contextTable.getModel()
-                                .getValueAt(row, FRAGMENT_COLUMN);
-                        if (fragment != null) {
-                            chrome.openFragmentPreview(fragment, "text/java");
+                        if (row >= 0) {
+                            var fragment = (ContextFragment) contextTable.getModel()
+                                    .getValueAt(row, FRAGMENT_COLUMN);
+                            if (fragment != null) {
+                                showFragmentPreview(fragment);
+                            }
                         }
-                    }
                 }
             }
         });
@@ -221,6 +221,14 @@ public class ContextPanel extends JPanel {
                         contextTable.setRowSelectionInterval(row, row);
                     }
                         var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+
+                        // Show Contents as the first action
+                        JMenuItem showContentsItem = new JMenuItem("Show Contents");
+                        showContentsItem.addActionListener(e1 -> {
+                            showFragmentPreview(fragment);
+                        });
+                        contextMenu.add(showContentsItem);
+                        contextMenu.addSeparator();
 
                         // If this is the AutoContext row, show AutoContext items
                         if (fragment instanceof ContextFragment.AutoContext) {
@@ -743,6 +751,13 @@ public class ContextPanel extends JPanel {
             }
         });
         return readItem;
+    }
+
+    /**
+     * Shows a preview of the fragment contents
+     */
+    private void showFragmentPreview(ContextFragment fragment) {
+        chrome.openFragmentPreview(fragment, "text/java");
     }
 
     /**
