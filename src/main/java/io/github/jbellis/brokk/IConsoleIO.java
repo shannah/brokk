@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk;
 
 public interface IConsoleIO {
-    void toolOutput(String msg);
+    void actionOutput(String msg);
 
     default void toolError(String msg) {
         toolErrorRaw("Error: " + msg);
@@ -11,11 +11,7 @@ public interface IConsoleIO {
 
     void llmOutput(String token);
 
-    default void spin(String s) {
-        toolOutput(s);
-    }
-
-    default void spinComplete() {
+    default void actionComplete() {
     }
 
     default boolean isSpinning() {

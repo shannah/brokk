@@ -49,7 +49,7 @@ public class EditBlock {
         for (SearchReplaceBlock block : blocks) {
             // Shell commands remain unchanged
             if (block.shellCommand() != null) {
-                io.toolOutput("Shell command from LLM:\n" + block.shellCommand());
+                io.actionOutput("Shell command from LLM:\n" + block.shellCommand());
                 continue;
             }
 
@@ -813,7 +813,7 @@ public class EditBlock {
             }
 
             @Override
-            public void toolOutput(String message) {
+            public void actionOutput(String message) {
                 System.out.println(message);
             }
 
@@ -873,11 +873,11 @@ public class EditBlock {
 
         var blocks = parseResult.blocks();
         if (blocks.isEmpty()) {
-            io.toolOutput("No SEARCH/REPLACE blocks found in input");
+            io.actionOutput("No SEARCH/REPLACE blocks found in input");
             System.exit(0);
         }
 
-        io.toolOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
+        io.actionOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
 
         // Apply the edit blocks
         var editResult = applyEditBlocks(contextManager, io, blocks);
@@ -893,7 +893,7 @@ public class EditBlock {
                                      " Reason: " + failed.reason());
 
                 if (suggestions.containsKey(failed)) {
-                    io.toolOutput(suggestions.get(failed));
+                    io.actionOutput(suggestions.get(failed));
                 }
             }
         }

@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Analyzer;
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.CodeUnit;
 import io.github.jbellis.brokk.Context;
@@ -13,7 +12,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
-import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -1032,7 +1030,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
 
             getProject().saveLlmKeys(newKeys);
-            toolOutput("Saved " + newKeys.size() + " API keys");
+            actionOutput("Saved " + newKeys.size() + " API keys");
             dialog.dispose();
         });
 
@@ -1058,7 +1056,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * For the IConsoleIO interface, sets the text in commandResultLabel. Safe to call from any thread.
      */
     @Override
-    public void toolOutput(String msg) {
+    public void actionOutput(String msg) {
         SwingUtilities.invokeLater(() -> {
             commandResultLabel.setText(msg);
             logger.info(msg);
@@ -1093,13 +1091,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
-    @Override
     public void spin(String message) {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(message));
     }
 
     @Override
-    public void spinComplete() {
+    public void actionComplete() {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(BGTASK_EMPTY));
     }
 

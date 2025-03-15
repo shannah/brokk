@@ -165,7 +165,7 @@ public class ContextManager implements IContextManager
         var analyzerListener = new AnalyzerListener() {
             @Override
             public void onBlocked() {
-                SwingUtilities.invokeLater(() -> io.toolOutput("Analyzer is refreshing"));
+                SwingUtilities.invokeLater(() -> io.actionOutput("Analyzer is refreshing"));
             }
 
             @Override
@@ -286,7 +286,7 @@ public class ContextManager implements IContextManager
         assert io != null;
         return userActionExecutor.submit(() -> {
             try {
-                io.toolOutput("Executing: " + input);
+                io.actionOutput("Executing: " + input);
                 var result = Environment.instance.captureShellCommand(input);
                 String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
                 io.llmOutput("\n" + output);
@@ -306,7 +306,7 @@ public class ContextManager implements IContextManager
     public Future<?> submitUserTask(String description, Callable<?> task) {
         return userActionExecutor.submit(() -> {
             try {
-                io.toolOutput(description);
+                io.actionOutput(description);
                 task.call();
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
@@ -322,7 +322,7 @@ public class ContextManager implements IContextManager
     public Future<?> submitContextTask(String description, Callable<?> task) {
         return contextActionExecutor.submit(() -> {
             try {
-                io.toolOutput(description);
+                io.actionOutput(description);
                 task.call();
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
@@ -365,7 +365,7 @@ public class ContextManager implements IContextManager
                 messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
                 // stream from coder
-                io.toolOutput("Request sent");
+                io.actionOutput("Request sent");
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
                 if (response.chatResponse() != null) {
                     addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
@@ -688,7 +688,7 @@ public class ContextManager implements IContextManager
             return;
         }
 
-        io.toolOutput("Inferring commit message");
+        io.actionOutput("Inferring commit message");
         String commitMsg = coder.sendMessage(messages);
         if (commitMsg.isEmpty()) {
             io.toolErrorRaw("LLM did not provide a commit message");
@@ -1330,7 +1330,7 @@ public class ContextManager implements IContextManager
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
         Future<T> future = backgroundTasks.submit(() -> {
             try {
-                io.spin(taskDescription);
+                io.actionOutput(taskDescription);
                 return task.call();
             } finally {
                 // Remove this task from the map
@@ -1338,18 +1338,17 @@ public class ContextManager implements IContextManager
                 int remaining = taskDescriptions.size();
                 SwingUtilities.invokeLater(() -> {
                     if (remaining <= 0) {
-                        io.spinComplete();
-                        taskDescriptions.clear();
+                        io.actionComplete();
                     } else if (remaining == 1) {
                         // Find the last remaining task description. If there's a race just end the spin
                         var lastTaskDescription = taskDescriptions.values().stream().findFirst().orElse("");
                         if (lastTaskDescription.isEmpty()) {
-                            io.spinComplete();
+                            io.actionComplete();
                         } else {
-                            io.spin(lastTaskDescription);
+                            io.actionOutput(lastTaskDescription);
                         }
                     } else {
-                        io.spin("Tasks running: " + remaining);
+                        io.actionOutput("Tasks running: " + remaining);
                     }
                 });
             }

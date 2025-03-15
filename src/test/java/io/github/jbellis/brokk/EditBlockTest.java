@@ -40,7 +40,7 @@ class EditBlockTest {
         private final StringBuilder errorLog = new StringBuilder();
 
         @Override
-        public void toolOutput(String text) {
+        public void actionOutput(String text) {
             outputLog.append(text).append("\n");
         }
 

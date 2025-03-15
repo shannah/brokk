@@ -111,7 +111,7 @@ public class Coder {
                     while (System.currentTimeMillis() < endTime) {
                         double remainingSeconds = (endTime - System.currentTimeMillis()) / 1000.0;
                         if (remainingSeconds <= 0) break;
-                        io.toolOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
+                        io.actionOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
                         //noinspection BusyWait
                         Thread.sleep(100); // Update every 100ms
                     }
@@ -120,7 +120,7 @@ public class Coder {
                     // Mark as cancelled
                     return new StreamingResult(null, true, null);
                 }
-                io.toolOutput("");
+                io.actionOutput("");
                 // Retry
                 continue;
             }
@@ -251,7 +251,7 @@ public class Coder {
         // Also needed for our DeepSeek emulation if it returns a response without a tool call
         while (!tools.isEmpty() && !response.aiMessage().hasToolExecutionRequests()) {
             if (io.isSpinning()) {
-                io.spin("Enforcing tool selection");
+                io.actionOutput("Enforcing tool selection");
             }
             var extraMessages = new ArrayList<>(messages);
             extraMessages.add(response.aiMessage());
@@ -338,7 +338,7 @@ public class Coder {
                     while (System.currentTimeMillis() < endTime) {
                         double remainingSeconds = (endTime - System.currentTimeMillis()) / 1000.0;
                         if (remainingSeconds <= 0) break;
-                        io.toolOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
+                        io.actionOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
                         Thread.sleep(100); // Update every 100ms
                     }
                 } catch (InterruptedException e) {
