@@ -1365,7 +1365,7 @@ public class ContextManager implements IContextManager
         // Possibly store an inferred buildCommand
         if (loadedCommand != null) {
             var buildCommand = CompletableFuture.completedFuture(BuildCommand.success(loadedCommand));
-            // TODO show this to user somehow
+            io.systemOutput("Using saved build command `%s`".formatted(buildCommand));
         } else {
             // do background inference
             var tracked = project.getRepo().getTrackedFiles();
