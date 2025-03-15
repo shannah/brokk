@@ -6,7 +6,6 @@ import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -54,15 +53,14 @@ public class Context implements Serializable {
     transient final Future<String> action;
     public static final String SUMMARIZING = "(Summarizing)";
 
-    public record ParsedOutput(String output, String style, ContextFragment.VirtualFragment parsedFragment) {
+    public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
             assert output != null;
-            assert style != null;
             assert parsedFragment != null;
         }
 
         public ParsedOutput() {
-            this("", SyntaxConstants.SYNTAX_STYLE_NONE, new ContextFragment.StringFragment("", ""));
+            this("", new ContextFragment.StringFragment("", ""));
         }
     }
 
@@ -71,7 +69,7 @@ public class Context implements Serializable {
      */
     public Context(IContextManager contextManager, int autoContextFileCount, String initialOutputText) {
         this(contextManager, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(),
-             new ParsedOutput(initialOutputText, SyntaxConstants.SYNTAX_STYLE_MARKDOWN, new ContextFragment.StringFragment(initialOutputText, "")),
+             new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "")),
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
 
@@ -541,7 +539,7 @@ public class Context implements Serializable {
     public Context addUsageFragment(ContextFragment.UsageFragment fragment) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
-        var parsed = new ParsedOutput(fragment.text(), SyntaxConstants.SYNTAX_STYLE_JAVA, fragment);
+        var parsed = new ParsedOutput(fragment.text(), fragment);
         var action = CompletableFuture.completedFuture(fragment.description());
         return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
     }

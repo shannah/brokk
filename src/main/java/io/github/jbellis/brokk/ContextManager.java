@@ -19,7 +19,6 @@ import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.NotNull;
 import scala.Option;
 
@@ -285,12 +284,12 @@ public class ContextManager implements IContextManager
         return submitUserTask("Executing: " + input, () -> {
             var result = Environment.instance.captureShellCommand(input);
             String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-            io.llmOutput("\n" + output);
+            io.llmOutput("\n```\n" + output + "\n```");
 
             // Add to context history with the output text
             pushContext(ctx -> {
                 var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
-                var parsed = new ParsedOutput(io.getLlmOutputText(), SyntaxConstants.SYNTAX_STYLE_NONE, runFrag);
+                var parsed = new ParsedOutput(io.getLlmOutputText(), runFrag);
                 return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
             });
         });
@@ -390,7 +389,6 @@ public class ContextManager implements IContextManager
                     io.systemOutput("Search was interrupted");
                 } else {
                     io.clear();
-                    io.setOutputSyntax(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
                     io.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, result.text()));
                     // The search agent already creates the right fragment type
                     addSearchFragment(result);
@@ -877,7 +875,7 @@ public class ContextManager implements IContextManager
         } else {
             query = CompletableFuture.completedFuture(fragment.description());
         }
-        var parsed = new ParsedOutput(io.getLlmOutputText(), SyntaxConstants.SYNTAX_STYLE_MARKDOWN, fragment);
+        var parsed = new ParsedOutput(io.getLlmOutputText(), fragment);
         pushContext(ctx -> ctx.addSearchFragment(query, parsed));
     }
 
@@ -1454,7 +1452,7 @@ public class ContextManager implements IContextManager
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        var parsed = new ParsedOutput(io.getLlmOutputText(), io.getOutputStyle(), new ContextFragment.StringFragment(io.getLlmOutputText(), ""));
+        var parsed = new ParsedOutput(io.getLlmOutputText(), new ContextFragment.StringFragment(io.getLlmOutputText(), ""));
         pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 

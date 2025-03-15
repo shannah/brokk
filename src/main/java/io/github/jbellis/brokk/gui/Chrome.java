@@ -10,14 +10,12 @@ import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.Project;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
@@ -40,7 +38,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Swing components:
     final JFrame frame;
-    private RSyntaxTextArea llmStreamArea;
+    private MarkdownOutputPanel llmStreamArea;
     private JTextArea systemArea;
     private JLabel commandResultLabel;
     private JTextArea commandInputField;
@@ -435,12 +433,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             // If there's textarea content, restore it to the LLM output area
             llmStreamArea.setText(ctx.getParsedOutput().output());
-            llmStreamArea.setSyntaxEditingStyle(ctx.getParsedOutput().style());
-            llmStreamArea.setCaretPosition(0);
-            if (ctx.getParsedOutput().output().startsWith("Code:")) {
-                llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
-            }
-            // Scroll to the bottom
+            
+            // Scroll to the top
             SwingUtilities.invokeLater(() -> {
                 llmScrollPane.getVerticalScrollBar().setValue(0);
             });
@@ -528,21 +522,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     private JScrollPane buildLLMStreamScrollPane() {
-        llmStreamArea = new RSyntaxTextArea();
-        llmStreamArea.setEditable(false);
-        // Initial welcome message is Markdown
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
-        var caret = (DefaultCaret) llmStreamArea.getCaret();
-        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-        llmStreamArea.setLineWrap(true);
-        llmStreamArea.setWrapStyleWord(true);
-        llmStreamArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-
-        // Theme will be applied later when themeManager is initialized
-
+        // Replace the old RSyntaxTextArea with our new MarkdownOutputPanel
+        llmStreamArea = new MarkdownOutputPanel();
+        
+        // Wrap it in a scroll pane so it can scroll if content is large
         var jsp = new JScrollPane(llmStreamArea);
         jsp.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        jsp.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         new SmartScroll(jsp);
+
+        // Add a text change listener to update capture buttons
+        llmStreamArea.addTextChangeListener(() -> updateCaptureButtons(null));
+
         return jsp;
     }
     
@@ -701,9 +692,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("Code: " + commandInputField.getText() + "\n\n");
+        llmStreamArea.setText("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
 
         disableUserActionButtons();
         // schedule in ContextManager
@@ -722,9 +712,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("Run: " + commandInputField.getText() + "\n\n");
+        llmStreamArea.setText("# Run\n" + commandInputField.getText() + "\n\n# Output\n");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runRunCommandAsync(input);
@@ -753,9 +742,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("Ask: " + commandInputField.getText() + "\n\n");
+        llmStreamArea.setText("# Ask\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runAskAsync(input);
@@ -780,23 +768,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("Search: " + commandInputField.getText() + "\n\n");
+        llmStreamArea.setText("# Search\n" + commandInputField.getText() + "\n\n");
+        llmStreamArea.append("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         commandInputField.setText("");
-        llmStreamArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
 
         disableUserActionButtons();
         currentUserTask = contextManager.runSearchAsync(input);
     }
 
-    public void setOutputSyntax(String syntaxType) {
-        SwingUtilities.invokeLater(() -> {
-            llmStreamArea.setSyntaxEditingStyle(syntaxType);
-        });
-    }
-
     @Override
     public void clear() {
-        llmStreamArea.setText("");
+        llmStreamArea.clear();
     }
 
     /**
@@ -1400,16 +1382,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add buttons panel to the right
         panel.add(buttonsPanel, BorderLayout.EAST);
 
-        // Add a DocumentListener to the main llmStreamArea so these buttons
-        // update when that text changes
-        llmStreamArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            @Override
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
-            @Override
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
-            @Override
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCaptureButtons(null); }
-        });
+        // We now use the MarkdownOutputPanel's text change listener instead
+        // which is set up in buildLLMStreamScrollPane()
 
         return panel;
     }
@@ -1662,10 +1636,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return gitPanel;
     }
 
-    public String getOutputStyle() {
-        return llmStreamArea.getSyntaxEditingStyle();
-    }
-    
     /**
      * Shows a dialog for setting a custom AutoContext size (0-100).
      */
