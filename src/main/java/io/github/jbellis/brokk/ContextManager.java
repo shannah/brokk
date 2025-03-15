@@ -1192,9 +1192,6 @@ public class ContextManager implements IContextManager
                 contextHistory.set(List.copyOf(ch));
             }
         }
-        if (!newContext.getAction().equals(Context.SUMMARIZING)) {
-            io.systemOutput(newContext.getAction());
-        }
         io.setContext(newContext);
 
         // Save the current context to workspace properties

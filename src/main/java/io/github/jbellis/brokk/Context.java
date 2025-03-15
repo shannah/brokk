@@ -191,10 +191,6 @@ public class Context implements Serializable {
         return getWithFragments(editableFiles, readonlyFiles, newFragments, action);
     }
 
-    public Context removeReadonlyFile(ContextFragment.PathFragment path) {
-        return removeReadonlyFiles(List.of(path));
-    }
-
     public Context addVirtualFragment(ContextFragment.VirtualFragment fragment) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
