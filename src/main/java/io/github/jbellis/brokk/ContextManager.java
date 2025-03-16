@@ -172,8 +172,13 @@ public class ContextManager implements IContextManager
             }
 
             @Override
-            public void onFirstBuild(String msg) {
+            public void afterFirstBuild(String msg) {
                 SwingUtilities.invokeLater(() -> io.systemOutput(msg));
+            }
+
+            @Override
+            public void onTrackedFileChange() {
+                io.updateCommitPanel();
             }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);

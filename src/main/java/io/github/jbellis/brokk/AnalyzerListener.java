@@ -15,5 +15,10 @@ public interface AnalyzerListener
     /**
      * Called with details of the first build, which is used to infer auto rebuild policy.
      */
-    void onFirstBuild(String msg);
+    void afterFirstBuild(String msg);
+
+    /**
+     * Called when changes to tracked files are detected, after the initial build
+     */
+    void onTrackedFileChange();
 }

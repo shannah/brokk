@@ -256,7 +256,7 @@ public class GitPanel extends JPanel {
                             chrome.systemOutput("Stashed " + fileList);
                         }
                         commitMessageArea.setText("");
-                        updateSuggestCommitButton();
+                        updateCommitPanel();
                         updateStashList();
                         chrome.enableUserActionButtons();
                     });
@@ -304,7 +304,7 @@ public class GitPanel extends JPanel {
                             chrome.systemOutput("Changes committed successfully");
                         }
                         commitMessageArea.setText("");
-                        updateSuggestCommitButton();
+                        updateCommitPanel();
                         // The GitLogPanel can refresh branches/commits:
                         gitLogPanel.updateBranchList();
                         chrome.enableUserActionButtons();
@@ -456,7 +456,7 @@ public class GitPanel extends JPanel {
     /**
      * Populates the uncommitted files table and enables/disables commit-related buttons.
      */
-    public void updateSuggestCommitButton()
+    public void updateCommitPanel()
     {
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             try {
@@ -908,7 +908,7 @@ public class GitPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     chrome.systemOutput("Stash popped successfully");
                     updateStashList();
-                    updateSuggestCommitButton();
+                    updateCommitPanel();
                 });
             } catch (Exception e) {
                 logger.error("Error popping stash", e);
@@ -924,7 +924,7 @@ public class GitPanel extends JPanel {
                 getRepo().applyStash(index);
                 SwingUtilities.invokeLater(() -> {
                     chrome.systemOutput("Stash applied successfully");
-                    updateSuggestCommitButton();
+                    updateCommitPanel();
                 });
             } catch (Exception e) {
                 logger.error("Error applying stash", e);

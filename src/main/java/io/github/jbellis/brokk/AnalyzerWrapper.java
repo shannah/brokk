@@ -175,6 +175,7 @@ public class AnalyzerWrapper {
         if (needsGitRefresh) {
             logger.debug("Refreshing git due to changes in .git directory");
             project.getRepo().refresh();
+            listener.onTrackedFileChange();
         }
 
         // 2) Check if any *tracked* files changed
@@ -218,7 +219,7 @@ public class AnalyzerWrapper {
                 (Code intelligence will still refresh once automatically at startup.)
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                listener.onFirstBuild(msg);
+                listener.afterFirstBuild(msg);
                 logger.info(msg);
             } else {
                 project.setCpgRefresh(CpgRefresh.AUTO);
@@ -226,7 +227,7 @@ public class AnalyzerWrapper {
                 CPG creation was fast (%,d ms); code intelligence will refresh automatically when changes are made to tracked files.
                 You can change this with the cpg_refresh parameter in .brokk/project.properties.
                 """.stripIndent().formatted(duration);
-                listener.onFirstBuild(msg);
+                listener.afterFirstBuild(msg);
                 logger.info(msg);
                 startWatcher();
             }
@@ -298,6 +299,7 @@ public class AnalyzerWrapper {
             return;
         }
 
+        listener.onTrackedFileChange();
         rebuildInProgress = true;
         logger.debug("Rebuilding analyzer");
         future = runner.submit("Rebuilding code intelligence", () -> {

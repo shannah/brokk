@@ -145,6 +145,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         initializeThemeManager();
         loadWindowSizeAndPosition();
 
+        // populate the commit panel
+        updateCommitPanel();
+
         // show the window
         frame.setVisible(true);
         // this gets it to respect the minimum size on buttons panel, fuck it
@@ -794,7 +797,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             searchButton.setEnabled(true);
             runButton.setEnabled(true);
             stopButton.setEnabled(false);
-            updateSuggestCommitButton();
+            updateCommitPanel();
         });
     }
 
@@ -825,8 +828,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Updates the uncommitted files table and the state of the suggest commit button
      */
-    private void updateSuggestCommitButton() {
-        gitPanel.updateSuggestCommitButton();
+    public void updateCommitPanel() {
+        gitPanel.updateCommitPanel();
     }
 
     /**
@@ -1053,7 +1056,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void onContextHistoryChanged() {
         SwingUtilities.invokeLater(() -> {
             updateContextHistoryTable(contextManager.getContextHistory().size() - 1);
-            updateSuggestCommitButton();
         });
     }
     
