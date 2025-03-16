@@ -1,5 +1,6 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
+import io.github.jbellis.brokk.analyzer.{Analyzer, CodeUnit, Language}
 import io.shiftleft.codepropertygraph.generated.language.*
 import io.shiftleft.semanticcpg.language.*
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows, assertTrue}

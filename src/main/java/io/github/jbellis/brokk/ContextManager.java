@@ -9,6 +9,10 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
+import io.github.jbellis.brokk.analyzer.BrokkFile;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.CodeUnitType;
+import io.github.jbellis.brokk.analyzer.RepoFile;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
@@ -413,7 +417,7 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
-                String symbol = showSymbolSelectionDialog();
+                String symbol = showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL());
                 if (symbol != null && !symbol.isBlank()) {
                     usageForIdentifier(symbol);
                 } else {
@@ -436,7 +440,7 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
-                String methodName = showSymbolSelectionDialog();
+                String methodName = showSymbolSelectionDialog("Select Method", Set.of(CodeUnitType.FUNCTION));
                 if (methodName != null && !methodName.isBlank()) {
                     callersForMethod(methodName);
                 } else {
@@ -459,7 +463,7 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
-                String methodName = showSymbolSelectionDialog();
+                String methodName = showSymbolSelectionDialog("Select Method", Set.of(FUNCTION));
                 if (methodName != null && !methodName.isBlank()) {
                     calleesForMethod(methodName);
                 } else {
@@ -512,7 +516,15 @@ public class ContextManager implements IContextManager
      */
     private String showSymbolSelectionDialog()
     {
-        var dialog = new SymbolSelectionDialog(null, project, "Select Symbol");
+        return showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL());
+    }
+    
+    /**
+     * Show the symbol selection dialog with a type filter
+     */
+    private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter)
+    {
+        var dialog = new SymbolSelectionDialog(null, project, title, typeFilter);
         SwingUtil.runOnEDT(() -> {
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());

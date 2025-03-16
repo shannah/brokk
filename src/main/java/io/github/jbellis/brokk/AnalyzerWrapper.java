@@ -2,6 +2,10 @@ package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.Project.CpgRefresh;
 import java.awt.KeyboardFocusManager;
+
+import io.github.jbellis.brokk.analyzer.Analyzer;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.RepoFile;
 import io.methvin.watcher.DirectoryChangeEvent;
 import io.methvin.watcher.DirectoryWatcher;
 import org.apache.logging.log4j.LogManager;

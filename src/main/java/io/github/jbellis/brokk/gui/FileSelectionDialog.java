@@ -1,10 +1,10 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.BrokkFile;
+import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.Project;
-import io.github.jbellis.brokk.RepoFile;
+import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.BasicCompletion;
 import org.fife.ui.autocomplete.Completion;
@@ -31,7 +31,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.nio.file.Path;
 
 /**
  * A file selection dialog that presents a tree view and a text input with autocomplete.

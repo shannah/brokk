@@ -1,6 +1,7 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
 import flatgraph.storage.Serialization
+import io.github.jbellis.brokk.*
 import io.joern.dataflowengineoss.layers.dataflows.OssDataFlow
 import io.joern.javasrc2cpg.{JavaSrc2Cpg, Config as JavaConfig}
 import io.joern.joerncli.CpgBasedTool

@@ -1,19 +1,21 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
-class CodeUnit(val kind: CodeUnit.CodeUnitType, val fqName: String) extends Comparable[CodeUnit] with Serializable {
+import io.github.jbellis.brokk.{CodeUnit, CodeUnitType}
+
+class CodeUnit(val kind: CodeUnitType, val fqName: String) extends Comparable[CodeUnit] with Serializable {
   def name: String = {
     val lastDotIndex = fqName.lastIndexOf('.')
     if (lastDotIndex == -1) fqName else fqName.substring(lastDotIndex + 1)
   }
 
-  def isClass: Boolean = kind == CodeUnit.CodeUnitType.CLASS
+  def isClass: Boolean = kind == CodeUnitType.CLASS
   
-  def isFunction: Boolean = kind == CodeUnit.CodeUnitType.FUNCTION
+  def isFunction: Boolean = kind == CodeUnitType.FUNCTION
 
   override def toString: String = kind match {
-    case CodeUnit.CodeUnitType.CLASS => s"CLASS[$fqName]"
-    case CodeUnit.CodeUnitType.FUNCTION => s"FUNCTION[$fqName]"
-    case CodeUnit.CodeUnitType.FIELD => s"FIELD[$fqName]"
+    case CodeUnitType.CLASS => s"CLASS[$fqName]"
+    case CodeUnitType.FUNCTION => s"FUNCTION[$fqName]"
+    case CodeUnitType.FIELD => s"FIELD[$fqName]"
   }
 
   override def hashCode(): Int = fqName.hashCode()
@@ -24,13 +26,7 @@ class CodeUnit(val kind: CodeUnit.CodeUnitType, val fqName: String) extends Comp
 }
 
 object CodeUnit {
-  enum CodeUnitType {
-    case CLASS, FUNCTION, FIELD
-  }
-
   def cls(reference: String): CodeUnit = new CodeUnit(CodeUnitType.CLASS, reference)
-
   def fn(reference: String): CodeUnit = new CodeUnit(CodeUnitType.FUNCTION, reference)
-
   def field(reference: String): CodeUnit = new CodeUnit(CodeUnitType.FIELD, reference)
 }

@@ -1,5 +1,10 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.analyzer.BrokkFile;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.ExternalFile;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
+import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;

@@ -4,7 +4,7 @@ import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.GitRepo.CommitInfo;
-import io.github.jbellis.brokk.RepoFile;
+import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

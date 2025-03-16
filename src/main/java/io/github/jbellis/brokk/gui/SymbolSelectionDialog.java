@@ -1,7 +1,8 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.CodeUnit;
-import io.github.jbellis.brokk.IAnalyzer;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.CodeUnitType;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.Project;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.CompletionProvider;
@@ -14,6 +15,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A dialog for selecting Java symbols (classes and members) with autocomplete.
@@ -26,6 +28,7 @@ public class SymbolSelectionDialog extends JDialog {
     private final JButton okButton;
     private final JButton cancelButton;
     private final IAnalyzer analyzer;
+    private final Set<CodeUnitType> typeFilter;
 
     // The selected symbol
     private String selectedSymbol = null;
@@ -34,9 +37,14 @@ public class SymbolSelectionDialog extends JDialog {
     private boolean confirmed = false;
 
     public SymbolSelectionDialog(Frame parent, Project project, String title) {
+        this(parent, project, title, Set.of(CLASS, FUNCTION, FIELD));
+    }
+    
+    public SymbolSelectionDialog(Frame parent, Project project, String title, Set<CodeUnitType> typeFilter) {
         super(parent, title, true); // modal dialog
         this.project = project;
-        analyzer = project.getAnalyzer();
+        this.analyzer = project.getAnalyzer();
+        this.typeFilter = typeFilter;
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -62,6 +70,7 @@ public class SymbolSelectionDialog extends JDialog {
         
         DefaultListModel<String> classListModel = new DefaultListModel<>();
         List<String> allClasses = new ArrayList<>(analyzer.getAllClasses().stream()
+                .filter(cu -> typeFilter.contains(cu.kind()))
                 .map(CodeUnit::fqName)
                 .sorted()
                 .toList());
@@ -140,7 +149,7 @@ public class SymbolSelectionDialog extends JDialog {
      * Create the symbol completion provider using Completions.completeClassesAndMembers
      */
     private CompletionProvider createSymbolCompletionProvider(IAnalyzer analyzer) {
-        return new SymbolCompletionProvider(analyzer);
+        return new SymbolCompletionProvider(analyzer, typeFilter);
     }
 
     /**

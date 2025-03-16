@@ -1,8 +1,7 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
-import java.io.IOException;
-import java.nio.file.Path
-import java.nio.file.Files
+import java.io.IOException
+import java.nio.file.{Files, Path}
 
 /**
  * Abstraction for a filename relative to the repo.  This exists to make it less difficult to ensure

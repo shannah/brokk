@@ -1,5 +1,8 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.analyzer.CallSite;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;

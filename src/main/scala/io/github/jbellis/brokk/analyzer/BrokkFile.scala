@@ -1,7 +1,6 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
-import java.io.IOException
-import java.io.Serializable
+import java.io.{IOException, Serializable}
 import java.nio.file.{Files, Path}
 
 trait BrokkFile extends Serializable {

@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
 import java.nio.file.Path
 

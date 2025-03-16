@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk
+package io.github.jbellis.brokk.analyzer
 
 /**
  * Represents a call site within source code

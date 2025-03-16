@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.RepoFile;
-import io.github.jbellis.brokk.CodeUnit;
+import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
 
 /**
  * Represents a file reference with metadata for context menu usage.
