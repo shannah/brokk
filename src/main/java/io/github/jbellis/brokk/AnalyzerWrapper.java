@@ -43,6 +43,7 @@ public class AnalyzerWrapper {
     private volatile boolean running = true;
 
     private volatile Future<Analyzer> future;
+    private volatile Analyzer currentAnalyzer = null;
     private volatile boolean rebuildInProgress = false;
     private volatile boolean externalRebuildRequested = false;
     private volatile boolean rebuildPending = false;
@@ -67,7 +68,8 @@ public class AnalyzerWrapper {
     private void notifyOnCompletion(Future<Analyzer> future) {
         runner.submit("Updating with new Code Intelligence", () -> {
             try {
-                future.get();
+                Analyzer builtAnalyzer = future.get();
+                currentAnalyzer = builtAnalyzer;
             } catch (Exception e) {
                 logger.error("Error waiting for analyzer build", e);
             }
@@ -343,7 +345,13 @@ public class AnalyzerWrapper {
             throw new UnsupportedOperationException("Never call blocking get() from EDT");
         }
 
-        if (!future.isDone() && notifyWhenBlocked) {
+        // If we already have an analyzer, just return it.
+        if (currentAnalyzer != null) {
+            return currentAnalyzer;
+        }
+
+        // Otherwise, this must be the very first build (or a failed one).
+        if (notifyWhenBlocked) {
             if (logger.isDebugEnabled()) {
                 Exception e = new Exception("Stack trace");
                 logger.debug("Blocking on analyzer creation", e);
@@ -351,7 +359,10 @@ public class AnalyzerWrapper {
             listener.onBlocked();
         }
         try {
-            return future.get();
+            // Block until the future analyzer finishes building
+            Analyzer built = future.get();
+            currentAnalyzer = built;
+            return built;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while fetching analyzer", e);
