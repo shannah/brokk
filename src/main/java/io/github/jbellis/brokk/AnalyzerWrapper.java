@@ -68,8 +68,8 @@ public class AnalyzerWrapper {
     private void notifyOnCompletion(Future<Analyzer> future) {
         runner.submit("Updating with new Code Intelligence", () -> {
             try {
-                Analyzer builtAnalyzer = future.get();
-                currentAnalyzer = builtAnalyzer;
+                currentAnalyzer = future.get();
+                listener.onBuildComplete();
             } catch (Exception e) {
                 logger.error("Error waiting for analyzer build", e);
             }

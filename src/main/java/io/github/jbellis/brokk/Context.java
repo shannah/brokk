@@ -221,7 +221,7 @@ public class Context implements Serializable {
     public Context addSearchFragment(Future<String> query, ParsedOutput parsed) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(parsed.parsedFragment);
-        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
+        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).needsRefresh();
     }
 
     public Context removeBadFragment(ContextFragment f) {
@@ -287,7 +287,7 @@ public class Context implements Serializable {
                            historyMessages,
                            Map.of(),
                            null,
-                           action).refresh();
+                           action).needsRefresh();
     }
 
     /**
@@ -410,7 +410,7 @@ public class Context implements Serializable {
                 Map.of(),
                 null,
                 action
-        ).refresh();
+        ).needsRefresh();
     }
 
     public Context removeAll() {
@@ -419,37 +419,37 @@ public class Context implements Serializable {
     }
 
     /**
+     * Returns a Context with an AutoContext placeholder; refresh will be called asynchronously
+     */
+    public Context needsRefresh() {
+        var acPlaceholder = isAutoContextEnabled() ? AutoContext.REBUILDING : AutoContext.DISABLED;
+        return new Context(contextManager,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           acPlaceholder,
+                           autoContextFileCount,
+                           historyMessages,
+                           Map.of(),
+                           parsedOutput,
+                           action);
+    }
+
+    /**
      * Produces a new Context object with a fresh AutoContext if enabled.
      */
     public Context refresh() {
-        AutoContext acPlaceholder = isAutoContextEnabled() ? AutoContext.REBUILDING : AutoContext.DISABLED;
-        var newContext = new Context(contextManager,
-                                     editableFiles,
-                                     readonlyFiles,
-                                     virtualFragments,
-                                     acPlaceholder,
-                                     autoContextFileCount,
-                                     historyMessages,
-                                     Map.of(),
-                                     parsedOutput,
-                                     action);
-        contextManager.submitBackgroundTask("Computing AutoContext", () -> {
-            var newAutoContext = buildAutoContext();
-            var replacement = new Context(contextManager,
-                                          editableFiles,
-                                          readonlyFiles,
-                                          virtualFragments,
-                                          newAutoContext,
-                                          autoContextFileCount,
-                                          historyMessages,
-                                          Map.of(),
-                                          parsedOutput,
-                                          action);
-            contextManager.replaceContext(newContext, replacement);
-            return null;
-        });
-
-        return newContext;
+        var newAutoContext = buildAutoContext();
+        return new Context(contextManager,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           newAutoContext,
+                           autoContextFileCount,
+                           historyMessages,
+                           Map.of(),
+                           parsedOutput,
+                           action);
     }
 
     // Method removed in favor of toFragment(int position)
@@ -481,7 +481,7 @@ public class Context implements Serializable {
                 originalContents,
                 parsed,
                 action
-        ).refresh();
+        ).needsRefresh();
     }
 
     /**
@@ -543,7 +543,7 @@ public class Context implements Serializable {
         newFragments.add(fragment);
         var parsed = new ParsedOutput(fragment.text(), fragment);
         var action = CompletableFuture.completedFuture(fragment.description());
-        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
+        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).needsRefresh();
     }
 
     /**
@@ -584,7 +584,7 @@ public class Context implements Serializable {
                            historyMessages,
                            originalContents,
                            parsedOutput,
-                           action).refresh();
+                           action).needsRefresh();
     }
 
     public ParsedOutput getParsedOutput() {
