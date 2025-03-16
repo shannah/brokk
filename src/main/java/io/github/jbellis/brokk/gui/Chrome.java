@@ -507,7 +507,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Gets the current text from the LLM output area
      */
     public String getLlmOutputText() {
-        return llmStreamArea.getText();
+        return SwingUtil.runOnEDT(() -> llmStreamArea.getText(), null);
     }
 
     private JScrollPane buildLLMStreamScrollPane() {
@@ -766,7 +766,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void clear() {
-        llmStreamArea.clear();
+        SwingUtilities.invokeLater(() -> {
+            llmStreamArea.clear();
+        });
     }
 
     /**
