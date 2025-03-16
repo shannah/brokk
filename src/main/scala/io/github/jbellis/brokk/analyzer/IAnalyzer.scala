@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.analyzer
 
-import io.github.jbellis.brokk.RepoFile
+import io.github.jbellis.brokk.analyzer.RepoFile
 
 import java.util
 

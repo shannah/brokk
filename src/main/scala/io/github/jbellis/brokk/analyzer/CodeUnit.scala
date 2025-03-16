@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.analyzer
 
-import io.github.jbellis.brokk.{CodeUnit, CodeUnitType}
+import io.github.jbellis.brokk.analyzer.{CodeUnit, CodeUnitType}
 
 class CodeUnit(val kind: CodeUnitType, val fqName: String) extends Comparable[CodeUnit] with Serializable {
   def name: String = {

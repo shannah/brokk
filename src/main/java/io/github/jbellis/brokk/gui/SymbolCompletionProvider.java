@@ -22,7 +22,7 @@ public class SymbolCompletionProvider extends DefaultCompletionProvider {
     private final Set<CodeUnitType> typeFilter;
 
     public SymbolCompletionProvider(IAnalyzer analyzer) {
-        this(analyzer, Set.of(CodeUnitType.CLASS, FUNCTION, FIELD));
+        this(analyzer, CodeUnitType.ALL);
     }
     
     public SymbolCompletionProvider(IAnalyzer analyzer, Set<CodeUnitType> typeFilter) {

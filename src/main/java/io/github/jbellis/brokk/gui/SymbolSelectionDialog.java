@@ -37,7 +37,7 @@ public class SymbolSelectionDialog extends JDialog {
     private boolean confirmed = false;
 
     public SymbolSelectionDialog(Frame parent, Project project, String title) {
-        this(parent, project, title, Set.of(CLASS, FUNCTION, FIELD));
+        this(parent, project, title, CodeUnitType.ALL);
     }
     
     public SymbolSelectionDialog(Frame parent, Project project, String title, Set<CodeUnitType> typeFilter) {

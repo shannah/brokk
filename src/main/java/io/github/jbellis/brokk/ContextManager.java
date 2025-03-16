@@ -57,6 +57,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static io.github.jbellis.brokk.analyzer.CodeUnitType.FUNCTION;
+
 /**
  * Manages the current and previous context, along with other state like prompts and message history.
  *
@@ -417,7 +419,7 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
-                String symbol = showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL());
+                String symbol = showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL);
                 if (symbol != null && !symbol.isBlank()) {
                     usageForIdentifier(symbol);
                 } else {
@@ -440,7 +442,7 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
-                String methodName = showSymbolSelectionDialog("Select Method", Set.of(CodeUnitType.FUNCTION));
+                String methodName = showSymbolSelectionDialog("Select Method", Set.of(FUNCTION));
                 if (methodName != null && !methodName.isBlank()) {
                     callersForMethod(methodName);
                 } else {
@@ -516,7 +518,7 @@ public class ContextManager implements IContextManager
      */
     private String showSymbolSelectionDialog()
     {
-        return showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL());
+        return showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL);
     }
     
     /**
