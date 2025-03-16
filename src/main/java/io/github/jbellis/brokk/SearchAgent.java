@@ -900,7 +900,7 @@ public class SearchAgent {
             return "No usages found for: " + String.join(", ", symbols);
         }
 
-        var processedUsages = AnalyzerWrapper.processUsages(analyzer, allUses).code();
+        var processedUsages = AnalyzerUtil.processUsages(analyzer, allUses).code();
         return "Usages of " + String.join(", ", symbols) + ":\n\n" + processedUsages;
     }
 
@@ -922,7 +922,7 @@ public class SearchAgent {
             weightedSeeds.put(className, 1.0);
         }
 
-        var pageRankResults = AnalyzerWrapper.combinedPageRankFor(analyzer, weightedSeeds);
+        var pageRankResults = AnalyzerUtil.combinedPageRankFor(analyzer, weightedSeeds);
 
         if (pageRankResults.isEmpty()) {
             return "No related code found via PageRank";

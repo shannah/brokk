@@ -327,7 +327,7 @@ public class Context implements Serializable {
             return AutoContext.EMPTY;
         }
 
-        var pagerankResults = AnalyzerWrapper.combinedPageRankFor(analyzer, weightedSeeds);
+        var pagerankResults = AnalyzerUtil.combinedPageRankFor(analyzer, weightedSeeds);
 
         // build skeleton map
         var skeletonMap = new HashMap<CodeUnit, String>();

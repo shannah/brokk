@@ -992,7 +992,7 @@ public class ContextManager implements IContextManager
             io.systemOutput("No uses found for " + identifier);
             return;
         }
-        var result = AnalyzerWrapper.processUsages(getAnalyzer(), uses);
+        var result = AnalyzerUtil.processUsages(getAnalyzer(), uses);
         if (result.code().isEmpty()) {
             io.systemOutput("No relevant uses found for " + identifier);
             return;
@@ -1005,7 +1005,7 @@ public class ContextManager implements IContextManager
     /** callers for method */
     public void callersForMethod(String methodName)
     {
-        var callgraph = AnalyzerWrapper.formatCallGraphTo(getAnalyzer(), methodName);
+        var callgraph = AnalyzerUtil.formatCallGraphTo(getAnalyzer(), methodName);
         if (callgraph == null || callgraph.isEmpty()) {
             io.systemOutput("No callers found for " + methodName);
             return;
@@ -1024,7 +1024,7 @@ public class ContextManager implements IContextManager
     /** callees for method */
     public void calleesForMethod(String methodName)
     {
-        var callgraph = AnalyzerWrapper.formatCallGraphFrom(getAnalyzer(), methodName);
+        var callgraph = AnalyzerUtil.formatCallGraphFrom(getAnalyzer(), methodName);
         if (callgraph == null || callgraph.isEmpty()) {
             io.systemOutput("No callees found for " + methodName);
             return;
@@ -1477,7 +1477,7 @@ public class ContextManager implements IContextManager
             try {
                 io.systemOutput("Generating project style guide...");
                 var analyzer = project.getAnalyzer();
-                var topClasses = AnalyzerWrapper.combinedPageRankFor(analyzer, Map.of());
+                var topClasses = AnalyzerUtil.combinedPageRankFor(analyzer, Map.of());
 
                 var codeForLLM = new StringBuilder();
                 var tokens = 0;
