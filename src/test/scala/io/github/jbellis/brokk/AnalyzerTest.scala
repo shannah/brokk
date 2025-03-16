@@ -2,7 +2,7 @@ package io.github.jbellis.brokk
 
 import io.shiftleft.codepropertygraph.generated.language.*
 import io.shiftleft.semanticcpg.language.*
-import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.nio.file.Path
@@ -399,6 +399,7 @@ class AnalyzerTest {
     assertEquals("<operators>.assignmentModulo", analyzer.resolveMethodName("<operators>.assignmentModulo"))
     assertEquals("<operators>.assignmentLogicalShiftRight", analyzer.resolveMethodName("<operators>.assignmentLogicalShiftRight"))
   }
+  
 
   /** Helper to get a prebuilt analyzer */
   private def getAnalyzer = {

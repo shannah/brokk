@@ -330,15 +330,18 @@ public interface ContextFragment extends Serializable {
 
     class UsageFragment extends VirtualFragment {
         private static final long serialVersionUID = 1L;
+        private final String type;
         private final String targetIdentifier;
         private final Set<CodeUnit> classnames;
         private final String code;
 
-        public UsageFragment(String targetIdentifier, Set<CodeUnit> classnames, String code) {
+        public UsageFragment(String type, String targetIdentifier, Set<CodeUnit> classnames, String code) {
             super();
+            assert type != null;
             assert targetIdentifier != null;
             assert classnames != null;
             assert code != null;
+            this.type = type;
             this.targetIdentifier = targetIdentifier;
             this.classnames = classnames;
             this.code = code;
@@ -356,7 +359,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            return "Uses of %s".formatted(targetIdentifier);
+            return "%s of %s".formatted(type, targetIdentifier);
         }
 
         @Override

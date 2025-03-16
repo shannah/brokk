@@ -48,6 +48,8 @@ public class ContextPanel extends JPanel {
     private JButton copyButton;
     private JButton pasteButton;
     private JButton symbolButton;
+    private JButton callersButton;
+    private JButton calleesButton;
 
     /**
      * Constructor for the context panel
@@ -459,6 +461,20 @@ public class ContextPanel extends JPanel {
             chrome.currentUserTask = contextManager.findSymbolUsageAsync();
         });
 
+        callersButton = new JButton("Callers");
+        callersButton.setMnemonic(KeyEvent.VK_C);
+        callersButton.setToolTipText("Find methods that call a selected method");
+        callersButton.addActionListener(e -> {
+            chrome.currentUserTask = contextManager.findMethodCallersAsync();
+        });
+
+        calleesButton = new JButton("Callees");
+        calleesButton.setMnemonic(KeyEvent.VK_L);
+        calleesButton.setToolTipText("Find methods called by a selected method");
+        calleesButton.addActionListener(e -> {
+            chrome.currentUserTask = contextManager.findMethodCalleesAsync();
+        });
+
         // Use a prototype button to fix sizes
         var prototypeButton = new JButton("Summarize selected");
         var buttonSize = prototypeButton.getPreferredSize();
@@ -480,6 +496,8 @@ public class ContextPanel extends JPanel {
         copyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         pasteButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
         symbolButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        callersButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
+        calleesButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
 
         buttonsPanel.add(editButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -488,6 +506,10 @@ public class ContextPanel extends JPanel {
         buttonsPanel.add(summarizeButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(symbolButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        buttonsPanel.add(callersButton);
+        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        buttonsPanel.add(calleesButton);
         buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         buttonsPanel.add(dropButton);
         buttonsPanel.add(Box.createVerticalGlue());
@@ -536,6 +558,8 @@ public class ContextPanel extends JPanel {
             copyButton.setEnabled(false);
             pasteButton.setEnabled(false);
             symbolButton.setEnabled(false);
+            callersButton.setEnabled(false);
+            calleesButton.setEnabled(false);
         });
     }
 
@@ -551,6 +575,8 @@ public class ContextPanel extends JPanel {
             copyButton.setEnabled(true);
             pasteButton.setEnabled(true);
             symbolButton.setEnabled(true);
+            callersButton.setEnabled(true);
+            calleesButton.setEnabled(true);
             updateContextButtons();
         });
     }

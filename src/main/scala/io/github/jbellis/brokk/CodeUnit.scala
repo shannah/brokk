@@ -1,27 +1,19 @@
 package io.github.jbellis.brokk
 
-sealed trait CodeUnit extends Comparable[CodeUnit] with Serializable {
-  def fqName: String
-  
+class CodeUnit(val kind: CodeUnit.CodeUnitType, val fqName: String) extends Comparable[CodeUnit] with Serializable {
   def name: String = {
     val lastDotIndex = fqName.lastIndexOf('.')
     if (lastDotIndex == -1) fqName else fqName.substring(lastDotIndex + 1)
   }
 
-  def isClass: Boolean = this match {
-    case _: CodeUnit.ClassType => true
-    case _ => false
-  }
+  def isClass: Boolean = kind == CodeUnit.CodeUnitType.CLASS
+  
+  def isFunction: Boolean = kind == CodeUnit.CodeUnitType.FUNCTION
 
-  def isFunction: Boolean = this match {
-    case _: CodeUnit.FunctionType => true
-    case _ => false
-  }
-
-  override def toString: String = this match {
-    case CodeUnit.ClassType(ref) => s"CLASS[$ref]"
-    case CodeUnit.FunctionType(ref) => s"FUNCTION[$ref]"
-    case CodeUnit.FieldType(ref) => s"FIELD[$ref]"
+  override def toString: String = kind match {
+    case CodeUnit.CodeUnitType.CLASS => s"CLASS[$fqName]"
+    case CodeUnit.CodeUnitType.FUNCTION => s"FUNCTION[$fqName]"
+    case CodeUnit.CodeUnitType.FIELD => s"FIELD[$fqName]"
   }
 
   override def hashCode(): Int = fqName.hashCode()
@@ -32,15 +24,13 @@ sealed trait CodeUnit extends Comparable[CodeUnit] with Serializable {
 }
 
 object CodeUnit {
-  case class ClassType(fqName: String) extends CodeUnit
+  enum CodeUnitType {
+    case CLASS, FUNCTION, FIELD
+  }
 
-  case class FunctionType(fqName: String) extends CodeUnit
+  def cls(reference: String): CodeUnit = new CodeUnit(CodeUnitType.CLASS, reference)
 
-  case class FieldType(fqName: String) extends CodeUnit
+  def fn(reference: String): CodeUnit = new CodeUnit(CodeUnitType.FUNCTION, reference)
 
-  def cls(reference: String): CodeUnit = ClassType(reference)
-
-  def fn(reference: String): CodeUnit = FunctionType(reference)
-
-  def field(reference: String): CodeUnit = FieldType(reference)
+  def field(reference: String): CodeUnit = new CodeUnit(CodeUnitType.FIELD, reference)
 }

@@ -19,7 +19,6 @@ public class SymbolCompletionProvider extends DefaultCompletionProvider {
 
     public SymbolCompletionProvider(IAnalyzer analyzer) {
         this.analyzer = analyzer;
-        setAutoActivationRules(false, ".");
     }
 
     @Override

@@ -427,6 +427,52 @@ public class ContextManager implements IContextManager
             }
         });
     }
+    
+    /**
+     * Shows the method selection dialog and adds callers information for the selected method.
+     */
+    public Future<?> findMethodCallersAsync()
+    {
+        assert io != null;
+        return contextActionExecutor.submit(() -> {
+            try {
+                String methodName = showSymbolSelectionDialog();
+                if (methodName != null && !methodName.isBlank()) {
+                    callersForMethod(methodName);
+                } else {
+                    io.systemOutput("No method selected.");
+                }
+            } catch (CancellationException cex) {
+                io.systemOutput("Method selection canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
+            }
+        });
+    }
+    
+    /**
+     * Shows the method selection dialog and adds callees information for the selected method.
+     */
+    public Future<?> findMethodCalleesAsync()
+    {
+        assert io != null;
+        return contextActionExecutor.submit(() -> {
+            try {
+                String methodName = showSymbolSelectionDialog();
+                if (methodName != null && !methodName.isBlank()) {
+                    calleesForMethod(methodName);
+                } else {
+                    io.systemOutput("No method selected.");
+                }
+            } catch (CancellationException cex) {
+                io.systemOutput("Method selection canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
+            }
+        });
+    }
 
     /**
      * Show the custom file selection dialog
@@ -952,8 +998,46 @@ public class ContextManager implements IContextManager
             return;
         }
         var combined = result.code();
-        var fragment = new ContextFragment.UsageFragment(identifier, result.sources(), combined);
+        var fragment = new ContextFragment.UsageFragment("Uses", identifier, result.sources(), combined);
         pushContext(ctx -> ctx.addUsageFragment(fragment));
+    }
+    
+    /** callers for method */
+    public void callersForMethod(String methodName)
+    {
+        var callgraph = AnalyzerWrapper.formatCallGraphTo(getAnalyzer(), methodName);
+        if (callgraph == null || callgraph.isEmpty()) {
+            io.systemOutput("No callers found for " + methodName);
+            return;
+        }
+        
+        // Extract the class from the method name for sources
+        Set<CodeUnit> sources = new HashSet<>();
+        sources.add(CodeUnit.cls(ContextFragment.toClassname(methodName)));
+        
+        // The output is similar to UsageFragment, so we'll use that
+        var fragment = new ContextFragment.UsageFragment("Callers", methodName, sources, callgraph);
+        pushContext(ctx -> ctx.addUsageFragment(fragment));
+        io.systemOutput("Added call graph for callers of " + methodName);
+    }
+    
+    /** callees for method */
+    public void calleesForMethod(String methodName)
+    {
+        var callgraph = AnalyzerWrapper.formatCallGraphFrom(getAnalyzer(), methodName);
+        if (callgraph == null || callgraph.isEmpty()) {
+            io.systemOutput("No callees found for " + methodName);
+            return;
+        }
+        
+        // Extract the class from the method name for sources
+        Set<CodeUnit> sources = new HashSet<>();
+        sources.add(CodeUnit.cls(ContextFragment.toClassname(methodName)));
+        
+        // The output is similar to UsageFragment, so we'll use that
+        var fragment = new ContextFragment.UsageFragment("Callees", methodName, sources, callgraph);
+        pushContext(ctx -> ctx.addUsageFragment(fragment));
+        io.systemOutput("Added call graph for methods called by " + methodName);
     }
 
     /** parse stacktrace */

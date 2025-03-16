@@ -38,4 +38,22 @@ trait IAnalyzer {
     
   def getClassSource(className: String): java.lang.String = 
     throw new UnsupportedOperationException()
+    
+  /**
+   * Gets the call graph to a specified method.
+   * 
+   * @param methodName The fully-qualified name of the target method
+   * @return A map where keys are fully-qualified method signatures and values are CallSite objects
+   */
+  def getCallgraphTo(methodName: String): java.util.Map[String, CallSite] =
+    throw new UnsupportedOperationException()
+  
+  /**
+   * Gets the call graph from a specified method.
+   * 
+   * @param methodName The fully-qualified name of the source method
+   * @return A map where keys are fully-qualified method signatures and values are CallSite objects
+   */
+  def getCallgraphFrom(methodName: String): java.util.Map[String, CallSite] =
+    throw new UnsupportedOperationException()
 }
