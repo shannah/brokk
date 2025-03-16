@@ -520,7 +520,7 @@ public interface ContextFragment extends Serializable {
         private static final long serialVersionUID = 2L;
         public static final AutoContext EMPTY = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Enabled, but no references found"), "")));
         public static final AutoContext DISABLED = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Disabled"), "")));
-        public static final AutoContext REBUILDING = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Updating..."), "")));
+        public static final AutoContext REBUILDING = new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Updating"), "")));
 
         public AutoContext {
             assert fragment != null;
@@ -550,6 +550,7 @@ public interface ContextFragment extends Serializable {
                     .map(CodeUnit::name)
                     .collect(java.util.stream.Collectors.joining(", "));
         }
+
 
         @Override
         public String shortDescription() {
