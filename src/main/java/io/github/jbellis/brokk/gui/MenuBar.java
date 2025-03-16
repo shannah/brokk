@@ -107,6 +107,72 @@ public class MenuBar {
 
         menuBar.add(editMenu);
 
+        // Context menu
+        var contextMenu = new JMenu("Context");
+        contextMenu.setMnemonic(KeyEvent.VK_C);
+
+        var editFilesItem = new JMenuItem("Edit Files");
+        editFilesItem.setMnemonic(KeyEvent.VK_D);
+        editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.ALT_DOWN_MASK));
+        editFilesItem.addActionListener(e -> {
+            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
+                    Chrome.ContextAction.EDIT, List.of());
+        });
+        contextMenu.add(editFilesItem);
+
+        var readFilesItem = new JMenuItem("Read Files");
+        readFilesItem.setMnemonic(KeyEvent.VK_R);
+        readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.ALT_DOWN_MASK));
+        readFilesItem.addActionListener(e -> {
+            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
+                    Chrome.ContextAction.READ, List.of());
+        });
+        contextMenu.add(readFilesItem);
+
+        var summarizeFilesItem = new JMenuItem("Summarize Files");
+        summarizeFilesItem.setMnemonic(KeyEvent.VK_M);
+        summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, InputEvent.ALT_DOWN_MASK));
+        summarizeFilesItem.addActionListener(e -> {
+            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
+                    Chrome.ContextAction.SUMMARIZE, List.of());
+        });
+        contextMenu.add(summarizeFilesItem);
+
+        var symbolUsageItem = new JMenuItem("Symbol Usage");
+        symbolUsageItem.setMnemonic(KeyEvent.VK_Y);
+        symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.ALT_DOWN_MASK));
+        symbolUsageItem.addActionListener(e -> {
+            chrome.currentUserTask = chrome.contextManager.findSymbolUsageAsync();
+        });
+        contextMenu.add(symbolUsageItem);
+
+        var callersItem = new JMenuItem("Callers");
+        callersItem.setMnemonic(KeyEvent.VK_C);
+        callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.ALT_DOWN_MASK));
+        callersItem.addActionListener(e -> {
+            chrome.currentUserTask = chrome.contextManager.findMethodCallersAsync();
+        });
+        contextMenu.add(callersItem);
+
+        var calleesItem = new JMenuItem("Callees");
+        calleesItem.setMnemonic(KeyEvent.VK_L);
+        calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.ALT_DOWN_MASK));
+        calleesItem.addActionListener(e -> {
+            chrome.currentUserTask = chrome.contextManager.findMethodCalleesAsync();
+        });
+        contextMenu.add(calleesItem);
+
+        var dropAllItem = new JMenuItem("Drop All");
+        dropAllItem.setMnemonic(KeyEvent.VK_P);
+        dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, InputEvent.ALT_DOWN_MASK));
+        dropAllItem.addActionListener(e -> {
+            chrome.disableContextActionButtons();
+            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
+                    Chrome.ContextAction.DROP, List.of());
+        });
+        contextMenu.add(dropAllItem);
+
+        menuBar.add(contextMenu);
 
         // Help menu
         var helpMenu = new JMenu("Help");

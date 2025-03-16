@@ -249,9 +249,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // 4. Create a vertical split pane to hold the context panel and git panel
         // 4a. Context panel (with border title) at the top
-        var ctxPanel = buildContextPanel();
+        contextPanel = new ContextPanel(this, contextManager);
         this.contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        contextGitSplitPane.setTopComponent(ctxPanel);
+        contextGitSplitPane.setTopComponent(contextPanel);
 
         // 4b. Git panel at the bottom
         gitPanel = new GitPanel(this, contextManager);
@@ -800,14 +800,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Disables the context action buttons while an action is in progress
      */
     void disableContextActionButtons() {
-        contextPanel.disableContextActionButtons();
+        // No longer needed - buttons are in menus now
     }
 
     /**
      * Re-enables context action buttons
      */
     public void enableContextActionButtons() {
-        contextPanel.enableContextActionButtons();
+        // No longer needed - buttons are in menus now
+        contextPanel.updateContextActions();
     }
 
     /**
@@ -818,30 +819,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             currentUserTask.cancel(true);
         }
     }
-
-    /**
-     * Build the context panel (unified table + action buttons).
-     */
-    private JPanel buildContextPanel() {
-        contextPanel = new ContextPanel(this, contextManager);
-
-        // After creating the context panel buttons and getting their sizes,
-        // update the git panel button size to match
-        SwingUtilities.invokeLater(() -> {
-            if (gitPanel != null && contextPanel.getEditButton() != null) {
-                var editButton = contextPanel.getEditButton();
-                var preferredSize = editButton.getPreferredSize();
-                gitPanel.setSuggestCommitButtonSize(preferredSize);
-            }
-        });
-
-        return contextPanel;
-    }
-
-    // Moved to ContextPanel class
-
-    // Moved to ContextPanel class
-
+    
     /**
      * Updates the uncommitted files table and the state of the suggest commit button
      */
@@ -1514,28 +1492,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
-        // We measure the edit button's width and add padding
-        var editButton = contextPanel.getEditButton();
-        if (editButton == null) {
-            return;
-        }
-
-        int buttonWidth = editButton.getPreferredSize().width;
-        int newWidth = buttonWidth + 30;
-
-        // Now set the divider location on the horizontal split
-        // so that the right side is newWidth.
-        // Frame width minus newWidth minus the divider size =>
-        // left side gets the remainder, right side is about newWidth.
-
-        int dividerPos = frame.getWidth() - newWidth - historySplitPane.getDividerSize();
-        // If the frame isn't shown, or is smaller than newWidth, we clamp to a min of e.g. 100
-        if (dividerPos < 100) {
-            dividerPos = 100;
-        }
-
         historySplitPane.setResizeWeight(0.0); // left side can shrink/grow
-        historySplitPane.setDividerLocation(dividerPos);
+        historySplitPane.setDividerLocation(0.2);
 
         // Re-validate to ensure the UI picks up changes
         historySplitPane.revalidate();

@@ -15,7 +15,6 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
@@ -40,15 +39,8 @@ public class ContextPanel extends JPanel {
     private JPanel locSummaryLabel;
 
     // Buttons
-    private JButton editButton;
-    private JButton readOnlyButton;
-    private JButton summarizeButton;
-    private JButton dropButton;
-    private JButton copyButton;
-    private JButton pasteButton;
-    private JButton symbolButton;
-    private JButton callersButton;
-    private JButton calleesButton;
+    // Table popup menu (when no row is selected)
+    private JPopupMenu tablePopupMenu;
 
     /**
      * Constructor for the context panel
@@ -75,8 +67,7 @@ public class ContextPanel extends JPanel {
      * Build the context panel (unified table + action buttons).
      */
     private void buildContextPanel() {
-        contextTable = new JTable(new DefaultTableModel(
-                new Object[]{"LOC", "Description", "Files Referenced", "Fragment"}, 0) {
+        contextTable = new JTable(new DefaultTableModel(new Object[]{"LOC", "Description", "Files Referenced", "Fragment"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -96,20 +87,18 @@ public class ContextPanel extends JPanel {
         contextTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
         // Add custom cell renderer for the "Description" column
-        contextTable.getColumnModel().getColumn(1)
-                .setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
-                    @Override
-                    public Component getTableCellRendererComponent(
-                            JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-                        var c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                        if (value != null && value.toString().startsWith("✏️")) {
-                            setFont(getFont().deriveFont(Font.ITALIC));
-                        } else {
-                            setFont(getFont().deriveFont(Font.PLAIN));
-                        }
-                        return c;
-                    }
-                });
+        contextTable.getColumnModel().getColumn(1).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                var c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                if (value != null && value.toString().startsWith("✏️")) {
+                    setFont(getFont().deriveFont(Font.ITALIC));
+                } else {
+                    setFont(getFont().deriveFont(Font.PLAIN));
+                }
+                return c;
+            }
+        });
 
         // Files Referenced column: use our FileReferencesTableCellRenderer
         var fileRenderer = new FileReferencesTableCellRenderer();
@@ -139,8 +128,7 @@ public class ContextPanel extends JPanel {
                     var value = contextTable.getValueAt(row, col);
                     if (value != null) {
                         // Show file references in a multiline tooltip
-                        @SuppressWarnings("unchecked")
-                        List<FileReferenceData> refs = (List<FileReferenceData>) value;
+                        @SuppressWarnings("unchecked") List<FileReferenceData> refs = (List<FileReferenceData>) value;
                         if (!refs.isEmpty()) {
                             var sb = new StringBuilder("<html>");
                             for (FileReferenceData r : refs) {
@@ -169,13 +157,12 @@ public class ContextPanel extends JPanel {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
                     int row = contextTable.rowAtPoint(e.getPoint());
-                        if (row >= 0) {
-                            var fragment = (ContextFragment) contextTable.getModel()
-                                    .getValueAt(row, FRAGMENT_COLUMN);
-                            if (fragment != null) {
-                                showFragmentPreview(fragment);
-                            }
+                    if (row >= 0) {
+                        var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+                        if (fragment != null) {
+                            showFragmentPreview(fragment);
                         }
+                    }
                 }
             }
         });
@@ -215,12 +202,11 @@ public class ContextPanel extends JPanel {
 
                     if (row >= 0) {
                         // Select the row only if:
-                    // 1. No rows are currently selected, or
-                    // 2. Only one row is selected and it's not the row we clicked on
-                    if (contextTable.getSelectedRowCount() == 0 || 
-                        (contextTable.getSelectedRowCount() == 1 && contextTable.getSelectedRow() != row)) {
-                        contextTable.setRowSelectionInterval(row, row);
-                    }
+                        // 1. No rows are currently selected, or
+                        // 2. Only one row is selected and it's not the row we clicked on
+                        if (contextTable.getSelectedRowCount() == 0 || (contextTable.getSelectedRowCount() == 1 && contextTable.getSelectedRow() != row)) {
+                            contextTable.setRowSelectionInterval(row, row);
+                        }
                         var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
 
                         // Show Contents as the first action
@@ -234,21 +220,17 @@ public class ContextPanel extends JPanel {
                         // If this is the AutoContext row, show AutoContext items
                         if (fragment instanceof ContextFragment.AutoContext) {
                             JMenuItem setAutoContext5Item = new JMenuItem("Set AutoContext to 5");
-                            setAutoContext5Item.addActionListener(e1 ->
-                                    chrome.contextManager.setAutoContextFilesAsync(5));
-                            
+                            setAutoContext5Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(5));
+
                             JMenuItem setAutoContext10Item = new JMenuItem("Set AutoContext to 10");
-                            setAutoContext10Item.addActionListener(e1 ->
-                                    chrome.contextManager.setAutoContextFilesAsync(10));
-                            
+                            setAutoContext10Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(10));
+
                             JMenuItem setAutoContext20Item = new JMenuItem("Set AutoContext to 20");
-                            setAutoContext20Item.addActionListener(e1 ->
-                                    chrome.contextManager.setAutoContextFilesAsync(20));
-                            
+                            setAutoContext20Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(20));
+
                             JMenuItem setAutoContextCustomItem = new JMenuItem("Set AutoContext...");
-                            setAutoContextCustomItem.addActionListener(e1 ->
-                                    chrome.showSetAutoContextSizeDialog());
-                                    
+                            setAutoContextCustomItem.addActionListener(e1 -> chrome.showSetAutoContextSizeDialog());
+
                             contextMenu.add(setAutoContext5Item);
                             contextMenu.add(setAutoContext10Item);
                             contextMenu.add(setAutoContext20Item);
@@ -273,9 +255,7 @@ public class ContextPanel extends JPanel {
                         // If the user right-clicked on the references column, show reference options
                         var fileActionsAdded = false;
                         if (col == FILES_REFERENCED_COLUMN) {
-                            @SuppressWarnings("unchecked")
-                            List<FileReferenceData> references =
-                                    (List<FileReferenceData>) contextTable.getValueAt(row, col);
+                            @SuppressWarnings("unchecked") List<FileReferenceData> references = (List<FileReferenceData>) contextTable.getValueAt(row, col);
                             if (references != null && !references.isEmpty()) {
                                 FileReferenceData targetRef = findClickedReference(e.getPoint(), row, col, references);
                                 if (targetRef != null) {
@@ -292,28 +272,25 @@ public class ContextPanel extends JPanel {
                         // If clicking in the row but not on a specific reference, show "all references" options
                         if (!fileActionsAdded) {
                             contextMenu.addSeparator();
-                            
+
                             JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
                             editAllRefsItem.addActionListener(e1 -> {
                                 var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = contextManager.performContextActionAsync(
-                                        Chrome.ContextAction.EDIT, selectedFragments);
+                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, selectedFragments);
                             });
-                            
+
                             JMenuItem readAllRefsItem = new JMenuItem("Read All References");
                             readAllRefsItem.addActionListener(e1 -> {
                                 var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = contextManager.performContextActionAsync(
-                                        Chrome.ContextAction.READ, selectedFragments);
+                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.READ, selectedFragments);
                             });
-                            
+
                             JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
                             summarizeAllRefsItem.addActionListener(e1 -> {
                                 var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = contextManager.performContextActionAsync(
-                                        Chrome.ContextAction.SUMMARIZE, selectedFragments);
+                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.SUMMARIZE, selectedFragments);
                             });
-                            
+
                             contextMenu.add(editAllRefsItem);
                             contextMenu.add(readAllRefsItem);
                             contextMenu.add(summarizeAllRefsItem);
@@ -324,30 +301,26 @@ public class ContextPanel extends JPanel {
                         JMenuItem copySelectionItem = new JMenuItem("Copy");
                         copySelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = contextManager.performContextActionAsync(
-                                    Chrome.ContextAction.COPY, selectedFragments);
+                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
                         });
                         contextMenu.add(copySelectionItem);
 
                         JMenuItem dropSelectionItem = new JMenuItem("Drop");
                         dropSelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = contextManager.performContextActionAsync(
-                                    Chrome.ContextAction.DROP, selectedFragments);
+                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, selectedFragments);
                         });
                         contextMenu.add(dropSelectionItem);
                     } else {
-                        // If no row is selected, we only show "View History" but disable it
-                        JMenuItem viewHistoryItem = new JMenuItem("View History");
-                        viewHistoryItem.setEnabled(false);
-                        contextMenu.add(viewHistoryItem);
+                        // No row selected - show the popup with all options
+                        tablePopupMenu.show(contextTable, e.getX(), e.getY());
                     }
 
                     // Final theme registration before showing
-                        if (chrome.themeManager != null) {
-                            chrome.themeManager.registerPopupMenu(contextMenu);
-                        }
-                        contextMenu.show(contextTable, e.getX(), e.getY());
+                    if (chrome.themeManager != null) {
+                        chrome.themeManager.registerPopupMenu(contextMenu);
+                    }
+                    contextMenu.show(contextTable, e.getX(), e.getY());
                 }
             }
         });
@@ -355,39 +328,155 @@ public class ContextPanel extends JPanel {
         // Set selection mode to allow multiple selection
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
-        // Add a selection listener so we can update the context action buttons
-        contextTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                updateContextButtons();
-            }
-        });
+        // Setup right-click popup menu for when no rows are selected
+        tablePopupMenu = new JPopupMenu();
+
+        // Add options submenu
+        JMenu addMenu = new JMenu("Add");
+
+        JMenuItem editMenuItem = new JMenuItem("Edit Files");
+        editMenuItem.addActionListener(e -> {
+                                           chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, List.of());
+                                       });
+        addMenu.add(editMenuItem);
+
+        JMenuItem readMenuItem = new JMenuItem("Read Files");
+        readMenuItem.addActionListener(e -> {
+                                           chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.READ, List.of());
+                                       });
+        addMenu.add(readMenuItem);
+
+        JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
+        summarizeMenuItem.addActionListener(e -> {
+                                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.SUMMARIZE, List.of());
+                                            });
+        addMenu.add(summarizeMenuItem);
+
+        JMenuItem symbolMenuItem = new JMenuItem("Symbol Usage");
+        symbolMenuItem.addActionListener(e -> {
+                                             chrome.currentUserTask = contextManager.findSymbolUsageAsync();
+                                         });
+        addMenu.add(symbolMenuItem);
+
+        JMenuItem callersMenuItem = new JMenuItem("Callers");
+        callersMenuItem.addActionListener(e -> {
+                                              chrome.currentUserTask = contextManager.findMethodCallersAsync();
+                                          });
+        addMenu.add(callersMenuItem);
+
+        JMenuItem calleesMenuItem = new JMenuItem("Callees");
+        calleesMenuItem.addActionListener(e -> {
+                                              chrome.currentUserTask = contextManager.findMethodCalleesAsync();
+                                          });
+        addMenu.add(calleesMenuItem);
+
+        tablePopupMenu.add(addMenu);
+        tablePopupMenu.addSeparator();
+
+        JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
+        dropAllMenuItem.addActionListener(e -> {
+                                              chrome.disableContextActionButtons();
+                                              chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, List.of());
+                                          });
+        tablePopupMenu.add(dropAllMenuItem);
+
+        JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
+        copyAllMenuItem.addActionListener(e -> {
+                                              chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, List.of());
+                                          });
+        tablePopupMenu.add(copyAllMenuItem);
+
+        JMenuItem pasteMenuItem = new JMenuItem("Paste");
+        pasteMenuItem.addActionListener(e -> {
+                                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
+                                        });
+        tablePopupMenu.add(pasteMenuItem);
+
+        // Register the popup menu with the theme manager
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(tablePopupMenu);
+        } else {
+            SwingUtilities.invokeLater(() -> {
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(tablePopupMenu);
+                }
+            });
+        }
+
+        // Add a selection listener so we can update the action availability
+        contextTable.getSelectionModel().
+
+                addListSelectionListener(e ->
+
+                                         {
+                                             if (!e.getValueIsAdjusting()) {
+                                                 updateContextActions();
+                                             }
+                                         });
 
         // Build summary panel
         var contextSummaryPanel = new JPanel(new BorderLayout());
-        locSummaryLabel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        locSummaryLabel = new
+
+                JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         JLabel innerLabel = new JLabel(" ");
-        innerLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        innerLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
+        innerLabel.setFont(new
+
+                                   Font(Font.MONOSPACED, Font.PLAIN, 12));
+        innerLabel.setBorder(new
+
+                                     EmptyBorder(5, 5, 5, 5));
         locSummaryLabel.add(innerLabel);
         locSummaryLabel.setBorder(BorderFactory.createEmptyBorder());
         contextSummaryPanel.add(locSummaryLabel, BorderLayout.NORTH);
 
         // Table panel
         var tablePanel = new JPanel(new BorderLayout());
-        var tableScrollPane = new JScrollPane(
-                contextTable,
-                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
-        );
+        var tableScrollPane = new JScrollPane(contextTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         tableScrollPane.setPreferredSize(new Dimension(600, 150));
+        
+        // Add a mouse listener to the scroll pane for right-clicks on empty areas
+        tableScrollPane.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                handleScrollPanePopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                handleScrollPanePopup(e);
+            }
+
+            private void handleScrollPanePopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    // Only show if we're not on the table itself
+                    Point viewPosition = tableScrollPane.getViewport().getViewPosition();
+                    Rectangle tableRect = new Rectangle(viewPosition, tableScrollPane.getViewport().getExtentSize());
+                    
+                    // Get the event point in view coordinates
+                    Point viewPoint = SwingUtilities.convertPoint(tableScrollPane, e.getPoint(), 
+                                                                 tableScrollPane.getViewport().getView());
+                    
+                    // If the click is in the table and on a row, let the table's listener handle it
+                    if (contextTable.getRowCount() > 0) {
+                        int row = contextTable.rowAtPoint(viewPoint);
+                        if (row >= 0) {
+                            return;
+                        }
+                    }
+                    
+                    // Otherwise show the table popup menu
+                    tablePopupMenu.show(tableScrollPane, e.getX(), e.getY());
+                }
+            }
+        });
+        
         tablePanel.add(tableScrollPane, BorderLayout.CENTER);
 
-        // Context action buttons
-        var buttonsPanel = createContextButtonsPanel();
-
         setLayout(new BorderLayout());
+
         add(tablePanel, BorderLayout.CENTER);
-        add(buttonsPanel, BorderLayout.EAST);
+
         add(contextSummaryPanel, BorderLayout.SOUTH);
 
         addMouseListener(new MouseAdapter() {
@@ -398,128 +487,7 @@ public class ContextPanel extends JPanel {
         });
     }
 
-    /**
-     * Creates the panel with context action buttons: edit/read/summarize/drop/copy/paste/symbol
-     */
-    private JPanel createContextButtonsPanel() {
-        var buttonsPanel = new JPanel();
-        buttonsPanel.setLayout(new BoxLayout(buttonsPanel, BoxLayout.Y_AXIS));
-        buttonsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
-        editButton = new JButton("Edit Files");
-        editButton.setMnemonic(KeyEvent.VK_D);
-        editButton.setToolTipText("Add project files as editable context");
-        editButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.EDIT, List.of());
-        });
-
-        readOnlyButton = new JButton("Read Files");
-        readOnlyButton.setMnemonic(KeyEvent.VK_R);
-        readOnlyButton.setToolTipText("Add project or external files as read-only context");
-        readOnlyButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.READ, List.of());
-        });
-
-        summarizeButton = new JButton("Summarize Files");
-        summarizeButton.setMnemonic(KeyEvent.VK_M);
-        summarizeButton.setToolTipText("Summarize the classes in project files");
-        summarizeButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.SUMMARIZE, List.of());
-        });
-
-        dropButton = new JButton("Drop All");
-        dropButton.setMnemonic(KeyEvent.VK_P); // changed from VK_D
-        dropButton.setToolTipText("Drop all or selected context entries");
-        dropButton.addActionListener(e -> {
-            chrome.disableContextActionButtons();
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.DROP, List.of());
-        });
-
-        copyButton = new JButton("Copy All");
-        copyButton.setToolTipText("Copy all or selected context entries to clipboard");
-        copyButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.COPY, List.of());
-        });
-
-        pasteButton = new JButton("Paste");
-        pasteButton.setToolTipText("Paste the clipboard contents as a new context entry");
-        pasteButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(
-                    Chrome.ContextAction.PASTE, List.of());
-        });
-
-        symbolButton = new JButton("Symbol Usage");
-        symbolButton.setMnemonic(KeyEvent.VK_Y);
-        symbolButton.setToolTipText("Find uses of a class, method, or field");
-        symbolButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.findSymbolUsageAsync();
-        });
-
-        callersButton = new JButton("Callers");
-        callersButton.setMnemonic(KeyEvent.VK_C);
-        callersButton.setToolTipText("Find methods that call a selected method");
-        callersButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.findMethodCallersAsync();
-        });
-
-        calleesButton = new JButton("Callees");
-        calleesButton.setMnemonic(KeyEvent.VK_L);
-        calleesButton.setToolTipText("Find methods called by a selected method");
-        calleesButton.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.findMethodCalleesAsync();
-        });
-
-        // Use a prototype button to fix sizes
-        var prototypeButton = new JButton("Summarize selected");
-        var buttonSize = prototypeButton.getPreferredSize();
-        var preferredSize = new Dimension(buttonSize.width, editButton.getPreferredSize().height);
-
-        // Set sizes
-        editButton.setPreferredSize(preferredSize);
-        readOnlyButton.setPreferredSize(preferredSize);
-        summarizeButton.setPreferredSize(preferredSize);
-        dropButton.setPreferredSize(preferredSize);
-        copyButton.setPreferredSize(preferredSize);
-        pasteButton.setPreferredSize(preferredSize);
-        symbolButton.setPreferredSize(preferredSize);
-
-        editButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        readOnlyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        summarizeButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        dropButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        copyButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        pasteButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        symbolButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        callersButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-        calleesButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-
-        buttonsPanel.add(editButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(readOnlyButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(summarizeButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(symbolButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(callersButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(calleesButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(dropButton);
-        buttonsPanel.add(Box.createVerticalGlue());
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(copyButton);
-        buttonsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        buttonsPanel.add(pasteButton);
-        
-        return buttonsPanel;
-    }
-    
     /**
      * Gets the list of selected fragments
      */
@@ -534,49 +502,13 @@ public class ContextPanel extends JPanel {
     }
 
     /**
-     * Updates the buttons based on context availability
+     * Updates actions based on context availability
      */
-    public void updateContextButtons() {
+    public void updateContextActions() {
         SwingUtilities.invokeLater(() -> {
             var ctx = (contextManager == null) ? null : contextManager.selectedContext();
             boolean hasContext = (ctx != null && !ctx.isEmpty());
-            dropButton.setEnabled(hasContext);
-            copyButton.setEnabled(hasContext);
-        });
-    }
-
-    /**
-     * Disables the context action buttons
-     */
-    public void disableContextActionButtons() {
-        SwingUtilities.invokeLater(() -> {
-            editButton.setEnabled(false);
-            readOnlyButton.setEnabled(false);
-            summarizeButton.setEnabled(false);
-            dropButton.setEnabled(false);
-            copyButton.setEnabled(false);
-            pasteButton.setEnabled(false);
-            symbolButton.setEnabled(false);
-            callersButton.setEnabled(false);
-            calleesButton.setEnabled(false);
-        });
-    }
-
-    /**
-     * Re-enables context action buttons
-     */
-    public void enableContextActionButtons() {
-        SwingUtilities.invokeLater(() -> {
-            editButton.setEnabled(true);
-            readOnlyButton.setEnabled(true);
-            summarizeButton.setEnabled(true);
-            dropButton.setEnabled(true);
-            copyButton.setEnabled(true);
-            pasteButton.setEnabled(true);
-            symbolButton.setEnabled(true);
-            callersButton.setEnabled(true);
-            calleesButton.setEnabled(true);
-            updateContextButtons();
+            // Context actions are now in menus, but we need this for Chrome to check status
         });
     }
 
@@ -587,7 +519,7 @@ public class ContextPanel extends JPanel {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
         var tableModel = (DefaultTableModel) contextTable.getModel();
         tableModel.setRowCount(0);
-        updateContextButtons();
+        updateContextActions();
 
         if (ctx == null || ctx.isEmpty()) {
             ((JLabel) locSummaryLabel.getComponent(0)).setText(
@@ -659,9 +591,7 @@ public class ContextPanel extends JPanel {
         }
     }
 
-    public JButton getEditButton() {
-        return editButton;
-    }
+// No longer needed as edit button is now in the menu
 
     /**
      * Called by Chrome to refresh the table if context changes
