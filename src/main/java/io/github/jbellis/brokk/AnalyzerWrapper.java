@@ -62,22 +62,6 @@ public class AnalyzerWrapper {
     }
 
     /**
-     * Helper method to schedule a task that waits for the future to complete
-     * and then notifies the listener.
-     */
-    private void notifyOnCompletion(Future<Analyzer> future) {
-        runner.submit("Updating with new Code Intelligence", () -> {
-            try {
-                Analyzer builtAnalyzer = future.get();
-                currentAnalyzer = builtAnalyzer;
-            } catch (Exception e) {
-                logger.error("Error waiting for analyzer build", e);
-            }
-            return null;
-        });
-    }
-
-    /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
     public AnalyzerWrapper(Project project, TaskRunner runner, AnalyzerListener listener) {
@@ -88,7 +72,6 @@ public class AnalyzerWrapper {
 
         // build the initial Analyzer
         future = runner.submit("Initializing code intelligence", this::loadOrCreateAnalyzer);
-        notifyOnCompletion(future);
     }
 
     private void beginWatching(Path root) {
@@ -334,7 +317,6 @@ public class AnalyzerWrapper {
                 }
             }
         });
-        notifyOnCompletion(future);
     }
 
     /**
