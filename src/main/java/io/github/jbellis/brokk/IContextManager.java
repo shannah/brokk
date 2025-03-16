@@ -25,6 +25,18 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
+    default <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
+        try {
+            return CompletableFuture.completedFuture(task.call());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    default void replaceContext(Context newContext, Context replacement) {
+        // no-op
+    }
+
     default void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action) {
     }
 

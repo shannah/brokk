@@ -175,22 +175,6 @@ public class ContextManager implements IContextManager
             public void onFirstBuild(String msg) {
                 SwingUtilities.invokeLater(() -> io.systemOutput(msg));
             }
-
-            @Override
-            public void onBuildComplete() {
-                submitBackgroundTask("Refreshing AutoContext", () -> {
-                    var ch = getContextHistory(); // copies
-                    for (int i = ch.size() - 1; i >= 0; i--) {
-                        var old = ch.get(i);
-                        if (old.autoContext == ContextFragment.AutoContext.REBUILDING) {
-                            replaceContext(old, old.refresh());
-                        }
-                    }
-                    chrome.updateContextTable();
-                    chrome.updateContextHistoryTable();
-                    return null;
-                });
-            }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
 
@@ -203,7 +187,7 @@ public class ContextManager implements IContextManager
             initialContext = new Context(this, 10, welcomeMessage);
         } else {
             // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization
-            initialContext = initialContext.needsRefresh();
+            initialContext = initialContext.refresh();
         }
         contextHistory.set(List.of(initialContext));
         chrome.onContextHistoryChanged();
@@ -212,7 +196,8 @@ public class ContextManager implements IContextManager
         ensureBuildCommand(coder);
     }
 
-    private void replaceContext(Context context, Context replacement) {
+    @Override
+    public void replaceContext(Context context, Context replacement) {
         synchronized (ContextManager.this) {
             var ch = new ArrayList<>(contextHistory.get());
             long start = System.currentTimeMillis();
@@ -1410,6 +1395,7 @@ public class ContextManager implements IContextManager
     /**
      * Submits a background task to the internal background executor (non-user actions).
      */
+    @Override
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
         assert taskDescription != null;
         assert !taskDescription.isBlank();
