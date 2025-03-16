@@ -75,10 +75,10 @@ public class Context implements Serializable {
     }
 
     /**
-     * Constructor for initial empty context with empty output
+     * Constructor for initial empty context with empty output. Tests only
      */
-    public Context(IContextManager contextManager, int autoContextFileCount) {
-        this(contextManager, autoContextFileCount, "");
+    Context(IContextManager contextManager, int autoContextFileCount) {
+        this(contextManager, autoContextFileCount, "placeholder");
     }
 
     private Context(
