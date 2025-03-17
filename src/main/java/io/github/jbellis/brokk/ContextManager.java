@@ -53,6 +53,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import io.github.jbellis.brokk.history.ContextHistory;
+import io.github.jbellis.brokk.history.ContextHistory.UndoResult;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -138,11 +140,8 @@ public class ContextManager implements IContextManager
 
     public enum Mode { EDIT, APPLY }
 
-    // Keep contexts for undo/redo
-    private static final int MAX_UNDO_DEPTH = 100;
-    // access to contextHistory must be synchronized since multiple threads call those methods
-    private final AtomicReference<List<Context>> contextHistory = new AtomicReference<>(List.of());
-    private final List<Context> redoHistory = new ArrayList<>();
+    // Context history for undo/redo functionality
+    private final ContextHistory contextHistory;
 
     /**
      * Minimal constructor called from Brokk
@@ -150,6 +149,7 @@ public class ContextManager implements IContextManager
     public ContextManager(Path root)
     {
         this.root = root.toAbsolutePath().normalize();
+        this.contextHistory = new ContextHistory();
         userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
         });
@@ -194,7 +194,7 @@ public class ContextManager implements IContextManager
             // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization
             initialContext = initialContext.refresh();
         }
-        contextHistory.set(List.of(initialContext));
+        contextHistory.setInitialContext(initialContext);
         chrome.onContextHistoryChanged();
 
         ensureStyleGuide();
@@ -203,27 +203,7 @@ public class ContextManager implements IContextManager
 
     @Override
     public void replaceContext(Context context, Context replacement) {
-        synchronized (contextHistory) {
-            var ch = new ArrayList<>(contextHistory.get());
-            long start = System.currentTimeMillis();
-            while (System.currentTimeMillis() - start < 1_000) {
-                var i = ch.indexOf(context);
-                if (i == -1) {
-                    // AutoContext build finished before we added it to history
-                    try {
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                    continue;
-                }
-
-                ch.set(i, replacement);
-                contextHistory.set(List.copyOf(ch));
-                break;
-            }
-        }
-
+        contextHistory.replaceContext(context, replacement);
         io.updateContextHistoryTable();
         io.updateContextTable();
     }
@@ -268,8 +248,7 @@ public class ContextManager implements IContextManager
      */
     public Context topContext()
     {
-        var ch = contextHistory.get();
-        return ch.isEmpty() ? null : ch.getLast();
+        return contextHistory.topContext();
     }
 
     /**
@@ -278,10 +257,10 @@ public class ContextManager implements IContextManager
     public Context selectedContext()
     {
         var selected = getSelectedHistoryIndex();
-        if (selected < 0 || selected >= contextHistory.get().size()) {
+        if (selected < 0 || selected >= contextHistory.size()) {
             return topContext();
         }
-        return contextHistory.get().get(selected);
+        return contextHistory.getContextAt(selected);
     }
 
     public Path getRoot()
@@ -837,25 +816,13 @@ public class ContextManager implements IContextManager
     {
         return contextActionExecutor.submit(() -> {
             try {
-                int finalStepsToUndo;
-                synchronized (contextHistory) {
-                    var ch = new ArrayList<>(contextHistory.get());
-                    finalStepsToUndo = Math.min(stepsToUndo, ch.size() - 1);
-                    if (ch.size() <= 1) {
-                        io.toolErrorRaw("no undo state available");
-                        return;
-                    }
-
-                    for (int i = 0; i < finalStepsToUndo; i++) {
-                        var popped = ch.removeLast();
-                        var redoContext = undoAndInvertChanges(popped);
-                        redoHistory.add(redoContext);
-                    }
-                    contextHistory.set(List.copyOf(ch));
+                UndoResult result = contextHistory.undo(stepsToUndo, this::undoAndInvertChanges);
+                if (result.wasUndone()) {
+                    io.onContextHistoryChanged();
+                    io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
+                } else {
+                    io.toolErrorRaw("no undo state available");
                 }
-
-                io.onContextHistoryChanged();
-                io.systemOutput("Undid " + finalStepsToUndo + " step" + (finalStepsToUndo > 1 ? "s" : "") + "!");
             } catch (CancellationException cex) {
                 io.systemOutput("Undo canceled.");
             } finally {
@@ -870,19 +837,13 @@ public class ContextManager implements IContextManager
     {
         return contextActionExecutor.submit(() -> {
             try {
-                synchronized (contextHistory) {
-                    var ch = new ArrayList<>(contextHistory.get());
-                    if (redoHistory.isEmpty()) {
-                        io.toolErrorRaw("no redo state available");
-                        return;
-                    }
-                    var popped = redoHistory.removeLast();
-                    var undoContext = undoAndInvertChanges(popped);
-                    ch.add(undoContext);
-                    contextHistory.set(List.copyOf(ch));
+                boolean wasRedone = contextHistory.redo(this::undoAndInvertChanges);
+                if (wasRedone) {
+                    io.onContextHistoryChanged();
+                    io.systemOutput("Redo!");
+                } else {
+                    io.toolErrorRaw("no redo state available");
                 }
-                io.onContextHistoryChanged();
-                io.systemOutput("Redo!");
             } catch (CancellationException cex) {
                 io.systemOutput("Redo canceled.");
             } finally {
@@ -1266,39 +1227,12 @@ public class ContextManager implements IContextManager
     {
         assert !SwingUtilities.isEventDispatchThread();
 
-        Context newContext;
-        synchronized (contextHistory) {
-            var ch = new ArrayList<>(contextHistory.get());
-            try {
-                // Check if there's a history selection that's not the current context
-                int selectedIndex = getSelectedHistoryIndex();
-                if (selectedIndex >= 0 && selectedIndex < ch.size() - 1) {
-                    // Truncate history to the selected point (without adding to redo)
-                    int currentSize = ch.size();
-                    for (int i = currentSize - 1; i > selectedIndex; i--) {
-                        ch.removeLast();
-                    }
-                    // Current context is now at the selected point
-                }
-
-                newContext = contextGenerator.apply(topContext());
-                if (newContext == topContext()) {
-                    return;
-                }
-
-                ch.add(newContext);
-                if (ch.size() > MAX_UNDO_DEPTH) {
-                    ch.removeFirst();
-                }
-                redoHistory.clear();
-            } finally {
-                contextHistory.set(List.copyOf(ch));
-            }
+        int selectedIndex = getSelectedHistoryIndex();
+        Context newContext = contextHistory.pushContext(contextGenerator, selectedIndex);
+        if (newContext != null) {
+            io.onContextHistoryChanged();
+            project.saveContext(newContext);
         }
-        io.onContextHistoryChanged();
-
-        // Save the current context to workspace properties
-        project.saveContext(newContext);
     }
 
     /**
@@ -1561,7 +1495,7 @@ public class ContextManager implements IContextManager
     }
 
     public List<Context> getContextHistory() {
-        return contextHistory.get();
+        return contextHistory.getHistory();
     }
 
     @Override
