@@ -156,8 +156,32 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * @return the full source code of the file containing the class as a String
    */
   override def getClassSource(className: String): java.lang.String = {
-    val classNodes = cpg.typeDecl.fullNameExact(className).l
+    // Try exact match first
+    var classNodes = cpg.typeDecl.fullNameExact(className).l
 
+    // If no exact match, try fuzzy matching
+    if (classNodes.isEmpty) {
+      // First attempt: match against simple name (non-fully qualified)
+      val simpleClassName = className.split("[.$]").last
+      val nameMatches = cpg.typeDecl.name(simpleClassName).l
+      
+      if (nameMatches.size == 1) {
+        // If there's exactly one match with this simple name, use it
+        classNodes = nameMatches
+      } else if (nameMatches.size > 1) {
+        // Second attempt: try replacing $ with . in matches to see if we get a unique match
+        val dotClassName = className.replace('$', '.')
+        val dotMatches = nameMatches.filter(td => 
+          td.fullName.replace('$', '.') == dotClassName
+        )
+        
+        if (dotMatches.size == 1) {
+          classNodes = dotMatches
+        }
+      }
+    }
+
+    // Still no match after fuzzy matching
     if (classNodes.isEmpty) {
       return null
     }
