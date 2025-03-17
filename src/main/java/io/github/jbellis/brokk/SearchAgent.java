@@ -771,11 +771,6 @@ public class SearchAgent {
                 .toList();
 
         if (!answerTools.isEmpty()) {
-            // If pagerank hasn't been called and we're not in beast mode, add a related classes call
-            if (!hasCalledTool("getRelatedClasses") && !beastMode && actionHistorySize() < 0.8 * TOKEN_BUDGET) {
-                logger.debug("Forging getRelatedClasses call before finalizing with answer/abort");
-                return List.of(createRelatedClassesCall());
-            }
             return List.of(answerTools.getFirst());
         }
 
