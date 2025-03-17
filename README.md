@@ -131,8 +131,6 @@ Other languages will follow.
 
 ### Known issues
 
-- Opening different projects is not yet supported, Brokk always works on the project from cwd
-  that it was executed from
 - "Stop" button does not work during search.  This is caused by https://github.com/langchain4j/langchain4j/issues/2658
 - Joern (the code intelligence engine) needs to run delombok before it can analyze anything.
   Delombok is extremely slow for anything but trivial projects, making Brokk a poor fit for
@@ -155,4 +153,4 @@ There is a [Brokk Discord](https://discord.gg/QjhQDK8kAj) for questions and sugg
 
 - Brokk doesn't offer automatic running of tests (too much variance in what you might want it to do).
   Instead, Brokk allows you to run arbitrary shell commands, and import those as context with "Capture Text"
-  or "Edit Files."
+  or "Edit Files."  You can easily run your tests this way and have Brokk work on the results.
