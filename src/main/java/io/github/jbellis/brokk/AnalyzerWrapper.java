@@ -6,23 +6,25 @@ import java.awt.KeyboardFocusManager;
 import io.github.jbellis.brokk.analyzer.Analyzer;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.RepoFile;
-import io.methvin.watcher.DirectoryChangeEvent;
-import io.methvin.watcher.DirectoryWatcher;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+
 import javax.swing.*;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -37,7 +39,6 @@ public class AnalyzerWrapper {
     private final AnalyzerListener listener; // can be null if no one is listening
     private final Path root;
     private final TaskRunner runner;
-    private final BlockingQueue<DirectoryChangeEvent> eventQueue = new LinkedBlockingQueue<>();
     private final Project project;
 
     private volatile boolean running = true;
@@ -76,101 +77,70 @@ public class AnalyzerWrapper {
 
     private void beginWatching(Path root) {
         try {
-            future.get(); // Wait for the initial analyzer to be built
+            // Wait for the initial analyzer to build
+            future.get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
 
-        logger.debug("Setting up directoryWatcher");
-        DirectoryWatcher directoryWatcher;
-        try {
-            directoryWatcher = DirectoryWatcher.builder()
-                    .path(root)
-                    .listener(event -> {
-                        // Check for overflow
-                        if (event.eventType() == DirectoryChangeEvent.EventType.OVERFLOW) {
-                            return;
-                        }
+        logger.debug("Setting up WatchService");
+        try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
+            // Recursively register all directories except .brokk
+            registerAllDirectories(root, watchService);
 
-                        // Filter out changes in .brokk or the log file (also in .brokk but doesn't show that way in the events)
-                        Path changedAbs = event.path();
-                        String changedAbsStr = changedAbs.toString();
-                        if (changedAbsStr.contains("${sys:logfile.path}")
-                                || changedAbs.startsWith(root.resolve(".brokk"))) {
-                            return;
-                        }
-
-                        logger.trace("Directory event: {} on {}", event.eventType(), changedAbs);
-                        boolean offered = eventQueue.offer(event);
-                        assert offered;
-                    })
-                    .build();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        // start watching!
-        directoryWatcher.watchAsync();
-        eventLoop();
-    }
-
-    /**
-     * The single-threaded loop that drains the eventQueue, applies debouncing,
-     * and triggers rebuild when needed.
-     */
-    private void eventLoop() {
-        while (running) {
-            try {
-                // Wait for the first event (with a timeout to let the loop exit if idle)
-                // Use longer poll time if application is not in focus
+            // Watche for events, debounces them, and handles them
+            while (running) {
+                // Choose a short or long poll depending on focus
                 long pollTimeout = isApplicationFocused() ? POLL_TIMEOUT_FOCUSED_MS : POLL_TIMEOUT_UNFOCUSED_MS;
-                DirectoryChangeEvent firstEvent = eventQueue.poll(pollTimeout, TimeUnit.MILLISECONDS);
-                if (firstEvent == null) {
+                WatchKey key = watchService.poll(pollTimeout, TimeUnit.MILLISECONDS);
+
+                // If no event arrived within the poll window, check for external rebuild requests
+                if (key == null) {
                     if (externalRebuildRequested && !rebuildInProgress) {
                         logger.debug("External rebuild requested");
                         rebuild();
                     }
-                    continue; // Nothing arrived within 1s; loop again
+                    continue;
                 }
 
-                // Once we get an event, gather more events arriving during the debounce window.
-                Set<DirectoryChangeEvent> batch = new HashSet<>();
-                batch.add(firstEvent);
-                long deadline = System.currentTimeMillis() + DEBOUNCE_DELAY_MS;
+                // We got an event, collect it and any others within the debounce window
+                var batch = new HashSet<FileChangeEvent>();
+                collectEventsFromKey(key, watchService, batch);
 
+                long deadline = System.currentTimeMillis() + DEBOUNCE_DELAY_MS;
                 while (true) {
                     long remaining = deadline - System.currentTimeMillis();
-                    if (remaining <= 0) {
-                        break;
-                    }
-                    DirectoryChangeEvent next = eventQueue.poll(remaining, TimeUnit.MILLISECONDS);
-                    if (next == null) {
-                        break;
-                    }
-                    batch.add(next);
+                    if (remaining <= 0) break;
+                    WatchKey nextKey = watchService.poll(remaining, TimeUnit.MILLISECONDS);
+                    if (nextKey == null) break;
+                    collectEventsFromKey(nextKey, watchService, batch);
                 }
 
-                // We have a batch of events that arrived within DEBOUNCE_DELAY_MS
+                // Process the batch
                 handleBatch(batch);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                logger.warn("Orchestrator thread interrupted; shutting down");
-                running = false;
             }
         }
+        catch (IOException e) {
+            logger.error("Error setting up watch service", e);
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("FileWatchService thread interrupted; shutting down");
+        }
     }
+
 
     /**
      * Check if changes in this batch of events require a .git refresh and/or analyzer rebuild.
      */
-    private void handleBatch(Set<DirectoryChangeEvent> batch) {
+    private void handleBatch(Set<FileChangeEvent> batch) {
         // 1) Possibly refresh Git
         boolean needsGitRefresh = batch.stream().anyMatch(event -> {
             Path gitDir = root.resolve(".git");
-            return event.path().startsWith(gitDir)
-                    && (event.eventType() == DirectoryChangeEvent.EventType.CREATE
-                    || event.eventType() == DirectoryChangeEvent.EventType.DELETE
-                    || event.eventType() == DirectoryChangeEvent.EventType.MODIFY);
+            return event.path.startsWith(gitDir)
+                    && (event.type == EventType.CREATE
+                    || event.type == EventType.DELETE
+                    || event.type == EventType.MODIFY);
         });
         if (needsGitRefresh) {
             logger.debug("Refreshing git due to changes in .git directory");
@@ -184,13 +154,13 @@ public class AnalyzerWrapper {
                 .collect(Collectors.toSet());
 
         boolean needsAnalyzerRefresh = batch.stream()
-                .anyMatch(event -> trackedPaths.contains(event.path()));
+                .anyMatch(event -> trackedPaths.contains(event.path));
 
         if (needsAnalyzerRefresh) {
             logger.debug("Rebuilding analyzer due to changes in tracked files: {}",
                          batch.stream()
-                                 .filter(e -> trackedPaths.contains(e.path()))
-                                 .map(e -> e.path().toString())
+                                 .filter(e -> trackedPaths.contains(e.path))
+                                 .map(e -> e.path.toString())
                                  .collect(Collectors.joining(", "))
             );
             rebuild();
@@ -398,7 +368,88 @@ public class AnalyzerWrapper {
         Thread watcherThread = new Thread(() -> beginWatching(root), "DirectoryWatcher");
         watcherThread.start();
     }
+    
+    private void collectEventsFromKey(WatchKey key, WatchService watchService, Set<FileChangeEvent> batch)
+    {
+        for (WatchEvent<?> event : key.pollEvents()) {
+            @SuppressWarnings("unchecked")
+            WatchEvent<Path> pathEvent = (WatchEvent<Path>) event;
+            Path relativePath = pathEvent.context();
+            Path parentDir = (Path) key.watchable();
+            Path absolutePath = parentDir.resolve(relativePath);
+
+            if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
+                logger.debug("Overflow event: {}", absolutePath);
+                continue;
+            }
+
+            // Skip .brokk or log file paths
+            String pathStr = absolutePath.toString();
+            if (pathStr.contains("${sys:logfile.path}") ||
+                absolutePath.startsWith(root.resolve(".brokk"))) {
+                continue;
+            }
+
+            WatchEvent.Kind<Path> kind = pathEvent.kind();
+            EventType eventType = switch (kind.name()) {
+                case "ENTRY_CREATE" -> EventType.CREATE;
+                case "ENTRY_DELETE" -> EventType.DELETE;
+                case "ENTRY_MODIFY" -> EventType.MODIFY;
+                default -> EventType.OVERFLOW;
+            };
+
+            logger.trace("Directory event: {} on {}", eventType, absolutePath);
+            batch.add(new FileChangeEvent(eventType, absolutePath));
+
+            // If it's a directory creation, register it so we can watch its children
+            if (eventType == EventType.CREATE && Files.isDirectory(absolutePath)) {
+                try {
+                    registerAllDirectories(absolutePath, watchService);
+                } catch (IOException ex) {
+                    logger.warn("Failed to register new directory for watching: {}", absolutePath, ex);
+                }
+            }
+        }
+
+        // If the key is no longer valid, we can't watch this path anymore
+        if (!key.reset()) {
+            logger.debug("Watch key no longer valid: {}", key.watchable());
+        }
+    }
+    
+    private void registerAllDirectories(Path start, WatchService watchService) throws IOException
+    {
+        if (!Files.isDirectory(start)) return;
+
+        // Skip .brokk itself
+        if (start.getFileName() != null && start.getFileName().toString().equals(".brokk")) {
+            return;
+        }
+
+        try (var walker = Files.walk(start)) {
+            walker.filter(Files::isDirectory)
+                  .filter(dir -> !dir.toString().contains(".brokk"))
+                  .forEach(dir -> {
+                      try {
+                          dir.register(watchService,
+                                       StandardWatchEventKinds.ENTRY_CREATE,
+                                       StandardWatchEventKinds.ENTRY_DELETE,
+                                       StandardWatchEventKinds.ENTRY_MODIFY);
+                      } catch (IOException e) {
+                          logger.warn("Failed to register directory for watching: {}", dir, e);
+                      }
+                  });
+        }
+    }
 
     public record CodeWithSource(String code, Set<CodeUnit> sources) {
+    }
+    
+    // Internal event representation to replace DirectoryChangeEvent
+    private enum EventType {
+        CREATE, MODIFY, DELETE, OVERFLOW
+    }
+    
+    private record FileChangeEvent(EventType type, Path path) {
     }
 }
