@@ -17,6 +17,7 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import scala.Option;
 import scala.Tuple2;
 
 import java.io.IOException;
@@ -938,8 +939,19 @@ public class SearchAgent {
             return "No related code found via PageRank";
         }
 
+        var prResult = classNames.stream().distinct()
+                .limit(10) // padding in case of not defined
+                .map(analyzer::getSkeleton)
+                .filter(Option::isDefined)
+                .limit(5)
+                .map(Option::get)
+                .collect(Collectors.joining("\n\n"));
+        var formattedPrResult = prResult.isEmpty() ? "" : "# Summaries of top 5 related classes: \n\n" + prResult + "\n\n";
+
         List<String> resultsList = pageRankResults.stream().limit(50).collect(Collectors.toList());
-        return formatCompressedSymbols("Related classes", resultsList);
+        var formattedResults = formatCompressedSymbols("# List of related classes", resultsList);
+
+        return formattedPrResult + formattedResults;
     }
 
     /**
@@ -954,28 +966,16 @@ public class SearchAgent {
             return "Cannot get skeletons: class names list is empty";
         }
 
-        StringBuilder result = new StringBuilder();
-        Set<String> processedSkeletons = new HashSet<>();
+        var result = classNames.stream().distinct().map(analyzer::getSkeleton)
+                .filter(Option::isDefined)
+                .map(Option::get)
+                .collect(Collectors.joining("\n\n"));
 
-        for (String className : classNames) {
-            var skeletonOpt = analyzer.getSkeleton(className);
-            if (skeletonOpt.isDefined()) {
-                String skeleton = skeletonOpt.get();
-                if (!processedSkeletons.contains(skeleton)) {
-                    processedSkeletons.add(skeleton);
-                    if (!result.isEmpty()) {
-                        result.append("\n\n");
-                    }
-                    result.append(skeleton);
-                }
-            }
-        }
-
-        if (result.length() == 0) {
+        if (result.isEmpty()) {
             return "No skeletons found for classes: " + String.join(", ", classNames);
         }
 
-        return result.toString();
+        return result;
     }
 
     /**
