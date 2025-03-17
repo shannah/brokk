@@ -270,7 +270,6 @@ public class Project implements IProject {
         try {
             String json = workspaceProps.getProperty("textHistory");
             if (json != null && !json.isEmpty()) {
-                logger.debug("Loading text history from workspace properties: {}", json);
                 List<String> result = objectMapper.readValue(json,
                                                              objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
                 logger.debug("Loaded {} history items", result.size());

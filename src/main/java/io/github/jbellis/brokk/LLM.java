@@ -55,7 +55,7 @@ public class LLM {
             // Actually send the message to the LLM and get the response
             var allMessages = new ArrayList<>(contextMessages);
             allMessages.addAll(requestMessages);
-            logger.debug("Sending to LLM [only last message shown]: {}", allMessages);
+            logger.debug("runSession sending to LLM [only last message shown]: {}", allMessages.getLast());
 
             var streamingResult = coder.sendStreaming(model, allMessages, true);
 
