@@ -272,10 +272,16 @@ public class ContextManager implements IContextManager
             String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
             io.llmOutput("\n```\n" + output + "\n```");
 
+            var llmOutputText = io.getLlmOutputText();
+            if (llmOutputText == null) {
+                io.systemOutput("Interrupted!");
+                return;
+            }
+
             // Add to context history with the output text
             pushContext(ctx -> {
                 var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
-                var parsed = new ParsedOutput(io.getLlmOutputText(), runFrag);
+                var parsed = new ParsedOutput(llmOutputText, runFrag);
                 return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
             });
         });
@@ -922,7 +928,14 @@ public class ContextManager implements IContextManager
         } else {
             query = CompletableFuture.completedFuture(fragment.description());
         }
-        var parsed = new ParsedOutput(io.getLlmOutputText(), fragment);
+
+        var llmOutputText = io.getLlmOutputText();
+        if (llmOutputText == null) {
+            io.systemOutput("Interrupted!");
+            return;
+        }
+
+        var parsed = new ParsedOutput(llmOutputText, fragment);
         pushContext(ctx -> ctx.addSearchFragment(query, parsed));
     }
 
@@ -1505,7 +1518,12 @@ public class ContextManager implements IContextManager
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        var parsed = new ParsedOutput(io.getLlmOutputText(), new ContextFragment.StringFragment(io.getLlmOutputText(), "ai Response"));
+        var llmOutputText = io.getLlmOutputText();
+        if (llmOutputText == null) {
+            io.systemOutput("Interrupted!");
+            return;
+        }
+        var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
         pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 
