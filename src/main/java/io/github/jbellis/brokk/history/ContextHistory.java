@@ -84,23 +84,12 @@ public class ContextHistory {
     /**
      * Push a new context onto the history stack
      * @param contextGenerator Function to generate the new context from the current one
-     * @param selectedIndex Currently selected index in the UI, or -1 if top context
      * @return The new context that was added, or null if no change occurred
      */
-    public synchronized Context pushContext(Function<Context, Context> contextGenerator, int selectedIndex) {
+    public synchronized Context pushContext(Function<Context, Context> contextGenerator) {
         Context newContext;
         var hist = new ArrayList<>(history.get());
         try {
-            // Check if there's a history selection that's not the current context
-            if (selectedIndex >= 0 && selectedIndex < hist.size() - 1) {
-                // Truncate history to the selected point (without adding to redo)
-                int currentSize = hist.size();
-                for (int i = currentSize - 1; i > selectedIndex; i--) {
-                    hist.removeLast();
-                }
-                // Current context is now at the selected point
-            }
-
             var currentContext = hist.isEmpty() ? null : hist.getLast();
             newContext = contextGenerator.apply(currentContext);
             if (newContext == currentContext) {

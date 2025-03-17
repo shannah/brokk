@@ -1223,15 +1223,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
+    /**
+     * Keeps the currently selected row, use this when you've replaced an existing Context
+     */
     public void updateContextHistoryTable() {
         int selectedRow = contextHistoryTable.getSelectedRow();
         updateContextHistoryTable(selectedRow);
     }
 
     /**
-     * Updates the context history table with the current context history
+     * Updates the context history table with the current context history, and selects the given index
      */
     public void updateContextHistoryTable(int selectedRow) {
+        logger.debug("Updating context history table at row {}", selectedRow);
         SwingUtilities.invokeLater(() -> {
             contextHistoryModel.setRowCount(0);
 
