@@ -67,6 +67,7 @@ public class PreviewPanel extends JPanel
         );
         textArea.setCodeFoldingEnabled(true);
         textArea.setAntiAliasingEnabled(true);
+        textArea.setHighlightCurrentLine(false);
         textArea.setEditable(false);
         textArea.setText(content);
 
