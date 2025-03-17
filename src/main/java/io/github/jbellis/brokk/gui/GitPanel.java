@@ -449,6 +449,18 @@ public class GitPanel extends JPanel {
      */
     public void updateCommitPanel()
     {
+        // Store currently selected rows before updating
+        int[] selectedRows = uncommittedFilesTable.getSelectedRows();
+        List<String> selectedFiles = new ArrayList<>();
+        
+        // Store the filenames of selected rows to restore selection later
+        for (int row : selectedRows) {
+            String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
+            String path = (String) uncommittedFilesTable.getValueAt(row, 1);
+            String fullPath = path.isEmpty() ? filename : path + "/" + filename;
+            selectedFiles.add(fullPath);
+        }
+        
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             try {
                 var uncommittedFiles = getRepo().getUncommittedFiles();
@@ -461,9 +473,28 @@ public class GitPanel extends JPanel {
                         commitButton.setEnabled(false);
                         stashButton.setEnabled(false);
                     } else {
-                        for (var file : uncommittedFiles) {
+                        // Track row indices for files that were previously selected
+                        List<Integer> rowsToSelect = new ArrayList<>();
+                        
+                        for (int i = 0; i < uncommittedFiles.size(); i++) {
+                            var file = uncommittedFiles.get(i);
                             model.addRow(new Object[]{file.getFileName(), file.getParent()});
+                            
+                            // Check if this file was previously selected
+                            String fullPath = file.getParent().isEmpty() ? 
+                                file.getFileName() : file.getParent() + "/" + file.getFileName();
+                            if (selectedFiles.contains(fullPath)) {
+                                rowsToSelect.add(i);
+                            }
                         }
+                        
+                        // Restore selection if any previously selected files are still present
+                        if (!rowsToSelect.isEmpty()) {
+                            for (int row : rowsToSelect) {
+                                uncommittedFilesTable.addRowSelectionInterval(row, row);
+                            }
+                        }
+                        
                         suggestMessageButton.setEnabled(true);
 
                         var text = commitMessageArea.getText().trim();
