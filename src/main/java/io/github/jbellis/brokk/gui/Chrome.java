@@ -1046,19 +1046,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(message));
     }
 
-    /**
-     * Repopulate the unified context table from ContextManager's history.
-     * 
-     * Called when we add a new Context or undo/redo to a different one.
-     * 
-     * NOT called when we select an earlier context.
-     */
-    public void onContextHistoryChanged() {
-        SwingUtilities.invokeLater(() -> {
-            updateContextHistoryTable(contextManager.getContextHistory().size() - 1);
-        });
-    }
-    
     @Override
     public void close() {
         logger.info("Closing Chrome UI");
@@ -1069,7 +1056,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             frame.dispose();
         }
     }
-
 
     /**
      * Opens a preview window for a context fragment
@@ -1265,32 +1251,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 contextHistoryTable.setRowSelectionInterval(selectedRow, selectedRow);
                 contextHistoryTable.scrollRectToVisible(contextHistoryTable.getCellRect(selectedRow, 0, true));
             }
-
-            // Update row heights based on content
-            for (int row = 0; row < contextHistoryTable.getRowCount(); row++) {
-                adjustRowHeight(row);
-            }
         });
-    }
-
-    /**
-     * Adjusts the height of a row based on its content
-     */
-    private void adjustRowHeight(int row) {
-        if (row >= contextHistoryTable.getRowCount()) return;
-
-        // Get the cell renderer component for the visible column
-        var renderer = contextHistoryTable.getCellRenderer(row, 0);
-        var comp = contextHistoryTable.prepareRenderer(renderer, row, 0);
-
-        // Calculate the preferred height
-        int preferredHeight = comp.getPreferredSize().height;
-        preferredHeight = Math.max(preferredHeight, 20); // Minimum height
-
-        // Set the row height if it differs from current height
-        if (contextHistoryTable.getRowHeight(row) != preferredHeight) {
-            contextHistoryTable.setRowHeight(row, preferredHeight);
-        }
     }
     
     /**

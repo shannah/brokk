@@ -195,7 +195,7 @@ public class ContextManager implements IContextManager
             initialContext = initialContext.refresh();
         }
         contextHistory.setInitialContext(initialContext);
-        chrome.onContextHistoryChanged();
+        chrome.updateContextHistoryTable(getContextHistory().size() - 1);
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
@@ -818,7 +818,7 @@ public class ContextManager implements IContextManager
             try {
                 UndoResult result = contextHistory.undo(stepsToUndo, this::undoAndInvertChanges);
                 if (result.wasUndone()) {
-                    io.onContextHistoryChanged();
+                    io.updateContextHistoryTable(getContextHistory().size() - 1);
                     io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
                 } else {
                     io.toolErrorRaw("no undo state available");
@@ -839,7 +839,7 @@ public class ContextManager implements IContextManager
             try {
                 boolean wasRedone = contextHistory.redo(this::undoAndInvertChanges);
                 if (wasRedone) {
-                    io.onContextHistoryChanged();
+                    io.updateContextHistoryTable(getContextHistory().size() - 1);
                     io.systemOutput("Redo!");
                 } else {
                     io.toolErrorRaw("no redo state available");
@@ -1227,10 +1227,9 @@ public class ContextManager implements IContextManager
     {
         assert !SwingUtilities.isEventDispatchThread();
 
-        int selectedIndex = getSelectedHistoryIndex();
-        Context newContext = contextHistory.pushContext(contextGenerator, selectedIndex);
+        Context newContext = contextHistory.pushContext(contextGenerator, contextHistory.size() - 1);
         if (newContext != null) {
-            io.onContextHistoryChanged();
+            io.updateContextHistoryTable(getContextHistory().size() - 1);
             project.saveContext(newContext);
         }
     }
