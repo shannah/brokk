@@ -16,7 +16,7 @@ on large codebases that cannot be jammed entirely into working context.
 1. Automatically determine the most-related classes to your working context and summarize them
 1. Parse a stacktrace and add source for all the methods to your context
 1. Add source for all the usages of a class, field, or method to your context
-1. Pull in "anonymous" context pieces from external commands with `$$` or with `/paste`
+1. Parse "anonymous" context pieces from external commands
 1. Build/lint your project and ask the LLM to fix errors autonomously
 
 These allow some simple but powerful patterns:
