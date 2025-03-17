@@ -616,6 +616,10 @@ public class SearchAgent {
                     getMethodByName("getClassSources")));
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("getMethodSources")));
+            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                    getMethodByName("getCallGraphTo")));
+            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                    getMethodByName("getCallGraphFrom")));
         }
 
         if (beastMode || allowAnswer) {
@@ -1047,6 +1051,30 @@ public class SearchAgent {
         }
 
         return result.toString();
+    }
+
+    @Tool("Get the call graph showing which methods call the given method. Use this to understand method dependencies and how code flows into a method.")
+    public String getCallGraphTo(
+            @P(value = "Fully qualified method name (package name, class name, method name) to find callers for")
+            String methodName
+    ) {
+        if (methodName.isBlank()) {
+            return "Cannot get call graph: method name is empty";
+        }
+
+        return AnalyzerUtil.formatCallGraphTo(analyzer, methodName);
+    }
+
+    @Tool("Get the call graph showing which methods are called by the given method. Use this to understand how a method's logic flows to other parts of the codebase.")
+    public String getCallGraphFrom(
+            @P(value = "Fully qualified method name (package name, class name, method name) to find callees for") 
+            String methodName
+    ) {
+        if (methodName.isBlank()) {
+            return "Cannot get call graph: method name is empty";
+        }
+
+        return AnalyzerUtil.formatCallGraphFrom(analyzer, methodName);
     }
 
     @Tool("Provide a final answer to the query. Use this when you have enough information to fully address the query.")
