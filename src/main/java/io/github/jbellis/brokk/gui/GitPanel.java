@@ -196,10 +196,7 @@ public class GitPanel extends JPanel {
                             : getRepo().diffFiles(selectedFiles);
                     if (diff.isEmpty()) {
                         SwingUtilities.invokeLater(() -> {
-                            JOptionPane.showMessageDialog(this,
-                                                          "No changes to commit",
-                                                          "Error",
-                                                          JOptionPane.ERROR_MESSAGE);
+                            chrome.actionOutput("No changes to commit");
                             chrome.enableUserActionButtons();
                         });
                         return null;
@@ -209,9 +206,7 @@ public class GitPanel extends JPanel {
                     SwingUtilities.invokeLater(chrome::enableUserActionButtons);
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
-                        JOptionPane.showMessageDialog(this,
-                                                      "Error suggesting commit message: " + ex.getMessage(),
-                                                      "Error", JOptionPane.ERROR_MESSAGE);
+                        chrome.actionOutput("Error suggesting commit message: " + ex.getMessage());
                         chrome.enableUserActionButtons();
                     });
                 }
@@ -262,9 +257,7 @@ public class GitPanel extends JPanel {
                     });
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
-                        JOptionPane.showMessageDialog(this,
-                                                      "Error stashing changes: " + ex.getMessage(),
-                                                      "Error", JOptionPane.ERROR_MESSAGE);
+                        chrome.actionOutput("Error stashing changes: " + ex.getMessage());
                         chrome.enableUserActionButtons();
                     });
                 }
@@ -311,9 +304,7 @@ public class GitPanel extends JPanel {
                     });
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
-                        JOptionPane.showMessageDialog(this,
-                                                      "Error committing files: " + ex.getMessage(),
-                                                      "Commit Error", JOptionPane.ERROR_MESSAGE);
+                        chrome.actionOutput("Error committing files: " + ex.getMessage());
                         chrome.enableUserActionButtons();
                     });
                 }
