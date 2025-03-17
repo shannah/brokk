@@ -78,6 +78,7 @@ public class Coder {
                                                   int maxAttempts) {
         int attempt = 0;
         while (attempt < maxAttempts) {
+            logger.debug("Streaming request to LLM attempt {} [only last message shown]: {}", attempt, messages.getLast());
             attempt++;
             var result = doSingleStreamingCall(model, messages, echo);
 
@@ -139,7 +140,8 @@ public class Coder {
      */
     private StreamingResult doSingleStreamingCall(StreamingChatLanguageModel model,
                                                  List<ChatMessage> messages,
-                                                 boolean echo) {
+                                                 boolean echo)
+    {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         // locking for cancellation -- we don't want to show any output after cancellation
@@ -268,7 +270,6 @@ public class Coder {
         if (model instanceof AnthropicChatModel) {
             var tu = (AnthropicTokenUsage) response.tokenUsage();
             writeToHistory("Cache usage", "%s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
-            logger.debug("Cache usage: %s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
         }
 
         return response;
@@ -293,6 +294,7 @@ public class Coder {
             Throwable error = null;
 
             try {
+                logger.debug("Sending request to LLM attempt {} [only last message shown]: {}", attempt, messages.getLast());
                 response = doSingleSendMessage(model, messages, tools, isRetry);
             } catch (Throwable t) {
                 error = t;

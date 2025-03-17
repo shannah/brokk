@@ -55,8 +55,6 @@ public class LLM {
             // Actually send the message to the LLM and get the response
             var allMessages = new ArrayList<>(contextMessages);
             allMessages.addAll(requestMessages);
-            logger.debug("runSession sending to LLM [only last message shown]: {}", allMessages.getLast());
-
             var streamingResult = coder.sendStreaming(model, allMessages, true);
 
             // 1) If user cancelled
@@ -95,8 +93,8 @@ public class LLM {
 
             // Gather all edit blocks in the reply
             var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, coder.contextManager.getEditableFiles());
-            logger.debug("Parsed {} blocks", blocks.size());
             blocks.addAll(parseResult.blocks());
+            logger.debug("{} total unapplied blocks", blocks.size());
             if (parseResult.parseError() != null) {
                 if (parseResult.blocks().isEmpty()) {
                     requestMessages.add(new UserMessage(parseResult.parseError()));
