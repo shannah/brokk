@@ -117,7 +117,7 @@ public class SearchAgent {
     {
         // Use supplyAsync to run in background
         return CompletableFuture.supplyAsync(() -> {
-            logger.debug("Summarizing result with quick model...");
+            logger.debug("Summarizing result ...");
             // Build short system prompt or messages
             ArrayList<ChatMessage> messages = new ArrayList<>();
             messages.add(new SystemMessage("""
@@ -219,6 +219,12 @@ public class SearchAgent {
 
             // Decide what action to take for this query
             var tools = determineNextActions();
+            // Remember these signatures for future checks, and return the call
+            for (var call: tools) {
+                toolCallSignatures.addAll(createToolCallSignatures(call));
+                trackClassNamesFromToolCall(call);
+            }
+
             if (tools.isEmpty()) {
                 logger.debug("No valid actions determined");
                 io.systemOutput("No valid actions returned; retrying");
@@ -245,8 +251,6 @@ public class SearchAgent {
                     var rawSymbols = List.of(step.result.split(", "));
                     step.result = formatCompressedSymbols("Relevant symbols", rawSymbols);
                 }
-                
-                logger.debug("Result: {}", step);
             }).toList();
 
             // Check if we should terminate
@@ -260,7 +264,7 @@ public class SearchAgent {
                     var arguments = answerCall.argumentsMap();
                     @SuppressWarnings("unchecked")
                     var classNames = (List<String>) arguments.get("classNames");
-                    logger.debug("Relevant classes are {}", classNames);
+                    logger.debug("LLM-determined relevant classes are {}", classNames);
 
                     // Coalesce inner classes whose parents are also present
                     var coalesced = classNames.stream()
@@ -286,9 +290,9 @@ public class SearchAgent {
             actionHistory.addAll(results);
         }
 
-        logger.debug("Search ended because we hit the action-history cutoff or no valid actions remained.");
+        logger.debug("Search ended because we hit the tokens cutoff or we were interrupted");
         return new ContextFragment.SearchFragment(query,
-                                                  "No final answer provided before hitting the 80% action-history cutoff.",
+                                                  "No final answer provided, check the debug log for details",
                                                   Set.of());
     }
 
@@ -492,58 +496,47 @@ public class SearchAgent {
     {
         // Get signatures for this call
         List<String> callSignatures = createToolCallSignatures(call);
-        
+
         // If we already have seen any of these signatures, forge a replacement call
         if (toolCallSignatures.stream().anyMatch(callSignatures::contains)) {
             logger.debug("Duplicate tool call detected: {}. Forging a getRelatedClasses call instead.", callSignatures);
-
-            // Build the arguments for the forged getRelatedClasses call.
-            // We'll pass all currently tracked class names, so that the agent
-            // sees "related classes" from everything discovered so far.
-            var classList = new ArrayList<>(trackedClassNames);
-
-            // We also must preserve the agent's "learnings" from the original call,
-            // because the LLM will have put some explanation in there. If none
-            // exist, just do an empty string for the new call.
-            Map<String,Object> oldArgs = call.argumentsMap();
-            String oldLearnings = oldArgs.getOrDefault("learnings", "").toString();
-
-            // Construct JSON arguments for the forged call
-            // We must fill both parameters of getRelatedClasses:
-            //   - classNames
-            //   - learnings
-            // We create them as JSON because that's how ToolExecutionRequest stores them.
-            String forgedArgumentsJson = """
-            {
-               "classNames": %s,
-               "learnings": %s
-            }
-            """.formatted(
-                toJsonArray(classList),
-                toJsonString(oldLearnings)
-            );
-
-            // Create a new ToolExecutionRequest and ToolCall
-            var forgedRequest = ToolExecutionRequest.builder()
-                .name("getRelatedClasses")
-                .arguments(forgedArgumentsJson)
-                .build();
-            var forgedCall = new ToolCall(forgedRequest);
+            call = createRelatedClassesCall();
+            
             // if the forged call is itself a duplicate, use the original request but force Beast Mode next
-            if (toolCallSignatures.containsAll(createToolCallSignatures(forgedCall))) {
+            if (toolCallSignatures.containsAll(createToolCallSignatures(call))) {
                 logger.debug("Pagerank would be duplicate too!  Switching to Beast Mode.");
                 beastMode = true;
                 return call;
             }
-            call = forgedCall;
         }
 
-        // Remember these signatures for future checks, and return the call
-        toolCallSignatures.addAll(createToolCallSignatures(call));
-        trackClassNamesFromToolCall(call);
-
-        // 4. Return the original call if no duplication
+        // Return the call (original if no duplication, or the replacement)
         return call;
+    }
+    
+    /**
+     * Creates a getRelatedClasses call using all currently tracked class names
+     */
+    private ToolCall createRelatedClassesCall() {
+        // Build the arguments for the getRelatedClasses call.
+        // We'll pass all currently tracked class names, so that the agent
+        // sees "related classes" from everything discovered so far.
+        var classList = new ArrayList<>(trackedClassNames);
+
+        // Construct JSON arguments for the call
+        String argumentsJson = """
+        {
+           "classNames": %s
+        }
+        """.formatted(toJsonArray(classList));
+
+        // Create a new ToolExecutionRequest and ToolCall
+        var request = ToolExecutionRequest.builder()
+            .name("getRelatedClasses")
+            .arguments(argumentsJson)
+            .build();
+            
+        return new ToolCall(request);
     }
 
     private String toJsonArray(List<String> items)
@@ -764,22 +757,37 @@ public class SearchAgent {
         }
 
         // Process each tool execution request with duplicate detection
-        logger.debug("Processing tool execution requests {}", response.toolExecutionRequests());
+        logger.debug("Raw tool execution requests: {}",
+                     response.toolExecutionRequests().stream().map(ToolExecutionRequest::name)
+                             .collect(Collectors.joining(", ")));
         var toolCalls = response.toolExecutionRequests().stream()
                 .map(ToolCall::new)
                 .map(this::replaceDuplicateCallIfNeeded)
                 .toList();
 
-        // If we have an Answer or Abort action, just return that
+        // If we have an Answer or Abort action, check if we should add related classes first
         var answerTools = toolCalls.stream()
                 .filter(t -> t.getRequest().name().equals("answer") || t.getRequest().name().equals("abort"))
                 .toList();
 
         if (!answerTools.isEmpty()) {
+            // If pagerank hasn't been called and we're not in beast mode, add a related classes call
+            if (!hasCalledTool("getRelatedClasses") && !beastMode && actionHistorySize() < 0.8 * TOKEN_BUDGET) {
+                logger.debug("Forging getRelatedClasses call before finalizing with answer/abort");
+                return List.of(createRelatedClassesCall());
+            }
             return List.of(answerTools.getFirst());
         }
 
         return toolCalls;
+    }
+    
+    /**
+     * Check if a specific tool has been called in the action history
+     */
+    private boolean hasCalledTool(String toolName) {
+        return actionHistory.stream()
+                .anyMatch(call -> call.request.name().equals(toolName));
     }
 
     @Tool("Search for symbols (class/method/field definitions) using Joern. This should usually be the first step in a search.")
