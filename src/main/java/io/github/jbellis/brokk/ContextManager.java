@@ -203,7 +203,7 @@ public class ContextManager implements IContextManager
 
     @Override
     public void replaceContext(Context context, Context replacement) {
-        synchronized (ContextManager.this) {
+        synchronized (contextHistory) {
             var ch = new ArrayList<>(contextHistory.get());
             long start = System.currentTimeMillis();
             while (System.currentTimeMillis() - start < 1_000) {
@@ -838,7 +838,7 @@ public class ContextManager implements IContextManager
         return contextActionExecutor.submit(() -> {
             try {
                 int finalStepsToUndo;
-                synchronized (ContextManager.this) {
+                synchronized (contextHistory) {
                     var ch = new ArrayList<>(contextHistory.get());
                     finalStepsToUndo = Math.min(stepsToUndo, ch.size() - 1);
                     if (ch.size() <= 1) {
@@ -870,7 +870,7 @@ public class ContextManager implements IContextManager
     {
         return contextActionExecutor.submit(() -> {
             try {
-                synchronized (ContextManager.this) {
+                synchronized (contextHistory) {
                     var ch = new ArrayList<>(contextHistory.get());
                     if (redoHistory.isEmpty()) {
                         io.toolErrorRaw("no redo state available");
@@ -1264,8 +1264,10 @@ public class ContextManager implements IContextManager
      */
     private void pushContext(Function<Context, Context> contextGenerator)
     {
+        assert !SwingUtilities.isEventDispatchThread();
+
         Context newContext;
-        synchronized (this) {
+        synchronized (contextHistory) {
             var ch = new ArrayList<>(contextHistory.get());
             try {
                 // Check if there's a history selection that's not the current context
