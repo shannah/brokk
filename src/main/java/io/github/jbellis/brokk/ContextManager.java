@@ -1433,8 +1433,7 @@ public class ContextManager implements IContextManager
         return future;
     }
 
-    private void ensureBuildCommand(Coder coder)
-    {
+    private void ensureBuildCommand(Coder coder) {
         var loadedCommand = project.getBuildCommand();
         // Possibly store an inferred buildCommand
         if (loadedCommand != null) {
@@ -1462,7 +1461,7 @@ public class ContextManager implements IContextManager
             submitBackgroundTask("Inferring build command", () -> {
                 String response;
                 try {
-                    response = coder.sendMessage(messages);
+                    response = coder.sendMessage(coder.models.searchModel(), messages).aiMessage().text().trim();
                 } catch (Throwable th) {
                     return BuildCommand.failure(th.getMessage());
                 }
