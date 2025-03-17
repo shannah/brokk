@@ -94,11 +94,12 @@ public class GitLogPanel extends JPanel {
 
         JPanel branchesPanel = new JPanel(new BorderLayout());
         branchesPanel.setBorder(BorderFactory.createTitledBorder("Branches"));
-        JPanel branchSplitPanel = new JPanel(new GridLayout(2, 1));
-
-        // Local branches
+        
+        // Create tabbed pane for Local and Remote branches
+        JTabbedPane branchTabbedPane = new JTabbedPane();
+        
+        // Local branches panel
         JPanel localBranchPanel = new JPanel(new BorderLayout());
-        localBranchPanel.setBorder(BorderFactory.createTitledBorder("Local"));
         branchTableModel = new DefaultTableModel(new Object[]{"", "Branch"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
@@ -112,10 +113,9 @@ public class GitLogPanel extends JPanel {
         branchTable.getColumnModel().getColumn(0).setMinWidth(20);
         branchTable.getColumnModel().getColumn(0).setPreferredWidth(20);
         localBranchPanel.add(new JScrollPane(branchTable), BorderLayout.CENTER);
-
-        // Remote branches
+        
+        // Remote branches panel
         JPanel remoteBranchPanel = new JPanel(new BorderLayout());
-        remoteBranchPanel.setBorder(BorderFactory.createTitledBorder("Remote"));
         remoteBranchTableModel = new DefaultTableModel(new Object[]{"Branch"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
@@ -126,10 +126,12 @@ public class GitLogPanel extends JPanel {
         remoteBranchTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         remoteBranchTable.setRowHeight(18);
         remoteBranchPanel.add(new JScrollPane(remoteBranchTable), BorderLayout.CENTER);
-
-        branchSplitPanel.add(localBranchPanel);
-        branchSplitPanel.add(remoteBranchPanel);
-        branchesPanel.add(branchSplitPanel, BorderLayout.CENTER);
+        
+        // Add panels to tabbed pane
+        branchTabbedPane.addTab("Local", localBranchPanel);
+        branchTabbedPane.addTab("Remote", remoteBranchPanel);
+        
+        branchesPanel.add(branchTabbedPane, BorderLayout.CENTER);
 
         // "Refresh" button for branches
         JPanel branchButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
