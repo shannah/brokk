@@ -146,7 +146,7 @@ public class MenuBar {
         });
         contextMenu.add(symbolUsageItem);
 
-        var callersItem = new JMenuItem("Callers");
+        var callersItem = new JMenuItem("Call graph to function");
         callersItem.setMnemonic(KeyEvent.VK_C);
         callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.ALT_DOWN_MASK));
         callersItem.addActionListener(e -> {
@@ -154,7 +154,7 @@ public class MenuBar {
         });
         contextMenu.add(callersItem);
 
-        var calleesItem = new JMenuItem("Callees");
+        var calleesItem = new JMenuItem("Call graph from function");
         calleesItem.setMnemonic(KeyEvent.VK_L);
         calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.ALT_DOWN_MASK));
         calleesItem.addActionListener(e -> {
