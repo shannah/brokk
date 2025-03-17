@@ -145,7 +145,7 @@ public class LLM {
             blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
 
             // Check for parse/match failures first
-            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
+            var parseReflection = blocks.isEmpty() ? "" : getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
             // Only increase parse error attempts if no blocks were successfully applied
             if (editResult.failedBlocks().size() == blocks.size()) {
                 parseErrorAttempts++;

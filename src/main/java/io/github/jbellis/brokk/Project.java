@@ -453,6 +453,23 @@ public class Project implements IProject {
     }
 
     /**
+     * Store the GitHub token in workspace properties.
+     */
+    public void setGitHubToken(String token)
+    {
+        workspaceProps.setProperty("githubToken", token);
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Retrieve the GitHub token from workspace properties (may be null).
+     */
+    public String getGitHubToken()
+    {
+        return workspaceProps.getProperty("githubToken");
+    }
+
+    /**
      * Save vertical split pane position
      */
     public void saveVerticalSplitPosition(int position) {

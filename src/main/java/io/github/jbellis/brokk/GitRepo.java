@@ -416,26 +416,55 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /**
      * Checkout a remote branch, creating a local tracking branch
+     * with the default naming convention (using the remote branch name)
      */
     public void checkoutRemoteBranch(String remoteBranchName) throws IOException {
+        String branchName;
+        if (remoteBranchName.contains("/")) {
+            branchName = remoteBranchName.substring(remoteBranchName.indexOf('/') + 1);
+        } else {
+            branchName = remoteBranchName;
+        }
+        
+        checkoutRemoteBranch(remoteBranchName, branchName);
+    }
+    
+    /**
+     * Checkout a remote branch, creating a local tracking branch with a specified name
+     * 
+     * @param remoteBranchName The remote branch to checkout (e.g. "origin/main" or "pr-25/master")
+     * @param localBranchName The name to use for the local branch
+     * @throws IOException If there's an error creating the branch
+     */
+    public void checkoutRemoteBranch(String remoteBranchName, String localBranchName) throws IOException {
         try {
-            String branchName;
-            if (remoteBranchName.contains("/")) {
-                branchName = remoteBranchName.substring(remoteBranchName.indexOf('/') + 1);
-            } else {
-                branchName = remoteBranchName;
+            // Check if the remote branch actually exists
+            boolean remoteBranchExists = false;
+            try {
+                var remoteRef = repository.findRef("refs/remotes/" + remoteBranchName);
+                remoteBranchExists = (remoteRef != null);
+                logger.debug("Checking if remote branch exists: {} -> {}",
+                             remoteBranchName, remoteBranchExists ? "yes" : "no");
+            } catch (Exception e) {
+                logger.warn("Error checking remote branch: {}", e.getMessage());
             }
 
-            if (listLocalBranches().contains(branchName)) {
-                throw new IOException("Local branch '" + branchName + "' already exists. Choose a different name.");
+            if (!remoteBranchExists) {
+                throw new IOException("Remote branch '" + remoteBranchName + "' not found. Ensure the remote exists and has been fetched.");
             }
 
+            if (listLocalBranches().contains(localBranchName)) {
+                throw new IOException("Local branch '" + localBranchName + "' already exists. Choose a different name.");
+            }
+
+            logger.debug("Creating local branch '{}' from remote '{}'", localBranchName, remoteBranchName);
             git.checkout()
                     .setCreateBranch(true)
-                    .setName(branchName)
+                    .setName(localBranchName)
                     .setStartPoint(remoteBranchName)
                     .setUpstreamMode(org.eclipse.jgit.api.CreateBranchCommand.SetupUpstreamMode.TRACK)
                     .call();
+            logger.debug("Successfully created and checked out branch '{}'", localBranchName);
 
             refresh();
         } catch (GitAPIException e) {
@@ -480,8 +509,19 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public void deleteBranch(String branchName) throws IOException {
         try {
-            git.branchDelete().setBranchNames(branchName).call();
+            logger.debug("Attempting to delete branch: {}", branchName);
+            var result = git.branchDelete().setBranchNames(branchName).call();
+            
+            if (result.isEmpty()) {
+                logger.warn("Branch deletion returned empty result for branch: {}", branchName);
+                throw new IOException("Branch deletion failed: No results returned. Branch may not exist or requires force delete.");
+            }
+            
+            for (var deletedRef : result) {
+                logger.debug("Successfully deleted branch reference: {}", deletedRef);
+            }
         } catch (GitAPIException e) {
+            logger.error("Git exception when deleting branch {}: {}", branchName, e.getMessage());
             throw new IOException("Failed to delete branch: " + e.getMessage(), e);
         }
     }
@@ -491,8 +531,19 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public void forceDeleteBranch(String branchName) throws IOException {
         try {
-            git.branchDelete().setBranchNames(branchName).setForce(true).call();
+            logger.debug("Attempting to force delete branch: {}", branchName);
+            var result = git.branchDelete().setBranchNames(branchName).setForce(true).call();
+            
+            if (result.isEmpty()) {
+                logger.warn("Force branch deletion returned empty result for branch: {}", branchName);
+                throw new IOException("Force branch deletion failed: No results returned. Branch may not exist.");
+            }
+            
+            for (var deletedRef : result) {
+                logger.debug("Successfully force deleted branch reference: {}", deletedRef);
+            }
         } catch (GitAPIException e) {
+            logger.error("Git exception when force deleting branch {}: {}", branchName, e.getMessage());
             throw new IOException("Failed to force delete branch: " + e.getMessage(), e);
         }
     }
@@ -866,6 +917,29 @@ public class GitRepo implements Closeable, IGitRepo {
         } catch (GitAPIException e) {
             throw new UncheckedIOException(new IOException("Failed to get file history", e));
         }
+    }
+
+    /**
+     * Get the URL of the specified remote (defaults to "origin")
+     * @param remoteName The name of the remote (typically "origin")
+     * @return The URL of the remote, or null if not found
+     */
+    public String getRemoteUrl(String remoteName) {
+        try {
+            var config = repository.getConfig();
+            return config.getString("remote", remoteName, "url");
+        } catch (Exception e) {
+            logger.warn("Failed to get remote URL: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get the URL of the origin remote
+     * @return The URL of the origin remote, or null if not found
+     */
+    public String getRemoteUrl() {
+        return getRemoteUrl("origin");
     }
 
     /**

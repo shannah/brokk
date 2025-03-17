@@ -22,7 +22,7 @@ public class ContextHistory {
      * Set the initial context
      */
     public synchronized void setInitialContext(Context initialContext) {
-        history = new ArrayList<>(List.of(initialContext));
+        history = new ArrayList<>(List.of(initialContext))  ;
         selectedContext = initialContext; // The first context is selected by default
     }
 

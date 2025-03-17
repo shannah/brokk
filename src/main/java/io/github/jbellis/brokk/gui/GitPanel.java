@@ -2,8 +2,11 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.analyzer.RepoFile;
+import java.io.IOException;
+import java.io.IOException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -43,6 +46,13 @@ public class GitPanel extends JPanel {
     // Stash tab UI
     private JTable stashTable;
     private DefaultTableModel stashTableModel;
+    
+    // PR tab UI
+    private JTable prTable;
+    private DefaultTableModel prTableModel;
+    private JTable prCommitsTable;
+    private DefaultTableModel prCommitsTableModel;
+    private JButton checkoutPrButton;
 
     // Reference to the extracted Log tab
     private GitLogPanel gitLogPanel;  // The separate class
@@ -82,14 +92,19 @@ public class GitPanel extends JPanel {
         // 2) Stash tab
         JPanel stashTab = buildStashTab();
         tabbedPane.addTab("Stash", stashTab);
+        
+        // 3) PR tab
+        JPanel prTab = buildPrTab();
+        tabbedPane.addTab("Pull Requests", prTab);
 
-        // 3) Log tab (moved into GitLogPanel)
+        // 4) Log tab (moved into GitLogPanel)
         gitLogPanel = new GitLogPanel(chrome, contextManager);
         tabbedPane.addTab("Log", gitLogPanel);
 
         // After UI is built, asynchronously refresh data
         SwingUtilities.invokeLater(() -> {
             updateStashList();
+            updatePrList();
             gitLogPanel.updateBranchList(); // load branches, commits, etc.
         });
     }
@@ -300,6 +315,8 @@ public class GitPanel extends JPanel {
                         updateCommitPanel();
                         // The GitLogPanel can refresh branches/commits:
                         gitLogPanel.updateBranchList();
+                    // Select the newly checked out branch in the log panel
+                    gitLogPanel.selectCurrentBranch();
                         chrome.enableUserActionButtons();
                     });
                 } catch (Exception ex) {
@@ -341,6 +358,110 @@ public class GitPanel extends JPanel {
     /**
      * Builds the Stash tab.
      */
+    /**
+     * Builds the Pull Requests tab.
+     */
+    private JPanel buildPrTab() {
+        JPanel prTab = new JPanel(new BorderLayout());
+        
+        // Split panel with PRs on left (smaller) and commits on right (larger)
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setResizeWeight(0.4); // 40% for PR list, 60% for commits
+        
+        // Left side - Pull Requests table
+        JPanel prListPanel = new JPanel(new BorderLayout());
+        prListPanel.setBorder(BorderFactory.createTitledBorder("Open Pull Requests"));
+        
+        prTableModel = new DefaultTableModel(new Object[]{"#", "Title"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return String.class;
+            }
+        };
+        prTable = new JTable(prTableModel);
+        prTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        prTable.setRowHeight(18);
+        prTable.getColumnModel().getColumn(0).setPreferredWidth(50);
+        prTable.getColumnModel().getColumn(1).setPreferredWidth(350);
+        prListPanel.add(new JScrollPane(prTable), BorderLayout.CENTER);
+        
+        // Button panel for PRs
+        JPanel prButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        
+        checkoutPrButton = new JButton("Check Out");
+        checkoutPrButton.setToolTipText("Check out this PR branch locally");
+        checkoutPrButton.setEnabled(false);
+        checkoutPrButton.addActionListener(e -> checkoutSelectedPr());
+        prButtonPanel.add(checkoutPrButton);
+        
+        JButton refreshPrButton = new JButton("Refresh");
+        refreshPrButton.addActionListener(e -> updatePrList());
+        prButtonPanel.add(refreshPrButton);
+        
+        prListPanel.add(prButtonPanel, BorderLayout.SOUTH);
+        
+        // Right side - Commits in the selected PR
+        JPanel prCommitsPanel = new JPanel(new BorderLayout());
+        prCommitsPanel.setBorder(BorderFactory.createTitledBorder("Commits in Pull Request"));
+        
+        prCommitsTableModel = new DefaultTableModel(new Object[]{"Message", "Author", "Date", "ID"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+            @Override
+            public Class<?> getColumnClass(int columnIndex) { return String.class; }
+        };
+        prCommitsTable = new JTable(prCommitsTableModel);
+        prCommitsTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        prCommitsTable.setRowHeight(18);
+        
+        // Set percentages for columns (60%/20%/20%)
+        int tableWidth = prCommitsTable.getWidth();
+        prCommitsTable.getColumnModel().getColumn(0).setPreferredWidth((int)(tableWidth * 0.6)); // message
+        prCommitsTable.getColumnModel().getColumn(1).setPreferredWidth((int)(tableWidth * 0.2)); // author
+        prCommitsTable.getColumnModel().getColumn(2).setPreferredWidth((int)(tableWidth * 0.2)); // date
+        
+        // Hide ID column
+        prCommitsTable.getColumnModel().getColumn(3).setMinWidth(0);
+        prCommitsTable.getColumnModel().getColumn(3).setMaxWidth(0);
+        prCommitsTable.getColumnModel().getColumn(3).setWidth(0);
+        
+        prCommitsPanel.add(new JScrollPane(prCommitsTable), BorderLayout.CENTER);
+        
+        // Add the panels to the split pane
+        splitPane.setLeftComponent(prListPanel);
+        splitPane.setRightComponent(prCommitsPanel);
+        
+        prTab.add(splitPane, BorderLayout.CENTER);
+        
+        // Listen for PR selection changes
+        prTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && prTable.getSelectedRow() != -1) {
+                int row = prTable.getSelectedRow();
+                String prNumberText = (String) prTableModel.getValueAt(row, 0);
+                if (prNumberText.startsWith("#")) {
+                    try {
+                        int prNumber = Integer.parseInt(prNumberText.substring(1));
+                        updateCommitsForPullRequest(prNumber);
+                        checkoutPrButton.setEnabled(true);
+                    } catch (NumberFormatException nfe) {
+                        logger.warn("Invalid PR number: {}", prNumberText);
+                        checkoutPrButton.setEnabled(false);
+                    }
+                } else {
+                    checkoutPrButton.setEnabled(false);
+                }
+            } else {
+                checkoutPrButton.setEnabled(false);
+            }
+        });
+        
+        return prTab;
+    }
+
     private JPanel buildStashTab() {
         JPanel stashTab = new JPanel(new BorderLayout());
 
@@ -1006,6 +1127,360 @@ public class GitPanel extends JPanel {
         diffPanel.showInDialog(this, dialogTitle);
     }
     
+    /**
+     * Holds a parsed "owner" and "repo" from a Git remote URL
+     */
+    private record OwnerRepo(String owner, String repo) {}
+
+    /**
+     * Parse a Git remote URL of form:
+     *   - https://github.com/OWNER/REPO.git
+     *   - git@github.com:OWNER/REPO.git
+     *   - ssh://github.com/OWNER/REPO
+     *   - or any variant that ends with OWNER/REPO(.git)
+     * This attempts to extract the last two path segments
+     * as "owner" and "repo". Returns null if it cannot.
+     */
+    private OwnerRepo parseOwnerRepoFromUrl(String remoteUrl) {
+        if (remoteUrl == null || remoteUrl.isBlank()) {
+            logger.warn("Remote URL is blank or null");
+            return null;
+        }
+
+        // Strip trailing ".git" if present
+        String cleaned = remoteUrl.endsWith(".git")
+                ? remoteUrl.substring(0, remoteUrl.length() - 4)
+                : remoteUrl;
+        logger.debug("Cleaned repo url is {}", cleaned);
+
+        // Remove leading protocol-like segments, e.g. "ssh://", "https://", "git@", etc.
+        // Then we will split on '/' or ':' to capture path segments.
+        // e.g. "git@github.com:owner/repo" => "github.com owner repo"
+        // e.g. "ssh://github.com/owner/repo" => "github.com owner repo"
+        // e.g. "https://somehost/owner/repo" => "somehost owner repo"
+
+        // Normalize any backslashes, just in case
+        cleaned = cleaned.replace('\\', '/');
+
+        // If there's a '://' pattern, drop everything up through that
+        int protocolIndex = cleaned.indexOf("://");
+        if (protocolIndex >= 0) {
+            cleaned = cleaned.substring(protocolIndex + 3);
+        }
+
+        // If there's a '@' pattern (ssh form), drop everything up through that
+        // e.g. "git@github.com:owner/repo" -> "github.com:owner/repo"
+        int atIndex = cleaned.indexOf('@');
+        if (atIndex >= 0) {
+            cleaned = cleaned.substring(atIndex + 1);
+        }
+
+        // Now split on '/' or ':'
+        // e.g. "github.com:owner/repo" => ["github.com","owner","repo"]
+        // e.g. "somehost/owner/repo" => ["somehost","owner","repo"]
+        var segments = cleaned.split("[/:]+");
+
+        if (segments.length < 2) {
+            logger.warn("Unable to parse owner/repo from remote URL: {}", remoteUrl);
+            return null;
+        }
+
+        // The last 2 entries are presumed to be owner, repo
+        String repo = segments[segments.length - 1];
+        String owner = segments[segments.length - 2];
+        logger.debug("Parsed repo as {} owned by {}", repo, owner);
+
+        // Basic sanity checks
+        if (owner.isBlank() || repo.isBlank()) {
+            logger.warn("Parsed blank owner/repo from remote URL: {}", remoteUrl);
+            return null;
+        }
+
+        return new OwnerRepo(owner, repo);
+    }
+    
+    /**
+     * Fetches open GitHub pull requests and populates the PR table.
+     */
+    private void updatePrList() {
+        contextManager.submitBackgroundTask("Fetching GitHub Pull Requests", () -> {
+            try {
+                // 1) Parse the GitHub remote URL
+                var remoteUrl = getRepo().getRemoteUrl();
+                var ownerRepo = parseOwnerRepoFromUrl(remoteUrl);
+                if (ownerRepo == null) {
+                    throw new IOException("Could not parse 'owner/repo' from remote: " + remoteUrl);
+                }
+
+                // 2) Use GitHubAuth which handles both auth and anonymous fallback
+                var pullRequests = GitHubAuth.listOpenPullRequests(
+                        contextManager.getProject(),
+                        ownerRepo.owner(),
+                        ownerRepo.repo()
+                );
+
+                // 3) Update the PR table in Swing
+                SwingUtilities.invokeLater(() -> {
+                    prTableModel.setRowCount(0);
+                    if (pullRequests.isEmpty()) {
+                        prTableModel.addRow(new Object[]{"", "No open PRs found"});
+                        checkoutPrButton.setEnabled(false);
+                        return;
+                    }
+                    for (var pr : pullRequests) {
+                        prTableModel.addRow(new Object[]{
+                                "#" + pr.getNumber(),
+                                pr.getTitle()
+                        });
+                    }
+                });
+            } catch (Exception ex) {
+                logger.error("Failed to fetch pull requests", ex);
+                SwingUtilities.invokeLater(() -> {
+                    prTableModel.setRowCount(0);
+                    prTableModel.addRow(new Object[]{
+                            "", "Error fetching PRs: " + ex.getMessage()
+                    });
+                    checkoutPrButton.setEnabled(false);
+                });
+            }
+            return null;
+        });
+    }
+    
+    /**
+     * Loads commits for the given pull request.
+     */
+    private void updateCommitsForPullRequest(int prNumber) {
+        contextManager.submitBackgroundTask("Fetching commits for PR #" + prNumber, () -> {
+            try {
+                var remoteUrl = getRepo().getRemoteUrl();
+                var ownerRepo = parseOwnerRepoFromUrl(remoteUrl);
+                if (ownerRepo == null) {
+                    throw new IOException("Could not parse 'owner/repo' from remote: " + remoteUrl);
+                }
+                String owner = ownerRepo.owner();
+                String repo = ownerRepo.repo();
+                
+                // Get the commits for this PR
+                var pointers = GitHubAuth.listPullRequestCommits(
+                    contextManager.getProject(), 
+                    owner, 
+                    repo, 
+                    prNumber
+                );
+                
+                var commitInfoList = new ArrayList<GitRepo.CommitInfo>();
+                for (var ptr : pointers) {
+                    String sha = ptr.getSha();
+                    String message = "Pull Request commit";
+                    var date = new java.util.Date(); // placeholder
+                    var author = ptr.getRepository().getOwnerName();
+                    commitInfoList.add(new GitRepo.CommitInfo(sha, message, author, date));
+                }
+                
+                SwingUtilities.invokeLater(() -> {
+                    // Clear existing table
+                    prCommitsTableModel.setRowCount(0);
+                    
+                    if (commitInfoList.isEmpty()) {
+                        prCommitsTableModel.addRow(new Object[]{
+                                "No commits found for PR #" + prNumber,
+                                "",
+                                "",
+                                ""
+                        });
+                        return;
+                    }
+                    
+                    // Insert rows
+                    var today = java.time.LocalDate.now();
+                    for (var commit : commitInfoList) {
+                        var formattedDate = formatCommitDate(commit.date(), today);
+                        prCommitsTableModel.addRow(new Object[]{
+                                commit.message(),
+                                commit.author(),
+                                formattedDate,
+                                commit.id()
+                        });
+                    }
+                });
+            } catch (Exception e) {
+                logger.error("Error fetching commits for PR #{}", prNumber, e);
+                SwingUtilities.invokeLater(() -> {
+                    prCommitsTableModel.setRowCount(0);
+                    prCommitsTableModel.addRow(new Object[]{
+                            "Error: " + e.getMessage(), "", "", ""
+                    });
+                });
+            }
+            return null;
+        });
+    }
+    
+    /**
+     * Checkout the currently selected PR branch
+     */
+    private void checkoutSelectedPr() {
+        int row = prTable.getSelectedRow();
+        if (row == -1) return;
+
+        String prNumberText = (String) prTableModel.getValueAt(row, 0);
+        if (!prNumberText.startsWith("#")) return;
+
+        int prNumber;
+        try {
+            prNumber = Integer.parseInt(prNumberText.substring(1));
+        } catch (NumberFormatException e) {
+            logger.warn("Invalid PR number: {}", prNumberText);
+            return;
+        }
+
+        logger.info("Starting checkout of PR #{}", prNumber);
+        contextManager.submitUserTask("Checking out PR #" + prNumber, () -> {
+            try {
+                var remoteUrl = getRepo().getRemoteUrl();
+                logger.debug("Remote URL for current repo: {}", remoteUrl);
+                
+                var ownerRepo = parseOwnerRepoFromUrl(remoteUrl);
+                if (ownerRepo == null) {
+                    throw new IOException("Could not parse 'owner/repo' from remote: " + remoteUrl);
+                }
+                logger.debug("Parsed owner: {}, repo: {}", ownerRepo.owner(), ownerRepo.repo());
+
+                // Get PR branch info
+                logger.debug("Fetching commit information for PR #{}", prNumber);
+                var pointers = GitHubAuth.listPullRequestCommits(
+                    contextManager.getProject(),
+                    ownerRepo.owner(),
+                    ownerRepo.repo(),
+                    prNumber
+                );
+
+                if (pointers.isEmpty()) {
+                    throw new IOException("No branch information found for PR #" + prNumber);
+                }
+                logger.debug("Found {} commits for PR #{}", pointers.size(), prNumber);
+
+                // Get the branch reference from the PR
+                var pointer = pointers.get(0);
+                String prBranchName = pointer.getRef();
+                String remoteName = "origin";
+                logger.debug("PR branch name: {}", prBranchName);
+
+                // Extract just the branch name without the refs/heads/ prefix if present
+                if (prBranchName.startsWith("refs/heads/")) {
+                    prBranchName = prBranchName.substring("refs/heads/".length());
+                }
+
+                // Determine if this is from the same repo or a fork
+                String repoFullName = pointer.getRepository().getFullName();
+                logger.debug("PR repository full name: {}", repoFullName);
+                logger.debug("Current repository full name: {}/{}", ownerRepo.owner(), ownerRepo.repo());
+                
+                String remoteBranchRef;
+
+                if (repoFullName.equals(ownerRepo.owner() + "/" + ownerRepo.repo())) {
+                    // Same repo - we can check out directly
+                    remoteBranchRef = remoteName + "/" + prBranchName;
+                    logger.debug("PR is from same repository. Using remote branch: {}", remoteBranchRef);
+                } else {
+                    // It's a fork - need to add the remote
+                    remoteName = "pr-" + prNumber;
+                    String prUrl = pointer.getRepository().getHtmlUrl().toString();
+                    logger.debug("PR is from fork. Repository URL: {}", prUrl);
+                    
+                    try {
+                        logger.debug("Adding remote '{}' with URL: {}", remoteName, prUrl);
+                        // Add the remote if it doesn't exist
+                        var remoteAddCommand = getRepo().getGit().remoteAdd()
+                            .setName(remoteName)
+                            .setUri(new org.eclipse.jgit.transport.URIish(prUrl));
+
+                        // Log what we're about to do
+                        logger.debug("Executing remote add command: {}", remoteAddCommand);
+                        remoteAddCommand.call();
+                        logger.debug("Remote added successfully");
+
+                        // We need to do a direct fetch using the PR's URL to avoid transport protocol mismatches
+                        logger.debug("Fetching from remote: {}", remoteName);
+                        
+                        var refSpec = new org.eclipse.jgit.transport.RefSpec(
+                            "+refs/heads/" + prBranchName + ":refs/remotes/" + remoteName + "/" + prBranchName);
+                        
+                        logger.debug("Using refspec: {}", refSpec);
+                        
+                        var fetchCommand = getRepo().getGit().fetch()
+                            .setRemote(prUrl)
+                            .setRefSpecs(refSpec);
+
+                        logger.debug("Executing fetch command: {}", fetchCommand);
+                        fetchCommand.call();
+                        logger.debug("Fetch completed successfully");
+                    } catch (Exception e) {
+                        logger.error("Failed to set up remote", e);
+                        throw new IOException("Error setting up remote for PR: " + e.getMessage(), e);
+                    }
+
+                    // We've now fetched this specific branch
+                    remoteBranchRef = remoteName + "/" + prBranchName;
+                    logger.debug("Using fork remote branch: {}", remoteBranchRef);
+                    
+                    // Verify the ref exists
+                    var ref = getRepo().getGit().getRepository().findRef(remoteBranchRef);
+                    if (ref == null) {
+                        logger.error("Remote branch not found: {}", remoteBranchRef);
+                        throw new IOException("Error: Could not find branch " + prBranchName + " in the PR repository");
+                    }
+                    logger.debug("Successfully verified remote branch exists: {}", remoteBranchRef);
+                }
+
+                // Choose a unique local branch name
+                // Use PR number and avoid conflicts with existing branches
+                String baseBranchName = "pr-" + prNumber;
+                String localBranchName = baseBranchName;
+                
+                // Make sure the branch name is unique
+                List<String> localBranches = getRepo().listLocalBranches();
+                int suffix = 1;
+                while (localBranches.contains(localBranchName)) {
+                    localBranchName = baseBranchName + "-" + suffix;
+                    suffix++;
+                }
+                logger.debug("Will create local branch: {}", localBranchName);
+
+                // Check out the branch
+                logger.debug("Checking out remote branch: {} to local branch: {}", remoteBranchRef, localBranchName);
+                try {
+                    getRepo().checkoutRemoteBranch(remoteBranchRef, localBranchName);
+                    logger.debug("Successfully checked out branch");
+                } catch (Exception e) {
+                    logger.error("Failed during branch checkout", e);
+                    throw new IOException("Error during checkout: " + e.getMessage(), e);
+                }
+
+                // Update UI
+                SwingUtilities.invokeLater(() -> {
+                    logger.debug("Updating UI after checkout");
+                    // Switch to the Log tab and update branches
+                    for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+                        if (tabbedPane.getTitleAt(i).equals("Log")) {
+                            tabbedPane.setSelectedIndex(i);
+                            break;
+                        }
+                    }
+                    gitLogPanel.updateBranchList();
+                });
+
+                chrome.systemOutput("Checked out PR #" + prNumber + " as local branch");
+                logger.info("Successfully checked out PR #{}", prNumber);
+            } catch (Exception e) {
+                logger.error("Failed to check out PR #{}: {}", prNumber, e.getMessage(), e);
+                chrome.toolErrorRaw("Error checking out PR: " + e.getMessage());
+            }
+        });
+    }
+
     protected String formatCommitDate(Date date, java.time.LocalDate today) {
         try {
             java.time.LocalDate commitDate = date.toInstant()
