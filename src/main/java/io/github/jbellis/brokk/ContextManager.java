@@ -195,7 +195,7 @@ public class ContextManager implements IContextManager
             initialContext = initialContext.refresh();
         }
         contextHistory.setInitialContext(initialContext);
-        chrome.updateContextHistoryTable(getContextHistory().size() - 1);
+        chrome.updateContextHistoryTable(initialContext);
 
         ensureStyleGuide();
         ensureBuildCommand(coder);
@@ -256,11 +256,7 @@ public class ContextManager implements IContextManager
      */
     public Context selectedContext()
     {
-        var selected = getSelectedHistoryIndex();
-        if (selected < 0 || selected >= contextHistory.size()) {
-            return topContext();
-        }
-        return contextHistory.getContextAt(selected);
+        return contextHistory.getSelectedContext();
     }
 
     public Path getRoot()
@@ -818,10 +814,33 @@ public class ContextManager implements IContextManager
             try {
                 UndoResult result = contextHistory.undo(stepsToUndo, this::undoAndInvertChanges);
                 if (result.wasUndone()) {
-                    io.updateContextHistoryTable(getContextHistory().size() - 1);
+                    var currentContext = contextHistory.topContext();
+                    io.updateContextHistoryTable(currentContext);
                     io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
                 } else {
                     io.toolErrorRaw("no undo state available");
+                }
+            } catch (CancellationException cex) {
+                io.systemOutput("Undo canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
+            }
+        });
+    }
+    
+    /** undo changes until we reach the target context */
+    public Future<?> undoContextUntilAsync(Context targetContext)
+    {
+        return contextActionExecutor.submit(() -> {
+            try {
+                UndoResult result = contextHistory.undoUntil(targetContext, this::undoAndInvertChanges);
+                if (result.wasUndone()) {
+                    var currentContext = contextHistory.topContext();
+                    io.updateContextHistoryTable(currentContext);
+                    io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
+                } else {
+                    io.toolErrorRaw("Context not found or already at that point");
                 }
             } catch (CancellationException cex) {
                 io.systemOutput("Undo canceled.");
@@ -839,7 +858,8 @@ public class ContextManager implements IContextManager
             try {
                 boolean wasRedone = contextHistory.redo(this::undoAndInvertChanges);
                 if (wasRedone) {
-                    io.updateContextHistoryTable(getContextHistory().size() - 1);
+                    var currentContext = contextHistory.topContext();
+                    io.updateContextHistoryTable(currentContext);
                     io.systemOutput("Redo!");
                 } else {
                     io.toolErrorRaw("no redo state available");
@@ -1229,21 +1249,17 @@ public class ContextManager implements IContextManager
 
         Context newContext = contextHistory.pushContext(contextGenerator);
         if (newContext != null) {
-            io.updateContextHistoryTable(getContextHistory().size() - 1);
+            io.updateContextHistoryTable(newContext);
             project.saveContext(newContext);
         }
     }
 
     /**
-     * Gets the currently selected index in the history table, or -1 if none selected
-     * May be called on or off the Swing EDT
+     * Updates the selected context in history from the UI
+     * Called by Chrome when the user selects a row in the history table
      */
-    private int getSelectedHistoryIndex() {
-        assert io != null;
-        if (SwingUtilities.isEventDispatchThread()) {
-            return io.getContextHistoryTable().getSelectedRow();
-        }
-        return SwingUtil.runOnEDT(() -> io.getContextHistoryTable().getSelectedRow(), null);
+    public void setSelectedContext(Context context) {
+        contextHistory.setSelectedContext(context);
     }
 
     /**

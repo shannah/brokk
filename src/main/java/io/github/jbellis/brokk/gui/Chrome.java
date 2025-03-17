@@ -347,8 +347,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         contextHistoryTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int row = contextHistoryTable.getSelectedRow();
-                if (row >= 0 && row < contextManager.getContextHistory().size()) {
-                    var ctx = contextManager.getContextHistory().get(row);
+                if (row >= 0 && row < contextHistoryTable.getRowCount()) {
+                    // Get the context object from the hidden third column
+                    var ctx = (Context)contextHistoryModel.getValueAt(row, 2);
+                    contextManager.setSelectedContext(ctx);
                     loadContext(ctx);
                 }
             }
@@ -477,11 +479,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Select the row under the cursor
         contextHistoryTable.setRowSelectionInterval(row, row);
+        
+        // Get the context from the selected row
+        Context context = (Context)contextHistoryModel.getValueAt(row, 2);
 
         // Create popup menu
         JPopupMenu popup = new JPopupMenu();
         JMenuItem undoToHereItem = new JMenuItem("Undo to here");
-        undoToHereItem.addActionListener(event -> restoreContextFromHistory(row));
+        undoToHereItem.addActionListener(event -> undoHistoryUntil(context));
         popup.add(undoToHereItem);
 
         // Register popup with theme manager
@@ -496,14 +501,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     /**
      * Restore context to a specific point in history
      */
-    private void restoreContextFromHistory(int index) {
-        int currentIndex = contextManager.getContextHistory().size() - 1;
-        if (index < currentIndex) {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            int stepsToUndo = currentIndex - index;
-            currentUserTask = contextManager.undoContextAsync(stepsToUndo);
-        }
+    private void undoHistoryUntil(Context targetContext) {
+        disableUserActionButtons();
+        disableContextActionButtons();
+        currentUserTask = contextManager.undoContextUntilAsync(targetContext);
     }
 
     /**
@@ -1224,20 +1225,25 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Keeps the currently selected row, use this when you've replaced an existing Context
+     * Updates the context history table and keeps the currently selected context selected if possible
      */
     public void updateContextHistoryTable() {
-        int selectedRow = contextHistoryTable.getSelectedRow();
-        updateContextHistoryTable(selectedRow);
+        Context selectedContext = contextManager.selectedContext();
+        updateContextHistoryTable(selectedContext);
     }
 
     /**
-     * Updates the context history table with the current context history, and selects the given index
+     * Updates the context history table with the current context history, and selects the given context
      */
-    public void updateContextHistoryTable(int selectedRow) {
-        logger.debug("Updating context history table at row {}", selectedRow);
+    public void updateContextHistoryTable(Context contextToSelect) {
+        logger.debug("Updating context history table with context {}",
+                     contextToSelect != null ? contextToSelect.getAction() : "null");
         SwingUtilities.invokeLater(() -> {
             contextHistoryModel.setRowCount(0);
+
+            // Track which row to select
+            int rowToSelect = -1;
+            int currentRow = 0;
 
             // Add rows for each context in history
             for (var ctx : contextManager.getContextHistory()) {
@@ -1248,12 +1254,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         ctx.getAction(),
                         ctx // We store the actual context object in hidden column
                 });
+
+                // If this is the context we want to select, record its row
+                if (ctx.equals(contextToSelect)) {
+                    rowToSelect = currentRow;
+                }
+                currentRow++;
             }
 
-            // set the selected row
-            if (selectedRow >= 0) {
-                contextHistoryTable.setRowSelectionInterval(selectedRow, selectedRow);
-                contextHistoryTable.scrollRectToVisible(contextHistoryTable.getCellRect(selectedRow, 0, true));
+            // Set selection if we found the context
+            if (rowToSelect >= 0) {
+                contextHistoryTable.setRowSelectionInterval(rowToSelect, rowToSelect);
+                contextHistoryTable.scrollRectToVisible(contextHistoryTable.getCellRect(rowToSelect, 0, true));
             }
         });
     }
