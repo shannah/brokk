@@ -1018,7 +1018,7 @@ public class ContextManager implements IContextManager
         }
         var combined = result.code();
         var fragment = new ContextFragment.UsageFragment("Uses", identifier, result.sources(), combined);
-        pushContext(ctx -> ctx.addUsageFragment(fragment));
+        pushContext(ctx -> ctx.addVirtualFragment(fragment));
     }
     
     /** callers for method */
@@ -1036,7 +1036,7 @@ public class ContextManager implements IContextManager
         
         // The output is similar to UsageFragment, so we'll use that
         var fragment = new ContextFragment.UsageFragment("Callers", methodName, sources, callgraph);
-        pushContext(ctx -> ctx.addUsageFragment(fragment));
+        pushContext(ctx -> ctx.addVirtualFragment(fragment));
         io.systemOutput("Added call graph for callers of " + methodName);
     }
     
@@ -1055,7 +1055,7 @@ public class ContextManager implements IContextManager
         
         // The output is similar to UsageFragment, so we'll use that
         var fragment = new ContextFragment.UsageFragment("Callees", methodName, sources, callgraph);
-        pushContext(ctx -> ctx.addUsageFragment(fragment));
+        pushContext(ctx -> ctx.addVirtualFragment(fragment));
         io.systemOutput("Added call graph for methods called by " + methodName);
     }
 

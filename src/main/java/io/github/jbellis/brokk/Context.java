@@ -537,15 +537,7 @@ public class Context implements Serializable {
         }
         return SUMMARIZING;
     }
-
-    public Context addUsageFragment(ContextFragment.UsageFragment fragment) {
-        var newFragments = new ArrayList<>(virtualFragments);
-        newFragments.add(fragment);
-        var parsed = new ParsedOutput(fragment.text(), fragment);
-        var action = CompletableFuture.completedFuture(fragment.description());
-        return new Context(contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, action).refresh();
-    }
-
+    
     /**
      * Returns all fragments in display order:
      * 0 => conversation history (if not empty)
