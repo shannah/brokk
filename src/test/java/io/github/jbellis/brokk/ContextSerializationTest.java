@@ -159,7 +159,7 @@ public class ContextSerializationTest {
         );
         
         // Add fragment with usage
-        context = context.addUsageFragment(
+        context = context.addVirtualFragment(
             new ContextFragment.UsageFragment("Uses", "Test.method", Set.of(CodeUnit.cls("com.test.Test")), "Test.method()")
         );
         
