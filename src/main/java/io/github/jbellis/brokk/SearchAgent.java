@@ -786,7 +786,10 @@ public class SearchAgent {
                 .anyMatch(call -> call.request.name().equals(toolName));
     }
 
-    @Tool("Search for symbols (class/method/field definitions) using Joern. This should usually be the first step in a search.")
+    @Tool("""
+    Search for symbols (class/method/field definitions) using Joern.
+    This should usually be the first step in a search.
+    """)
     public String searchSymbols(
             @P(value = "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
             List<String> patterns,
@@ -886,7 +889,9 @@ public class SearchAgent {
     /**
      * Search for usages of symbols.
      */
-    @Tool("Find where symbols are used in code. Use this to discover how classes, methods, or fields are actually used throughout the codebase.")
+    @Tool("""
+    Returns the source code of blocks where symbols are used. Use this to discover how classes, methods, or fields are actually used throughout the codebase.
+    """)
     public String getUsages(
             @P(value = "Fully qualified symbol names (package name, class name, optional member name) to find usages for")
             List<String> symbols,
@@ -918,7 +923,10 @@ public class SearchAgent {
     /**
      * Find related code using PageRank.
      */
-    @Tool("Find related classes. Use this for exploring and also when you're almost done and want to double-check that you haven't missed anything.")
+    @Tool("""
+    Returns a list of related class names, ordered by relevance.
+    Use this for exploring and also when you're almost done and want to double-check that you haven't missed anything.
+    """)
     public String getRelatedClasses(
             @P(value = "List of fully qualified class names.")
             List<String> classNames
@@ -957,7 +965,10 @@ public class SearchAgent {
     /**
      * Get the skeletons (structures) of classes.
      */
-    @Tool("Get an overview of classes' contents, including fields and method signatures. Use this to understand class structures without fetching full source code.")
+    @Tool("""
+    Returns an overview of classes' contents, including fields and method signatures.
+    Use this to understand class structures and APIs much faster than fetching full source code.
+    """)
     public String getClassSkeletons(
             @P(value = "Fully qualified class names to get the skeleton structures for")
             List<String> classNames
@@ -981,7 +992,11 @@ public class SearchAgent {
     /**
      * Get the full source code of classes.
      */
-    @Tool("Get the full source code of classes. This is expensive, so prefer using skeletons or method sources when possible. Use this when you need the complete implementation details, or if you think multiple methods in the classes may be relevant.")
+    @Tool("""
+    Returns the full source code of classes.
+    This is expensive, so prefer requesting skeletons or method sources when possible.
+    Use this when you need the complete implementation details, or if you think multiple methods in the classes may be relevant.
+    """)
     public String getClassSources(
             @P(value = "Fully qualified class names to retrieve the full source code for")
             List<String> classNames,
@@ -1021,7 +1036,9 @@ public class SearchAgent {
     /**
      * Get the source code of methods.
      */
-    @Tool("Get the source code of specific methods. Use this to examine the implementation of particular methods without retrieving the entire classes.")
+    @Tool("""
+    Returns the full source code of specific methods. Use this to examine the implementation of particular methods without retrieving the entire classes.
+    """)
     public String getMethodSources(
             @P(value = "Fully qualified method names (package name, class name, method name) to retrieve sources for")
             List<String> methodNames
@@ -1056,7 +1073,10 @@ public class SearchAgent {
         return result.toString();
     }
 
-    @Tool("Get the call graph showing which methods call the given method. Use this to understand method dependencies and how code flows into a method.")
+    @Tool("""
+    Returns the call graph showing which methods call the given method and one line of source code for each invocation.
+    Use this to understand method dependencies and how code flows into a method.
+    """)
     public String getCallGraphTo(
             @P(value = "Fully qualified method name (package name, class name, method name) to find callers for")
             String methodName
@@ -1068,7 +1088,10 @@ public class SearchAgent {
         return AnalyzerUtil.formatCallGraphTo(analyzer, methodName);
     }
 
-    @Tool("Get the call graph showing which methods are called by the given method. Use this to understand how a method's logic flows to other parts of the codebase.")
+    @Tool("""
+    Returns the call graph showing which methods are called by the given method and one line of source code for each invocation.
+    Use this to understand how a method's logic flows to other parts of the codebase.
+    """)
     public String getCallGraphFrom(
             @P(value = "Fully qualified method name (package name, class name, method name) to find callees for") 
             String methodName
@@ -1097,7 +1120,10 @@ public class SearchAgent {
         return explanation;
     }
 
-    @Tool("Search for classes whose text contents match Java regular expression patterns. This is slower than searchSymbols but can find usages of external dependencies and comment strings.")
+    @Tool("""
+    Returns class names whose text contents match Java regular expression patterns.
+    This is slower than searchSymbols but can find references to external dependencies and comment strings.
+    """)
     public String searchSubstrings(
             @P(value = "Java-style regex patterns to search for within file contents. Unlike searchSymbols this does not automatically include any implicit anchors or case insensitivity.")
             List<String> patterns,
@@ -1167,7 +1193,10 @@ public class SearchAgent {
         }
     }
 
-    @Tool("Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found. Use this as a last resort when you're confident no useful answer can be provided.")
+    @Tool("""
+    Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found. 
+    Use this as a last resort when you're confident no useful answer can be provided.
+    """)
     public String abort(
             @P(value = "Explanation of why the question cannot be answered or is not relevant to this codebase")
             String explanation
