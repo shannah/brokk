@@ -150,7 +150,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // populate the git panel
         updateCommitPanel();
         gitPanel.updateRepo();
-        gitPanel.updatePrList();
 
         // show the window
         frame.setVisible(true);
