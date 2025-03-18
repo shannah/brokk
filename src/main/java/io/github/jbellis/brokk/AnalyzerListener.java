@@ -21,4 +21,9 @@ public interface AnalyzerListener
      * Called when changes to tracked files are detected, after the initial build
      */
     void onTrackedFileChange();
+
+    /**
+     * Called when external changes to the git repo are detected
+     */
+    void onRepoChange();
 }

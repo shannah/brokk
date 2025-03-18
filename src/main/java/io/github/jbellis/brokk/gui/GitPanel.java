@@ -6,7 +6,7 @@ import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import java.io.IOException;
-import java.io.IOException;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -89,23 +89,26 @@ public class GitPanel extends JPanel {
         JPanel commitTab = buildCommitTab();
         tabbedPane.addTab("Commit", commitTab);
 
-        // 2) Stash tab
-        JPanel stashTab = buildStashTab();
-        tabbedPane.addTab("Stash", stashTab);
-        
+        // 2) Log tab (moved into GitLogPanel)
+        gitLogPanel = new GitLogPanel(chrome, contextManager);
+        tabbedPane.addTab("Log", gitLogPanel);
+
         // 3) PR tab
         JPanel prTab = buildPrTab();
         tabbedPane.addTab("Pull Requests", prTab);
 
-        // 4) Log tab (moved into GitLogPanel)
-        gitLogPanel = new GitLogPanel(chrome, contextManager);
-        tabbedPane.addTab("Log", gitLogPanel);
+        // 4) Stash tab
+        JPanel stashTab = buildStashTab();
+        tabbedPane.addTab("Stash", stashTab);
+    }
 
-        // After UI is built, asynchronously refresh data
+    /**
+     * Updates stash and log panels
+     */
+    public void updateRepo() {
         SwingUtilities.invokeLater(() -> {
             updateStashList();
-            updatePrList();
-            gitLogPanel.updateBranchList(); // load branches, commits, etc.
+            gitLogPanel.update();
         });
     }
 
@@ -195,7 +198,7 @@ public class GitPanel extends JPanel {
         messagePanel.add(new JScrollPane(commitMessageArea), BorderLayout.CENTER);
 
         commitBottomPanel.add(messagePanel, BorderLayout.CENTER);
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
         // "Suggest Message" button
         suggestMessageButton = new JButton("Suggest Message");
@@ -314,7 +317,7 @@ public class GitPanel extends JPanel {
                         commitMessageArea.setText("");
                         updateCommitPanel();
                         // The GitLogPanel can refresh branches/commits:
-                        gitLogPanel.updateBranchList();
+                        gitLogPanel.update();
                     // Select the newly checked out branch in the log panel
                     gitLogPanel.selectCurrentBranch();
                         chrome.enableUserActionButtons();
@@ -548,7 +551,7 @@ public class GitPanel extends JPanel {
         });
 
         // Refresh button
-        JPanel stashButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel stashButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton refreshStashButton = new JButton("Refresh");
         refreshStashButton.addActionListener(e -> updateStashList());
         stashButtonPanel.add(refreshStashButton);
@@ -562,7 +565,11 @@ public class GitPanel extends JPanel {
      * Returns the current GitRepo from ContextManager.
      */
     private GitRepo getRepo() {
-        return contextManager.getProject().getRepo();
+        var repo = contextManager.getProject().getRepo();
+        if (repo == null) {
+            logger.error("getRepo() returned null - no Git repository available");
+        }
+        return repo;
     }
 
     /**
@@ -570,10 +577,11 @@ public class GitPanel extends JPanel {
      */
     public void updateCommitPanel()
     {
+        logger.debug("Starting updateCommitPanel");
         // Store currently selected rows before updating
         int[] selectedRows = uncommittedFilesTable.getSelectedRows();
         List<String> selectedFiles = new ArrayList<>();
-        
+
         // Store the filenames of selected rows to restore selection later
         for (int row : selectedRows) {
             String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
@@ -581,41 +589,50 @@ public class GitPanel extends JPanel {
             String fullPath = path.isEmpty() ? filename : path + "/" + filename;
             selectedFiles.add(fullPath);
         }
-        
+        logger.debug("Saved {} selected files before refresh", selectedFiles.size());
+
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
+            logger.debug("Background task for uncommitted files started");
             try {
+                logger.debug("Calling getRepo().getUncommittedFiles()");
                 var uncommittedFiles = getRepo().getUncommittedFiles();
+                logger.debug("Got {} uncommitted files", uncommittedFiles.size());
                 SwingUtilities.invokeLater(() -> {
+                    logger.debug("In Swing thread updating uncommitted files table");
                     var model = (DefaultTableModel) uncommittedFilesTable.getModel();
                     model.setRowCount(0);
 
                     if (uncommittedFiles.isEmpty()) {
+                        logger.debug("No uncommitted files found");
                         suggestMessageButton.setEnabled(false);
                         commitButton.setEnabled(false);
                         stashButton.setEnabled(false);
                     } else {
+                        logger.debug("Found {} uncommitted files to display", uncommittedFiles.size());
                         // Track row indices for files that were previously selected
                         List<Integer> rowsToSelect = new ArrayList<>();
-                        
+
                         for (int i = 0; i < uncommittedFiles.size(); i++) {
                             var file = uncommittedFiles.get(i);
                             model.addRow(new Object[]{file.getFileName(), file.getParent()});
-                            
+                            logger.debug("Added file to table: {}/{}", file.getParent(), file.getFileName());
+
                             // Check if this file was previously selected
-                            String fullPath = file.getParent().isEmpty() ? 
+                            String fullPath = file.getParent().isEmpty() ?
                                 file.getFileName() : file.getParent() + "/" + file.getFileName();
                             if (selectedFiles.contains(fullPath)) {
                                 rowsToSelect.add(i);
                             }
                         }
-                        
+
                         // Restore selection if any previously selected files are still present
                         if (!rowsToSelect.isEmpty()) {
                             for (int row : rowsToSelect) {
                                 uncommittedFilesTable.addRowSelectionInterval(row, row);
                             }
+                            logger.debug("Restored selection for {} rows", rowsToSelect.size());
                         }
-                        
+
                         suggestMessageButton.setEnabled(true);
 
                         var text = commitMessageArea.getText().trim();
@@ -628,7 +645,9 @@ public class GitPanel extends JPanel {
                     updateCommitButtonText();
                 });
             } catch (Exception e) {
+                logger.error("Error fetching uncommitted files", e);
                 SwingUtilities.invokeLater(() -> {
+                    logger.debug("Disabling commit buttons due to error");
                     suggestMessageButton.setEnabled(false);
                     commitButton.setEnabled(false);
                 });
@@ -1202,7 +1221,7 @@ public class GitPanel extends JPanel {
     /**
      * Fetches open GitHub pull requests and populates the PR table.
      */
-    private void updatePrList() {
+    public void updatePrList() {
         contextManager.submitBackgroundTask("Fetching GitHub Pull Requests", () -> {
             try {
                 // 1) Parse the GitHub remote URL
@@ -1469,7 +1488,7 @@ public class GitPanel extends JPanel {
                             break;
                         }
                     }
-                    gitLogPanel.updateBranchList();
+                    gitLogPanel.update();
                 });
 
                 chrome.systemOutput("Checked out PR #" + prNumber + " as local branch");

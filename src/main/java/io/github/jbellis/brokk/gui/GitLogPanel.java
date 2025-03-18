@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.GitRepo.CommitInfo;
 import io.github.jbellis.brokk.analyzer.RepoFile;
@@ -137,7 +136,7 @@ public class GitLogPanel extends JPanel {
         // "Refresh" button for branches
         JPanel branchButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton refreshBranchesButton = new JButton("Refresh");
-        refreshBranchesButton.addActionListener(e -> updateBranchList());
+        refreshBranchesButton.addActionListener(e -> update());
         branchButtonPanel.add(refreshBranchesButton);
         branchesPanel.add(branchButtonPanel, BorderLayout.SOUTH);
 
@@ -594,7 +593,7 @@ public class GitLogPanel extends JPanel {
     /**
      * Update the branch list (local + remote) and select the current branch.
      */
-    public void updateBranchList() {
+    public void update() {
         contextManager.submitBackgroundTask("Fetching git branches", () -> {
             try {
                 String currentBranch = getRepo().getCurrentBranch();
@@ -1006,7 +1005,7 @@ public class GitLogPanel extends JPanel {
                 } else {
                     getRepo().checkout(branchName);
                 }
-                updateBranchList();
+                update();
             } catch (IOException e) {
                 logger.error("Error checking out branch: {}", branchName, e);
                 chrome.toolErrorRaw(e.getMessage());
@@ -1022,7 +1021,7 @@ public class GitLogPanel extends JPanel {
             try {
                 getRepo().mergeIntoHead(branchName);
                 chrome.systemOutput("Branch '" + branchName + "' was successfully merged into HEAD.");
-                updateBranchList();
+                update();
             } catch (IOException e) {
                 logger.error("Error merging branch: {}", branchName, e);
                 chrome.toolErrorRaw(e.getMessage());
@@ -1044,7 +1043,7 @@ public class GitLogPanel extends JPanel {
             contextManager.submitUserTask("Renaming branch: " + branchName, () -> {
                 try {
                     getRepo().renameBranch(branchName, newName);
-                    updateBranchList();
+                    update();
                 } catch (IOException e) {
                     logger.error("Error renaming branch: {}", branchName, e);
                     chrome.toolErrorRaw("Error renaming branch: " + e.getMessage());
@@ -1130,7 +1129,7 @@ public class GitLogPanel extends JPanel {
                 }
                 
                 logger.debug("Branch '{}' deletion completed successfully", branchName);
-                updateBranchList();
+                update();
                 chrome.systemOutput("Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
             } catch (IOException e) {
                 logger.error("Error deleting branch '{}': {}", branchName, e.getMessage(), e);

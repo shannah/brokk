@@ -147,8 +147,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         initializeThemeManager();
         loadWindowSizeAndPosition();
 
-        // populate the commit panel
+        // populate the git panel
         updateCommitPanel();
+        gitPanel.updateRepo();
+        gitPanel.updatePrList();
 
         // show the window
         frame.setVisible(true);
@@ -837,6 +839,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void updateCommitPanel() {
         gitPanel.updateCommitPanel();
+    }
+
+    public void updateGitRepo() {
+        gitPanel.updateRepo();
     }
 
     /**

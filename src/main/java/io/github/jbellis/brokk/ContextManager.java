@@ -177,6 +177,12 @@ public class ContextManager implements IContextManager
             }
 
             @Override
+            public void onRepoChange() {
+                project.getRepo().refresh();
+                io.updateGitRepo();
+            }
+
+            @Override
             public void onTrackedFileChange() {
                 io.updateCommitPanel();
             }

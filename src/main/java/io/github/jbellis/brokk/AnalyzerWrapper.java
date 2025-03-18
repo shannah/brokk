@@ -144,7 +144,7 @@ public class AnalyzerWrapper {
         });
         if (needsGitRefresh) {
             logger.debug("Refreshing git due to changes in .git directory");
-            project.getRepo().refresh();
+            listener.onRepoChange();
             listener.onTrackedFileChange();
         }
 
