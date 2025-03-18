@@ -520,7 +520,7 @@ public class ContextManager implements IContextManager
     {
         var dialog = new SymbolSelectionDialog(null, project, title, typeFilter);
         SwingUtil.runOnEDT(() -> {
-            dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
+            dialog.setSize((int) (io.getFrame().getWidth() * 0.9), dialog.getHeight());
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
         });

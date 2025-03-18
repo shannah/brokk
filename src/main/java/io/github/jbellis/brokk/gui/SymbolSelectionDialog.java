@@ -6,19 +6,16 @@ import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.Project;
 import org.fife.ui.autocomplete.AutoCompletion;
-import org.fife.ui.autocomplete.BasicCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionProvider;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
+import org.fife.ui.autocomplete.ShorthandCompletion;
 
 import javax.swing.*;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -41,15 +38,17 @@ public class SymbolSelectionDialog extends JDialog {
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
-    public SymbolSelectionDialog(Frame parent, Project project, String title) {
-        this(parent, project, title, CodeUnitType.ALL);
-    }
-    
     public SymbolSelectionDialog(Frame parent, Project project, String title, Set<CodeUnitType> typeFilter) {
         super(parent, title, true); // modal dialog
+        assert parent != null;
+        assert project != null;
+        assert title != null;
+        assert typeFilter != null;
+
         this.project = project;
         this.analyzer = project.getAnalyzer();
         this.typeFilter = typeFilter;
+        assert analyzer != null;
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -66,37 +65,16 @@ public class SymbolSelectionDialog extends JDialog {
         JPanel inputPanel = new JPanel(new BorderLayout());
         inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         inputPanel.add(symbolInput, BorderLayout.CENTER);
-        inputPanel.add(new JLabel("Ctrl-space to autocomplete class and member names"), BorderLayout.SOUTH);
-        mainPanel.add(inputPanel, BorderLayout.NORTH);
-
-        // Class list in the center
-        JPanel listPanel = new JPanel(new BorderLayout());
-        listPanel.setBorder(BorderFactory.createTitledBorder("Available Classes"));
-        
-        DefaultListModel<String> classListModel = new DefaultListModel<>();
-        List<String> allClasses = new ArrayList<>(analyzer.getAllClasses().stream()
-                .filter(cu -> typeFilter.contains(cu.kind()))
-                .map(CodeUnit::fqName)
-                .sorted()
-                .toList());
-        for (String className : allClasses) {
-            classListModel.addElement(className);
+        String autocompleteText;
+        if (typeFilter.equals(CodeUnitType.ALL)) {
+            autocompleteText = "Ctrl-space to autocomplete class and member names";
+        } else {
+            assert typeFilter.size() == 1 : "Expected exactly one type filter";
+            var type = typeFilter.iterator().next();
+            autocompleteText = "Ctrl-space to autocomplete " + type.toString().toLowerCase() + " names";
         }
-        JList<String> classList = new JList<>(classListModel);
-        classList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        classList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                String selected = classList.getSelectedValue();
-                if (selected != null) {
-                    symbolInput.setText(selected);
-                }
-            }
-        });
-        
-        JScrollPane listScrollPane = new JScrollPane(classList);
-        listPanel.add(listScrollPane, BorderLayout.CENTER);
-        listPanel.setPreferredSize(new Dimension(400, 300));
-        mainPanel.add(listPanel, BorderLayout.CENTER);
+        inputPanel.add(new JLabel(autocompleteText), BorderLayout.SOUTH);
+        mainPanel.add(inputPanel, BorderLayout.NORTH);
 
         // Buttons at the bottom
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -125,29 +103,9 @@ public class SymbolSelectionDialog extends JDialog {
         // Add a tooltip to indicate Enter key functionality
         symbolInput.setToolTipText("Enter a class or member name and press Enter to confirm");
         
-        // Add double-click handler to the class list
-        classList.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    int index = classList.locationToIndex(e.getPoint());
-                    if (index >= 0) {
-                        symbolInput.setText(classList.getModel().getElementAt(index));
-                        doOk();
-                    }
-                }
-            }
-        });
-
         setContentPane(mainPanel);
         pack();
         setLocationRelativeTo(parent);
-        // Make the autocomplete popup match the width of the dialog
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowOpened(WindowEvent e) {
-                autoCompletion.setChoicesWindowSize((int) (mainPanel.getWidth() * 0.9), 300);
-            }
-        });
     }
 
     /**
@@ -188,15 +146,11 @@ public class SymbolSelectionDialog extends JDialog {
     /**
      * A completion provider for Java classes and members using Completions.completeClassesAndMembers
      */
-    public static class SymbolCompletionProvider extends DefaultCompletionProvider {
-    
+    public class SymbolCompletionProvider extends DefaultCompletionProvider {
+
         private final IAnalyzer analyzer;
         private final Set<CodeUnitType> typeFilter;
     
-        public SymbolCompletionProvider(IAnalyzer analyzer) {
-            this(analyzer, CodeUnitType.ALL);
-        }
-        
         public SymbolCompletionProvider(IAnalyzer analyzer, Set<CodeUnitType> typeFilter) {
             this.analyzer = analyzer;
             this.typeFilter = typeFilter;
@@ -216,12 +170,37 @@ public class SymbolSelectionDialog extends JDialog {
             var completions = analyzer == null
                             ? List.<CodeUnit>of()
                             : Completions.completeClassesAndMembers(text, analyzer);
-    
+
             // Convert to RSTA completions, filtering by the requested types
-            return completions.stream()
+            var L = completions.stream()
                     .filter(c -> typeFilter.contains(c.kind()))
-                    .map(c -> (Completion) new BasicCompletion(this, c.fqName()))
+                    .map(c -> (Completion) new ShorthandCompletion(this, c.shortName(), c.fqName()))
                     .toList();
+
+            if (L.isEmpty()) {
+                autoCompletion.setShowDescWindow(false);
+                return L;
+            }
+
+            // Dynamically size the description window based on the longest shortNae
+            var tooltipFont = UIManager.getFont("ToolTip.font");
+            var fontMetrics = symbolInput.getFontMetrics(tooltipFont);
+            int maxWidth = L.stream()
+                    .mapToInt(c -> fontMetrics.stringWidth(c.getInputText()))
+                    .max()
+                    .orElseThrow();
+            // this doesn't seem to work at all, maybe it's hardcoded at startup
+            autoCompletion.setChoicesWindowSize(maxWidth + 10, 3 * fontMetrics.getHeight() + 10); // 5px margin on each side
+
+            autoCompletion.setShowDescWindow(true);
+            int maxDescWidth = L.stream()
+                    .mapToInt(c -> fontMetrics.stringWidth(c.getReplacementText()))
+                    .max()
+                    .orElseThrow();
+            // Desc uses a different (monospaced) font but I'm not sure how to infer which
+            // So, hack in a 1.2 factor
+            autoCompletion.setDescriptionWindowSize((int) (1.2 * maxDescWidth + 10), 3 * fontMetrics.getHeight() + 10);
+            return L;
         }
     }
 }
