@@ -37,3 +37,8 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### BROKK'S CONFIGURATION ###
+.brokk/**
+!.brokk/style.md
+!.brokk/project.properties
