@@ -31,6 +31,7 @@ import java.util.concurrent.Future;
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
 
+    // Used as the default text for the background tasks label
     private final String BGTASK_EMPTY = "No background tasks";
 
     // Dependencies:
@@ -43,6 +44,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JLabel commandResultLabel;
     private JTextArea commandInputField;
     private JLabel backgroundStatusLabel;
+    private Dimension backgroundLabelPreferredSize;
     private JScrollPane systemScrollPane;
 
     // Context History Panel
@@ -572,6 +574,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         backgroundStatusLabel = new JLabel(BGTASK_EMPTY);
         backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         backgroundStatusLabel.setBorder(new EmptyBorder(2, 5, 2, 5));
+        
+        // Store the preferred size with the default text
+        backgroundLabelPreferredSize = backgroundStatusLabel.getPreferredSize();
+        
         return backgroundStatusLabel;
     }
 
@@ -1044,7 +1050,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void backgroundOutput(String message) {
-        SwingUtilities.invokeLater(() -> backgroundStatusLabel.setText(message));
+        SwingUtilities.invokeLater(() -> {
+            // Set to empty string when message is empty
+            if (message == null || message.isEmpty()) {
+                backgroundStatusLabel.setText("");
+            } else {
+                backgroundStatusLabel.setText(message);
+            }
+            
+            // Ensure the label keeps its preferred size even when empty
+            backgroundStatusLabel.setPreferredSize(backgroundLabelPreferredSize);
+        });
     }
 
     @Override
