@@ -19,8 +19,10 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -821,6 +823,85 @@ public class GitRepo implements Closeable, IGitRepo {
             return stashes;
         } catch (GitAPIException e) {
             throw new IOException("Failed to list stashes: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Gets additional commits from a stash (index, untracked files)
+     * @param stashRef The stash reference (e.g., "stash@{0}")
+     * @return Map of commit type to CommitInfo
+     * @throws IOException If there's an error accessing the stash
+     */
+    public Map<String, CommitInfo> listAdditionalStashCommits(String stashRef) throws IOException {
+        try {
+            Map<String, CommitInfo> additionalCommits = new HashMap<>();
+            var rev = repository.resolve(stashRef);
+
+            try (var revWalk = new RevWalk(repository)) {
+                var commit = revWalk.parseCommit(rev);
+
+                // Per git stash internals:
+                // stash@{0} - Main stash commit (merge commit) containing modified tracked files in working dir
+                // stash@{0}^1 - Original HEAD commit
+                // stash@{0}^2 - Index commit (staged changes)
+                // stash@{0}^3 - Untracked files commit (only exists when stash was created with -u or -a)
+
+                // First, check if this is really a stash commit by confirming it's a merge commit
+                if (commit.getParentCount() < 2) {
+                    logger.warn("Stash {} is not a merge commit, which is unexpected", stashRef);
+                    return additionalCommits;
+                }
+
+                // Now check if the Index (second parent) contains any changes
+                // by comparing it with the original HEAD (first parent)
+                var headCommit = commit.getParent(0);
+                var indexCommit = commit.getParent(1);
+                revWalk.parseHeaders(headCommit);
+                revWalk.parseHeaders(indexCommit);
+
+                // Compare trees to see if the index has any changes from HEAD
+                try (var diffFormatter = new org.eclipse.jgit.diff.DiffFormatter(new ByteArrayOutputStream())) {
+                    diffFormatter.setRepository(repository);
+                    var diffs = diffFormatter.scan(headCommit.getTree(), indexCommit.getTree());
+                    
+                    // Only add index commit if it has actual changes
+                    if (!diffs.isEmpty()) {
+                        additionalCommits.put("index", new CommitInfo(
+                            indexCommit.getName(),
+                            "Index (staged) changes in " + stashRef,
+                            indexCommit.getAuthorIdent().getName(),
+                            indexCommit.getAuthorIdent().getWhen()
+                        ));
+                    }
+                }
+
+                // Check for untracked files (third parent)
+                if (commit.getParentCount() > 2) {
+                    var untrackedCommit = commit.getParent(2);
+                    revWalk.parseHeaders(untrackedCommit);
+                    
+                    // We only need to verify there are files in this tree
+                    boolean hasFiles = false;
+                    try (var treeWalk = new TreeWalk(repository)) {
+                        treeWalk.addTree(untrackedCommit.getTree());
+                        treeWalk.setRecursive(true);
+                        hasFiles = treeWalk.next(); // Check if there's at least one file
+                    }
+                    
+                    if (hasFiles) {
+                        additionalCommits.put("untracked", new CommitInfo(
+                            untrackedCommit.getName(),
+                            "Untracked files in " + stashRef,
+                            untrackedCommit.getAuthorIdent().getName(),
+                            untrackedCommit.getAuthorIdent().getWhen()
+                        ));
+                    }
+                }
+            }
+
+            return additionalCommits;
+        } catch (IOException e) {
+            throw new IOException("Failed to get additional stash commits: " + e.getMessage(), e);
         }
     }
 

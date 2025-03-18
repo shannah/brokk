@@ -106,7 +106,21 @@ public class GitLogPanel extends JPanel {
             @Override
             public Class<?> getColumnClass(int columnIndex) { return String.class; }
         };
-        branchTable = new JTable(branchTableModel);
+        branchTable = new JTable(branchTableModel) {
+            @Override
+            public Component prepareRenderer(javax.swing.table.TableCellRenderer renderer, int row, int column) {
+                Component c = super.prepareRenderer(renderer, row, column);
+                if (column == 1 && row >= 0 && row < getRowCount()) {
+                    String branchName = (String) getValueAt(row, 1);
+                    if ("stashes".equals(branchName)) {
+                        c.setFont(new Font(Font.MONOSPACED, Font.ITALIC, 12));
+                    } else {
+                        c.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+                    }
+                }
+                return c;
+            }
+        };
         branchTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         branchTable.setRowHeight(18);
         branchTable.getColumnModel().getColumn(0).setMaxWidth(20);
@@ -225,30 +239,91 @@ public class GitLogPanel extends JPanel {
         JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
         JMenuItem softResetItem = new JMenuItem("Soft Reset to Here");
         JMenuItem revertCommitItem = new JMenuItem("Revert Commit");
+        JMenuItem popStashCommitItem = new JMenuItem("Pop Stash");
+        JMenuItem applyStashCommitItem = new JMenuItem("Apply Stash");
+        JMenuItem dropStashCommitItem = new JMenuItem("Drop Stash");
+        
         commitsContextMenu.add(addToContextItem);
         commitsContextMenu.add(softResetItem);
         commitsContextMenu.add(revertCommitItem);
-        commitsTable.setComponentPopupMenu(commitsContextMenu);
-
-        commitsContextMenu.addPopupMenuListener(new PopupMenuListener() {
+        
+        // Create separator but don't add it yet - will be shown dynamically
+        JPopupMenu.Separator stashSeparator = new JPopupMenu.Separator();
+        
+        commitsContextMenu.add(popStashCommitItem);
+        commitsContextMenu.add(applyStashCommitItem);
+        commitsContextMenu.add(dropStashCommitItem);
+        // Add mouse listener for commits table popup menu
+        commitsTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-                SwingUtilities.invokeLater(() -> {
-                    Point point = MouseInfo.getPointerInfo().getLocation();
-                    SwingUtilities.convertPointFromScreen(point, commitsTable);
-                    int row = commitsTable.rowAtPoint(point);
+            public void mousePressed(MouseEvent e) {
+                handleCommitsPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                handleCommitsPopup(e);
+            }
+
+            private void handleCommitsPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = commitsTable.rowAtPoint(e.getPoint());
                     if (row >= 0) {
                         if (!commitsTable.isRowSelected(row)) {
                             commitsTable.setRowSelectionInterval(row, row);
                         }
                     }
+                    
+                    // Check if we're in stashes branch
+                    int branchRow = branchTable.getSelectedRow();
+                    boolean isStashesBranch = branchRow >= 0 &&
+                        "stashes".equals(branchTableModel.getValueAt(branchRow, 1));
+
                     // Update menu item states based on selection
                     int[] sel = commitsTable.getSelectedRows();
-                    softResetItem.setEnabled(sel.length == 1);
-                });
+                    softResetItem.setEnabled(sel.length == 1 && !isStashesBranch);
+                    revertCommitItem.setEnabled(!isStashesBranch);
+
+                    // Show/hide stash operations and separator
+                    boolean showStashItems = isStashesBranch;
+                    
+                    // Add or remove separator dynamically based on whether stash items are shown
+                    if (showStashItems) {
+                        // Check if separator is already in menu to avoid duplicates
+                        boolean hasSeparator = false;
+                        for (int i = 0; i < commitsContextMenu.getComponentCount(); i++) {
+                            if (commitsContextMenu.getComponent(i) instanceof JPopupMenu.Separator) {
+                                hasSeparator = true;
+                                break;
+                            }
+                        }
+                        if (!hasSeparator) {
+                            commitsContextMenu.insert(stashSeparator, 3); // Insert after revertCommitItem
+                        }
+                    } else {
+                        // Remove separator if it exists
+                        for (int i = 0; i < commitsContextMenu.getComponentCount(); i++) {
+                            if (commitsContextMenu.getComponent(i) instanceof JPopupMenu.Separator) {
+                                commitsContextMenu.remove(i);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    popStashCommitItem.setVisible(showStashItems);
+                    applyStashCommitItem.setVisible(showStashItems);
+                    dropStashCommitItem.setVisible(showStashItems);
+
+                    // Only enable "Pop" for stash@{0} if in stashes branch
+                    if (isStashesBranch && row >= 0) {
+                        String commitMessage = (String) commitsTableModel.getValueAt(row, 0);
+                        boolean isStash0 = commitMessage.contains("stash@{0}");
+                        popStashCommitItem.setEnabled(isStash0);
+                    }
+                    
+                    commitsContextMenu.show(commitsTable, e.getX(), e.getY());
+                }
             }
-            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
-            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
         });
 
         addToContextItem.addActionListener(e -> {
@@ -275,6 +350,64 @@ public class GitLogPanel extends JPanel {
             if (row != -1) {
                 String commitId = (String) commitsTableModel.getValueAt(row, 3);
                 revertCommit(commitId);
+            }
+        });
+        
+        // Add handlers for stash operations in the commit context menu
+        popStashCommitItem.addActionListener(e -> {
+            int row = commitsTable.getSelectedRow();
+            if (row != -1) {
+                String message = (String) commitsTableModel.getValueAt(row, 0);
+                if (message.contains("stash@{")) {
+                    int start = message.indexOf("stash@{") + 7;
+                    int end = message.indexOf("}", start);
+                    if (end > start) {
+                        try {
+                            int stashIndex = Integer.parseInt(message.substring(start, end));
+                            popStash(stashIndex);
+                        } catch (NumberFormatException ex) {
+                            logger.warn("Could not parse stash index from: {}", message);
+                        }
+                    }
+                }
+            }
+        });
+
+        applyStashCommitItem.addActionListener(e -> {
+            int row = commitsTable.getSelectedRow();
+            if (row != -1) {
+                String message = (String) commitsTableModel.getValueAt(row, 0);
+                if (message.contains("stash@{")) {
+                    int start = message.indexOf("stash@{") + 7;
+                    int end = message.indexOf("}", start);
+                    if (end > start) {
+                        try {
+                            int stashIndex = Integer.parseInt(message.substring(start, end));
+                            applyStash(stashIndex);
+                        } catch (NumberFormatException ex) {
+                            logger.warn("Could not parse stash index from: {}", message);
+                        }
+                    }
+                }
+            }
+        });
+
+        dropStashCommitItem.addActionListener(e -> {
+            int row = commitsTable.getSelectedRow();
+            if (row != -1) {
+                String message = (String) commitsTableModel.getValueAt(row, 0);
+                if (message.contains("stash@{")) {
+                    int start = message.indexOf("stash@{") + 7;
+                    int end = message.indexOf("}", start);
+                    if (end > start) {
+                        try {
+                            int stashIndex = Integer.parseInt(message.substring(start, end));
+                            dropStash(stashIndex);
+                        } catch (NumberFormatException ex) {
+                            logger.warn("Could not parse stash index from: {}", message);
+                        }
+                    }
+                }
             }
         });
         
@@ -326,7 +459,41 @@ public class GitLogPanel extends JPanel {
         changesContextMenu.add(viewDiffItem);
         changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(editFileItem);
-        changesTree.setComponentPopupMenu(changesContextMenu);
+        // Add mouse listener for changes tree popup
+        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                handleChangesPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                handleChangesPopup(e);
+            }
+
+            private void handleChangesPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = changesTree.getRowForLocation(e.getX(), e.getY());
+                    if (row >= 0) {
+                        if (!changesTree.isRowSelected(row)) {
+                            changesTree.setSelectionRow(row);
+                        }
+                    }
+                    
+                    TreePath[] paths = changesTree.getSelectionPaths();
+                    boolean hasFileSelection = paths != null && paths.length > 0 && hasFileNodesSelected(paths);
+                    int[] selRows = commitsTable.getSelectedRows();
+                    boolean isSingleCommit = (selRows.length == 1);
+
+                    addFileToContextItem.setEnabled(hasFileSelection);
+                    compareFileWithLocalItem.setEnabled(hasFileSelection && isSingleCommit);
+                    viewHistoryItem.setEnabled(hasFileSelection);
+                    editFileItem.setEnabled(hasFileSelection);
+                    
+                    changesContextMenu.show(changesTree, e.getX(), e.getY());
+                }
+            }
+        });
         
         // Add double-click handler to show diff
         changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -343,32 +510,6 @@ public class GitLogPanel extends JPanel {
             }
         });
 
-        changesContextMenu.addPopupMenuListener(new PopupMenuListener() {
-            @Override
-            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-                SwingUtilities.invokeLater(() -> {
-                    Point point = MouseInfo.getPointerInfo().getLocation();
-                    SwingUtilities.convertPointFromScreen(point, changesTree);
-                    int row = changesTree.getRowForLocation(point.x, point.y);
-                    if (row >= 0) {
-                        if (!changesTree.isRowSelected(row)) {
-                            changesTree.setSelectionRow(row);
-                        }
-                    }
-                    TreePath[] paths = changesTree.getSelectionPaths();
-                    boolean hasFileSelection = paths != null && paths.length > 0 && hasFileNodesSelected(paths);
-                    int[] selRows = commitsTable.getSelectedRows();
-                    boolean isSingleCommit = (selRows.length == 1);
-
-                    addFileToContextItem.setEnabled(hasFileSelection);
-                    compareFileWithLocalItem.setEnabled(hasFileSelection && isSingleCommit);
-                    viewHistoryItem.setEnabled(hasFileSelection);
-                    editFileItem.setEnabled(hasFileSelection);
-                });
-            }
-            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
-            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
-        });
 
         addFileToContextItem.addActionListener(e -> {
             TreePath[] paths = changesTree.getSelectionPaths();
@@ -531,21 +672,31 @@ public class GitLogPanel extends JPanel {
         branchContextMenu.add(renameItem);
         branchContextMenu.add(deleteItem);
 
-        branchContextMenu.addPopupMenuListener(new PopupMenuListener() {
+
+        // Add mouse listener with pressed/released for better context menu handling
+        branchTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-                SwingUtilities.invokeLater(() -> {
-                    Point p = MouseInfo.getPointerInfo().getLocation();
-                    SwingUtilities.convertPointFromScreen(p, branchTable);
-                    int row = branchTable.rowAtPoint(p);
+            public void mousePressed(MouseEvent e) {
+                handleBranchPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                handleBranchPopup(e);
+            }
+
+            private void handleBranchPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = branchTable.rowAtPoint(e.getPoint());
                     if (row >= 0) {
-                        branchTable.setRowSelectionInterval(row, row);
+                        if (!branchTable.isRowSelected(row)) {
+                            branchTable.setRowSelectionInterval(row, row);
+                        }
                     }
                     checkBranchContextMenuState(branchContextMenu);
-                });
+                    branchContextMenu.show(branchTable, e.getX(), e.getY());
+                }
             }
-            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
-            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
         });
 
         checkoutItem.addActionListener(e -> {
@@ -581,7 +732,9 @@ public class GitLogPanel extends JPanel {
             }
         });
 
-        branchTable.setComponentPopupMenu(branchContextMenu);
+
+        // Note: We don't set the component popup menu here, as we've attached a mouse
+        // listener to handle the popup instead
     }
 
 
@@ -605,12 +758,23 @@ public class GitLogPanel extends JPanel {
                     remoteBranchTableModel.setRowCount(0);
                     int currentBranchRow = -1;
 
+                    // Add normal branches
                     for (String branch : localBranches) {
                         String checkmark = branch.equals(currentBranch) ? "✓" : "";
                         branchTableModel.addRow(new Object[]{checkmark, branch});
                         if (branch.equals(currentBranch)) {
                             currentBranchRow = branchTableModel.getRowCount() - 1;
                         }
+                    }
+                    
+                    // Add virtual "stashes" branch if there are stashes
+                    try {
+                        List<GitRepo.StashInfo> stashes = getRepo().listStashes();
+                        if (!stashes.isEmpty()) {
+                            branchTableModel.addRow(new Object[]{"", "stashes"});
+                        }
+                    } catch (IOException e) {
+                        logger.warn("Could not fetch stashes", e);
                     }
                     for (String branch : remoteBranches) {
                         remoteBranchTableModel.addRow(new Object[]{branch});
@@ -648,22 +812,39 @@ public class GitLogPanel extends JPanel {
     private void updateCommitsForBranch(String branchName) {
         contextManager.submitBackgroundTask("Fetching commits for " + branchName, () -> {
             try {
-                List<CommitInfo> commits = getRepo().listCommitsDetailed(branchName);
-                boolean isLocalBranch = branchName.equals(getRepo().getCurrentBranch()) || !branchName.contains("/");
+                List<CommitInfo> commits;
+                boolean isLocalBranch;
                 Set<String> unpushedCommitIds = new HashSet<>();
                 boolean canPush = false;
 
-                if (isLocalBranch) {
+                // Special handling for stashes virtual branch
+                if ("stashes".equals(branchName)) {
                     try {
-                        unpushedCommitIds.addAll(getRepo().getUnpushedCommitIds(branchName));
-                        canPush = !unpushedCommitIds.isEmpty() && getRepo().hasUpstreamBranch(branchName);
+                        commits = getStashesAsCommits();
+                        isLocalBranch = false; // Don't treat stashes as pushable
                     } catch (IOException e) {
-                        logger.warn("Could not check for unpushed commits: {}", e.getMessage());
+                        logger.error("Error fetching stashes", e);
+                        commits = List.of();
+                        isLocalBranch = false;
+                    }
+                } else {
+                    // Normal branch handling
+                    commits = getRepo().listCommitsDetailed(branchName);
+                    isLocalBranch = branchName.equals(getRepo().getCurrentBranch()) || !branchName.contains("/");
+                    
+                    if (isLocalBranch) {
+                        try {
+                            unpushedCommitIds.addAll(getRepo().getUnpushedCommitIds(branchName));
+                            canPush = !unpushedCommitIds.isEmpty() && getRepo().hasUpstreamBranch(branchName);
+                        } catch (IOException e) {
+                            logger.warn("Could not check for unpushed commits: {}", e.getMessage());
+                        }
                     }
                 }
 
                 boolean finalCanPush = canPush;
                 int unpushedCount = unpushedCommitIds.size();
+                List<CommitInfo> finalCommits = commits;
                 SwingUtilities.invokeLater(() -> {
                     commitsTableModel.setRowCount(0);
                     changesRootNode.removeAllChildren();
@@ -671,15 +852,16 @@ public class GitLogPanel extends JPanel {
 
                     pushButton.setEnabled(finalCanPush);
                     pushButton.setToolTipText(finalCanPush
-                                                      ? "Push " + unpushedCount + " commit(s) to remote"
-                                                      : "No unpushed commits or no upstream branch configured");
+                                                     ? "Push " + unpushedCount + " commit(s) to remote"
+                                                     : "No unpushed commits or no upstream branch configured");
+                    pushButton.setVisible(!branchName.equals("stashes")); // Hide push button for stashes
 
-                    if (commits.isEmpty()) {
+                    if (finalCommits.isEmpty()) {
                         return;
                     }
 
                     java.time.LocalDate today = java.time.LocalDate.now();
-                    for (CommitInfo commit : commits) {
+                    for (CommitInfo commit : finalCommits) {
                         String formattedDate = formatCommitDate(commit.date(), today);
                         boolean isUnpushed = unpushedCommitIds.contains(commit.id());
                         commitsTableModel.addRow(new Object[]{
@@ -1236,6 +1418,74 @@ public class GitLogPanel extends JPanel {
     }
 
     /**
+     * Retrieves stashes as commit info objects for display in the commits table
+     */
+    private List<CommitInfo> getStashesAsCommits() throws IOException {
+        List<GitRepo.StashInfo> stashes = getRepo().listStashes();
+        List<CommitInfo> stashCommits = new ArrayList<>();
+
+        for (GitRepo.StashInfo stash : stashes) {
+            String baseName = stash.message();
+            String stashRef = "stash@{" + stash.index() + "}";
+            
+            try {
+                // Get additional commits for this stash
+                var additionalCommits = getRepo().listAdditionalStashCommits(stashRef);
+                
+                // If we have index or untracked commits, add them with appropriate labels
+                if (!additionalCommits.isEmpty()) {
+                    // Add the main stash first with working tree label
+                    stashCommits.add(new CommitInfo(
+                        stash.id(),
+                        baseName + " (working tree)" + " (stash@{" + stash.index() + "})",
+                        stash.author(),
+                        stash.date()
+                    ));
+                    
+                    // Add each additional commit with appropriate suffix
+                    for (var entry : additionalCommits.entrySet()) {
+                        var type = entry.getKey();
+                        var commit = entry.getValue();
+                        String suffix = switch(type) {
+                            case "index" -> " (staged changes)";
+                            case "untracked" -> " (untracked files)";
+                            default -> " (unknown)"; // Should not happen
+                        };
+
+                        stashCommits.add(new CommitInfo(
+                            commit.id(),
+                            baseName + suffix + " (stash@{" + stash.index() + "})",
+                            commit.author(),
+                            commit.date()
+                        ));
+                    }
+                } else {
+                    // No additional commits, just add the main stash
+                    stashCommits.add(new CommitInfo(
+                        stash.id(),
+                        baseName + " (stash@{" + stash.index() + "})",
+                        stash.author(),
+                        stash.date()
+                    ));
+                }
+            } catch (Exception e) {
+                logger.warn("Could not fetch additional stash commits for {}: {}",
+                           stashRef, e.getMessage());
+                
+                // Fallback: Just add the main stash commit
+                stashCommits.add(new CommitInfo(
+                    stash.id(),
+                    baseName + " (stash@{" + stash.index() + "})",
+                    stash.author(),
+                    stash.date()
+                ));
+            }
+        }
+
+        return stashCommits;
+    }
+
+    /**
      * Check if any file nodes (as opposed to directory nodes) are selected.
      */
     private boolean hasFileNodesSelected(TreePath[] paths) {
@@ -1324,6 +1574,72 @@ public class GitLogPanel extends JPanel {
 
         diffPanel.showFileDiff(commitId, file);
         diffPanel.showInDialog(this, dialogTitle);
+    }
+
+    /**
+     * Pop a stash - apply it to the working directory and remove it from the stash list
+     */
+    private void popStash(int stashIndex) {
+        contextManager.submitUserTask("Popping stash", () -> {
+            try {
+                getRepo().popStash(stashIndex);
+                SwingUtilities.invokeLater(() -> {
+                    chrome.systemOutput("Stash popped successfully");
+                    update(); // Refresh branches to show updated stash list
+                });
+            } catch (Exception e) {
+                logger.error("Error popping stash", e);
+                SwingUtilities.invokeLater(() ->
+                        chrome.toolErrorRaw("Error popping stash: " + e.getMessage()));
+            }
+        });
+    }
+
+    /**
+     * Apply a stash to the working directory without removing it from the stash list
+     */
+    private void applyStash(int stashIndex) {
+        contextManager.submitUserTask("Applying stash", () -> {
+            try {
+                getRepo().applyStash(stashIndex);
+                SwingUtilities.invokeLater(() -> {
+                    chrome.systemOutput("Stash applied successfully");
+                });
+            } catch (Exception e) {
+                logger.error("Error applying stash", e);
+                SwingUtilities.invokeLater(() ->
+                        chrome.toolErrorRaw("Error applying stash: " + e.getMessage()));
+            }
+        });
+    }
+
+    /**
+     * Drop a stash without applying it
+     */
+    private void dropStash(int stashIndex) {
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                "Are you sure you want to delete this stash?",
+                "Delete Stash",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+        if (result != JOptionPane.YES_OPTION) {
+            return;
+        }
+        contextManager.submitUserTask("Dropping stash", () -> {
+            try {
+                getRepo().dropStash(stashIndex);
+                SwingUtilities.invokeLater(() -> {
+                    chrome.systemOutput("Stash dropped successfully");
+                    update(); // Refresh branches to show updated stash list
+                });
+            } catch (Exception e) {
+                logger.error("Error dropping stash", e);
+                SwingUtilities.invokeLater(() ->
+                        chrome.toolErrorRaw("Error dropping stash: " + e.getMessage()));
+            }
+        });
     }
 
     /**

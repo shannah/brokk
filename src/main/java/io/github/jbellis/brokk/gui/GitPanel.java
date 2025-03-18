@@ -43,9 +43,6 @@ public class GitPanel extends JPanel {
     private JTabbedPane tabbedPane;
     private final Map<String, JTable> fileHistoryTables = new HashMap<>();
     
-    // Stash tab UI
-    private JTable stashTable;
-    private DefaultTableModel stashTableModel;
     
     // PR tab UI
     private JTable prTable;
@@ -97,17 +94,14 @@ public class GitPanel extends JPanel {
         JPanel prTab = buildPrTab();
         tabbedPane.addTab("Pull Requests", prTab);
 
-        // 4) Stash tab
-        JPanel stashTab = buildStashTab();
-        tabbedPane.addTab("Stash", stashTab);
+        // The Stash functionality has been moved to the Log tab as a virtual branch
     }
 
     /**
-     * Updates stash and log panels
+     * Updates repository data in the UI
      */
     public void updateRepo() {
         SwingUtilities.invokeLater(() -> {
-            updateStashList();
             gitLogPanel.update();
         });
     }
@@ -270,7 +264,7 @@ public class GitPanel extends JPanel {
                         }
                         commitMessageArea.setText("");
                         updateCommitPanel();
-                        updateStashList();
+                        gitLogPanel.update(); // Update to show new stash in the virtual "stashes" branch
                         chrome.enableUserActionButtons();
                     });
                 } catch (Exception ex) {
@@ -465,101 +459,6 @@ public class GitPanel extends JPanel {
         return prTab;
     }
 
-    private JPanel buildStashTab() {
-        JPanel stashTab = new JPanel(new BorderLayout());
-
-        stashTableModel = new DefaultTableModel(
-                new Object[]{"Index", "Message", "Author", "Date", "ID"}, 0
-        ) {
-            @Override public boolean isCellEditable(int row, int col) { return false; }
-            @Override public Class<?> getColumnClass(int columnIndex) { return String.class; }
-        };
-        stashTable = new JTable(stashTableModel);
-        stashTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        stashTable.setRowHeight(18);
-
-        stashTable.getColumnModel().getColumn(0).setPreferredWidth(40);
-        stashTable.getColumnModel().getColumn(1).setPreferredWidth(400);
-        stashTable.getColumnModel().getColumn(2).setPreferredWidth(100);
-        stashTable.getColumnModel().getColumn(3).setPreferredWidth(150);
-        // Hide ID column
-        stashTable.getColumnModel().getColumn(4).setMinWidth(0);
-        stashTable.getColumnModel().getColumn(4).setMaxWidth(0);
-        stashTable.getColumnModel().getColumn(4).setWidth(0);
-
-        stashTab.add(new JScrollPane(stashTable), BorderLayout.CENTER);
-
-        // Context menu for stash
-        JPopupMenu stashContextMenu = new JPopupMenu();
-        if (chrome.themeManager != null) {
-            chrome.themeManager.registerPopupMenu(stashContextMenu);
-        } else {
-            // Register this popup menu later when the theme manager is available
-            SwingUtilities.invokeLater(() -> {
-                if (chrome.themeManager != null) {
-                    chrome.themeManager.registerPopupMenu(stashContextMenu);
-                }
-            });
-        }
-        JMenuItem popStashItem = new JMenuItem("Pop Stash");
-        JMenuItem applyStashItem = new JMenuItem("Apply Stash");
-        JMenuItem dropStashItem = new JMenuItem("Drop Stash");
-        stashContextMenu.add(popStashItem);
-        stashContextMenu.add(applyStashItem);
-        stashContextMenu.add(dropStashItem);
-
-        stashTable.setComponentPopupMenu(stashContextMenu);
-        stashContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
-            @Override
-            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
-                SwingUtilities.invokeLater(() -> {
-                    Point point = MouseInfo.getPointerInfo().getLocation();
-                    SwingUtilities.convertPointFromScreen(point, stashTable);
-                    int row = stashTable.rowAtPoint(point);
-                    if (row >= 0) {
-                        stashTable.setRowSelectionInterval(row, row);
-                        int index = Integer.parseInt((String) stashTableModel.getValueAt(row, 0));
-                        // only enable "Pop" for stash@{0}
-                        popStashItem.setEnabled(index == 0);
-                    }
-                });
-            }
-            @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
-            @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
-        });
-
-        popStashItem.addActionListener(e -> {
-            int row = stashTable.getSelectedRow();
-            if (row != -1) {
-                int index = Integer.parseInt((String) stashTableModel.getValueAt(row, 0));
-                popStash(index);
-            }
-        });
-        applyStashItem.addActionListener(e -> {
-            int row = stashTable.getSelectedRow();
-            if (row != -1) {
-                int index = Integer.parseInt((String) stashTableModel.getValueAt(row, 0));
-                applyStash(index);
-            }
-        });
-        dropStashItem.addActionListener(e -> {
-            int row = stashTable.getSelectedRow();
-            if (row != -1) {
-                int index = Integer.parseInt((String) stashTableModel.getValueAt(row, 0));
-                dropStash(index);
-            }
-        });
-
-        // Refresh button
-        JPanel stashButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton refreshStashButton = new JButton("Refresh");
-        refreshStashButton.addActionListener(e -> updateStashList());
-        stashButtonPanel.add(refreshStashButton);
-
-        stashTab.add(stashButtonPanel, BorderLayout.SOUTH);
-
-        return stashTab;
-    }
 
     /**
      * Returns the current GitRepo from ContextManager.
@@ -1029,98 +928,6 @@ public class GitPanel extends JPanel {
 
     // ================ Stash Methods ==================
 
-    public void updateStashList() {
-        contextManager.submitBackgroundTask("Fetching stashes", () -> {
-            try {
-                var stashes = getRepo().listStashes();
-                SwingUtilities.invokeLater(() -> {
-                    stashTableModel.setRowCount(0);
-                    if (stashes.isEmpty()) return;
-
-                    java.time.LocalDate today = java.time.LocalDate.now();
-                    for (var stash : stashes) {
-                        String formattedDate = gitLogPanel // reuse helper from GitLogPanel or local:
-                                .formatCommitDate(stash.date(), today); // Or replicate that code here
-                        stashTableModel.addRow(new Object[]{
-                                String.valueOf(stash.index()),
-                                stash.message(),
-                                stash.author(),
-                                formattedDate,
-                                stash.id()
-                        });
-                    }
-                });
-            } catch (Exception e) {
-                logger.error("Error fetching stashes", e);
-                SwingUtilities.invokeLater(() -> {
-                    stashTableModel.setRowCount(0);
-                    stashTableModel.addRow(new Object[]{
-                            "", "Error fetching stashes: " + e.getMessage(), "", "", ""
-                    });
-                });
-            }
-            return null;
-        });
-    }
-
-    private void popStash(int index) {
-        contextManager.submitUserTask("Popping stash", () -> {
-            try {
-                getRepo().popStash(index);
-                SwingUtilities.invokeLater(() -> {
-                    chrome.systemOutput("Stash popped successfully");
-                    updateStashList();
-                    updateCommitPanel();
-                });
-            } catch (Exception e) {
-                logger.error("Error popping stash", e);
-                SwingUtilities.invokeLater(() ->
-                                                   chrome.toolErrorRaw("Error popping stash: " + e.getMessage()));
-            }
-        });
-    }
-
-    private void applyStash(int index) {
-        contextManager.submitUserTask("Applying stash", () -> {
-            try {
-                getRepo().applyStash(index);
-                SwingUtilities.invokeLater(() -> {
-                    chrome.systemOutput("Stash applied successfully");
-                    updateCommitPanel();
-                });
-            } catch (Exception e) {
-                logger.error("Error applying stash", e);
-                SwingUtilities.invokeLater(() ->
-                                                   chrome.toolErrorRaw("Error applying stash: " + e.getMessage()));
-            }
-        });
-    }
-
-    private void dropStash(int index) {
-        int result = JOptionPane.showConfirmDialog(
-                this,
-                "Are you sure you want to delete this stash?",
-                "Delete Stash",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE
-        );
-        if (result != JOptionPane.YES_OPTION) {
-            return;
-        }
-        contextManager.submitUserTask("Dropping stash", () -> {
-            try {
-                getRepo().dropStash(index);
-                SwingUtilities.invokeLater(() -> {
-                    chrome.systemOutput("Stash dropped successfully");
-                    updateStashList();
-                });
-            } catch (Exception e) {
-                logger.error("Error dropping stash", e);
-                SwingUtilities.invokeLater(() ->
-                                                   chrome.toolErrorRaw("Error dropping stash: " + e.getMessage()));
-            }
-        });
-    }
 
     /**
      * Shows the diff for an uncommitted file.
