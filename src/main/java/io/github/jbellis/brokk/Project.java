@@ -160,10 +160,27 @@ public class Project implements IProject {
     }
 
     public enum CpgRefresh {
-        AUTO,
-        MANUAL,
-        UNSET
+    AUTO,
+    MANUAL,
+    UNSET
+}
+
+/**
+ * Check if .brokk entries exist in .gitignore
+ * @return true if .gitignore contains entries for .brokk
+ */
+public boolean isGitIgnoreSet() {
+    try {
+        var gitignorePath = root.resolve(".gitignore");
+        if (Files.exists(gitignorePath)) {
+            var content = Files.readString(gitignorePath);
+            return content.contains(".brokk/") || content.contains(".brokk/**");
+        }
+    } catch (IOException e) {
+        logger.error("Error checking .gitignore: {}", e.getMessage());
     }
+    return false;
+}
 
     public CpgRefresh getCpgRefresh() {
         String value = projectProps.getProperty("cpg_refresh");

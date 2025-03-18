@@ -23,10 +23,13 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
+
+import io.github.jbellis.brokk.analyzer.RepoFile;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
@@ -159,6 +162,97 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
+        
+        // Check if .gitignore is set and prompt user to update if needed
+        contextManager.submitBackgroundTask("Checking .gitignore", () -> {
+            if (!getProject().isGitIgnoreSet()) {
+                SwingUtilities.invokeLater(() -> {
+                    int result = JOptionPane.showConfirmDialog(
+                        frame,
+                        "Update .gitignore and add .brokk project files to git?",
+                        "Git Configuration",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE
+                    );
+                    
+                    if (result == JOptionPane.YES_OPTION) {
+                        setupGitIgnore();
+                    }
+                });
+            }
+            return null;
+        });
+    }
+    
+    /**
+     * Sets up .gitignore entries and adds .brokk project files to git
+     */
+    private void setupGitIgnore() {
+        contextManager.submitUserTask("Updating .gitignore", () -> {
+            try {
+                var gitRepo = getProject().getRepo();
+                var root = getProject().getRoot();
+                
+                // Update .gitignore
+                var gitignorePath = root.resolve(".gitignore");
+                String content = "";
+                
+                if (Files.exists(gitignorePath)) {
+                    content = Files.readString(gitignorePath);
+                    if (!content.endsWith("\n")) {
+                        content += "\n";
+                    }
+                }
+                
+                // Add entries to .gitignore if they don't exist
+                if (!content.contains(".brokk/**") && !content.contains(".brokk/")) {
+                    content += "\n### BROKK'S CONFIGURATION ###\n";
+                    content += ".brokk/**\n";
+                    content += "!.brokk/style.md\n";
+                    content += "!.brokk/project.properties\n";
+                    
+                    Files.writeString(gitignorePath, content);
+                    systemOutput("Updated .gitignore with .brokk entries");
+                    
+                    // Add .gitignore to git if it's not already in the index
+                    gitRepo.add(List.of(new RepoFile(root, ".gitignore")));
+                }
+                
+                // Create .brokk directory if it doesn't exist
+                var brokkDir = root.resolve(".brokk");
+                Files.createDirectories(brokkDir);
+                
+                // Add specific files to git
+                var styleMdPath = brokkDir.resolve("style.md");
+                var projectPropsPath = brokkDir.resolve("project.properties");
+                
+                // Create files if they don't exist (empty files)
+                if (!Files.exists(styleMdPath)) {
+                    Files.writeString(styleMdPath, "# Style Guide\n");
+                }
+                if (!Files.exists(projectPropsPath)) {
+                    Files.writeString(projectPropsPath, "# Brokk project configuration\n");
+                }
+                
+                // Add files to git
+                var filesToAdd = new ArrayList<RepoFile>();
+                filesToAdd.add(new RepoFile(root, ".brokk/style.md"));
+                filesToAdd.add(new RepoFile(root, ".brokk/project.properties"));
+                
+                gitRepo.add(filesToAdd);
+                systemOutput("Added .brokk project files to git");
+                
+                // Update commit message
+                SwingUtilities.invokeLater(() -> {
+                    gitPanel.setCommitMessageText("Update for Brokk project files");
+                    updateCommitPanel();
+                });
+                
+            } catch (Exception e) {
+                logger.error("Error setting up git ignore", e);
+                toolError("Error setting up git ignore: " + e.getMessage());
+            }
+        });
     }
 
     private void initializeThemeManager() {
