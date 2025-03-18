@@ -10,8 +10,10 @@ import io.github.jbellis.brokk.Models;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public abstract class CommitPrompts extends DefaultPrompts {
+public class CommitPrompts extends DefaultPrompts {
     public static final CommitPrompts instance = new CommitPrompts() {};
+    
+    private CommitPrompts() {}
 
     @Override
     public List<ChatMessage> collectMessages(ContextManager cm) {
@@ -27,15 +29,13 @@ public abstract class CommitPrompts extends DefaultPrompts {
         <diff>
         %s
         </diff>
-        """.formatted(diffTxt);
+        """.stripIndent().formatted(diffTxt);
 
-        String instructionsRaw;
-        instructionsRaw = "Here is my diff, please give me a concise commit message.";
         var instructions = """
         <goal>
-        %s
+        Here is my diff, please give me a concise commit message.
         </goal>
-        """.formatted(instructionsRaw);
+        """.stripIndent();
         return List.of(new SystemMessage(systemIntro()),
                        new UserMessage(context + "\n\n" + instructions));
     }

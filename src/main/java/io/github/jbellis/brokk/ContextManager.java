@@ -21,6 +21,7 @@ import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
+import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -1324,12 +1325,7 @@ public class ContextManager implements IContextManager
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
             protected String doInBackground() {
-                // This runs in background thread
-                var msgs = List.of(
-                        new UserMessage("Please summarize this content in 12 words or fewer. Do not reference these instructions:"),
-                        new AiMessage("Ok, let's see it."),
-                        new UserMessage(pastedContent)
-                );
+                var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                 return coder.sendMessage(msgs);
             }
 
@@ -1348,12 +1344,7 @@ public class ContextManager implements IContextManager
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
             protected String doInBackground() {
-                // This runs in background thread
-                var msgs = List.of(
-                        new UserMessage("Please summarize this question or task in 5 words or fewer. Do not reference these instructions:"),
-                        new AiMessage("Ok, let's see it."),
-                        new UserMessage(input)
-                );
+                var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
                 return coder.sendMessage(msgs);
             }
 
