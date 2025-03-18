@@ -20,7 +20,7 @@ public class MenuBar {
         fileMenu.setMnemonic(KeyEvent.VK_F);
 
         var editKeysItem = new JMenuItem("Edit secret keys");
-        editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK));
+        editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editKeysItem.addActionListener(e -> {
             chrome.showSecretKeysDialog();
             if (chrome.contextManager != null) {
@@ -45,7 +45,7 @@ public class MenuBar {
         fileMenu.addSeparator();
 
         var openProjectItem = new JMenuItem("Open Project...");
-        openProjectItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
+        openProjectItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         openProjectItem.addActionListener(e -> {
             // Use a directory chooser
             var chooser = new JFileChooser();
@@ -70,7 +70,7 @@ public class MenuBar {
         editMenu.setMnemonic(KeyEvent.VK_E);
 
         var undoItem = new JMenuItem("Undo");
-        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK));
+        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         undoItem.addActionListener(e -> {
             chrome.disableUserActionButtons();
             chrome.disableContextActionButtons();
@@ -80,7 +80,7 @@ public class MenuBar {
 
         var redoItem = new JMenuItem("Redo");
         redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
-                                                       InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+                                                       Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
         redoItem.addActionListener(e -> {
             chrome.disableUserActionButtons();
             chrome.disableContextActionButtons();
@@ -91,7 +91,7 @@ public class MenuBar {
         editMenu.addSeparator();
 
         var copyMenuItem = new JMenuItem("Copy");
-        copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
+        copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         copyMenuItem.addActionListener(e -> {
             var selectedFragments = chrome.getSelectedFragments();
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
@@ -99,7 +99,7 @@ public class MenuBar {
         editMenu.add(copyMenuItem);
 
         var pasteMenuItem = new JMenuItem("Paste");
-        pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK));
+        pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         pasteMenuItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
         });
@@ -113,7 +113,7 @@ public class MenuBar {
 
         var editFilesItem = new JMenuItem("Edit Files");
         editFilesItem.setMnemonic(KeyEvent.VK_D);
-        editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.ALT_DOWN_MASK));
+        editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editFilesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.EDIT, List.of());
@@ -122,7 +122,7 @@ public class MenuBar {
 
         var readFilesItem = new JMenuItem("Read Files");
         readFilesItem.setMnemonic(KeyEvent.VK_R);
-        readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.ALT_DOWN_MASK));
+        readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         readFilesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.READ, List.of());
@@ -131,7 +131,7 @@ public class MenuBar {
 
         var summarizeFilesItem = new JMenuItem("Summarize Files");
         summarizeFilesItem.setMnemonic(KeyEvent.VK_M);
-        summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, InputEvent.ALT_DOWN_MASK));
+        summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         summarizeFilesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.SUMMARIZE, List.of());
@@ -140,7 +140,7 @@ public class MenuBar {
 
         var symbolUsageItem = new JMenuItem("Symbol Usage");
         symbolUsageItem.setMnemonic(KeyEvent.VK_Y);
-        symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.ALT_DOWN_MASK));
+        symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         symbolUsageItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findSymbolUsageAsync();
         });
@@ -148,7 +148,7 @@ public class MenuBar {
 
         var callersItem = new JMenuItem("Call graph to function");
         callersItem.setMnemonic(KeyEvent.VK_C);
-        callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.ALT_DOWN_MASK));
+        callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         callersItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findMethodCallersAsync();
         });
@@ -156,7 +156,7 @@ public class MenuBar {
 
         var calleesItem = new JMenuItem("Call graph from function");
         calleesItem.setMnemonic(KeyEvent.VK_L);
-        calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.ALT_DOWN_MASK));
+        calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         calleesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findMethodCalleesAsync();
         });
@@ -164,7 +164,7 @@ public class MenuBar {
 
         var dropAllItem = new JMenuItem("Drop All");
         dropAllItem.setMnemonic(KeyEvent.VK_P);
-        dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, InputEvent.ALT_DOWN_MASK));
+        dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         dropAllItem.addActionListener(e -> {
             chrome.disableContextActionButtons();
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(

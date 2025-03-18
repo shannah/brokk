@@ -944,8 +944,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void registerGlobalKeyboardShortcuts() {
         var rootPane = frame.getRootPane();
 
-        // Ctrl+Z => undo
-        var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
+        // Cmd/Ctrl+Z => undo
+        var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
         rootPane.getActionMap().put("globalUndo", new AbstractAction() {
             @Override
@@ -956,9 +956,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        // Ctrl+Shift+Z => redo
+        // Cmd/Ctrl+Shift+Z => redo
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
-                                                   InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
+                                                   Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
         rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
@@ -969,8 +969,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        // Ctrl+V => paste
-        var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
+        // Cmd/Ctrl+V => paste
+        var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
         rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override

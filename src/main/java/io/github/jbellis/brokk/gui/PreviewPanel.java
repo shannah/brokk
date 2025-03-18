@@ -117,8 +117,8 @@ public class PreviewPanel extends JPanel
             }
         });
 
-        // === Ctrl+F focuses the search field ===
-        KeyStroke ctrlF = KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK);
+        // === Cmd/Ctrl+F focuses the search field ===
+        KeyStroke ctrlF = KeyStroke.getKeyStroke(KeyEvent.VK_F, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(ctrlF, "focusSearch");
         getActionMap().put("focusSearch", new AbstractAction() {
             @Override

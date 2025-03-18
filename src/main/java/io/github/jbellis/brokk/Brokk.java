@@ -28,6 +28,9 @@ public class Brokk {
      */
     public static void main(String[] args) {
         logger.debug("Brokk starting");
+        
+        // Set macOS to use system menu bar
+        System.setProperty("apple.laf.useScreenMenuBar", "true");
 
         // 1) Load your icon
         var iconUrl = Brokk.class.getResource(ICON_RESOURCE);
