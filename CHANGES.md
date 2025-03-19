@@ -1,3 +1,18 @@
+# 0.6.0
+
+## Features
+- Add support for macOS system menu bar and keyboard shortcuts
+- move stash management to Log tab
+- Moved Context panel buttons to menu items + rightclick
+- custom component that can mix text + code blocks with syntax highlighting
+- Reorganized top UI panel
+- Prompt to add Brokk project files to git
+
+## Fixes
+- Reworked history system to avoid race conditions
+- Migrate from DirectoryWatcher to WatchService to fix missing events
+- "Welcome Back" message on startup works as designed
+
 # 0.5.0
 
 ## Features
