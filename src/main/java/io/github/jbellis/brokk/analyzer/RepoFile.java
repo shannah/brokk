@@ -18,6 +18,9 @@ public class RepoFile implements BrokkFile {
     private transient Path root;
     private transient Path relPath;
 
+    /**
+     * root must be pre-normalized; we will normalize relPath if it is not already
+     */
     public RepoFile(Path root, Path relPath) {
         // We can't rely on these being set until after deserialization
         if (root != null && relPath != null) {
@@ -30,6 +33,7 @@ public class RepoFile implements BrokkFile {
             if (relPath.isAbsolute()) {
                 throw new IllegalArgumentException("RelPath must be relative");
             }
+            relPath = relPath.normalize();
         }
         this.root = root;
         this.relPath = relPath;
