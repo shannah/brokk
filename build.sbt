@@ -60,6 +60,9 @@ libraryDependencies ++= Seq(
   "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test,
   "org.junit.jupiter" % "junit-jupiter-engine"  % "5.10.2" % Test,
   "com.github.sbt.junit" % "jupiter-interface"  % "0.13.3" % Test,
+  
+  // Whisper JNI
+  "io.github.givimad" % "whisper-jni" % "1.7.1",
 )
 
 Compile / unmanagedResources := {
