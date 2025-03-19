@@ -716,12 +716,13 @@ public class GitRepo implements Closeable, IGitRepo {
             if ("HEAD".equals(commitIdA)) {
                 git.diff()
                         .setOldTree(prepareTreeParser(commitIdB))
+                        .setNewTree(null) // Working tree
                         .setOutputStream(out)
                         .call();
             } else {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdA))
-                        .setNewTree(prepareTreeParser(commitIdB))
+                        .setOldTree(prepareTreeParser(commitIdB))
+                        .setNewTree(prepareTreeParser(commitIdA))
                         .setOutputStream(out)
                         .call();
             }
@@ -745,13 +746,14 @@ public class GitRepo implements Closeable, IGitRepo {
             if ("HEAD".equals(commitIdA)) {
                 git.diff()
                    .setOldTree(prepareTreeParser(commitIdB))
+                   .setNewTree(null) // Working tree
                    .setPathFilter(pathFilter)
                    .setOutputStream(out)
                    .call();
             } else {
                 git.diff()
-                   .setOldTree(prepareTreeParser(commitIdA))
-                   .setNewTree(prepareTreeParser(commitIdB))
+                   .setOldTree(prepareTreeParser(commitIdB))
+                   .setNewTree(prepareTreeParser(commitIdA))
                    .setPathFilter(pathFilter)
                    .setOutputStream(out)
                    .call();
