@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.Project;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
@@ -45,7 +46,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private MarkdownOutputPanel llmStreamArea;
     private JTextArea systemArea;
     private JLabel commandResultLabel;
-    private JTextArea commandInputField;
+    private RSyntaxTextArea commandInputField;
     private JLabel backgroundStatusLabel;
     private Dimension backgroundLabelPreferredSize;
     private JScrollPane systemScrollPane;
@@ -77,7 +78,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
-    JTextArea captureDescriptionArea;
+    RSyntaxTextArea captureDescriptionArea;
 
     private Project getProject() {
         return contextManager == null ? null : contextManager.getProject();
@@ -697,8 +698,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         JPanel historyPanel = buildHistoryDropdown();
         wrapper.add(historyPanel, BorderLayout.NORTH);
 
-        commandInputField = new JTextArea(3, 40);
+        commandInputField = new RSyntaxTextArea(3, 40);
+        commandInputField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+        commandInputField.setHighlightCurrentLine(false);
         commandInputField.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
@@ -707,6 +710,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandInputField.setWrapStyleWord(true);
         commandInputField.setRows(3);
         commandInputField.setMinimumSize(new Dimension(100, 80));
+        // Enable undo/redo
+        commandInputField.setAutoIndentEnabled(false);
+        commandInputField.discardAllEdits(); // Start with a clean undo history
 
         // Create a JScrollPane for the text area
         JScrollPane commandScrollPane = new JScrollPane(commandInputField);
@@ -1416,13 +1422,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
 
         // References label in center - will get all extra space
-        captureDescriptionArea = new JTextArea("No references found");
+        captureDescriptionArea = new RSyntaxTextArea();
+        captureDescriptionArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         captureDescriptionArea.setEditable(false);
         captureDescriptionArea.setBackground(panel.getBackground());
         captureDescriptionArea.setBorder(null);
         captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
         captureDescriptionArea.setLineWrap(true);
         captureDescriptionArea.setWrapStyleWord(true);
+        captureDescriptionArea.setHighlightCurrentLine(false);
+        captureDescriptionArea.discardAllEdits(); // Start with a clean undo history
         panel.add(captureDescriptionArea, BorderLayout.CENTER);
 
         // Buttons panel on the right
