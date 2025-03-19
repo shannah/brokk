@@ -729,29 +729,39 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   private def chopColon(full: String) = full.split(":").head
 
   /**
-   * Find all references to a given class used as a type (fields, parameters, locals).
-   * If excludeSelfRefs is true, omit references from within the same class.
+   * Find all references to a given class used as a type (inheritance, fields, parameters, locals).
+   * Returns CodeUnit objects with appropriate types based on reference kind:
+   * - CLASS for inheriting classes
+   * - FIELD for field references
+   * - FUNCTION for parameter/local references
    */
-  private def referencesToClassAsType(classFullName: String): List[String] = {
+  private def referencesToClassAsType(classFullName: String): List[CodeUnit] = {
     val typePattern = "^" + Regex.quote(classFullName) + "(\\$.*)?(\\[\\])?"
 
     // Fields typed with this class → parent is a TypeDecl.
-    // 1) Grab all TypeDecl parents for these fields
-    // 2) Filter out the same class if excludeSelfRefs is true
+    // Return as field CodeUnits
     val fieldRefs = cpg.member
       .typeFullName(typePattern)
       .astParent
       .isTypeDecl
       .filter(td => !partOfClass(classFullName, td.fullName))
-      .fullName
-      .l
+      .flatMap { td => 
+        // Get the member again to access its name
+        td.member.typeFullName(typePattern).map { member =>
+          CodeUnit.field(s"${td.fullName}.${member.name}")
+        }.l
+      }
 
-    // Parameters typed with this class → parent is a Method.
+    // Parameters/locals typed with this class → parent is a Method.
+    // Return as function CodeUnits
     val paramRefs = cpg.parameter
       .typeFullName(typePattern)
       .method
       .filter(m => !partOfClass(classFullName, m.typeDecl.fullName.l.head))
       .fullName
+      .map(chopColon)
+      .map(resolveMethodName)
+      .map(CodeUnit.fn)
       .l
 
     // Locals typed with this class → parent is a Method.
@@ -760,9 +770,22 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
       .method
       .filter(m => !partOfClass(classFullName, m.typeDecl.fullName.l.head))
       .fullName
+      .map(chopColon)
+      .map(resolveMethodName)
+      .map(CodeUnit.fn)
       .l
 
-    (fieldRefs ++ paramRefs ++ localRefs).map(chopColon).map(resolveMethodName).distinct
+    // Classes that inherit from this class
+    // Return as class CodeUnits
+    val inheritingClasses = cpg.typeDecl
+      .filter(_.inheritsFromTypeFullName.contains(classFullName))
+      .filter(td => !partOfClass(classFullName, td.fullName))
+      .fullName
+      .map(CodeUnit.cls)
+      .l
+
+    // Combine all reference types and remove duplicates
+    (fieldRefs ++ paramRefs ++ localRefs ++ inheritingClasses).toList.distinct
   }
 
   /**
@@ -775,6 +798,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    *  - methodUses: references to methods if symbol is a method, or references to static methods if symbol is a class.
    *  - fieldUses: references to the field if symbol is a field, or references to static fields if symbol is a class.
    *  - typeUses: references to the class as a type (field declarations, parameters, locals), if symbol is a class.
+   *  - inheritanceUses: classes that inherit from the given class (extends, implements), if symbol is a class.
    *
    * If symbol is not found at all, throws IllegalArgumentException.
    */
@@ -823,15 +847,21 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
       )
     }
 
+    // Get method and field references as function CodeUnits
     val methodUses = classDecls.flatMap(td =>
       td.method.l.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = true))
-    ) ++ classDecls.flatMap(td =>
+    ).map(CodeUnit.fn) 
+    
+    val fieldRefUses = classDecls.flatMap(td =>
       td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
-    )
+    ).map(CodeUnit.fn)
+    
+    // Get type references
     val typeUses = referencesToClassAsType(symbol)
 
-    val combined = methodUses.distinct ++ typeUses
-    CollectionConverters.asJava(combined.map(CodeUnit.fn))
+    // Combine all uses
+    val combined = (methodUses ++ fieldRefUses ++ typeUses).distinct
+    CollectionConverters.asJava(combined)
   }
 
   /**
