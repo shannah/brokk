@@ -67,10 +67,10 @@ public class FileSelectionDialog extends JDialog {
         fileInput.setWrapStyleWord(true);
         var provider = createFileCompletionProvider();
         autoCompletion = new AutoCompletion(provider);
-        // Trigger with Cmd/Ctrl+Space
+        // Trigger with Ctrl+Space (Always. On Mac cmd-space is Spotlight)
         autoCompletion.setAutoActivationEnabled(false);
         autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE,
-                                                            Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+                                                            InputEvent.CTRL_DOWN_MASK));
         autoCompletion.install(fileInput);
         
         // Add expand node behavior when selecting node in the tree

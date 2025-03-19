@@ -57,9 +57,9 @@ public class SymbolSelectionDialog extends JDialog {
         symbolInput = new JTextField(30);
         var provider = createSymbolCompletionProvider(analyzer);
         autoCompletion = new AutoCompletion(provider);
-        // Trigger with Cmd/Ctrl+Space
+        // Trigger with Ctrl+Space (Always. On Mac cmd-space is Spotlight)
         autoCompletion.setAutoActivationEnabled(false);
-        autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
         autoCompletion.install(symbolInput);
 
         JPanel inputPanel = new JPanel(new BorderLayout());
