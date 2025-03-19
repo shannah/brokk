@@ -15,17 +15,27 @@ import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiTokenizer;
 import dev.langchain4j.model.output.Response;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.yaml.snakeyaml.Yaml;
 
+import java.io.File;
 import java.io.IOException;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 /**
  * Holds references to the models we use in Brokk.
@@ -37,7 +47,9 @@ public record Models(StreamingChatLanguageModel editModel,
                      String editModelName,
                      String applyModelName,
                      String quickModelName,
-                     String searchModelName)
+                     String searchModelName,
+                     SpeechToTextModel sttModel,
+                     String sttModelName)
 {
     public static String[] defaultKeyNames = { "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY" };
 
@@ -261,8 +273,21 @@ public record Models(StreamingChatLanguageModel editModel,
             String quickModelName = readModelName(top, "quick_model");
             String searchModelName = readModelName(top, "search_model");
 
+            // Check if OpenAI key is available for STT
+            String openaiKey = getKey("OPENAI_API_KEY");
+            SpeechToTextModel stt;
+            String sttModelName;
+            if (openaiKey != null && !openaiKey.isBlank()) {
+                stt = new OpenAiWhisperSTT(openaiKey);
+                sttModelName = "whisper-1";
+            } else {
+                stt = new UnavailableSTT();
+                sttModelName = "disabled";
+            }
+
             return new Models(editModel, applyModel, quickModel, searchModel,
-                              editModelName, applyModelName, quickModelName, searchModelName);
+                              editModelName, applyModelName, quickModelName, searchModelName,
+                              stt, sttModelName);
         } catch (Exception e) {
             System.out.println("Error parsing yaml: " + e.getMessage());
             System.exit(1);
@@ -278,6 +303,8 @@ public record Models(StreamingChatLanguageModel editModel,
                           "disabled",
                           "disabled",
                           "disabled",
+                          "disabled",
+                          new UnavailableSTT(),
                           "disabled");
     }
 
@@ -515,6 +542,138 @@ public record Models(StreamingChatLanguageModel editModel,
 
         public void generate(List<ChatMessage> messages, ToolSpecification toolSpecification, StreamingResponseHandler<AiMessage> handler) {
             handler.onComplete(new Response<>(new AiMessage(UNAVAILABLE)));
+        }
+    }
+
+    /**
+     * Simple interface for speech-to-text operations.
+     */
+    public interface SpeechToTextModel
+    {
+        /**
+         * Transcribes the given audio file to text, returning the transcript.
+         */
+        String transcribe(Path audioFile) throws IOException;
+    }
+
+    /**
+     * Stubbed / unavailable STT model that always returns a message
+     * indicating that STT is disabled.
+     */
+    public static class UnavailableSTT implements SpeechToTextModel
+    {
+        @Override
+        public String transcribe(Path audioFile) {
+            return "Speech-to-text is unavailable (no OpenAI key).";
+        }
+    }
+
+    /**
+     * Real STT using OpenAI Whisper v1. Uses OkHttp for multipart/form-data upload.
+     * We block until the transcription is done. This requires an OpenAI API key.
+     */
+    public static class OpenAiWhisperSTT implements SpeechToTextModel
+    {
+        private static final Logger logger = LogManager.getLogger(OpenAiWhisperSTT.class);
+
+        private final String apiKey;
+        private static final String WHISPER_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
+        private final OkHttpClient httpClient;
+
+        public OpenAiWhisperSTT(String apiKey)
+        {
+            this.apiKey = apiKey;
+            this.httpClient = new OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(0, TimeUnit.SECONDS)
+                    .writeTimeout(0, TimeUnit.SECONDS)
+                    .build();
+        }
+
+        /**
+         * Determines the MediaType based on file extension.
+         * @param fileName Name of the file
+         * @return MediaType for the HTTP request
+         */
+        private MediaType getMediaTypeFromFileName(String fileName)
+        {
+            var extension = fileName.toLowerCase();
+            int dotIndex = extension.lastIndexOf('.');
+            if (dotIndex > 0)
+            {
+                extension = extension.substring(dotIndex + 1);
+            }
+
+            return switch (extension)
+            {
+                case "mp3", "mpga", "mpeg" -> MediaType.parse("audio/mpeg");
+                case "mp4", "m4a"          -> MediaType.parse("audio/mp4");
+                case "wav"                 -> MediaType.parse("audio/wav");
+                case "webm"                -> MediaType.parse("audio/webm");
+                default                    -> MediaType.parse("audio/mpeg"); // fallback
+            };
+        }
+
+        /**
+         * Transcribes the given audio file to text, returning the transcript.
+         * Uses OkHttp for multipart/form-data with file, model, and response_format fields.
+         */
+        @Override
+        public String transcribe(Path audioFile) throws IOException
+        {
+            logger.info("Beginning transcription for file: {}", audioFile);
+            File file = audioFile.toFile();
+
+            // Use getMediaTypeFromFileName if you want to differentiate .wav vs .mp3, etc.
+            // For a simpler approach, you could always use MediaType.get("audio/mpeg") or "audio/wav"
+            MediaType mediaType = getMediaTypeFromFileName(file.getName());
+            RequestBody fileBody = RequestBody.create(file, mediaType);
+
+            RequestBody requestBody = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", file.getName(), fileBody)
+                    .addFormDataPart("model", "whisper-1")
+                    .addFormDataPart("language", "en")
+                    .addFormDataPart("response_format", "json")
+                    .build();
+
+            Request request = new Request.Builder()
+                    .url(WHISPER_ENDPOINT)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .addHeader("Content-Type", "multipart/form-data")
+                    .post(requestBody)
+                    .build();
+
+            logger.debug("Sending Whisper STT request to {}", WHISPER_ENDPOINT);
+
+            try (okhttp3.Response response = httpClient.newCall(request).execute()) {
+                String bodyStr = response.body() != null ? response.body().string() : "";
+
+                logger.debug("Received response, status = {}", response.code());
+
+                if (!response.isSuccessful()) {
+                    logger.error("Whisper STT call failed with status {}: {}", response.code(), bodyStr);
+                    throw new IOException("Whisper STT call failed with status "
+                                                  + response.code() + ": " + bodyStr);
+                }
+
+                // Parse JSON response
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    JsonNode node = mapper.readTree(bodyStr);
+                    if (node.has("text")) {
+                        String transcript = node.get("text").asText().trim();
+                        logger.info("Transcription successful, text length={} chars", transcript.length());
+                        return transcript;
+                    } else {
+                        logger.warn("No 'text' field found in Whisper response.");
+                        return "No transcription found in response.";
+                    }
+                } catch (Exception e) {
+                    logger.error("Error parsing Whisper JSON response: {}", e.getMessage());
+                    throw new IOException("Error parsing Whisper JSON response: " + e.getMessage(), e);
+                }
+            }
         }
     }
 }

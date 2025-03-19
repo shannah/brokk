@@ -13,6 +13,7 @@ import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
+import javax.sound.sampled.*;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -23,6 +24,7 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -79,6 +81,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
     RSyntaxTextArea captureDescriptionArea;
+    
+    // For STT (mic) usage
+    private JButton micButton;
+    private volatile TargetDataLine micLine = null;
+    private volatile ByteArrayOutputStream micBuffer = null;
+    private volatile Thread micCaptureThread = null;
+    private ImageIcon micOnIcon;
+    private ImageIcon micOffIcon;
 
     private Project getProject() {
         return contextManager == null ? null : contextManager.getProject();
@@ -107,6 +117,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             com.formdev.flatlaf.FlatLightLaf.setup();
         } catch (Exception e) {
             logger.warn("Failed to set LAF, using default", e);
+        }
+        
+        // Load mic icons
+        try {
+            micOnIcon = new ImageIcon(getClass().getResource("/mic-on.png"));
+            micOffIcon = new ImageIcon(getClass().getResource("/mic-off.png"));
+            // Scale icons if needed
+            micOnIcon = new ImageIcon(micOnIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
+            micOffIcon = new ImageIcon(micOffIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
+            logger.debug("Successfully loaded mic icons");
+        } catch (Exception e) {
+            logger.warn("Failed to load mic icons", e);
+            // We'll fall back to text if icons can't be loaded
+            micOnIcon = null;
+            micOffIcon = null;
         }
 
         // 2) Build main window
@@ -145,6 +170,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public void onComplete() {
         assert contextManager != null;
+
+        // If STT is unavailable, disable it & set tooltip
+        boolean sttEnabled = !(contextManager.getCoder().models.sttModel() instanceof Models.UnavailableSTT);
+        if (!sttEnabled) {
+            micButton.setEnabled(false);
+            micButton.setToolTipText("OpenAI key is required for STT");
+        } else {
+            micButton.setToolTipText("Press and hold to record, release to transcribe");
+            setupMicButtonRecording(micButton);
+            // Ensure correct initial icon is set
+            if (micOffIcon != null) {
+                micButton.setIcon(micOffIcon);
+            }
+        }
 
         // Load saved theme, window size, and position
         frame.setTitle("Brokk: " + getProject().getRoot());
@@ -678,11 +717,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Creates a panel with a single-line text field for commands, plus “Go / Ask / Search” on the left and a “Stop” button on the right.
-     * The panel is titled "Instructions".
+     * Creates a panel with:
+     *  - History dropdown at top (full width).
+     *  - A mic button in the left column (spans rows 2 and 3).
+     *  - The command input area in the middle column (row 2).
+     *  - The "Code / Ask / Search / Run" and "Stop" buttons in row 3 (still two flow panels).
+     *
+     * We use GridBagLayout so the mic button doesn't stretch horizontally under the entire panel.
      */
     private JPanel buildCommandInputPanel() {
-        var wrapper = new JPanel(new BorderLayout());
+        var wrapper = new JPanel(new GridBagLayout());
         wrapper.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createTitledBorder(
                         BorderFactory.createEtchedBorder(),
@@ -694,10 +738,42 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 new EmptyBorder(5, 5, 5, 5)
         ));
 
-        // Add history dropdown at the top of the wrapper
+        var gbc = new GridBagConstraints();
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        gbc.gridwidth = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        // 1) History dropdown at the top
         JPanel historyPanel = buildHistoryDropdown();
-        wrapper.add(historyPanel, BorderLayout.NORTH);
+        wrapper.add(historyPanel, gbc);
 
+        // 2) Mic button on the left, spanning 2 rows:
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        gbc.gridheight = 1;  // span downward
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.insets = new Insets(2, 2, 2, 8);
+        micButton = new JButton();
+        if (micOffIcon != null) {
+            micButton.setIcon(micOffIcon);
+        } else {
+            micButton.setText("Mic");
+        }
+        micButton.setPreferredSize(new Dimension(32, 32));
+        micButton.setMinimumSize(new Dimension(32, 32));
+        micButton.setMaximumSize(new Dimension(32, 32));
+        wrapper.add(micButton, gbc);
+
+        // 3) The command input field (scrollpane) in the middle column, row=1
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        gbc.gridheight = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
         commandInputField = new RSyntaxTextArea(3, 40);
         commandInputField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
@@ -714,16 +790,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandInputField.setAutoIndentEnabled(false);
         commandInputField.discardAllEdits(); // Start with a clean undo history
 
-        // Create a JScrollPane for the text area
-        JScrollPane commandScrollPane = new JScrollPane(commandInputField);
+        // Create a scrollpane for the text area
+        var commandScrollPane = new JScrollPane(commandInputField);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Set preferred height for 3 lines
+        commandScrollPane.setPreferredSize(new Dimension(600, 80));
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
+        wrapper.add(commandScrollPane, gbc);
 
-        // Emacs-like keybindings
-        wrapper.add(commandScrollPane, BorderLayout.CENTER);
+        // 4) The row of left buttons (Code/Ask/Search/Run) and right button (Stop) in row=2, col=1
+        gbc.gridx = 1;
+        gbc.gridy = 2;
+        gbc.gridwidth = 1;
+        gbc.gridheight = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        var buttonsHolder = new JPanel(new BorderLayout());
 
-        // Left side: code/ask/search/run
         var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
@@ -737,12 +819,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         searchButton = new JButton("Search");
         searchButton.setMnemonic(KeyEvent.VK_S);
-        searchButton.setToolTipText("Explore the codebase to find answers that are NOT in the current context");
+        searchButton.setToolTipText("Explore the codebase beyond the current context");
         searchButton.addActionListener(e -> runSearchCommand());
 
         runButton = new JButton("Run in Shell");
         runButton.setMnemonic(KeyEvent.VK_N);
-        runButton.setToolTipText("Execute the current instructions as a shell command");
+        runButton.setToolTipText("Execute the current instructions in a shell");
         runButton.addActionListener(e -> runRunCommand());
 
         leftButtonsPanel.add(codeButton);
@@ -750,26 +832,141 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         leftButtonsPanel.add(searchButton);
         leftButtonsPanel.add(runButton);
 
-        // Right side: stop
         var rightButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         stopButton = new JButton("Stop");
         stopButton.setToolTipText("Cancel the current operation");
         stopButton.addActionListener(e -> stopCurrentUserTask());
         rightButtonsPanel.add(stopButton);
 
-        // We'll place left and right panels in a horizontal layout
-        var buttonsHolder = new JPanel(new BorderLayout());
         buttonsHolder.add(leftButtonsPanel, BorderLayout.WEST);
         buttonsHolder.add(rightButtonsPanel, BorderLayout.EAST);
 
-        // Add text area at top, buttons panel below
-        wrapper.add(commandScrollPane, BorderLayout.CENTER);
-        wrapper.add(buttonsHolder, BorderLayout.SOUTH);
+        wrapper.add(buttonsHolder, gbc);
 
-        // Set "Go" as default
+        // set "Code" as default button
         frame.getRootPane().setDefaultButton(codeButton);
 
         return wrapper;
+    }
+
+    /**
+     * Called only if STT is enabled. Press & hold the mic button to record,
+     * on release we transcribe and place the result in the commandInputField.
+     */
+    private void setupMicButtonRecording(JButton button) {
+        button.addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                // Start recording
+                startMicCapture();
+            }
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                // Stop and transcribe
+                stopMicCaptureAndTranscribe();
+            }
+        });
+    }
+
+    /**
+     * Starts capturing audio from the default microphone to micBuffer on a background thread.
+     */
+    private void startMicCapture() {
+        try {
+            // disable input field while capturing
+            commandInputField.setEnabled(false);
+            
+            // Change icon to mic-on
+            if (micOnIcon != null) {
+                micButton.setIcon(micOnIcon);
+            }
+
+            AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, true);
+            DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
+            micLine = (TargetDataLine) AudioSystem.getLine(info);
+            micLine.open(format);
+            micLine.start();
+
+            micBuffer = new ByteArrayOutputStream();
+            micCaptureThread = new Thread(() -> {
+                var data = new byte[4096];
+                while (micLine != null && micLine.isOpen()) {
+                    int bytesRead = micLine.read(data, 0, data.length);
+                    if (bytesRead > 0) {
+                        synchronized (micBuffer) {
+                            micBuffer.write(data, 0, bytesRead);
+                        }
+                    }
+                }
+            }, "mic-capture-thread");
+            micCaptureThread.start();
+            actionOutput("Recording");
+        } catch (Exception ex) {
+            logger.error("Failed to start mic capture", ex);
+            toolError("Error starting mic capture: " + ex.getMessage());
+            commandInputField.setEnabled(true);
+        }
+    }
+
+    /**
+     * Stops capturing and sends to STT on a background thread.
+     */
+    private void stopMicCaptureAndTranscribe()
+    {
+        // stop capturing
+        if (micLine != null) {
+            micLine.stop();
+            micLine.close();
+        }
+        micLine = null;
+        
+        // Change icon back to mic-off and restore background
+        if (micOffIcon != null) {
+            micButton.setIcon(micOffIcon);
+        }
+        micButton.setBackground(null); // Return to default button background
+
+        // Convert the in-memory raw PCM data to a valid .wav file
+        var audioBytes = micBuffer.toByteArray();
+
+        // We do the STT in the background so as not to block the UI
+        contextManager.submitUserTask("Transcribing Audio", () -> {
+            try {
+                // Our original AudioFormat from startMicCapture
+                AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, true);
+
+                // Create an AudioInputStream wrapping the raw data + format
+                try (var bais = new java.io.ByteArrayInputStream(audioBytes);
+                     var ais  = new AudioInputStream(bais, format, audioBytes.length / format.getFrameSize()))
+                {
+                    // Write to a temp .wav
+                    var tempFile = Files.createTempFile("brokk-stt-", ".wav");
+                    AudioSystem.write(ais, AudioFileFormat.Type.WAVE, tempFile.toFile());
+
+                    // call coder
+                    var transcript = contextManager.getCoder().transcribeAudio(tempFile);
+
+                    // put it in the command input field
+                    SwingUtilities.invokeLater(() -> {
+                        if (!transcript.isBlank()) {
+                            // If user typed something already, put a space
+                            if (!commandInputField.getText().isBlank()) {
+                                commandInputField.append(" ");
+                            }
+                            commandInputField.append(transcript);
+                            commandInputField.setEnabled(true);
+                        }
+                    });
+
+                    // cleanup
+                    try { Files.deleteIfExists(tempFile); } catch (IOException ignore) {}
+                }
+            } catch (IOException e) {
+                logger.error("Error writing audio data: {}", e.getMessage(), e);
+                toolError("Error writing audio data: " + e.getMessage());
+            }
+        });
     }
 
     /**

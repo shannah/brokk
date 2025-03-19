@@ -138,6 +138,25 @@ public class Coder {
     /**
      * Performs a single streaming call without retries
      */
+    /**
+     * Transcribes an audio file using the STT model (OpenAI Whisper if available).
+     * Returns the transcribed text or an error message on failure.
+     */
+    public String transcribeAudio(Path audioFile) {
+        if (models.sttModel() instanceof Models.UnavailableSTT) {
+            io.toolError("STT is unavailable. OpenAI API key is required.");
+            return "STT unavailable";
+        }
+        try {
+            String transcript = models.sttModel().transcribe(audioFile);
+            return transcript;
+        } catch (Exception e) {
+            logger.error("Failed to transcribe audio: {}", e.getMessage(), e);
+            io.toolError("Error transcribing audio: " + e.getMessage());
+            return "";
+        }
+    }
+    
     private StreamingResult doSingleStreamingCall(StreamingChatLanguageModel model,
                                                  List<ChatMessage> messages,
                                                  boolean echo)
