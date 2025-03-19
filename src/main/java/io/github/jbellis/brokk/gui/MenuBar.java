@@ -17,7 +17,6 @@ public class MenuBar {
 
         // File menu
         var fileMenu = new JMenu("File");
-        fileMenu.setMnemonic(KeyEvent.VK_F);
 
         var editKeysItem = new JMenuItem("Edit secret keys");
         editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
@@ -67,7 +66,6 @@ public class MenuBar {
 
         // Edit menu
         var editMenu = new JMenu("Edit");
-        editMenu.setMnemonic(KeyEvent.VK_E);
 
         var undoItem = new JMenuItem("Undo");
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
@@ -109,11 +107,9 @@ public class MenuBar {
 
         // Context menu
         var contextMenu = new JMenu("Context");
-        contextMenu.setMnemonic(KeyEvent.VK_C);
 
         var editFilesItem = new JMenuItem("Edit Files");
-        editFilesItem.setMnemonic(KeyEvent.VK_D);
-        editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editFilesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.EDIT, List.of());
@@ -121,7 +117,6 @@ public class MenuBar {
         contextMenu.add(editFilesItem);
 
         var readFilesItem = new JMenuItem("Read Files");
-        readFilesItem.setMnemonic(KeyEvent.VK_R);
         readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         readFilesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
@@ -130,7 +125,6 @@ public class MenuBar {
         contextMenu.add(readFilesItem);
 
         var summarizeFilesItem = new JMenuItem("Summarize Files");
-        summarizeFilesItem.setMnemonic(KeyEvent.VK_M);
         summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         summarizeFilesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
@@ -139,7 +133,6 @@ public class MenuBar {
         contextMenu.add(summarizeFilesItem);
 
         var symbolUsageItem = new JMenuItem("Symbol Usage");
-        symbolUsageItem.setMnemonic(KeyEvent.VK_Y);
         symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         symbolUsageItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findSymbolUsageAsync();
@@ -147,7 +140,6 @@ public class MenuBar {
         contextMenu.add(symbolUsageItem);
 
         var callersItem = new JMenuItem("Call graph to function");
-        callersItem.setMnemonic(KeyEvent.VK_C);
         callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         callersItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findMethodCallersAsync();
@@ -155,7 +147,6 @@ public class MenuBar {
         contextMenu.add(callersItem);
 
         var calleesItem = new JMenuItem("Call graph from function");
-        calleesItem.setMnemonic(KeyEvent.VK_L);
         calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         calleesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findMethodCalleesAsync();
@@ -163,7 +154,6 @@ public class MenuBar {
         contextMenu.add(calleesItem);
 
         var dropAllItem = new JMenuItem("Drop All");
-        dropAllItem.setMnemonic(KeyEvent.VK_P);
         dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         dropAllItem.addActionListener(e -> {
             chrome.disableContextActionButtons();
@@ -176,11 +166,9 @@ public class MenuBar {
 
         // Help menu
         var helpMenu = new JMenu("Help");
-        helpMenu.setMnemonic(KeyEvent.VK_H);
 
         // Theme submenu
         var themeMenu = new JMenu("Theme");
-        themeMenu.setMnemonic(KeyEvent.VK_T);
         
         var lightThemeItem = new JMenuItem("Light");
         lightThemeItem.addActionListener(e -> chrome.switchTheme(false));
