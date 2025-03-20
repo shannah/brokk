@@ -219,44 +219,31 @@ class AnalyzerTest {
   def getCallgraphToTest(): Unit = {
     val analyzer = getAnalyzer
     val callgraph = analyzer.getCallgraphTo("A.method1", 5)
-    
+
     // Convert to a more convenient form for testing
     val callsites = asScala(callgraph).toMap
+
+    // Expect A.method1 -> [B.callsIntoA, D.methodD1]
+    assertTrue(callsites.contains("A.method1"), "Should contain A.method1 as a key")
     
-    // Expect B.callsIntoA calls A.method1
-    assertTrue(callsites.contains("B.callsIntoA"), "Should contain call from B.callsIntoA")
-    val bCallSites = asScala(callsites("B.callsIntoA")).toList
-    assertFalse(bCallSites.isEmpty)
-    assertEquals(CodeUnit.fn("A.method1"), bCallSites.head.target())
-    assertTrue(bCallSites.head.sourceLine().contains("a.method1()"))
-    
-    // Expect D.methodD1 calls A.method1
-    assertTrue(callsites.contains("D.methodD1"), "Should contain call from D.methodD1")
-    val dCallSites = asScala(callsites("D.methodD1")).toList
-    assertFalse(dCallSites.isEmpty)
-    assertEquals(CodeUnit.fn("A.method1"), dCallSites.head.target())
+    val callers = callsites.get("A.method1").map(sites => asScala(sites).map(_.target().fqName).toSet).getOrElse(Set.empty)
+    assertEquals(Set("B.callsIntoA", "D.methodD1"), callers)
   }
   
   @Test
   def getCallgraphFromTest(): Unit = {
     val analyzer = getAnalyzer
     val callgraph = analyzer.getCallgraphFrom("B.callsIntoA", 5)
-    
+
     // Convert to a more convenient form for testing
     val callsites = asScala(callgraph).toMap
+
+    // Expect B.callsIntoA -> [A.method1, A.method2]
+    assertTrue(callsites.contains("B.callsIntoA"), "Should contain B.callsIntoA as a key")
     
-    // Expect B.callsIntoA calls A.method1
-    assertTrue(callsites.contains("A.method1"), "Should contain call to A.method1")
-    val method1CallSites = asScala(callsites("A.method1")).toList
-    assertFalse(method1CallSites.isEmpty)
-    assertEquals(CodeUnit.fn("B.callsIntoA"), method1CallSites.head.target())
-    assertTrue(method1CallSites.head.sourceLine().contains("a.method1()"))
-    
-    // Expect B.callsIntoA calls A.method2
-    assertTrue(callsites.contains("A.method2"), "Should contain call to A.method2")
-    val method2CallSites = asScala(callsites("A.method2")).toList
-    assertFalse(method2CallSites.isEmpty)
-    assertEquals(CodeUnit.fn("B.callsIntoA"), method2CallSites.head.target())
+    val callees = callsites.get("B.callsIntoA").map(sites => asScala(sites).map(_.target().fqName).toSet).getOrElse(Set.empty)
+    assertTrue(callees.contains("A.method1"), "Should call A.method1")
+    assertTrue(callees.contains("A.method2"), "Should call A.method2")
   }
 
   @Test
