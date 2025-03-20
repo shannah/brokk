@@ -533,6 +533,9 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     Some(RepoFile(absolutePath, relName))
   }
 
+  // using cpg.all doesn't work because there are always-present nodes for files and the ANY typedecl
+  override def isEmpty: Boolean = cpg.member.isEmpty
+
   override def isClassInProject(className: String): Boolean = {
     val td = cpg.typeDecl.fullNameExact(className).l
     td.nonEmpty && !(td.member.isEmpty && td.method.isEmpty && td.derivedTypeDecl.isEmpty)

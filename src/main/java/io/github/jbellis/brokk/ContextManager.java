@@ -412,6 +412,11 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
+                if (getAnalyzer().isEmpty()) {
+                    io.toolErrorRaw("Code Intelligence is empty; nothing to add");
+                    return;
+                }
+                
                 String symbol = showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL);
                 if (symbol != null && !symbol.isBlank()) {
                     usageForIdentifier(symbol);
@@ -435,6 +440,11 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
+                if (getAnalyzer().isEmpty()) {
+                    io.toolErrorRaw("Code Intelligence is empty; nothing to add");
+                    return;
+                }
+                
                 String methodName = showSymbolSelectionDialog("Select Method", Set.of(FUNCTION));
                 if (methodName != null && !methodName.isBlank()) {
                     callersForMethod(methodName);
@@ -458,6 +468,11 @@ public class ContextManager implements IContextManager
         assert io != null;
         return contextActionExecutor.submit(() -> {
             try {
+                if (getAnalyzer().isEmpty()) {
+                    io.toolErrorRaw("Code Intelligence is empty; nothing to add");
+                    return;
+                }
+                
                 String methodName = showSymbolSelectionDialog("Select Method", Set.of(FUNCTION));
                 if (methodName != null && !methodName.isBlank()) {
                     calleesForMethod(methodName);
@@ -734,6 +749,11 @@ public class ContextManager implements IContextManager
     }
 
     private void doSummarizeAction(List<ContextFragment> selectedFragments) {
+        if (getAnalyzer().isEmpty()) {
+            io.toolErrorRaw("Code Intelligence is empty; nothing to add");
+            return;
+        }
+        
         HashSet<CodeUnit> sources = new HashSet<>();
         String sourceDescription;
 
@@ -1098,6 +1118,11 @@ public class ContextManager implements IContextManager
     /** Summarize classes => adds skeleton fragments */
     public boolean summarizeClasses(Set<CodeUnit> classes)
     {
+        if (getAnalyzer().isEmpty()) {
+            io.toolErrorRaw("Code Intelligence is empty; nothing to add");
+            return false;
+        }
+        
         var skeletons = new HashMap<CodeUnit, String>();
         var coalescedUnits = coalesceInnerClasses(classes);
         for (var cu : coalescedUnits) {

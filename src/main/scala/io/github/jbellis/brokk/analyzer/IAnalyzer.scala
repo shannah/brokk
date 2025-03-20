@@ -1,13 +1,14 @@
 package io.github.jbellis.brokk.analyzer
 
-import io.github.jbellis.brokk.analyzer.RepoFile
-
 import java.util
 
 trait IAnalyzer {
+  def isEmpty: Boolean =
+    throw new UnsupportedOperationException()
+
   def getAllClasses: util.List[CodeUnit] = 
     throw new UnsupportedOperationException()
-    
+
   def getMembersInClass(fqClass: String): util.List[CodeUnit] = 
     throw new UnsupportedOperationException()
     
