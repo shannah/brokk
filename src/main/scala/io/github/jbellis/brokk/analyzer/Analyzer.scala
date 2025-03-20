@@ -115,6 +115,9 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     cpg.method.fullName(escapedMethodName + ":.*").l
   }
 
+  /**
+   * transform anonymous method names (closures) into the name of the containing method
+   */
   private[brokk] def resolveMethodName(methodName: String): String = {
     val segments = methodName.split("\\.")
     // Find the first occurrence of a segment with $ followed by digits, e.g. "FutureCallback$0"
