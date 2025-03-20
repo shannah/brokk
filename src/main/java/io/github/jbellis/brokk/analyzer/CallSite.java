@@ -6,4 +6,9 @@ package io.github.jbellis.brokk.analyzer;
  * @param target The CodeUnit of the method being called/calling
  * @param sourceLine The actual source line where the call occurs
  */
-public record CallSite(CodeUnit target, String sourceLine) {}
+public record CallSite(CodeUnit target, String sourceLine) implements Comparable<CallSite> {
+    @Override
+    public int compareTo(CallSite other) {
+        return target.name().compareTo(other.target.name());
+    }
+}

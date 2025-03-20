@@ -5,6 +5,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,7 +93,7 @@ public class AnalyzerUtil {
      *
      * @param analyzer   The analyzer to use
      * @param methodName The fully-qualified name of the method
-     * @param depth
+     * @param depth      The maximum depth to traverse in the call graph
      * @return A formatted string representing the call graph
      */
     public static String formatCallGraphTo(IAnalyzer analyzer, String methodName, int depth) {
@@ -101,52 +102,49 @@ public class AnalyzerUtil {
             return "No callers found for: " + methodName;
         }
 
-        StringBuilder result = new StringBuilder();
-        result.append("Root: ").append(methodName).append("\n");
-
-        // Cache of already processed methods to avoid cycles
-        Set<String> processedMethods = new HashSet<>();
-        processedMethods.add(methodName); // Add root to avoid processing it
-
-        // Format the call graph
-        formatCallers(result, callgraph, methodName, 1, processedMethods, analyzer);
-
-        return result.toString();
+        return formatCallGraph(callgraph, methodName, true);
     }
 
+    private record StackEntry(String method, int depth) {}
+
     /**
-     * Helper method to recursively format callers
+     * Helper method to recursively format the call graph (both callers and callees)
      */
-    private static void formatCallers(StringBuilder result, Map<String, CallSite> callgraph,
-                                      String currentMethod, int depth, Set<String> processedMethods,
-                                      IAnalyzer analyzer) {
-        String indent = " ".repeat(depth);
+    private static String formatCallGraph(Map<String, List<CallSite>> callgraph,
+                                          String rootMethodName,
+                                          boolean isCallerGraph)
+    {
+        var result = new StringBuilder();
+        String arrow = isCallerGraph ? "<-" : "->";
 
-        // Process each direct caller of the current method
-        // In the map, callers are keys and the values are CallSites
-        List<String> callers = new ArrayList<>(callgraph.keySet());
+        var visited = new HashSet<String>();
+        var stack = new ArrayDeque<>(List.of(new StackEntry(rootMethodName, 0)));
 
-        // Sort callers for consistent output
-        callers.sort(String::compareTo);
-
-        // Process each caller
-        for (String caller : callers) {
-            CallSite callSite = callgraph.get(caller);
-
-            // Add caller with arrow
-            result.append(indent).append(" <- ").append(caller).append("\n");
-
-            // Add source line in a code block
-            result.append(indent).append(" ```\n");
-            result.append(indent).append(" ").append(callSite.sourceLine()).append("\n");
-            result.append(indent).append(" ```\n");
-
-            // Recursively process this caller's callers (if not already processed)
-            if (!processedMethods.contains(caller)) {
-                processedMethods.add(caller);
-                // FIXME this is broken
+        // Process each method
+        result.append(rootMethodName).append("\n");
+        while (!stack.isEmpty()) {
+            var entry = stack.pop();
+            var sites = callgraph.get(entry.method);
+            if (sites == null) {
+                continue;
             }
+            sites.stream().sorted().forEach(site -> {
+                result.append("""
+                 %s %s
+                 ```
+                 %s
+                 ```
+                """.stripIndent().indent(2 * entry.depth)
+                                      .formatted(arrow, site.target().fqName(), site.sourceLine()));
+
+                // Process this method's callers/callees (if not already processed)
+                if (visited.add(site.target().fqName())) {
+                    stack.push(new StackEntry(site.target().fqName(), entry.depth + 1));
+                }
+            });
         }
+
+        return result.toString();
     }
 
     /**
@@ -154,7 +152,7 @@ public class AnalyzerUtil {
      *
      * @param analyzer   The analyzer to use
      * @param methodName The fully-qualified name of the method
-     * @param depth
+     * @param depth      The maximum depth to traverse in the call graph
      * @return A formatted string representing the call graph
      */
     public static String formatCallGraphFrom(IAnalyzer analyzer, String methodName, int depth) {
@@ -163,52 +161,8 @@ public class AnalyzerUtil {
             return "No callees found for: " + methodName;
         }
 
-        StringBuilder result = new StringBuilder();
-        result.append("Root: ").append(methodName).append("\n");
-
-        // Cache of already processed methods to avoid cycles
-        Set<String> processedMethods = new HashSet<>();
-        processedMethods.add(methodName); // Add root to avoid processing it
-
         // Format the call graph
-        formatCallees(result, callgraph, methodName, 1, processedMethods, analyzer);
-
-        return result.toString();
+        return formatCallGraph(callgraph, methodName, false);
     }
 
-    /**
-     * Helper method to recursively format callees
-     */
-    private static void formatCallees(StringBuilder result, Map<String, CallSite> callgraph,
-                                      String currentMethod, int depth, Set<String> processedMethods,
-                                      IAnalyzer analyzer) {
-        String indent = " ".repeat(depth);
-
-        // Process each direct callee of the current method
-        // In the map, callees are keys and the values are CallSites
-        List<String> callees = new ArrayList<>(callgraph.keySet());
-
-        // Sort callees for consistent output
-        callees.sort(String::compareTo);
-
-        // Process each callee
-        for (String callee : callees) {
-            CallSite callSite = callgraph.get(callee);
-
-            // Add callee with arrow
-            result.append(indent).append(" -> ").append(callee).append("\n");
-
-            // Add source line in a code block
-            result.append(indent).append(" ```\n");
-            result.append(indent).append(" ").append(callSite.sourceLine()).append("\n");
-            result.append(indent).append(" ```\n");
-
-            // Recursively process this callee's callees (if not already processed)
-            if (!processedMethods.contains(callee)) {
-                processedMethods.add(callee);
-                // Get the callee's own callees from the analyzer
-                // FIXME
-            }
-        }
-    }
 }

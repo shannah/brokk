@@ -872,55 +872,66 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
 
   /**
    * Helper method to build a call graph with a maximum depth
-   * 
+   *
    * @param startingMethod The method to start from
    * @param isIncoming Whether to trace incoming calls (true) or outgoing calls (false)
    * @param maxDepth The maximum depth to traverse
-   * @return A map of method signatures to call sites
+   * @return A map of method signatures to lists of call sites
    */
   private def buildCallGraph(
       startingMethod: String,
       isIncoming: Boolean,
       maxDepth: Int = 5
-  ): java.util.Map[String, CallSite] = {
-    val result = new java.util.HashMap[String, CallSite]()
-    
+  ): java.util.Map[String, java.util.List[CallSite]] = {
+    val result = new java.util.HashMap[String, java.util.List[CallSite]]()
+
     // Find methods that match our starting method
-    val methodPattern = s"""^${Regex.quote(startingMethod)}.*"""
-    val startMethods = cpg.method.fullName(methodPattern).l
+    val startMethods = cpg.method.filter(m => chopColon(m.fullName) == startingMethod).l
     if (startMethods.isEmpty) {
       return result
     }
-    
-    // We'll use the result map for cycle detection, so we don't need a separate visited set
-    
-    // Add our starting methods to the result map to avoid processing them again
+
+    // Set to track visited methods to prevent cycles
+    val visited = mutable.Set[String]()
+
+    // Add our starting methods to the visited set to avoid processing them again
     val startMethodNames = startMethods.map(m => resolveMethodName(chopColon(m.fullName))).toSet
-    
+    visited ++= startMethodNames
+
     // Helper to check if a method name should be included in results
     def shouldIncludeMethod(methodName: String): Boolean = {
-      !methodName.startsWith("<operator>") && 
-      !methodName.startsWith("java.") && 
-      !methodName.startsWith("javax.") && 
-      !methodName.startsWith("sun.") && 
+      !methodName.startsWith("<operator>") &&
+      !methodName.startsWith("java.") &&
+      !methodName.startsWith("javax.") &&
+      !methodName.startsWith("sun.") &&
       !methodName.startsWith("com.sun.")
     }
-    
-    // Helper to get source line from a call, preserving original formatting completely
+
     def getSourceLine(call: io.shiftleft.codepropertygraph.generated.nodes.Call): String = {
-      // Don't modify the original source code at all
-      call.code.trim
+      val trimmed = call.code.trim
+      trimmed.replaceFirst("^this\\.", "")
     }
-    
+
+    // Helper to add a call site to the result map
+    def addCallSite(methodName: String, callSite: CallSite): Unit = {
+      var callSites = result.get(methodName)
+      if (callSites == null) {
+        callSites = new java.util.ArrayList[CallSite]()
+        result.put(methodName, callSites)
+      }
+      callSites.add(callSite)
+    }
+
     // Explore in a breadth-first manner
     def explore(methods: List[Method], currentDepth: Int): Unit = {
       if (currentDepth > maxDepth || methods.isEmpty) {
         return
       }
-      
+
       val nextMethods = mutable.ListBuffer[Method]()
-      
+
       methods.foreach { method =>
+        val methodName = resolveMethodName(chopColon(method.fullName))
         val calls = if (isIncoming) {
           // For incoming calls, we look at calls TO this method
           method.callIn.l
@@ -928,37 +939,41 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
           // For outgoing calls, we look at calls FROM this method
           method.call.l
         }
-        
+
         calls.foreach { call =>
           if (isIncoming) {
             // For incoming, the caller is the nextMethod
             val callerMethod = call.method
             val callerName = resolveMethodName(chopColon(callerMethod.fullName))
-            
+
             // Skip if we've already processed this method or it should be excluded
-            if (!result.containsKey(callerName) && shouldIncludeMethod(callerName)) {
+            if (!visited.contains(callerName) && shouldIncludeMethod(callerName)) {
               // Add call to result map - signature is the caller
               val sourceLine = getSourceLine(call)
-              result.put(callerName, CallSite(CodeUnit.fn(resolveMethodName(startingMethod)), sourceLine))
-              
-              // Add caller to next methods to explore
+              addCallSite(methodName, CallSite(CodeUnit.fn(callerName), sourceLine))
+
+              // Mark as visited and add to next methods to explore
+              visited += callerName
               nextMethods += callerMethod
             }
           } else {
             // For outgoing, the callee is the nextMethod
             val calleeFullName = chopColon(call.methodFullName)
             val calleeName = resolveMethodName(calleeFullName)
-            
+
             // Skip if we've already processed this method or it should be excluded
-            if (!result.containsKey(calleeName) && shouldIncludeMethod(calleeName)) {
+            if (!visited.contains(calleeName) && shouldIncludeMethod(calleeName)) {
               // Find method node for callee
               val calleePattern = s"""^${Regex.quote(calleeFullName)}.*"""
               val calleeMethods = cpg.method.fullName(calleePattern).l
-              
+
               // Add call to result map - signature is the callee
               val sourceLine = getSourceLine(call)
-              result.put(calleeName, CallSite(CodeUnit.fn(resolveMethodName(startingMethod)), sourceLine))
-              
+              addCallSite(methodName, CallSite(CodeUnit.fn(calleeName), sourceLine))
+
+              // Mark as visited
+              visited += calleeName
+
               // Add callee to next methods to explore if we found it
               if (calleeMethods.nonEmpty) {
                 nextMethods ++= calleeMethods
@@ -967,43 +982,43 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
           }
         }
       }
-      
+
       // Explore next level
       explore(nextMethods.toList, currentDepth + 1)
     }
-    
+
     // Start exploration
-    explore(startMethods.toList, 1)
-    
+    explore(startMethods, 1)
+
     result
   }
-  
+
   /**
    * Gets the call graph to a specified method.
-   * 
-   * Finds all methods that call the specified method, up to a depth of 5.
+   *
+   * Finds all methods that call the specified method, up to the specified depth.
    * Each method in the result includes its fully-qualified signature and
-   * the actual source line where the call is made (trimmed of whitespace).
-   * 
+   * the actual source lines where the calls are made (trimmed of whitespace).
+   *
    * @param methodName The fully-qualified name of the target method
-   * @return A map where keys are fully-qualified method signatures and values are CallSite objects
+   * @return A map where keys are fully-qualified method signatures and values are lists of CallSite objects
    */
-  override def getCallgraphTo(methodName: String, depth: Int): java.util.Map[String, CallSite] = {
+  override def getCallgraphTo(methodName: String, depth: Int): java.util.Map[String, java.util.List[CallSite]] = {
     val resolvedMethodName = resolveMethodName(methodName)
     buildCallGraph(resolvedMethodName, true, depth)
   }
-  
+
   /**
    * Gets the call graph from a specified method.
-   * 
-   * Finds all methods that are called by the specified method, up to a depth of 5.
+   *
+   * Finds all methods that are called by the specified method, up to the specified depth.
    * Each method in the result includes its fully-qualified signature and
-   * the actual source line where the call is made (trimmed of whitespace).
-   * 
+   * the actual source lines where the calls are made (trimmed of whitespace).
+   *
    * @param methodName The fully-qualified name of the source method
-   * @return A map where keys are fully-qualified method signatures and values are CallSite objects
+   * @return A map where keys are fully-qualified method signatures and values are lists of CallSite objects
    */
-  override def getCallgraphFrom(methodName: String, depth: Int): java.util.Map[String, CallSite] = {
+  override def getCallgraphFrom(methodName: String, depth: Int): java.util.Map[String, java.util.List[CallSite]] = {
     val resolvedMethodName = resolveMethodName(methodName)
     buildCallGraph(resolvedMethodName, false, depth)
   }
