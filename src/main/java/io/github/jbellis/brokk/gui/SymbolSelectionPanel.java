@@ -17,6 +17,8 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 /**
  * A reusable panel for selecting Java symbols (classes and members) with autocomplete.
@@ -96,6 +98,25 @@ public class SymbolSelectionPanel extends JPanel {
      */
     public JTextField getInputField() {
         return symbolInput;
+    }
+
+    public void addSymbolSelectionListener(Runnable onChange) {
+        symbolInput.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+        });
     }
 
     /**

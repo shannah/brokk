@@ -1,11 +1,14 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -17,6 +20,8 @@ public class CallGraphDialog extends JDialog {
     private final JButton okButton;
     private final JButton cancelButton;
     private final JSpinner depthSpinner;
+    private final JLabel callSitesLabel;
+    private final IAnalyzer analyzer;
 
     // The selected method
     private String selectedMethod = null;
@@ -27,17 +32,27 @@ public class CallGraphDialog extends JDialog {
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
-    public CallGraphDialog(Frame parent, IAnalyzer analyzer, String title) {
+    // The call graph map (caller/callee methods -> list of call sites)
+    private Map<String, List<CallSite>> callGraph = null;
+
+    // Whether we're looking for callers (to) or callees (from)
+    private boolean isCallerGraph = true;
+
+    public CallGraphDialog(Frame parent, IAnalyzer analyzer, String title, boolean isCallerGraph) {
         super(parent, title, true); // modal dialog
         assert parent != null;
         assert title != null;
         assert analyzer != null;
+        
+        this.analyzer = analyzer;
+        this.isCallerGraph = isCallerGraph;
 
         var mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         // Create the symbol selection panel - limited to methods only and single selection
         selectionPanel = new SymbolSelectionPanel(analyzer, Set.of(CodeUnitType.FUNCTION), 1);
+        selectionPanel.addSymbolSelectionListener(this::updateCallGraph);
 
         // Create the depth panel with spinner
         var depthPanel = new JPanel(new GridBagLayout());
@@ -60,16 +75,29 @@ public class CallGraphDialog extends JDialog {
         gbc.gridx = 1;
         gbc.gridy = 0;
         depthPanel.add(depthSpinner, gbc);
-
-        // Second row - help text
+        
+        // Third row - help text
         var helpLabel = new JLabel("Maximum depth of the call graph");
         helpLabel.setFont(helpLabel.getFont().deriveFont(Font.ITALIC));
-
         gbc.gridx = 0;
         gbc.gridy = 1;
         gbc.gridwidth = 2;
         gbc.insets = new Insets(4, 0, 0, 0);
         depthPanel.add(helpLabel, gbc);
+
+        // Add a vertical spacer
+        var spacer = Box.createVerticalStrut(10);
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        gbc.gridwidth = 2;
+        depthPanel.add(spacer, gbc);
+
+        // Add call sites counter label
+        callSitesLabel = new JLabel("Call sites: 0");
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        gbc.gridwidth = 2;
+        depthPanel.add(callSitesLabel, gbc);
 
         // Add components directly to the main panel
         mainPanel.add(selectionPanel, BorderLayout.NORTH);
@@ -103,11 +131,50 @@ public class CallGraphDialog extends JDialog {
         selectionPanel.getInputField().setToolTipText("Enter a method name and press Enter to confirm");
 
         // Listen to spinner changes
-        spinnerModel.addChangeListener(e -> depth = (Integer) depthSpinner.getValue());
+        spinnerModel.addChangeListener(e -> {
+            depth = (Integer) depthSpinner.getValue();
+            updateCallGraph();
+        });
 
         setContentPane(mainPanel);
         pack();
         setLocationRelativeTo(parent);
+    }
+
+    /**
+     * Updates the call graph map when the method or depth changes
+     */
+    private void updateCallGraph() {
+        String methodName = selectionPanel.getSymbolText();
+        if (methodName == null || methodName.isEmpty()) {
+            callGraph = null;
+            updateCallSitesCount(0);
+            return;
+        }
+
+        // Update the call graph map
+        if (isCallerGraph) {
+            callGraph = analyzer.getCallgraphTo(methodName, depth);
+        } else {
+            callGraph = analyzer.getCallgraphFrom(methodName, depth);
+        }
+
+        // Count total call sites
+        int totalCallSites = 0;
+        if (callGraph != null) {
+            totalCallSites = callGraph.values().stream()
+                    .mapToInt(List::size)
+                    .sum();
+        }
+        
+        updateCallSitesCount(totalCallSites);
+    }
+    
+    /**
+     * Updates the call sites count label
+     */
+    private void updateCallSitesCount(int count) {
+        callSitesLabel.setText("Call sites: " + count);
     }
 
     /**
@@ -145,5 +212,19 @@ public class CallGraphDialog extends JDialog {
      */
     public int getDepth() {
         return depth;
+    }
+    
+    /**
+     * Return the call graph map (callers or callees)
+     */
+    public Map<String, List<CallSite>> getCallGraph() {
+        return callGraph;
+    }
+    
+    /**
+     * Return true if this is a caller graph (to), false if callee graph (from)
+     */
+    public boolean isCallerGraph() {
+        return isCallerGraph;
     }
 }

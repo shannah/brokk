@@ -1085,7 +1085,8 @@ public class SearchAgent {
             return "Cannot get call graph: method name is empty";
         }
 
-        return AnalyzerUtil.formatCallGraphTo(analyzer, methodName, 5);
+        var graph = analyzer.getCallgraphTo(methodName, 5);
+        return AnalyzerUtil.formatCallGraph(graph, methodName, false);
     }
 
     @Tool("""
@@ -1100,7 +1101,8 @@ public class SearchAgent {
             return "Cannot get call graph: method name is empty";
         }
 
-        return AnalyzerUtil.formatCallGraphFrom(analyzer, methodName, 5);
+        var graph = analyzer.getCallgraphTo(methodName, 5);
+        return AnalyzerUtil.formatCallGraph(graph, methodName, true);
     }
 
     @Tool("Provide a final answer to the query. Use this when you have enough information to fully address the query.")

@@ -87,30 +87,13 @@ public class AnalyzerUtil {
                 .filter(analyzer::isClassInProject)
                 .toList();
     }
-
-    /**
-     * Formats the call graph for methods that call the specified method.
-     *
-     * @param analyzer   The analyzer to use
-     * @param methodName The fully-qualified name of the method
-     * @param depth      The maximum depth to traverse in the call graph
-     * @return A formatted string representing the call graph
-     */
-    public static String formatCallGraphTo(IAnalyzer analyzer, String methodName, int depth) {
-        var callgraph = analyzer.getCallgraphTo(methodName, depth);
-        if (callgraph.isEmpty()) {
-            return "No callers found for: " + methodName;
-        }
-
-        return formatCallGraph(callgraph, methodName, true);
-    }
-
+    
     private record StackEntry(String method, int depth) {}
 
     /**
      * Helper method to recursively format the call graph (both callers and callees)
      */
-    private static String formatCallGraph(Map<String, List<CallSite>> callgraph,
+    public static String formatCallGraph(Map<String, List<CallSite>> callgraph,
                                           String rootMethodName,
                                           boolean isCallerGraph)
     {
@@ -146,23 +129,4 @@ public class AnalyzerUtil {
 
         return result.toString();
     }
-
-    /**
-     * Formats the call graph for methods called by the specified method.
-     *
-     * @param analyzer   The analyzer to use
-     * @param methodName The fully-qualified name of the method
-     * @param depth      The maximum depth to traverse in the call graph
-     * @return A formatted string representing the call graph
-     */
-    public static String formatCallGraphFrom(IAnalyzer analyzer, String methodName, int depth) {
-        var callgraph = analyzer.getCallgraphFrom(methodName, depth);
-        if (callgraph.isEmpty()) {
-            return "No callees found for: " + methodName;
-        }
-
-        // Format the call graph
-        return formatCallGraph(callgraph, methodName, false);
-    }
-
 }
