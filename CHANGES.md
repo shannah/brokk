@@ -1,3 +1,10 @@
+0.6.2
+
+## Fixes
+
+- Fix starting Brokk with no Project
+
+
 # 0.6.1
 
 ## Changes
