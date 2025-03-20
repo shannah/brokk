@@ -80,7 +80,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     volatile Future<?> currentUserTask;
     private JScrollPane llmScrollPane;
-    RSyntaxTextArea captureDescriptionArea;
+    JTextArea captureDescriptionArea;
     
     // For STT (mic) usage
     private JButton micButton;
@@ -177,8 +177,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             micButton.setEnabled(false);
             micButton.setToolTipText("OpenAI key is required for STT");
         } else {
-            micButton.setToolTipText("Press and hold to record, release to transcribe");
-            setupMicButtonRecording(micButton);
+            micButton.setToolTipText("Click to start/stop recording");
+            setupMicButtonToggle(micButton);
             // Ensure correct initial icon is set
             if (micOffIcon != null) {
                 micButton.setIcon(micOffIcon);
@@ -788,7 +788,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandInputField.setMinimumSize(new Dimension(100, 80));
         // Enable undo/redo
         commandInputField.setAutoIndentEnabled(false);
-        commandInputField.discardAllEdits(); // Start with a clean undo history
 
         // Create a scrollpane for the text area
         var commandScrollPane = new JScrollPane(commandInputField);
@@ -850,21 +849,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Called only if STT is enabled. Press & hold the mic button to record,
-     * on release we transcribe and place the result in the commandInputField.
+     * Called only if STT is enabled. Click once to start recording,
+     * click again to stop and transcribe the result in the commandInputField.
      */
-    private void setupMicButtonRecording(JButton button) {
-        button.addMouseListener(new MouseAdapter()
-        {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                // Start recording
-                startMicCapture();
-            }
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                // Stop and transcribe
+    private void setupMicButtonToggle(JButton button) {
+        // Track recording state
+        button.putClientProperty("isRecording", false);
+        
+        button.addActionListener(e -> {
+            boolean isRecording = (boolean)button.getClientProperty("isRecording");
+            if (isRecording) {
+                // If recording, stop and transcribe
                 stopMicCaptureAndTranscribe();
+                button.putClientProperty("isRecording", false);
+            } else {
+                // Otherwise start recording
+                startMicCapture();
+                button.putClientProperty("isRecording", true);
             }
         });
     }
@@ -1619,16 +1620,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
 
         // References label in center - will get all extra space
-        captureDescriptionArea = new RSyntaxTextArea();
-        captureDescriptionArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        captureDescriptionArea = new JTextArea("No references found");
         captureDescriptionArea.setEditable(false);
         captureDescriptionArea.setBackground(panel.getBackground());
         captureDescriptionArea.setBorder(null);
         captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
         captureDescriptionArea.setLineWrap(true);
         captureDescriptionArea.setWrapStyleWord(true);
-        captureDescriptionArea.setHighlightCurrentLine(false);
-        captureDescriptionArea.discardAllEdits(); // Start with a clean undo history
         panel.add(captureDescriptionArea, BorderLayout.CENTER);
 
         // Buttons panel on the right

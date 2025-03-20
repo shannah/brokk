@@ -7,6 +7,8 @@ import io.github.jbellis.brokk.analyzer.RepoFile;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -33,7 +35,7 @@ public class GitPanel extends JPanel {
     // Commit tab UI
     private JTable uncommittedFilesTable;
     private JButton suggestMessageButton;
-    private JTextArea commitMessageArea;
+    private RSyntaxTextArea commitMessageArea;
     private JButton commitButton;
     private JButton stashButton;
 
@@ -174,9 +176,11 @@ public class GitPanel extends JPanel {
         JPanel messagePanel = new JPanel(new BorderLayout());
         messagePanel.add(new JLabel("Commit/Stash Description:"), BorderLayout.NORTH);
 
-        commitMessageArea = new JTextArea(2, 50);
+        commitMessageArea = new RSyntaxTextArea(2, 50);
+        commitMessageArea.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         commitMessageArea.setLineWrap(true);
         commitMessageArea.setWrapStyleWord(true);
+        commitMessageArea.setHighlightCurrentLine(false);
         messagePanel.add(new JScrollPane(commitMessageArea), BorderLayout.CENTER);
 
         commitBottomPanel.add(messagePanel, BorderLayout.CENTER);
