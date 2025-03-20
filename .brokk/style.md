@@ -5,7 +5,7 @@ Coding Style Guide
 1. **Favor Immutable Data Structures**: Prefer `List.of` and `Map.of`, as well as the Stream Collectors.
 1. **Provide Comprehensive Logging**: The codebase makes extensive use of the `LogManager` and `Logger` classes to log relevant information, including request/response details, errors, and other important events.
 1. **Use `var`**: Prefer `var` for local variable declarations. Exception: numeric types, such as `int`, `float`, etc.
-1. **Avoid StringBuilder**: prefer joins or String.format where possible.
+1. **Avoid StringBuilder**: prefer joins or interpolated text blocks where possible.
 1. **Multiline parameters**: When calling a method with more parameters than reasonably fit on one line, align as follows:
 ```
    var combined = Streams.concat(currentContext().readonlyFiles(),
