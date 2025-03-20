@@ -1312,8 +1312,6 @@ public class ContextManager implements IContextManager
      */
     private void pushContext(Function<Context, Context> contextGenerator)
     {
-        assert !SwingUtilities.isEventDispatchThread();
-
         Context newContext = contextHistory.pushContext(contextGenerator);
         if (newContext != null) {
             io.updateContextHistoryTable(newContext);
