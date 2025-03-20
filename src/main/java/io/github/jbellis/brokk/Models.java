@@ -279,7 +279,7 @@ public record Models(StreamingChatLanguageModel editModel,
             String sttModelName;
             if (openaiKey != null && !openaiKey.isBlank()) {
                 stt = new OpenAiWhisperSTT(openaiKey);
-                sttModelName = "whisper-1";
+                sttModelName = "gpt-4o-transcribe";
             } else {
                 stt = new UnavailableSTT();
                 sttModelName = "disabled";
