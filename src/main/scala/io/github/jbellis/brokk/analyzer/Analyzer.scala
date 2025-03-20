@@ -939,7 +939,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
             if (!result.containsKey(callerName) && shouldIncludeMethod(callerName)) {
               // Add call to result map - signature is the caller
               val sourceLine = getSourceLine(call)
-              result.put(callerName, CallSite(resolveMethodName(startingMethod), sourceLine))
+              result.put(callerName, CallSite(CodeUnit.fn(resolveMethodName(startingMethod)), sourceLine))
               
               // Add caller to next methods to explore
               nextMethods += callerMethod
@@ -957,7 +957,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
               
               // Add call to result map - signature is the callee
               val sourceLine = getSourceLine(call)
-              result.put(calleeName, CallSite(resolveMethodName(startingMethod), sourceLine))
+              result.put(calleeName, CallSite(CodeUnit.fn(resolveMethodName(startingMethod)), sourceLine))
               
               // Add callee to next methods to explore if we found it
               if (calleeMethods.nonEmpty) {

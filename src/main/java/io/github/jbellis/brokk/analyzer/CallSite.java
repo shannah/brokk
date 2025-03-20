@@ -2,8 +2,8 @@ package io.github.jbellis.brokk.analyzer;
 
 /**
  * A record representing a call site in source code.
- * 
- * @param signature The signature of the method making the call
+ *
+ * @param target The CodeUnit of the method being called/calling
  * @param sourceLine The actual source line where the call occurs
  */
-public record CallSite(String signature, String sourceLine) {}
+public record CallSite(CodeUnit target, String sourceLine) {}

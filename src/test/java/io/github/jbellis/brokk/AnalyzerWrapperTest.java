@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class AnalyzerWrapperTest {
 
     private TestAnalyzer analyzer;
+    private static final int depth = 5; // Default depth for tests
 
     @BeforeEach
     public void setup() {
@@ -109,15 +110,15 @@ public class AnalyzerWrapperTest {
         // Debug the data structure to see what's happening
         System.out.println("DEBUG - callsTo map content for CyclicMethods.methodA:");
         analyzer.getCallgraphTo("CyclicMethods.methodA").forEach((k, v) -> 
-            System.out.println("  Key: " + k + ", Value: CallSite(" + v.signature() + ", " + v.sourceLine() + ")"));
+            System.out.println("  Key: " + k + ", Value: CallSite(" + v.target().fqName() + ", " + v.sourceLine() + ")"));
         
         System.out.println("DEBUG - callsTo map content for CyclicMethods.methodB:");
         analyzer.getCallgraphTo("CyclicMethods.methodB").forEach((k, v) -> 
-            System.out.println("  Key: " + k + ", Value: CallSite(" + v.signature() + ", " + v.sourceLine() + ")"));
+            System.out.println("  Key: " + k + ", Value: CallSite(" + v.target().fqName() + ", " + v.sourceLine() + ")"));
         
         System.out.println("DEBUG - callsTo map content for CyclicMethods.methodC:");
         analyzer.getCallgraphTo("CyclicMethods.methodC").forEach((k, v) -> 
-            System.out.println("  Key: " + k + ", Value: CallSite(" + v.signature() + ", " + v.sourceLine() + ")"));
+            System.out.println("  Key: " + k + ", Value: CallSite(" + v.target().fqName() + ", " + v.sourceLine() + ")"));
         
         // Verify the output
         assertTrue(result.startsWith("Root: CyclicMethods.methodA"), "Should start with root method");
@@ -224,7 +225,7 @@ public class AnalyzerWrapperTest {
          */
         public void addCallTo(String target, String caller, String sourceLine) {
             Map<String, CallSite> callerMap = callsTo.computeIfAbsent(target, k -> new HashMap<>());
-            callerMap.put(caller, new CallSite(target, sourceLine));
+            callerMap.put(caller, new CallSite(CodeUnit.fn(target), sourceLine));
         }
         
         /**
@@ -235,14 +236,15 @@ public class AnalyzerWrapperTest {
          */
         public void addCallFrom(String source, String callee, String sourceLine) {
             Map<String, CallSite> calleeMap = callsFrom.computeIfAbsent(source, k -> new HashMap<>());
-            calleeMap.put(callee, new CallSite(callee, sourceLine));
+            calleeMap.put(callee, new CallSite(CodeUnit.fn(callee), sourceLine));
         }
         
         /**
          * Get all methods that call the specified method, with cycle detection
          */
         @Override
-        public Map<String, CallSite> getCallgraphTo(String methodName) {
+        @Override
+        public Map<String, CallSite> getCallgraphTo(String methodName, int depth) {
             // Simple way to handle test cases with cycles - each test directly sets up
             // the data structure, so we don't need to do cycle detection at runtime
             return callsTo.getOrDefault(methodName, new HashMap<>());
@@ -252,7 +254,8 @@ public class AnalyzerWrapperTest {
          * Get all methods called by the specified method, with cycle detection
          */
         @Override
-        public Map<String, CallSite> getCallgraphFrom(String methodName) {
+        @Override
+        public Map<String, CallSite> getCallgraphFrom(String methodName, int depth) {
             // Simple way to handle test cases with cycles - each test directly sets up
             // the data structure, so we don't need to do cycle detection at runtime
             return callsFrom.getOrDefault(methodName, new HashMap<>());
