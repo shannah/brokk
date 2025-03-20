@@ -1,21 +1,11 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Completions;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import org.fife.ui.autocomplete.AutoCompletion;
-import org.fife.ui.autocomplete.Completion;
-import org.fife.ui.autocomplete.CompletionProvider;
-import org.fife.ui.autocomplete.DefaultCompletionProvider;
-import org.fife.ui.autocomplete.ShorthandCompletion;
 
 import javax.swing.*;
-import javax.swing.text.JTextComponent;
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -23,12 +13,9 @@ import java.util.Set;
  */
 public class SymbolSelectionDialog extends JDialog {
 
-    private final JTextField symbolInput;
-    private final AutoCompletion autoCompletion;
+    private final SymbolSelectionPanel selectionPanel;
     private final JButton okButton;
     private final JButton cancelButton;
-    private final IAnalyzer analyzer;
-    private final Set<CodeUnitType> typeFilter;
 
     // The selected symbol
     private String selectedSymbol = null;
@@ -41,36 +28,14 @@ public class SymbolSelectionDialog extends JDialog {
         assert parent != null;
         assert title != null;
         assert typeFilter != null;
-
-        this.analyzer = analyzer;
-        this.typeFilter = typeFilter;
         assert analyzer != null;
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // Build text input with autocomplete at the top
-        symbolInput = new JTextField(30);
-        var provider = createSymbolCompletionProvider(analyzer);
-        autoCompletion = new AutoCompletion(provider);
-        // Trigger with Ctrl+Space (Always. On Mac cmd-space is Spotlight)
-        autoCompletion.setAutoActivationEnabled(false);
-        autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
-        autoCompletion.install(symbolInput);
-
-        JPanel inputPanel = new JPanel(new BorderLayout());
-        inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-        inputPanel.add(symbolInput, BorderLayout.CENTER);
-        String autocompleteText;
-        if (typeFilter.equals(CodeUnitType.ALL)) {
-            autocompleteText = "Ctrl-space to autocomplete class and member names";
-        } else {
-            assert typeFilter.size() == 1 : "Expected exactly one type filter";
-            var type = typeFilter.iterator().next();
-            autocompleteText = "Ctrl-space to autocomplete " + type.toString().toLowerCase() + " names";
-        }
-        inputPanel.add(new JLabel(autocompleteText), BorderLayout.SOUTH);
-        mainPanel.add(inputPanel, BorderLayout.NORTH);
+        // Create the symbol selection panel
+        selectionPanel = new SymbolSelectionPanel(analyzer, typeFilter);
+        mainPanel.add(selectionPanel, BorderLayout.NORTH);
 
         // Buttons at the bottom
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -97,18 +62,11 @@ public class SymbolSelectionDialog extends JDialog {
         getRootPane().setDefaultButton(okButton);
 
         // Add a tooltip to indicate Enter key functionality
-        symbolInput.setToolTipText("Enter a class or member name and press Enter to confirm");
-        
+        selectionPanel.getInputField().setToolTipText("Enter a class or member name and press Enter to confirm");
+
         setContentPane(mainPanel);
         pack();
         setLocationRelativeTo(parent);
-    }
-
-    /**
-     * Create the symbol completion provider using Completions.completeClassesAndMembers
-     */
-    private CompletionProvider createSymbolCompletionProvider(IAnalyzer analyzer) {
-        return new SymbolCompletionProvider(analyzer, typeFilter);
     }
 
     /**
@@ -118,7 +76,7 @@ public class SymbolSelectionDialog extends JDialog {
         confirmed = true;
         selectedSymbol = null;
 
-        String typed = symbolInput.getText().trim();
+        String typed = selectionPanel.getSymbolText();
         if (!typed.isEmpty()) {
             selectedSymbol = typed;
         }
@@ -137,66 +95,5 @@ public class SymbolSelectionDialog extends JDialog {
      */
     public String getSelectedSymbol() {
         return selectedSymbol;
-    }
-
-    /**
-     * A completion provider for Java classes and members using Completions.completeClassesAndMembers
-     */
-    public class SymbolCompletionProvider extends DefaultCompletionProvider {
-
-        private final IAnalyzer analyzer;
-        private final Set<CodeUnitType> typeFilter;
-    
-        public SymbolCompletionProvider(IAnalyzer analyzer, Set<CodeUnitType> typeFilter) {
-            this.analyzer = analyzer;
-            this.typeFilter = typeFilter;
-        }
-    
-        @Override
-        public List<Completion> getCompletions(JTextComponent comp) {
-            String text = comp.getText();
-            int caretPosition = comp.getCaretPosition();
-    
-            // If the caret is not at the end, adjust the text
-            if (caretPosition < text.length()) {
-                text = text.substring(0, caretPosition);
-            }
-    
-            // Get completions using the brokk Completions utility
-            var completions = analyzer == null
-                            ? List.<CodeUnit>of()
-                            : Completions.completeClassesAndMembers(text, analyzer);
-
-            // Convert to RSTA completions, filtering by the requested types
-            var L = completions.stream()
-                    .filter(c -> typeFilter.contains(c.kind()))
-                    .map(c -> (Completion) new ShorthandCompletion(this, c.shortName(), c.fqName()))
-                    .toList();
-
-            if (L.isEmpty()) {
-                autoCompletion.setShowDescWindow(false);
-                return L;
-            }
-
-            // Dynamically size the description window based on the longest shortNae
-            var tooltipFont = UIManager.getFont("ToolTip.font");
-            var fontMetrics = symbolInput.getFontMetrics(tooltipFont);
-            int maxWidth = L.stream()
-                    .mapToInt(c -> fontMetrics.stringWidth(c.getInputText()))
-                    .max()
-                    .orElseThrow();
-            // this doesn't seem to work at all, maybe it's hardcoded at startup
-            autoCompletion.setChoicesWindowSize(maxWidth + 10, 3 * fontMetrics.getHeight() + 10); // 5px margin on each side
-
-            autoCompletion.setShowDescWindow(true);
-            int maxDescWidth = L.stream()
-                    .mapToInt(c -> fontMetrics.stringWidth(c.getReplacementText()))
-                    .max()
-                    .orElseThrow();
-            // Desc uses a different (monospaced) font but I'm not sure how to infer which
-            // So, hack in a 1.2 factor
-            autoCompletion.setDescriptionWindowSize((int) (1.2 * maxDescWidth + 10), 3 * fontMetrics.getHeight() + 10);
-            return L;
-        }
     }
 }

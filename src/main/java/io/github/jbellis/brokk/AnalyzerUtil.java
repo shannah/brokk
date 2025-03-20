@@ -92,10 +92,11 @@ public class AnalyzerUtil {
      *
      * @param analyzer   The analyzer to use
      * @param methodName The fully-qualified name of the method
+     * @param depth
      * @return A formatted string representing the call graph
      */
-    public static String formatCallGraphTo(IAnalyzer analyzer, String methodName) {
-        var callgraph = analyzer.getCallgraphTo(methodName);
+    public static String formatCallGraphTo(IAnalyzer analyzer, String methodName, int depth) {
+        var callgraph = analyzer.getCallgraphTo(methodName, depth);
         if (callgraph.isEmpty()) {
             return "No callers found for: " + methodName;
         }
@@ -143,11 +144,7 @@ public class AnalyzerUtil {
             // Recursively process this caller's callers (if not already processed)
             if (!processedMethods.contains(caller)) {
                 processedMethods.add(caller);
-                // Get the caller's own callers from the analyzer
-                var callerCallgraph = analyzer.getCallgraphTo(caller);
-                if (!callerCallgraph.isEmpty()) {
-                    formatCallers(result, callerCallgraph, caller, depth + 1, processedMethods, analyzer);
-                }
+                // FIXME this is broken
             }
         }
     }
@@ -157,10 +154,11 @@ public class AnalyzerUtil {
      *
      * @param analyzer   The analyzer to use
      * @param methodName The fully-qualified name of the method
+     * @param depth
      * @return A formatted string representing the call graph
      */
-    public static String formatCallGraphFrom(IAnalyzer analyzer, String methodName) {
-        var callgraph = analyzer.getCallgraphFrom(methodName);
+    public static String formatCallGraphFrom(IAnalyzer analyzer, String methodName, int depth) {
+        var callgraph = analyzer.getCallgraphFrom(methodName, depth);
         if (callgraph.isEmpty()) {
             return "No callees found for: " + methodName;
         }
@@ -209,10 +207,7 @@ public class AnalyzerUtil {
             if (!processedMethods.contains(callee)) {
                 processedMethods.add(callee);
                 // Get the callee's own callees from the analyzer
-                var calleeCallgraph = analyzer.getCallgraphFrom(callee);
-                if (!calleeCallgraph.isEmpty()) {
-                    formatCallees(result, calleeCallgraph, callee, depth + 1, processedMethods, analyzer);
-                }
+                // FIXME
             }
         }
     }

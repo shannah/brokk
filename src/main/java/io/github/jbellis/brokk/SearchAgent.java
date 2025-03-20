@@ -1074,7 +1074,7 @@ public class SearchAgent {
     }
 
     @Tool("""
-    Returns the call graph showing which methods call the given method and one line of source code for each invocation.
+    Returns the call graph to a depth of 5 showing which methods call the given method and one line of source code for each invocation.
     Use this to understand method dependencies and how code flows into a method.
     """)
     public String getCallGraphTo(
@@ -1085,11 +1085,11 @@ public class SearchAgent {
             return "Cannot get call graph: method name is empty";
         }
 
-        return AnalyzerUtil.formatCallGraphTo(analyzer, methodName);
+        return AnalyzerUtil.formatCallGraphTo(analyzer, methodName, 5);
     }
 
     @Tool("""
-    Returns the call graph showing which methods are called by the given method and one line of source code for each invocation.
+    Returns the call graph to a depth of 5 showing which methods are called by the given method and one line of source code for each invocation.
     Use this to understand how a method's logic flows to other parts of the codebase.
     """)
     public String getCallGraphFrom(
@@ -1100,7 +1100,7 @@ public class SearchAgent {
             return "Cannot get call graph: method name is empty";
         }
 
-        return AnalyzerUtil.formatCallGraphFrom(analyzer, methodName);
+        return AnalyzerUtil.formatCallGraphFrom(analyzer, methodName, 5);
     }
 
     @Tool("Provide a final answer to the query. Use this when you have enough information to fully address the query.")

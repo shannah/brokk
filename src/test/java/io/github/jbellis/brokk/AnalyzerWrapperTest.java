@@ -25,7 +25,7 @@ public class AnalyzerWrapperTest {
         // Setup a simple call graph
         analyzer.addCallTo("Main.process", "Client.callProcess", "process(data); // process the data");
         
-        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "Main.process");
+        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "Main.process", depth);
         
         // Use triple quotes with stripIndent for better readability
         String expected = """
@@ -44,7 +44,7 @@ public class AnalyzerWrapperTest {
         // Setup a simple call graph
         analyzer.addCallFrom("Controller.execute", "Service.performAction", "service.performAction(request);");
         
-        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "Controller.execute");
+        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "Controller.execute", depth);
         
         // Use triple quotes with stripIndent for better readability
         String expected = """
@@ -64,7 +64,7 @@ public class AnalyzerWrapperTest {
         analyzer.addCallTo("App.start", "Main.initialize", "app.start();");
         analyzer.addCallTo("Main.initialize", "Config.load", "initialize();");
         
-        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "App.start");
+        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "App.start", depth);
         
         // Use triple quotes with stripIndent for better readability
         String expected = """
@@ -84,7 +84,7 @@ public class AnalyzerWrapperTest {
 
     @Test
     public void testFormatCallGraphTo_NoCallers() {
-        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "nonexistent.method");
+        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "nonexistent.method", depth);
         assertEquals("No callers found for: nonexistent.method", result);
     }
 
@@ -103,7 +103,7 @@ public class AnalyzerWrapperTest {
                           "CyclicMethods.methodB", 
                           "methodC();");
 
-        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "CyclicMethods.methodA");
+        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "CyclicMethods.methodA", depth);
         System.out.println("Call graph TO result:\n" + result);
         
         // Debug the data structure to see what's happening
@@ -127,7 +127,7 @@ public class AnalyzerWrapperTest {
 
     @Test
     public void testFormatCallGraphFrom_NoCallees() {
-        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "nonexistent.method");
+        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "nonexistent.method", depth);
         assertEquals("No callees found for: nonexistent.method", result);
     }
 
@@ -146,7 +146,7 @@ public class AnalyzerWrapperTest {
                             "CyclicMethods.methodA", 
                             "methodA(); // creates a cycle A->B->C->A");
 
-        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "CyclicMethods.methodA");
+        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "CyclicMethods.methodA", depth);
         System.out.println("Call graph FROM result:\n" + result);
         
         // Verify the output
@@ -162,7 +162,7 @@ public class AnalyzerWrapperTest {
         analyzer.addCallTo("Method.B", "Method.C", "b();");
         analyzer.addCallTo("Method.C", "Method.D", "c();");
         
-        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "Method.A");
+        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "Method.A", depth);
         System.out.println("Deep nesting TO result:\n" + result);
         
         // Verify the output shows all levels
@@ -178,7 +178,7 @@ public class AnalyzerWrapperTest {
         analyzer.addCallFrom("Method.B", "Method.C", "c();");
         analyzer.addCallFrom("Method.C", "Method.D", "d();");
         
-        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "Method.A");
+        String result = AnalyzerUtil.formatCallGraphFrom(analyzer, "Method.A", depth);
         System.out.println("Deep nesting FROM result:\n" + result);
         
         // Verify the output shows all levels
@@ -194,7 +194,7 @@ public class AnalyzerWrapperTest {
         analyzer.addCallTo("Method.target", "Method.caller2", "target();");
         analyzer.addCallTo("Method.target", "Method.caller3", "target();");
         
-        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "Method.target");
+        String result = AnalyzerUtil.formatCallGraphTo(analyzer, "Method.target", depth);
         System.out.println("Multiple callers result:\n" + result);
         
         // Verify all callers are listed

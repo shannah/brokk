@@ -985,9 +985,9 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * @param methodName The fully-qualified name of the target method
    * @return A map where keys are fully-qualified method signatures and values are CallSite objects
    */
-  override def getCallgraphTo(methodName: String): java.util.Map[String, CallSite] = {
+  override def getCallgraphTo(methodName: String, depth: Int): java.util.Map[String, CallSite] = {
     val resolvedMethodName = resolveMethodName(methodName)
-    buildCallGraph(resolvedMethodName, isIncoming = true)
+    buildCallGraph(resolvedMethodName, true, depth)
   }
   
   /**
@@ -1000,9 +1000,9 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
    * @param methodName The fully-qualified name of the source method
    * @return A map where keys are fully-qualified method signatures and values are CallSite objects
    */
-  override def getCallgraphFrom(methodName: String): java.util.Map[String, CallSite] = {
+  override def getCallgraphFrom(methodName: String, depth: Int): java.util.Map[String, CallSite] = {
     val resolvedMethodName = resolveMethodName(methodName)
-    buildCallGraph(resolvedMethodName, isIncoming = false)
+    buildCallGraph(resolvedMethodName, false, depth)
   }
 
   def writeCpg(path: java.nio.file.Path): Unit = {

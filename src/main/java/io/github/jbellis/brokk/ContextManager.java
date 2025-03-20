@@ -13,6 +13,7 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
@@ -59,8 +60,6 @@ import io.github.jbellis.brokk.history.ContextHistory.UndoResult;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static io.github.jbellis.brokk.analyzer.CodeUnitType.FUNCTION;
 
 /**
  * Manages the current and previous context, along with other state like prompts and message history.
@@ -455,12 +454,12 @@ public class ContextManager implements IContextManager
                     io.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
                 }
-                
-                String methodName = showSymbolSelectionDialog("Select Method", Set.of(FUNCTION));
-                if (methodName != null && !methodName.isBlank()) {
-                    callersForMethod(methodName);
-                } else {
+
+                var dialog = showCallGraphDialog("Select Method");
+                if (dialog == null) {
                     io.systemOutput("No method selected.");
+                } else {
+                    callersForMethod(dialog.getSelectedMethod(), dialog.getDepth());
                 }
             } catch (CancellationException cex) {
                 io.systemOutput("Method selection canceled.");
@@ -472,7 +471,7 @@ public class ContextManager implements IContextManager
     }
     
     /**
-     * Shows the method selection dialog and adds callees information for the selected method.
+     * Shows the call graph dialog and adds callees information for the selected method.
      */
     public Future<?> findMethodCalleesAsync()
     {
@@ -483,10 +482,10 @@ public class ContextManager implements IContextManager
                     io.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
                 }
-                
-                String methodName = showSymbolSelectionDialog("Select Method", Set.of(FUNCTION));
-                if (methodName != null && !methodName.isBlank()) {
-                    calleesForMethod(methodName);
+
+                var dialog = showCallGraphDialog("Select Method for Callees");
+                if (dialog != null && dialog.isConfirmed() && dialog.getSelectedMethod() != null && !dialog.getSelectedMethod().isBlank()) {
+                    calleesForMethod(dialog.getSelectedMethod(), dialog.getDepth());
                 } else {
                     io.systemOutput("No method selected.");
                 }
@@ -558,6 +557,31 @@ public class ContextManager implements IContextManager
             var dialog = dialogRef.get();
             if (dialog != null && dialog.isConfirmed()) {
                 return dialog.getSelectedSymbol();
+            }
+            return null;
+        } finally {
+            io.focusInput();
+        }
+    }
+    
+    /**
+     * Show the call graph dialog for configuring method and depth
+     */
+    private CallGraphDialog showCallGraphDialog(String title)
+    {
+        var analyzer = project.getAnalyzer();
+        var dialogRef = new AtomicReference<CallGraphDialog>();
+        SwingUtil.runOnEDT(() -> {
+            var dialog = new CallGraphDialog(io.getFrame(), analyzer, title);
+            dialog.setSize((int) (io.getFrame().getWidth() * 0.9), dialog.getHeight());
+            dialog.setLocationRelativeTo(io.getFrame());
+            dialog.setVisible(true);
+            dialogRef.set(dialog);
+        });
+        try {
+            var dialog = dialogRef.get();
+            if (dialog != null && dialog.isConfirmed()) {
+                return dialog;
             }
             return null;
         } finally {
@@ -1058,41 +1082,41 @@ public class ContextManager implements IContextManager
     }
     
     /** callers for method */
-    public void callersForMethod(String methodName)
+    public void callersForMethod(String methodName, int depth)
     {
-        var callgraph = AnalyzerUtil.formatCallGraphTo(getAnalyzer(), methodName);
-        if (callgraph == null || callgraph.isEmpty()) {
+        var callgraph = AnalyzerUtil.formatCallGraphTo(getAnalyzer(), methodName, depth);
+        if (callgraph.isEmpty()) {
             io.systemOutput("No callers found for " + methodName);
             return;
         }
-        
+
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         sources.add(CodeUnit.cls(ContextFragment.toClassname(methodName)));
-        
+
         // The output is similar to UsageFragment, so we'll use that
-        var fragment = new ContextFragment.UsageFragment("Callers", methodName, sources, callgraph);
+        var fragment = new ContextFragment.UsageFragment("Callers (depth " + depth + ")", methodName, sources, callgraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
-        io.systemOutput("Added call graph for callers of " + methodName);
+        io.systemOutput("Added call graph for callers of " + methodName + " with depth " + depth);
     }
     
     /** callees for method */
-    public void calleesForMethod(String methodName)
+    public void calleesForMethod(String methodName, int depth)
     {
-        var callgraph = AnalyzerUtil.formatCallGraphFrom(getAnalyzer(), methodName);
-        if (callgraph == null || callgraph.isEmpty()) {
+        var callgraph = AnalyzerUtil.formatCallGraphFrom(getAnalyzer(), methodName, depth);
+        if (callgraph.isEmpty()) {
             io.systemOutput("No callees found for " + methodName);
             return;
         }
-        
+
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         sources.add(CodeUnit.cls(ContextFragment.toClassname(methodName)));
-        
+
         // The output is similar to UsageFragment, so we'll use that
-        var fragment = new ContextFragment.UsageFragment("Callees", methodName, sources, callgraph);
+        var fragment = new ContextFragment.UsageFragment("Callees (depth " + depth + ")", methodName, sources, callgraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
-        io.systemOutput("Added call graph for methods called by " + methodName);
+        io.systemOutput("Added call graph for methods called by " + methodName + " with depth " + depth);
     }
 
     /** parse stacktrace */

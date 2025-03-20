@@ -48,7 +48,7 @@ trait IAnalyzer {
    * @param methodName The fully-qualified name of the target method
    * @return A map where keys are fully-qualified method signatures and values are CallSite objects
    */
-  def getCallgraphTo(methodName: String): java.util.Map[String, CallSite] =
+  def getCallgraphTo(methodName: String, depth: Int): java.util.Map[String, CallSite] =
     throw new UnsupportedOperationException()
   
   /**
@@ -57,6 +57,6 @@ trait IAnalyzer {
    * @param methodName The fully-qualified name of the source method
    * @return A map where keys are fully-qualified method signatures and values are CallSite objects
    */
-  def getCallgraphFrom(methodName: String): java.util.Map[String, CallSite] =
+  def getCallgraphFrom(methodName: String, depth: Int): java.util.Map[String, CallSite] =
     throw new UnsupportedOperationException()
 }
