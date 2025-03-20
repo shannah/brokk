@@ -69,6 +69,7 @@ public class Brokk {
                 if (recents.isEmpty()) {
                     // Create an empty UI with no project
                     io = new Chrome(null);
+                    io.onComplete();
                 } else {
                     // find the project with the largest lastOpened time
                     var mostRecent = recents.entrySet().stream()

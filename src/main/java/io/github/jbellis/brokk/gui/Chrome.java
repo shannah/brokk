@@ -169,10 +169,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
-        assert contextManager != null;
-
         // If STT is unavailable, disable it & set tooltip
-        boolean sttEnabled = !(contextManager.getCoder().models.sttModel() instanceof Models.UnavailableSTT);
+        boolean sttEnabled = contextManager != null 
+                && !(contextManager.getCoder().models.sttModel() instanceof Models.UnavailableSTT);
         if (!sttEnabled) {
             micButton.setEnabled(false);
             micButton.setToolTipText("OpenAI key is required for STT");
@@ -185,14 +184,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         }
 
-        // Load saved theme, window size, and position
-        frame.setTitle("Brokk: " + getProject().getRoot());
-        initializeThemeManager();
-        loadWindowSizeAndPosition();
+        if (contextManager == null) {
+            frame.setTitle("Brokk (no project)");
+        } else {
+            // Load saved theme, window size, and position
+            frame.setTitle("Brokk: " + getProject().getRoot());
+            initializeThemeManager();
+            loadWindowSizeAndPosition();
 
-        // populate the git panel
-        updateCommitPanel();
-        gitPanel.updateRepo();
+            // populate the git panel
+            updateCommitPanel();
+            gitPanel.updateRepo();
+        }
 
         // show the window
         frame.setVisible(true);
@@ -204,24 +207,26 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandInputField.requestFocusInWindow();
         
         // Check if .gitignore is set and prompt user to update if needed
-        contextManager.submitBackgroundTask("Checking .gitignore", () -> {
-            if (!getProject().isGitIgnoreSet()) {
-                SwingUtilities.invokeLater(() -> {
-                    int result = JOptionPane.showConfirmDialog(
-                        frame,
-                        "Update .gitignore and add .brokk project files to git?",
-                        "Git Configuration",
-                        JOptionPane.YES_NO_OPTION,
-                        JOptionPane.QUESTION_MESSAGE
-                    );
-                    
-                    if (result == JOptionPane.YES_OPTION) {
-                        setupGitIgnore();
-                    }
-                });
-            }
-            return null;
-        });
+        if (contextManager != null) {
+            contextManager.submitBackgroundTask("Checking .gitignore", () -> {
+                if (!getProject().isGitIgnoreSet()) {
+                    SwingUtilities.invokeLater(() -> {
+                        int result = JOptionPane.showConfirmDialog(
+                                frame,
+                                "Update .gitignore and add .brokk project files to git?",
+                                "Git Configuration",
+                                JOptionPane.YES_NO_OPTION,
+                                JOptionPane.QUESTION_MESSAGE
+                        );
+
+                        if (result == JOptionPane.YES_OPTION) {
+                            setupGitIgnore();
+                        }
+                    });
+                }
+                return null;
+            });
+        }
     }
     
     /**
