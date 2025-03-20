@@ -1187,28 +1187,35 @@ public class ContextManager implements IContextManager
      */
     private String buildWelcomeMessage(Models models) {
         var welcomeMarkdown = Brokk.readWelcomeMarkdown();
-        
+
         Properties props = new Properties();
         try {
             props.load(getClass().getResourceAsStream("/version.properties"));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        
+
         var version = props.getProperty("version");
-        var sb = new StringBuilder(welcomeMarkdown);
-        
-        sb.append("\n\n## Environment:");
-        sb.append("\nBrokk ").append(version);
-        sb.append("\nEditor model: ").append(models.editModelName());
-        sb.append("\nApply model: ").append(models.applyModelName());
-        sb.append("\nQuick model: ").append(models.quickModelName());
-        
         var trackedFiles = project.getRepo().getTrackedFiles();
-        sb.append("\nGit repo at ").append(project.getRoot())
-          .append(" with ").append(trackedFiles.size()).append(" files");
-          
-        return sb.toString();
+
+        return """
+            %s
+
+            ## Environment:
+            - Brokk %s
+            - Editor model: %s
+            - Apply model: %s
+            - Quick model: %s
+            - Git repo at %s with %d files
+            """.formatted(
+                welcomeMarkdown,
+                version,
+                models.editModelName(),
+                models.applyModelName(),
+                models.quickModelName(),
+                project.getRoot(),
+                trackedFiles.size()
+            );
     }
 
     /**
