@@ -36,8 +36,8 @@ public class CallGraphDialog extends JDialog {
         var mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // Create the symbol selection panel - limited to methods only
-        selectionPanel = new SymbolSelectionPanel(analyzer, Set.of(CodeUnitType.FUNCTION));
+        // Create the symbol selection panel - limited to methods only and single selection
+        selectionPanel = new SymbolSelectionPanel(analyzer, Set.of(CodeUnitType.FUNCTION), 1);
 
         // Create the depth panel with spinner
         var depthPanel = new JPanel(new GridBagLayout());

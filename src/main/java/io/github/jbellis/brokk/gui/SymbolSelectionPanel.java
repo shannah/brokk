@@ -27,13 +27,19 @@ public class SymbolSelectionPanel extends JPanel {
     private final AutoCompletion autoCompletion;
     private final IAnalyzer analyzer;
     private final Set<CodeUnitType> typeFilter;
+    private final int maxResults;
 
     public SymbolSelectionPanel(IAnalyzer analyzer, Set<CodeUnitType> typeFilter) {
+        this(analyzer, typeFilter, Integer.MAX_VALUE);
+    }
+
+    public SymbolSelectionPanel(IAnalyzer analyzer, Set<CodeUnitType> typeFilter, int maxResults) {
         super(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         
         this.analyzer = analyzer;
         this.typeFilter = typeFilter;
+        this.maxResults = maxResults;
         assert analyzer != null;
         assert typeFilter != null;
 
@@ -99,10 +105,12 @@ public class SymbolSelectionPanel extends JPanel {
 
         private final IAnalyzer analyzer;
         private final Set<CodeUnitType> typeFilter;
+        private final int maxResults;
 
         public SymbolCompletionProvider(IAnalyzer analyzer, Set<CodeUnitType> typeFilter) {
             this.analyzer = analyzer;
             this.typeFilter = typeFilter;
+            this.maxResults = SymbolSelectionPanel.this.maxResults;
         }
 
         @Override
@@ -124,6 +132,7 @@ public class SymbolSelectionPanel extends JPanel {
             var L = completions.stream()
                     .filter(c -> typeFilter.contains(c.kind()))
                     .map(c -> (Completion) new ShorthandCompletion(this, c.shortName(), c.fqName()))
+                    .limit(maxResults)
                     .toList();
 
             if (L.isEmpty()) {
