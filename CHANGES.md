@@ -1,3 +1,12 @@
+# 0.6.1
+
+## Changes
+- Clicking on microphone toggles on/off instead of push-to-talk
+
+## Fixes
+- Symbol Usages dialog no longer throws NPE
+
+
 # 0.6.0
 
 ## Features
@@ -13,6 +22,7 @@
 - Migrate from DirectoryWatcher to WatchService to fix missing events
 - "Welcome Back" message on startup works as designed
 
+
 # 0.5.0
 
 ## Features
@@ -24,6 +34,7 @@
 - AutoContext builds asynchronously now instead of blocking operations in large codebases
 - Symbol Usage autocomplete is more intutive now
 
+
 # 0.4.2
 
 ## Features
@@ -31,6 +42,7 @@
 
 ## Fixes
 - Fix bad interaction between search summarization and prefix compression
+
 
 # 0.4.1
 
@@ -41,6 +53,7 @@
 ## Fixes
 - Improved symbol name completion for Find Usages
 
+
 # 0.4.0
 ## Features
 - Swing UI
@@ -49,6 +62,7 @@
 ## Fixes
 - Too many to list
 
+
 # 0.3.0
 
 ## Features
@@ -56,6 +70,7 @@
 
 ## Fixes
 - Corner cases of /usages
+
 
 # 0.2.1
 
