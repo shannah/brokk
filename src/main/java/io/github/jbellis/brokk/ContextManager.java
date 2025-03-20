@@ -174,7 +174,18 @@ public class ContextManager implements IContextManager
 
             @Override
             public void afterFirstBuild(String msg) {
-                SwingUtilities.invokeLater(() -> io.systemOutput(msg));
+                if (msg.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(
+                            io.getFrame(),
+                            "Code Intelligence is empty. Probably this means your language is not yet supported. File-based tools will continue to work.",
+                            "Code Intelligence Warning",
+                            JOptionPane.WARNING_MESSAGE
+                        );
+                    });
+                } else {
+                    SwingUtilities.invokeLater(() -> io.systemOutput(msg));
+                }
             }
 
             @Override
@@ -1201,7 +1212,7 @@ public class ContextManager implements IContextManager
         return """
             %s
 
-            ## Environment:
+            ## Environment
             - Brokk %s
             - Editor model: %s
             - Apply model: %s

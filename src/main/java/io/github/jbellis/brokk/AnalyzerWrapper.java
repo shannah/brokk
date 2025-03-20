@@ -182,7 +182,10 @@ public class AnalyzerWrapper {
             long start = System.currentTimeMillis();
             var analyzer = createAndSaveAnalyzer();
             long duration = System.currentTimeMillis() - start;
-            if (duration > 5000) {
+            if (analyzer.isEmpty()) {
+                logger.info("Empty analyzer");
+                listener.afterFirstBuild("");
+            } else if (duration > 5000) {
                 project.setCpgRefresh(CpgRefresh.MANUAL);
                 var msg = """
                 CPG creation was slow (%,d ms); code intelligence will only refresh when explicitly requested via File menu.
