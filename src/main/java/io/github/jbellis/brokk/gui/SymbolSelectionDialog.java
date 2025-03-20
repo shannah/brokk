@@ -4,7 +4,6 @@ import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.Project;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionProvider;
@@ -24,7 +23,6 @@ import java.util.Set;
  */
 public class SymbolSelectionDialog extends JDialog {
 
-    private final Project project;
     private final JTextField symbolInput;
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
@@ -38,15 +36,13 @@ public class SymbolSelectionDialog extends JDialog {
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
-    public SymbolSelectionDialog(Frame parent, Project project, String title, Set<CodeUnitType> typeFilter) {
+    public SymbolSelectionDialog(Frame parent, IAnalyzer analyzer, String title, Set<CodeUnitType> typeFilter) {
         super(parent, title, true); // modal dialog
         assert parent != null;
-        assert project != null;
         assert title != null;
         assert typeFilter != null;
 
-        this.project = project;
-        this.analyzer = project.getAnalyzer();
+        this.analyzer = analyzer;
         this.typeFilter = typeFilter;
         assert analyzer != null;
 

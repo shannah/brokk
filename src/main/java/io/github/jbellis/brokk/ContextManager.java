@@ -519,14 +519,18 @@ public class ContextManager implements IContextManager
      */
     private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter)
     {
-        var dialog = new SymbolSelectionDialog(null, project, title, typeFilter);
+        var analyzer = project.getAnalyzer();
+        var dialogRef = new AtomicReference<SymbolSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
+            var dialog = new SymbolSelectionDialog(io.getFrame(), analyzer, title, typeFilter);
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), dialog.getHeight());
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
+            dialogRef.set(dialog);
         });
         try {
-            if (dialog.isConfirmed()) {
+            var dialog = dialogRef.get();
+            if (dialog != null && dialog.isConfirmed()) {
                 return dialog.getSelectedSymbol();
             }
             return null;
