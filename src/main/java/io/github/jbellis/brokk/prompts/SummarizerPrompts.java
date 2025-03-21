@@ -1,9 +1,11 @@
 package io.github.jbellis.brokk.prompts;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.ContextManager;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
@@ -15,20 +17,49 @@ public class SummarizerPrompts {
     public List<ChatMessage> collectMessages(String actionTxt, int wordBudget) {
         assert actionTxt != null;
         assert !actionTxt.isBlank();
+        assert wordBudget == 5 || wordBudget == 12 : wordBudget;
+
+        var example = """
+        # What Brokk can do
         
-        var context = """
+        1. Ridiculously good agentic search / code retrieval. Better than Claude Code, better than Sourcegraph,
+           better than Augment Code.  Here are
+           [Brokk's explanation of "how does bm25 search work?"](https://gist.github.com/jbellis/c2696f58f22a1c1a2aa450fdf45c21f4)
+           in the [DataStax Cassandra repo](https://github.com/datastax/cassandra/) (a brand-new feature, not in anyone's training set), starting cold
+           with no context, compared to\s
+           [Claude Code's (probably the second-best code RAG out there)](https://github.com/user-attachments/assets/3f77ea58-9fe3-4eab-8698-ec4e20cf1974).  \s
+        1. Automatically determine the most-related classes to your working context and summarize them
+        1. Parse a stacktrace and add source for all the methods to your context
+        1. Add source for all the usages of a class, field, or method to your context
+        1. Parse "anonymous" context pieces from external commands
+        1. Build/lint your project and ask the LLM to fix errors autonomously
+        
+        These allow some simple but powerful patterns:
+        - "Here is the diff for commit X, which introduced a regression.  Here is the stacktrace
+          of the error and the full source of the methods involved.  Find the bug."
+        - "Here are the usages of Foo.bar.  Is parameter zep always loaded from cache?"
+        """;
+        var exampleRequest = getRequest(example, wordBudget);
+        var exampleResponse = wordBudget == 12
+                ? "Brokk: agentic code search and retrieval, usage summarization, stacktrace parsing, build integration."
+                : "Brokk: context management, agentic search";
+
+        var request = getRequest(actionTxt, wordBudget);
+        return List.of(new SystemMessage(systemIntro()),
+                       new UserMessage(exampleRequest),
+                       new AiMessage(exampleResponse),
+                       new UserMessage(request));
+    }
+
+    private static @NotNull String getRequest(String actionTxt, int wordBudget) {
+        return """
         <text>
         %s
         </text>
-        """.stripIndent().formatted(actionTxt);
-
-        var instructions = """
         <goal>
         Here is my text, please summarize it in %d words or fewer.
         </goal>
-        """.stripIndent().formatted(wordBudget);
-        return List.of(new SystemMessage(systemIntro()),
-                       new UserMessage(context + "\n\n" + instructions));
+        """.stripIndent().formatted(actionTxt, wordBudget);
     }
 
     public String systemIntro() {
