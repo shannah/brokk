@@ -733,18 +733,67 @@ public class ContextManager implements IContextManager
             return;
         }
 
-        // First try to parse as stacktrace
-        var stacktrace = StackTrace.parse(clipboardText);
+        // Process the clipboard text
+        processClipboardText(clipboardText);
+    }
+
+    private void processClipboardText(String clipboardText) {
+        clipboardText = clipboardText.trim();
+        // Check if it's a URL
+        String content = clipboardText;
+        boolean wasUrl = false;
+
+        if (isUrl(clipboardText)) {
+            try {
+                io.systemOutput("Fetching " + clipboardText);
+                content = fetchUrlContent(clipboardText);
+                wasUrl = true;
+                io.actionComplete();
+            } catch (IOException e) {
+                io.toolErrorRaw("Failed to fetch URL content: " + e.getMessage());
+                // Continue with the URL as text if fetch fails
+            }
+        }
+
+        // Try to parse as stacktrace
+        var stacktrace = StackTrace.parse(content);
         if (stacktrace != null) {
-            addStacktraceFragment(clipboardText);
+            addStacktraceFragment(content);
             return;
         }
 
-        // If not a stacktrace, add as string fragment
-        addPasteFragment(clipboardText, submitSummarizeTaskForPaste(clipboardText));
-        io.systemOutput("Clipboard content added as text");
+        // Convert from HTML to markdown if needed
+        String convertedText = HtmlToMarkdown.maybeConvertToMarkdown(content);
+
+        // Add as string fragment (possibly converted from HTML)
+        addPasteFragment(convertedText, submitSummarizeTaskForPaste(convertedText));
+
+        // Inform the user about what happened
+        String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
+        if (!convertedText.equals(content)) {
+            message += " (converted from HTML)";
+        }
+        io.systemOutput(message);
     }
 
+    private boolean isUrl(String text) {
+        return text.matches("^https?://\\S+$");
+    }
+
+    private String fetchUrlContent(String urlString) throws IOException {
+        var url = new java.net.URL(urlString);
+        var connection = url.openConnection();
+        // Set a reasonable timeout
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(10000);
+        // Set a user agent to avoid being blocked
+        connection.setRequestProperty("User-Agent", "Brokk-Agent/1.0");
+
+        try (var reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(connection.getInputStream()))) {
+            return reader.lines().collect(Collectors.joining("\n"));
+        }
+    }
     private void doDropAction(List<ContextFragment> selectedFragments)
     {
         if (selectedFragments.isEmpty()) {
@@ -983,7 +1032,6 @@ public class ContextManager implements IContextManager
             var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
             return ctx.addPasteFragment(fragment, summaryFuture);
         });
-        io.systemOutput("Added pasted content");
     }
 
     /** Add search fragment from agent result */

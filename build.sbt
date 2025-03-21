@@ -55,6 +55,8 @@ libraryDependencies ++= Seq(
   "org.eclipse.jgit" % "org.eclipse.jgit" % "7.1.0.202411261347-r",
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.0",
   "com.vladsch.flexmark" % "flexmark" % "0.64.8",
+  "com.vladsch.flexmark" % "flexmark-html2md-converter" % "0.64.8",
+  "org.jsoup" % "jsoup" % "1.19.1",
 
   // Testing
   "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test,
