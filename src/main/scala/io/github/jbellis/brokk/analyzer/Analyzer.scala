@@ -28,10 +28,8 @@ import scala.util.matching.Regex
  * but delegates language-specific operations (like building a CPG or
  * constructing method signatures) to concrete subclasses.
  */
-abstract class AbstractAnalyzer protected (
-                                            sourcePath: Path,
-                                            protected val cpg: Cpg
-                                          ) extends IAnalyzer with Closeable {
+abstract class AbstractAnalyzer protected (sourcePath: Path, protected val cpg: Cpg)
+  extends IAnalyzer with Closeable {
 
   // Convert to absolute filename immediately and verify it's a directory
   protected val absolutePath: Path = {
@@ -41,38 +39,31 @@ abstract class AbstractAnalyzer protected (
   }
 
   // implicits at the top, you will regret it otherwise
-  protected implicit val ec: ExecutionContext      = ExecutionContext.global
+  protected implicit val ec: ExecutionContext = ExecutionContext.global
   protected implicit val callResolver: ICallResolver = NoResolve
 
   // Adjacency maps for pagerank
-  private var adjacency: Map[String, Map[String, Int]]  = Map.empty
+  private var adjacency: Map[String, Map[String, Int]] = Map.empty
   private var reverseAdjacency: Map[String, Map[String, Int]] = Map.empty
-  private var classesForPagerank: Set[String]           = Set.empty
-
+  private var classesForPagerank: Set[String] = Set.empty
   initializePageRank()
 
   /**
    * Secondary constructor: create a new analyzer, loading a pre-built CPG from `preloadedPath`.
    */
-  def this(sourcePath: Path, preloadedPath: Path) = {
+  def this(sourcePath: Path, preloadedPath: Path) =
     this(sourcePath, CpgBasedTool.loadFromFile(preloadedPath.toString))
-  }
 
   /**
    * Simplest constructor: build a brand new CPG for the given source path.
    */
-  def this(sourcePath: Path) = {
-    this(sourcePath, Cpg.empty)
-  }
+  def this(sourcePath: Path) = this(sourcePath, Cpg.empty)
 
   /**
-   * Utility constructor that can override the language, or any other parameter,
-   * if your subclass needs to handle it differently. The default just calls
-   * `this(sourcePath)`.
+   * Utility constructor that can override the language, or any other parameter.
+   * The default just calls `this(sourcePath)`.
    */
-  def this(sourcePath: Path, maybeUnused: Language) = {
-    this(sourcePath)
-  }
+  def this(sourcePath: Path, maybeUnused: Language) = this(sourcePath)
 
   /**
    * Return the method signature as a language-appropriate String,
@@ -83,7 +74,6 @@ abstract class AbstractAnalyzer protected (
   /**
    * Transform method node fullName to a stable "resolved" name
    * (e.g. removing lambda suffixes).
-   * For Java, e.g. "com.foo.Bar$1" -> "com.foo.Bar".
    */
   protected def resolveMethodName(methodName: String): String
 
@@ -110,14 +100,14 @@ abstract class AbstractAnalyzer protected (
   }
 
   private def initializePageRank(): Unit = {
-    if (cpg.metaData.headOption.isEmpty) {
+    if (cpg.metaData.headOption.isEmpty)
       throw new IllegalStateException("CPG root not found for " + absolutePath)
-    }
+
     // Initialize adjacency map
     adjacency = buildWeightedAdjacency()
+    val reverseMap = TrieMap[String, TrieMap[String, Int]]()
 
     // Build reverse adjacency from the forward adjacency
-    val reverseMap = TrieMap[String, TrieMap[String, Int]]()
     adjacency.par.foreach { case (src, tgtMap) =>
       tgtMap.foreach { case (dst, weight) =>
         val targetMap = reverseMap.getOrElseUpdate(dst, TrieMap.empty)
@@ -142,28 +132,22 @@ abstract class AbstractAnalyzer protected (
       for {
         file <- toFile(method.filename)
         startLine <- method.lineNumber
-        endLine   <- method.lineNumberEnd
-      } yield {
-        scala.util.Using(Source.fromFile(file.absPath().toFile)) { source =>
-          source
-            .getLines()
-            .slice(startLine - 1, endLine)
-            .mkString("\n")
-        }.toOption
-      }
+        endLine <- method.lineNumberEnd
+      } yield scala.util.Using(Source.fromFile(file.absPath().toFile)) { source =>
+        source.getLines().slice(startLine - 1, endLine).mkString("\n")
+      }.toOption
     }.flatten
 
-    if (sources.isEmpty) None
-    else Some(sources.mkString("\n\n"))
+    if (sources.isEmpty) None else Some(sources.mkString("\n\n"))
   }
 
   /**
    * Gets the source code for the entire file containing a class.
    */
-  override def getClassSource(className: String): java.lang.String = {
+  override def getClassSource(className: String): String = {
     var classNodes = cpg.typeDecl.fullNameExact(className).l
 
-    // If no exact match, try fuzzy matching
+    // This is called by the search agent, so be forgiving: if no exact match, try fuzzy matching
     if (classNodes.isEmpty) {
       // Attempt by simple name
       val simpleClassName = className.split("[.$]").last
@@ -175,25 +159,17 @@ abstract class AbstractAnalyzer protected (
         // Second attempt: try replacing $ with .
         val dotClassName = className.replace('$', '.')
         val dotMatches = nameMatches.filter(td => td.fullName.replace('$', '.') == dotClassName)
-        if (dotMatches.size == 1) {
-          classNodes = dotMatches
-        }
+        if (dotMatches.size == 1) classNodes = dotMatches
       }
     }
+    if (classNodes.isEmpty) return null
 
-    if (classNodes.isEmpty) {
-      return null
-    }
-
-    val td     = classNodes.head
+    val td = classNodes.head
     val fileOpt = toFile(td.filename)
-    if (fileOpt.isEmpty) {
-      return null
-    }
+    if (fileOpt.isEmpty) return null
 
     val file = fileOpt.get
-    val sourceOpt = scala.util.Using(Source.fromFile(file.absPath().toFile)) { _.mkString }.toOption
-    sourceOpt.orNull
+    scala.util.Using(Source.fromFile(file.absPath().toFile))(_.mkString).toOption.orNull
   }
 
   /**
@@ -203,27 +179,20 @@ abstract class AbstractAnalyzer protected (
     val sb = new StringBuilder
 
     val className = sanitizeType(td.name)
-    sb.append(indentStr(indent))
-      .append("class ")
-      .append(className)
-      .append(" {\n")
+    sb.append("  " * indent).append("class ").append(className).append(" {\n")
 
     // Methods: skip any whose name starts with "<lambda>"
-    td.method
-      .filterNot(_.name.startsWith("<lambda>"))
-      .foreach { m =>
-        sb.append(indentStr(indent + 1))
-          .append(methodSignature(m))
-          .append(" {...}\n")
-      }
+    td.method.filterNot(_.name.startsWith("<lambda>")).foreach { m =>
+      sb.append("  " * (indent + 1))
+        .append(methodSignature(m))
+        .append(" {...}\n")
+    }
 
     // Fields: skip any whose name is exactly "outerClass"
-    td.member
-      .filterNot(_.name == "outerClass")
-      .foreach { f =>
-        sb.append(indentStr(indent + 1))
-          .append(s"${sanitizeType(f.typeFullName)} ${f.name};\n")
-      }
+    td.member.filterNot(_.name == "outerClass").foreach { f =>
+      sb.append("  " * (indent + 1))
+        .append(s"${sanitizeType(f.typeFullName)} ${f.name};\n")
+    }
 
     // Nested classes: skip any named "<lambda>N" or purely numeric suffix
     td.astChildren.isTypeDecl.filterNot { nested =>
@@ -233,71 +202,51 @@ abstract class AbstractAnalyzer protected (
       sb.append(outlineTypeDecl(nested, indent + 1)).append("\n")
     }
 
-    sb.append(indentStr(indent)).append("}")
+    sb.append("  " * indent).append("}")
     sb.toString
   }
-
-  private def indentStr(level: Int) = "  " * level
 
   /**
    * Builds a structural skeleton for a given class by name (simple or FQCN).
    */
   override def getSkeleton(className: String): Option[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
-    if (decls.isEmpty) {
-      return None
-    }
-    val td = decls.head
-    Some(outlineTypeDecl(td))
+    if (decls.isEmpty) None else Some(outlineTypeDecl(decls.head))
   }
 
   /**
    * Build a weighted adjacency map at the class level: className -> Map[targetClassName -> weight].
    */
   protected def buildWeightedAdjacency()(implicit callResolver: ICallResolver): Map[String, Map[String, Int]] = {
-    val adjacency = TrieMap[String, TrieMap[String, Int]]()
-
-    // Common Java/primitive types we want to skip
-    val primitiveTypes = Set(
-      "byte", "short", "int", "long", "float", "double",
-      "boolean", "char", "void"
-    )
+    val adjacencyMap = TrieMap[String, TrieMap[String, Int]]()
+    val primitiveTypes = Set("byte", "short", "int", "long", "float", "double", "boolean", "char", "void")
 
     def isRelevant(t: String): Boolean =
       !primitiveTypes.contains(t) && !t.startsWith("java.")
 
-    val typeDecls = cpg.typeDecl.l
-    // Build adjacency in parallel
-    typeDecls.par.foreach { td =>
+    cpg.typeDecl.l.par.foreach { td =>
       val sourceClass = td.fullName
 
       // (1) Collect calls
       td.method.call.callee.typeDecl.fullName
         .filter(isRelevant)
         .filter(_ != sourceClass)
-        .foreach { tc =>
-          increment(adjacency, sourceClass, tc)
-        }
+        .foreach(increment(adjacencyMap, sourceClass, _))
 
       // (2) Collect field references
       td.member.typeFullName
-        .map(_.replaceAll("""\[\]""", "")) // array -> base
+        .map(_.replaceAll("""\[\]""", ""))
         .filter(isRelevant)
         .filter(_ != sourceClass)
-        .foreach { fieldClass =>
-          increment(adjacency, sourceClass, fieldClass)
-        }
+        .foreach(increment(adjacencyMap, sourceClass, _))
 
       // (3) Collect "extends"/"implements" edges; these count 5x
       td.inheritsFromTypeFullName
         .filter(isRelevant)
         .filter(_ != sourceClass)
-        .foreach { parentClass =>
-          increment(adjacency, sourceClass, parentClass, 5)
-        }
+        .foreach(parent => increment(adjacencyMap, sourceClass, parent, 5))
     }
-
-    adjacency.map { case (src, tgtMap) => src -> tgtMap.toMap }.toMap
+    adjacencyMap.map { case (src, tgtMap) => src -> tgtMap.toMap }.toMap
   }
 
   /**
@@ -326,28 +275,24 @@ abstract class AbstractAnalyzer protected (
   }
 
   private def toFile(td: TypeDecl): Option[RepoFile] = {
-    if (td.filename.isEmpty || td.filename == "<empty>" || td.filename == "<unknown>") {
-      None
-    } else {
-      toFile(td.filename)
-    }
+    if (td.filename.isEmpty || td.filename == "<empty>" || td.filename == "<unknown>") None
+    else toFile(td.filename)
   }
 
-  protected def toFile(relName: String): Option[RepoFile] = {
+  protected def toFile(relName: String): Option[RepoFile] =
     Some(RepoFile(absolutePath, relName))
-  }
 
   // using cpg.all doesn't work because there are always-present nodes for files and the ANY typedecl
   override def isEmpty: Boolean = cpg.member.isEmpty
 
   override def getAllClasses: java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-    val results = cpg.typeDecl
+    cpg.typeDecl
       .filter(toFile(_).isDefined)
       .fullName
       .l
       .map(CodeUnit.cls)
-    results.asJava
+      .asJava
   }
 
   /**
@@ -355,40 +300,27 @@ abstract class AbstractAnalyzer protected (
    */
   override def getSkeletonHeader(className: String): Option[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
-    if (decls.isEmpty) {
-      return None
-    }
-    val td = decls.head
-    Some(headerString(td, 0) + "  [... methods not shown ...]\n}")
+    if (decls.isEmpty) None
+    else Some(headerString(decls.head, 0) + "  [... methods not shown ...]\n}")
   }
 
   private def headerString(td: TypeDecl, indent: Int): String = {
     val sb = new StringBuilder
     val className = sanitizeType(td.name)
-
-    sb.append(indentStr(indent))
-      .append("class ")
-      .append(className)
-      .append(" {\n")
-
-    // Add fields
+    sb.append("  " * indent).append("class ").append(className).append(" {\n")
     td.member.foreach { m =>
       val modifiers = m.modifier.map(_.modifierType.toLowerCase).filter(_.nonEmpty).mkString(" ")
-      val modString = if (modifiers.nonEmpty) modifiers + " " else ""
-      val typeName  = sanitizeType(m.typeFullName)
-      sb.append(indentStr(indent + 1))
-        .append(s"$modString$typeName ${m.name};\n")
+      val modString = if (modifiers.nonEmpty) s"$modifiers " else ""
+      val typeName = sanitizeType(m.typeFullName)
+      sb.append("  " * (indent + 1)).append(s"$modString$typeName ${m.name};\n")
     }
-
     sb.toString
   }
 
   override def getMembersInClass(className: String): java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     val matches = cpg.typeDecl.fullNameExact(className)
-    if (matches.isEmpty) {
-      throw new IllegalArgumentException(s"Class '$className' not found")
-    }
+    if (matches.isEmpty) throw new IllegalArgumentException(s"Class '$className' not found")
     val typeDecl = matches.head
 
     // Get all method declarations
@@ -400,7 +332,7 @@ abstract class AbstractAnalyzer protected (
       .map(CodeUnit.fn)
 
     // Get all field declarations
-    val fields = typeDecl.member.name.l.map(name => CodeUnit.field(className + "." + name))
+    val fields = typeDecl.member.name.l.map(name => CodeUnit.field(s"$className.$name"))
 
     // Get all nested types
     val nestedPrefix = className + "\\$.*"
@@ -419,13 +351,12 @@ abstract class AbstractAnalyzer protected (
     var calls = m.callIn
     if (excludeSelfRefs) {
       val selfSource = m.typeDecl.fullName.head
-      calls = calls.filterNot(call => {
+      calls = calls.filterNot { call =>
         val callerSource = call.method.typeDecl.fullName.head
         partOfClass(selfSource, callerSource)
-      })
+      }
     }
-    calls
-      .method
+    calls.method
       .fullName
       .map(name => resolveMethodName(chopColon(name)))
       .distinct
@@ -433,29 +364,26 @@ abstract class AbstractAnalyzer protected (
   }
 
   protected def partOfClass(parentFqcn: String, childFqcn: String): Boolean = {
-    childFqcn == parentFqcn || childFqcn.startsWith(parentFqcn + ".") || childFqcn.startsWith(parentFqcn + "$")
+    childFqcn == parentFqcn ||
+      childFqcn.startsWith(parentFqcn + ".") ||
+      childFqcn.startsWith(parentFqcn + "$")
   }
 
   /**
    * Return all methods that reference a given field "classFullName.fieldName".
    */
-  protected def referencesToField(
-                                   selfSource: String,
-                                   fieldName: String,
-                                   excludeSelfRefs: Boolean
-                                 ): List[String] = {
+  protected def referencesToField(selfSource: String, fieldName: String, excludeSelfRefs: Boolean): List[String] = {
     var calls = cpg.call
       .nameExact("<operator>.fieldAccess")
       .where(_.argument(1).typ.fullNameExact(selfSource))
       .where(_.argument(2).codeExact(fieldName))
 
     if (excludeSelfRefs) {
-      calls = calls.filterNot(call => {
+      calls = calls.filterNot(call =>
         partOfClass(selfSource, call.method.typeDecl.fullName.head)
-      })
+      )
     }
-    calls
-      .method
+    calls.method
       .fullName
       .map(x => resolveMethodName(chopColon(x)))
       .distinct
@@ -470,7 +398,6 @@ abstract class AbstractAnalyzer protected (
    */
   protected def referencesToClassAsType(classFullName: String): List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-
     val typePattern = "^" + Regex.quote(classFullName) + "(\\$.*)?(\\[\\])?"
 
     // Fields typed with this class → return as field CodeUnits
@@ -534,8 +461,7 @@ abstract class AbstractAnalyzer protected (
     if (lastDot > 0) {
       val classPart = symbol.substring(0, lastDot)
       val fieldPart = symbol.substring(lastDot + 1)
-      val clsDecls  = cpg.typeDecl.fullNameExact(classPart).l
-
+      val clsDecls = cpg.typeDecl.fullNameExact(classPart).l
       if (clsDecls.nonEmpty) {
         val maybeFieldDecl = clsDecls.head.member.nameExact(fieldPart).l
         if (maybeFieldDecl.nonEmpty) {
@@ -547,11 +473,8 @@ abstract class AbstractAnalyzer protected (
 
     // (3) Otherwise treat as a class
     val classDecls = cpg.typeDecl.fullNameExact(symbol).l
-    if (classDecls.isEmpty) {
-      throw new IllegalArgumentException(
-        s"Symbol '$symbol' not found as a method, field, or class"
-      )
-    }
+    if (classDecls.isEmpty)
+      throw new IllegalArgumentException(s"Symbol '$symbol' not found as a method, field, or class")
 
     // (3a) Method references from the same class, but exclude self references
     val methodUses = classDecls.flatMap(td => td.method.l.flatMap(m => callersOfMethodNode(m, true)))
@@ -564,9 +487,7 @@ abstract class AbstractAnalyzer protected (
     // (3c) Type references
     val typeUses = referencesToClassAsType(symbol)
 
-    (methodUses ++ fieldRefUses)
-      .map(CodeUnit.fn)
-      .distinct
+    (methodUses ++ fieldRefUses).map(CodeUnit.fn).distinct
       .++(typeUses)
       .distinct
       .asJava
@@ -580,16 +501,10 @@ abstract class AbstractAnalyzer protected (
                               isIncoming: Boolean,
                               maxDepth: Int
                             ): java.util.Map[String, java.util.List[CallSite]] = {
-
     import scala.jdk.CollectionConverters.*
-
     val result = new java.util.HashMap[String, java.util.List[CallSite]]()
-
-    // Gather the actual Method nodes that match startingMethod
     val startMethods = cpg.method.filter(m => chopColon(m.fullName) == startingMethod).l
-    if (startMethods.isEmpty) {
-      return result
-    }
+    if (startMethods.isEmpty) return result
 
     val visited = mutable.Set[String]()
     val startMethodNames = startMethods.map(m => resolveMethodName(chopColon(m.fullName))).toSet
@@ -603,61 +518,49 @@ abstract class AbstractAnalyzer protected (
         !methodName.startsWith("com.sun.")
     }
 
-    def getSourceLine(call: io.shiftleft.codepropertygraph.generated.nodes.Call): String = {
+    def getSourceLine(call: io.shiftleft.codepropertygraph.generated.nodes.Call): String =
       call.code.trim.replaceFirst("^this\\.", "")
-    }
 
     def addCallSite(methodName: String, callSite: CallSite): Unit = {
-      var callSites = result.get(methodName)
-      if (callSites == null) {
-        callSites = new java.util.ArrayList[CallSite]()
-        result.put(methodName, callSites)
-      }
-      callSites.add(callSite)
+      val existing = result.getOrDefault(methodName, new java.util.ArrayList[CallSite]())
+      existing.add(callSite)
+      result.put(methodName, existing)
     }
 
     def explore(methods: List[Method], currentDepth: Int): Unit = {
       if (currentDepth > maxDepth || methods.isEmpty) return
-
       val nextMethods = mutable.ListBuffer[Method]()
 
       methods.foreach { method =>
         val methodName = resolveMethodName(chopColon(method.fullName))
-        val calls      = if (isIncoming) method.callIn.l else method.call.l
+        val calls = if (isIncoming) method.callIn.l else method.call.l
 
         calls.foreach { call =>
           if (isIncoming) {
             // The caller is the next method
             val callerMethod = call.method
-            val callerName   = resolveMethodName(chopColon(callerMethod.fullName))
+            val callerName = resolveMethodName(chopColon(callerMethod.fullName))
 
             if (!visited.contains(callerName) && shouldIncludeMethod(callerName)) {
-              val sourceLine = getSourceLine(call)
-              addCallSite(methodName, CallSite(CodeUnit.fn(callerName), sourceLine))
+              addCallSite(methodName, CallSite(CodeUnit.fn(callerName), getSourceLine(call)))
               visited += callerName
               nextMethods += callerMethod
             }
           } else {
             // The callee is the next method
             val calleeFullName = chopColon(call.methodFullName)
-            val calleeName     = resolveMethodName(calleeFullName)
+            val calleeName = resolveMethodName(calleeFullName)
 
             if (!visited.contains(calleeName) && shouldIncludeMethod(calleeName)) {
-              val calleePattern  = s"""^${Regex.quote(calleeFullName)}.*"""
-              val calleeMethods  = cpg.method.fullName(calleePattern).l
-
-              val sourceLine     = getSourceLine(call)
-              addCallSite(methodName, CallSite(CodeUnit.fn(calleeName), sourceLine))
-
+              val calleePattern = s"^${Regex.quote(calleeFullName)}.*"
+              val calleeMethods = cpg.method.fullName(calleePattern).l
+              addCallSite(methodName, CallSite(CodeUnit.fn(calleeName), getSourceLine(call)))
               visited += calleeName
-              if (calleeMethods.nonEmpty) {
-                nextMethods ++= calleeMethods
-              }
+              if (calleeMethods.nonEmpty) nextMethods ++= calleeMethods
             }
           }
         }
       }
-
       explore(nextMethods.toList, currentDepth + 1)
     }
 
@@ -691,24 +594,24 @@ abstract class AbstractAnalyzer protected (
     val matchingMethods = cpg.method
       .nameNot("<.*>")
       .name(ciPattern)
-      .filter(m => {
+      .filter { m =>
         val typeNameOpt = m.typeDecl.fullName.headOption
         typeNameOpt.exists(isClassInProject)
-      })
+      }
       .map(m => CodeUnit.fn(resolveMethodName(chopColon(m.fullName))))
       .l
 
     // Fields
     val matchingFields = cpg.member
       .name(ciPattern)
-      .filter(f => {
+      .filter { f =>
         val typeNameOpt = f.typeDecl.fullName.headOption
         typeNameOpt.exists(tn => isClassInProject(tn.toString))
-      })
-      .map(f => {
+      }
+      .map { f =>
         val className = f.typeDecl.fullName.headOption.getOrElse("").toString
         CodeUnit.field(s"$className.${f.name}")
-      })
+      }
       .l
 
     (matchingClasses ++ matchingMethods ++ matchingFields).asJava
@@ -724,36 +627,28 @@ abstract class AbstractAnalyzer protected (
                             k: Int,
                             reversed: Boolean
                           ): java.util.List[(String, java.lang.Double)] = {
-
     import scala.jdk.CollectionConverters.*
-
     val seedWeights = seedClassWeights.asScala.view.mapValues(_.doubleValue()).toMap
-    val seedSeq     = seedWeights.keys.toSeq
-
     // restrict to classes that are in the graph
-    var validSeeds = seedSeq.filter(classesForPagerank.contains)
-    if (validSeeds.isEmpty) {
-      validSeeds = classesForPagerank.toSeq
-    }
+    var validSeeds = seedWeights.keys.toSeq.filter(classesForPagerank.contains)
+    if (validSeeds.isEmpty) validSeeds = classesForPagerank.toSeq
 
     val danglingNodes = classesForPagerank.par.filter { c =>
       adjacency.get(c).forall(_.isEmpty)
     }
-
     val damping = 0.85
     val epsilon = 1e-4
     val maxIter = 50
 
-    val scores     = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0)*)
+    val scores = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0)*)
     val nextScores = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0)*)
-
     val totalWeight = seedWeights.values.sum
     validSeeds.foreach { c =>
       scores(c) = seedWeights.getOrElse(c, 0.0) / (if (totalWeight == 0) 1 else totalWeight)
     }
 
     var iteration = 0
-    var diffSum   = Double.MaxValue
+    var diffSum = Double.MaxValue
 
     while (iteration < maxIter && diffSum > epsilon) {
       // zero nextScores
@@ -761,19 +656,18 @@ abstract class AbstractAnalyzer protected (
 
       val localDiffs = classesForPagerank.par.map { node =>
         val (inMap, outMap) = if (reversed) (adjacency, reverseAdjacency) else (reverseAdjacency, adjacency)
-        val inboundSum = inMap
-          .get(node)
-          .map { inboundMap =>
-            inboundMap.foldLeft(0.0) { case (acc, (u, weight)) =>
-              val outLinks  = outMap(u)
-              val outWeight = outLinks.values.sum.max(1)
-              acc + (scores(u) * weight / outWeight)
-            }
-          }.getOrElse(0.0)
+        val inboundSum = inMap.get(node).map { inboundMap =>
+          inboundMap.foldLeft(0.0) { case (acc, (u, weight)) =>
+            val outLinks = outMap(u)
+            val outWeight = outLinks.values.sum.max(1)
+            acc + (scores(u) * weight / outWeight)
+          }
+        }.getOrElse(0.0)
 
         var newScore = damping * inboundSum
         if (validSeeds.contains(node)) {
-          newScore += (1.0 - damping) * (seedWeights.getOrElse(node, 0.0) / (if (totalWeight == 0) 1 else totalWeight))
+          newScore += (1.0 - damping) *
+            (seedWeights.getOrElse(node, 0.0) / (if (totalWeight == 0) 1 else totalWeight))
         }
         nextScores(node) = newScore
         math.abs(scores(node) - newScore)
@@ -787,48 +681,40 @@ abstract class AbstractAnalyzer protected (
           nextScores(seed) += damping * danglingScore * weight
         }
         // zero out dangling
-        danglingNodes.par.foreach { dn =>
-          nextScores(dn) = 0.0
-        }
+        danglingNodes.par.foreach { dn => nextScores(dn) = 0.0 }
       }
 
       diffSum = localDiffs
-      classesForPagerank.foreach { node =>
-        scores(node) = nextScores(node)
-      }
-
+      classesForPagerank.foreach { node => scores(node) = nextScores(node) }
       iteration += 1
     }
 
-    val sortedAll         = scores.toList.sortBy { case (_, s) => -s }
-    val filteredSortedAll = sortedAll.filterNot { case (cls, _) => seedSeq.exists(seed => partOfClass(seed, cls)) }
+    val sortedAll = scores.toList.sortBy { case (_, s) => -s }
+    val filteredSortedAll = sortedAll.filterNot { case (cls, _) =>
+      seedWeights.keys.exists(seed => partOfClass(seed, cls))
+    }
 
-    def coalesceInnerClasses(initial: List[(String, Double)], k: Int): mutable.Buffer[(String, Double)] = {
-      var results = initial.take(k).toBuffer
-      var offset  = k
+    def coalesceInnerClasses(initial: List[(String, Double)], limit: Int): mutable.Buffer[(String, Double)] = {
+      var results = initial.take(limit).toBuffer
+      var offset = limit
       var changed = true
 
       while (changed) {
         changed = false
         val toRemove = mutable.Set[String]()
-
         for (i <- results.indices) {
           val (pClass, _) = results(i)
           for (j <- results.indices if j != i) {
             val (cClass, _) = results(j)
-            if (partOfClass(pClass, cClass)) {
-              toRemove += cClass
-            }
+            if (partOfClass(pClass, cClass)) toRemove += cClass
           }
         }
-
         if (toRemove.nonEmpty) {
           changed = true
           results = results.filterNot { case (cls, _) => toRemove.contains(cls) }
         }
-
-        while (results.size < k && offset < initial.size) {
-          val candidate@(cls, _) = initial(offset)
+        while (results.size < limit && offset < initial.size) {
+          val candidate @ (cls, _) = initial(offset)
           offset += 1
           if (!results.exists(_._1 == cls) && !toRemove.contains(cls)) {
             results += candidate
@@ -839,7 +725,6 @@ abstract class AbstractAnalyzer protected (
       results
     }
 
-    import scala.jdk.CollectionConverters.*
     coalesceInnerClasses(filteredSortedAll, k)
       .map { case (s, d) => (s, java.lang.Double.valueOf(d)) }
       .asJava
@@ -850,53 +735,40 @@ abstract class AbstractAnalyzer protected (
    */
   override def getClassesInFile(file: RepoFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-    val matches = cpg.typeDecl.l.filter(td => toFile(td).contains(file))
-    matches.map(td => CodeUnit.cls(td.fullName)).toSet.asJava
+    cpg.typeDecl.l
+      .filter(td => toFile(td).contains(file))
+      .map(td => CodeUnit.cls(td.fullName))
+      .toSet
+      .asJava
   }
 
   /**
    * Write the underlying CPG to the specified path.
    */
-  def writeCpg(path: java.nio.file.Path): Unit = {
+  def writeCpg(path: Path): Unit = {
     Serialization.writeGraph(cpg.graph, path)
   }
 
-  override def close(): Unit = {
-    cpg.close()
-  }
+  override def close(): Unit = cpg.close()
 }
 
 /**
  * A concrete analyzer for Java source code, extending AbstractAnalyzer
  * with Java-specific logic for building the CPG, method signatures, etc.
  */
-class JavaAnalyzer private (
-                             sourcePath: Path,
-                             cpgInit: Cpg
-                           ) extends AbstractAnalyzer(sourcePath, cpgInit) {
+class JavaAnalyzer private (sourcePath: Path, cpgInit: Cpg)
+  extends AbstractAnalyzer(sourcePath, cpgInit) {
 
-  import io.joern.javasrc2cpg.{JavaSrc2Cpg, Config => JavaConfig}
-  import scala.util.Try
-  import java.io.IOException
-  import scala.collection.parallel.CollectionConverters.IterableIsParallelizable
-
-  // We keep the same constructors as the original Analyzer for drop-in replacement.
-
-  def this(sourcePath: Path, preloadedPath: Path) = {
+  def this(sourcePath: Path, preloadedPath: Path) =
     this(sourcePath, CpgBasedTool.loadFromFile(preloadedPath.toString))
-  }
 
-  def this(sourcePath: Path) = {
-    this(sourcePath, JavaAnalyzer.createNewCpgForSource(sourcePath)) // Give parent a dummy/empty CPG.
-  }
+  def this(sourcePath: Path) =
+    this(sourcePath, JavaAnalyzer.createNewCpgForSource(sourcePath))
 
-  def this(sourcePath: Path, language: Language) = {
-    this(sourcePath) // we ignore language or pass it through if needed
-  }
+  def this(sourcePath: Path, language: Language) = this(sourcePath)
 
-  def this(sourcePath: Path, preloadedPath: Path, language: Language) = {
+  def this(sourcePath: Path, preloadedPath: Path, language: Language) =
     this(sourcePath, preloadedPath)
-  }
 
   /**
    * Java-specific method signature builder.
@@ -914,17 +786,16 @@ class JavaAnalyzer private (
     )
 
     val modifiers = m.modifier.map { modNode =>
-      val lower = modNode.modifierType.toLowerCase
-      knownModifiers.getOrElse(lower, "")
+      knownModifiers.getOrElse(modNode.modifierType.toLowerCase, "")
     }.filter(_.nonEmpty)
 
-    val modString  = if (modifiers.nonEmpty) modifiers.mkString(" ") + " " else ""
+    val modString = if (modifiers.nonEmpty) modifiers.mkString(" ") + " " else ""
     val returnType = sanitizeType(m.methodReturn.typeFullName)
     val paramList = m.parameter
       .sortBy(_.order)
       .filterNot(_.name == "this")
       .l
-      .map { p => s"${sanitizeType(p.typeFullName)} ${p.name}" }
+      .map(p => s"${sanitizeType(p.typeFullName)} ${p.name}")
       .mkString(", ")
 
     s"$modString$returnType ${m.name}($paramList)"
@@ -935,24 +806,21 @@ class JavaAnalyzer private (
    */
   override protected def resolveMethodName(methodName: String): String = {
     val segments = methodName.split("\\.")
-    val idx      = segments.indexWhere(_.matches(".*\\$\\d+$"))
+    val idx = segments.indexWhere(_.matches(".*\\$\\d+$"))
     val relevant = if (idx == -1) segments else segments.take(idx)
     relevant.mkString(".")
   }
 
-  /**
-   * Java often needs type short names, removing packages, arrays, generics, etc.
-   */
   override protected def sanitizeType(t: String): String = {
     def processType(input: String): String = {
       val isArray = input.endsWith("[]")
-      val base    = if (isArray) input.dropRight(2) else input
+      val base = if (isArray) input.dropRight(2) else input
       val shortName = base.split("\\.").lastOption.getOrElse(base)
       if (isArray) s"$shortName[]" else shortName
     }
 
     if (t.contains("<")) {
-      val mainType    = t.substring(0, t.indexOf("<"))
+      val mainType = t.substring(0, t.indexOf("<"))
       val genericPart = t.substring(t.indexOf("<") + 1, t.lastIndexOf(">"))
       val processedMain = processType(mainType)
       val processedParams = genericPart.split(",").map { param =>
@@ -961,27 +829,12 @@ class JavaAnalyzer private (
         else processType(trimmed)
       }.mkString(", ")
       s"$processedMain<$processedParams>"
-    } else {
-      processType(t)
-    }
+    } else processType(t)
   }
 
-  /**
-   * Java-specific way of finding methods from a method fullName.
-   */
   override protected def methodsFromName(resolvedMethodName: String): List[Method] = {
-    // For Java: cpg.method.fullName("ClassName.methodName:ReturnType(...)")
     val escaped = Regex.quote(resolvedMethodName)
     cpg.method.fullName(escaped + ":.*").l
-  }
-
-  /**
-   * Java-specific version of "class in project" check
-   * (falls back to the default if needed).
-   */
-  override def isClassInProject(className: String): Boolean = {
-    // We can either rely on the default or do more checks if desired.
-    super.isClassInProject(className)
   }
 }
 
@@ -994,15 +847,13 @@ object JavaAnalyzer {
     val config = Config()
       .withInputPath(absPath.toString)
       .withEnableTypeRecovery(true)
-    
+
     val newCpg = JavaSrc2Cpg().createCpg(config).getOrElse {
       throw new IOException("Failed to create Java CPG")
     }
-
     X2Cpg.applyDefaultOverlays(newCpg)
     val context = new LayerCreatorContext(newCpg)
     new OssDataFlow(OssDataFlow.defaultOpts).create(context)
     newCpg
   }
 }
-
