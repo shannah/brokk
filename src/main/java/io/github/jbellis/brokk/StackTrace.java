@@ -119,25 +119,7 @@ public class StackTrace {
     // Group 4: Special source (e.g. "Native Method") or null
     private static final String STACK_TRACE_LINE_REGEX = "\\s*at\\s+([^(]+)\\((?:([^:]+):([0-9]+)|([^)]+))\\)$";
     private static final Pattern STACK_TRACE_LINE_PATTERN = Pattern.compile(STACK_TRACE_LINE_REGEX);
-
-    /**
-     * Reads a java stack trace represented as a {@code List} of {@code String}s and maps it to a {@code StackTrace}
-     * object with {@code java.lang.StackTraceElement}s.
-     *
-     * @param stackTraceLines the java stack trace as a {@code List} of {@code String}s
-     * @return a StackTrace containing the first (error) line and a list of {@code StackTraceElements}
-     * @throws Exception if a stack trace line could not be parsed to a {@code java.lang.StackTraceElement}
-     */
-    public static StackTrace parse(List<String> stackTraceLines) throws Exception {
-        StringBuilder builder = new StringBuilder();
-
-        for (String line : stackTraceLines) {
-            builder.append(line).append("\n");
-        }
-
-        return parse(builder.substring(0, builder.length() - 1));
-    }
-
+    
     private static String parseExceptionType(String firstLine) {
         String[] parts = firstLine.split(":");
         if (parts.length > 2) {
