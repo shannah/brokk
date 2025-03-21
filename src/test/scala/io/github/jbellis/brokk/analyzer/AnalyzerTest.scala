@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.analyzer
 
-import io.github.jbellis.brokk.analyzer.{Analyzer, CodeUnit, Language}
+import io.github.jbellis.brokk.analyzer.{JavaAnalyzer, CodeUnit, Language}
 import io.shiftleft.codepropertygraph.generated.language.*
 import io.shiftleft.semanticcpg.language.*
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows, assertTrue}
@@ -201,7 +201,7 @@ class AnalyzerTest {
 
   @Test
   def getClassesInFilePythonTest(): Unit = {
-    val analyzer = Analyzer(Path.of("src/test/resources/testcode"), Language.Python)
+    val analyzer = JavaAnalyzer(Path.of("src/test/resources/testcode"), Language.Python)
     val classes = analyzer.getClassesInFile(analyzer.toFile("A.py").get)
 //    val expected = Set("D", "D$DSub", "D$DSubStatic").map(CodeUnit.cls)
 //    assertEquals(expected, asScala(classes).toSet)
@@ -471,6 +471,6 @@ class AnalyzerTest {
 
   /** Helper to get a prebuilt analyzer */
   private def getAnalyzer = {
-    Analyzer(Path.of("src/test/resources/testcode"))
+    JavaAnalyzer(Path.of("src/test/resources/testcode"))
   }
 }

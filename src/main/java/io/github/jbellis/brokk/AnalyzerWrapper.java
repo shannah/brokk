@@ -3,7 +3,7 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.Project.CpgRefresh;
 import java.awt.KeyboardFocusManager;
 
-import io.github.jbellis.brokk.analyzer.Analyzer;
+import io.github.jbellis.brokk.analyzer.JavaAnalyzer;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
@@ -43,8 +43,8 @@ public class AnalyzerWrapper {
 
     private volatile boolean running = true;
 
-    private volatile Future<Analyzer> future;
-    private volatile Analyzer currentAnalyzer = null;
+    private volatile Future<JavaAnalyzer> future;
+    private volatile JavaAnalyzer currentAnalyzer = null;
     private volatile boolean rebuildInProgress = false;
     private volatile boolean externalRebuildRequested = false;
     private volatile boolean rebuildPending = false;
@@ -174,7 +174,7 @@ public class AnalyzerWrapper {
      *   1) If the .brokk/joern.cpg file is up to date, reuse it;
      *   2) Otherwise, rebuild a fresh Analyzer.
      */
-    private Analyzer loadOrCreateAnalyzer() {
+    private JavaAnalyzer loadOrCreateAnalyzer() {
         logger.debug("Loading/creating analyzer");
         Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
         if (project.getCpgRefresh() == CpgRefresh.UNSET) {
@@ -217,8 +217,8 @@ public class AnalyzerWrapper {
         return analyzer;
     }
 
-    private Analyzer createAndSaveAnalyzer() {
-        Analyzer newAnalyzer = new Analyzer(root);
+    private JavaAnalyzer createAndSaveAnalyzer() {
+        JavaAnalyzer newAnalyzer = new JavaAnalyzer(root);
         Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
         newAnalyzer.writeCpg(analyzerPath);
         logger.debug("Analyzer (re)build completed");
@@ -226,7 +226,7 @@ public class AnalyzerWrapper {
     }
 
     /** Load a cached analyzer if it is up to date; otherwise return null. */
-    private Analyzer loadCachedAnalyzer(Path analyzerPath) {
+    private JavaAnalyzer loadCachedAnalyzer(Path analyzerPath) {
         if (!Files.exists(analyzerPath)) {
             return null;
         }
@@ -251,7 +251,7 @@ public class AnalyzerWrapper {
         if (cpgMTime > maxTrackedMTime) {
             logger.debug("Using cached code intelligence data ({} > {})", cpgMTime, maxTrackedMTime);
             try {
-                return new Analyzer(root, analyzerPath);
+                return new JavaAnalyzer(root, analyzerPath);
             } catch (Throwable th) {
                 logger.info("Error loading analyzer", th);
                 // fall through to return null
@@ -297,7 +297,7 @@ public class AnalyzerWrapper {
     /**
      * Get the analyzer, showing a spinner UI while waiting if requested.
      */
-    private Analyzer get(boolean notifyWhenBlocked) {
+    private JavaAnalyzer get(boolean notifyWhenBlocked) {
         if (SwingUtilities.isEventDispatchThread()) {
             throw new UnsupportedOperationException("Never call blocking get() from EDT");
         }
@@ -317,7 +317,7 @@ public class AnalyzerWrapper {
         }
         try {
             // Block until the future analyzer finishes building
-            Analyzer built = future.get();
+            JavaAnalyzer built = future.get();
             currentAnalyzer = built;
             return built;
         } catch (InterruptedException e) {
@@ -332,14 +332,14 @@ public class AnalyzerWrapper {
      * Get the analyzer, showing a spinner UI while waiting.
      * For use in user-facing operations.
      */
-    public Analyzer get() {
+    public JavaAnalyzer get() {
         return get(true);
     }
 
     /**
      * @return null if analyzer is not ready yet
      */
-    public Analyzer getNonBlocking() {
+    public JavaAnalyzer getNonBlocking() {
         try {
             // Try to get with zero timeout - returns null if not done
             return future.get(0, TimeUnit.MILLISECONDS);

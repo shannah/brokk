@@ -23,7 +23,7 @@ import scala.jdk.javaapi.CollectionConverters
 import scala.util.matching.Regex
 
 
-class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgInit: Cpg) extends IAnalyzer with Closeable {
+class JavaAnalyzer private(sourcePath: java.nio.file.Path, language: Language, cpgInit: Cpg) extends IAnalyzer with Closeable {
   // Convert to absolute filename immediately and verify it's a directory
   private val absolutePath = {
     val path = sourcePath.toAbsolutePath.toRealPath()
@@ -47,7 +47,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
   }
 
   def this(sourcePath: java.nio.file.Path, language: Language) = {
-    this(sourcePath, language, Analyzer.createNewCpgFor(sourcePath, language))
+    this(sourcePath, language, JavaAnalyzer.createNewCpgFor(sourcePath, language))
   }
 
   def this(sourcePath: java.nio.file.Path) = {
@@ -1031,7 +1031,7 @@ class Analyzer private (sourcePath: java.nio.file.Path, language: Language, cpgI
     cpg.close()
   }
 }
-object Analyzer {
+object JavaAnalyzer {
   private def createCpgWithRetry[T](callable: => scala.util.Try[T], maxAttempts: Int = 3): T = {
     var attempt = 0
     var result: Option[T] = None
