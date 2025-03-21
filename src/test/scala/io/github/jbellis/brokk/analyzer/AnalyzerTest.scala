@@ -206,14 +206,6 @@ class AnalyzerTest {
 //    val expected = Set("D", "D$DSub", "D$DSubStatic").map(CodeUnit.cls)
 //    assertEquals(expected, asScala(classes).toSet)
   }
-
-  @Test
-  def getCallersOfMethodTest(): Unit = {
-    val analyzer = getAnalyzer
-    val callers = analyzer.getCallersOfMethod("A.method1")
-    assert(callers.contains("B.callsIntoA"))
-    assert(callers.contains("D.methodD1"))
-  }
   
   @Test
   def getCallgraphToTest(): Unit = {

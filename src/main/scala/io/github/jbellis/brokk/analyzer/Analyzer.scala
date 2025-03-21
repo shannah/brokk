@@ -28,7 +28,7 @@ import scala.util.matching.Regex
  * but delegates language-specific operations (like building a CPG or
  * constructing method signatures) to concrete subclasses.
  */
-abstract class AbstractAnalyzer protected (sourcePath: Path, protected val cpg: Cpg)
+abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val cpg: Cpg)
   extends IAnalyzer with Closeable {
 
   // Convert to absolute filename immediately and verify it's a directory
@@ -75,13 +75,13 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, protected val cpg: 
    * Transform method node fullName to a stable "resolved" name
    * (e.g. removing lambda suffixes).
    */
-  protected def resolveMethodName(methodName: String): String
+  private[brokk] def resolveMethodName(methodName: String): String
 
   /**
    * Possibly remove package names from a type string, or do
    * other language-specific cleanup.
    */
-  protected def sanitizeType(t: String): String
+  private[brokk] def sanitizeType(t: String): String
 
   /**
    * Return all Method nodes that match the given fully qualified method name
@@ -279,7 +279,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, protected val cpg: 
     else toFile(td.filename)
   }
 
-  protected def toFile(relName: String): Option[RepoFile] =
+  private[brokk] def toFile(relName: String): Option[RepoFile] =
     Some(RepoFile(absolutePath, relName))
 
   // using cpg.all doesn't work because there are always-present nodes for files and the ANY typedecl
@@ -804,14 +804,14 @@ class JavaAnalyzer private (sourcePath: Path, cpgInit: Cpg)
   /**
    * Java-specific logic for removing lambda suffixes, nested class numeric suffixes, etc.
    */
-  override protected def resolveMethodName(methodName: String): String = {
+  override private[brokk] def resolveMethodName(methodName: String): String = {
     val segments = methodName.split("\\.")
     val idx = segments.indexWhere(_.matches(".*\\$\\d+$"))
     val relevant = if (idx == -1) segments else segments.take(idx)
     relevant.mkString(".")
   }
 
-  override protected def sanitizeType(t: String): String = {
+  override private[brokk] def sanitizeType(t: String): String = {
     def processType(input: String): String = {
       val isArray = input.endsWith("[]")
       val base = if (isArray) input.dropRight(2) else input
