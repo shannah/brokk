@@ -710,24 +710,32 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Show diff between two commits
      * Special handling for when HEAD is used as a reference in the working directory
+     * @param newCommitId The newer commit (or HEAD for working directory)
+     * @param oldCommitId The older commit to compare against
+     * @return String containing the diff output
      */
-    public String showDiff(String commitIdA, String commitIdB) {
+    public String showDiff(String newCommitId, String oldCommitId) {
         try (var out = new ByteArrayOutputStream()) {
-            if ("HEAD".equals(commitIdA)) {
+            logger.debug("Generating diff from {} to {}", oldCommitId, newCommitId);
+            if ("HEAD".equals(newCommitId)) {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdB))
+                        .setOldTree(prepareTreeParser(oldCommitId))
                         .setNewTree(null) // Working tree
                         .setOutputStream(out)
                         .call();
             } else {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdB))
-                        .setNewTree(prepareTreeParser(commitIdA))
+                        .setOldTree(prepareTreeParser(oldCommitId))
+                        .setNewTree(prepareTreeParser(newCommitId))
                         .setOutputStream(out)
                         .call();
             }
-            return out.toString(StandardCharsets.UTF_8);
+            var result = out.toString(StandardCharsets.UTF_8);
+            logger.debug("Generated diff of {} bytes", result.length());
+            return result;
         } catch (IOException | GitAPIException e) {
+            logger.error("Failed to show diff between {} and {}: {}", 
+                       oldCommitId, newCommitId, e.getMessage());
             throw new UncheckedIOException(new IOException("Failed to show diff", e));
         }
     }

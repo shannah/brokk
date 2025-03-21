@@ -972,11 +972,14 @@ public class GitLogPanel extends JPanel {
                 String firstCommitId = (String) commitsTableModel.getValueAt(sortedRows[0], 3);
                 String lastCommitId = (String) commitsTableModel.getValueAt(sortedRows[sortedRows.length - 1], 3);
 
-                String diff = getRepo().showDiff(lastCommitId, firstCommitId + "^");
+                logger.debug("Getting diff for commit range from {} to {}", firstCommitId, lastCommitId);
+                String diff = getRepo().showDiff(firstCommitId, lastCommitId + "^");
                 if (diff.isEmpty()) {
+                    logger.warn("No changes found in commit range from {} to {}", firstCommitId, lastCommitId);
                     chrome.systemOutput("No changes found in the selected commit range");
                     return;
                 }
+                logger.debug("Found {} bytes of changes in diff", diff.length());
 
                 String firstShortHash = firstCommitId.substring(0, 7);
                 String lastShortHash = lastCommitId.substring(0, 7);
@@ -1023,9 +1026,9 @@ public class GitLogPanel extends JPanel {
                 var repoFiles = filePaths.stream()
                         .map(path -> new RepoFile(contextManager.getRoot(), path))
                         .toList();
-                        
+
                 String diffs = repoFiles.stream()
-                        .map(file -> getRepo().showFileDiff(lastCommitId, firstCommitId + "^", file))
+                        .map(file -> getRepo().showFileDiff(firstCommitId, lastCommitId + "^", file))
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.joining("\n\n"));
 
