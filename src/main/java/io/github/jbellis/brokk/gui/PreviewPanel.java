@@ -126,6 +126,9 @@ public class PreviewPanel extends JPanel
                 searchField.requestFocusInWindow();
             }
         });
+        
+        // Scroll to the beginning of the document
+        textArea.setCaretPosition(0);
     }
 
     /**
