@@ -48,6 +48,9 @@ public class PreviewPanel extends JPanel
     public PreviewPanel(String content, String syntaxStyle, GuiTheme guiTheme)
     {
         super(new BorderLayout());
+        
+        // Register ESC key to close the dialog
+        registerEscapeKey();
 
         // === Top search bar ===
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
@@ -154,6 +157,23 @@ public class PreviewPanel extends JPanel
         
         // Scroll to the beginning of the document
         textArea.setCaretPosition(0);
+    }
+    
+    /**
+     * Registers ESC key to close the preview panel
+     */
+    private void registerEscapeKey() {
+        KeyStroke escapeKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
+        getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(escapeKeyStroke, "closePreview");
+        getActionMap().put("closePreview", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Window window = SwingUtilities.getWindowAncestor(PreviewPanel.this);
+                if (window != null) {
+                    window.dispose();
+                }
+            }
+        });
     }
 
     /**
