@@ -101,6 +101,31 @@ public class PreviewPanel extends JPanel
                 updateSearchHighlights();
             }
         });
+        
+        // === Enter key in search field triggers next match ===
+        searchField.addActionListener(e -> findNext(true));
+        
+        // === Arrow keys for navigation ===
+        InputMap inputMap = searchField.getInputMap(JComponent.WHEN_FOCUSED);
+        ActionMap actionMap = searchField.getActionMap();
+        
+        // Down arrow for next match
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "findNext");
+        actionMap.put("findNext", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                findNext(true);
+            }
+        });
+        
+        // Up arrow for previous match
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "findPrevious");
+        actionMap.put("findPrevious", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                findNext(false);
+            }
+        });
 
         // === Next / Previous buttons ===
         nextButton.addActionListener(new ActionListener() {
@@ -151,6 +176,40 @@ public class PreviewPanel extends JPanel
 
         // Mark all occurrences
         SearchEngine.markAll(textArea, context);
+        
+        // Jump to the first occurrence as the user types
+        int originalCaretPosition = textArea.getCaretPosition();
+        textArea.setCaretPosition(0); // Start search from beginning
+        SearchResult result = SearchEngine.find(textArea, context);
+        if (!result.wasFound() && originalCaretPosition > 0) {
+            // If not found from beginning, restore caret position
+            textArea.setCaretPosition(originalCaretPosition);
+        } else if (result.wasFound()) {
+            // Center the match in the viewport
+            centerCurrentMatchInView();
+        }
+    }
+    
+    /**
+     * Centers the current match in the viewport
+     */
+    private void centerCurrentMatchInView() {
+        try {
+            Rectangle matchRect = textArea.modelToView(textArea.getCaretPosition());
+            JViewport viewport = (JViewport) SwingUtilities.getAncestorOfClass(JViewport.class, textArea);
+            if (viewport != null && matchRect != null) {
+                // Calculate the target Y position (1/3 from the top)
+                int viewportHeight = viewport.getHeight();
+                int targetY = Math.max(0, (int)(matchRect.y - viewportHeight * 0.33));
+
+                // Create a new point for scrolling
+                Rectangle viewRect = viewport.getViewRect();
+                viewRect.y = targetY;
+                textArea.scrollRectToVisible(viewRect);
+            }
+        } catch (Exception ex) {
+            // Silently ignore any view transformation errors
+        }
     }
 
     /**
@@ -170,10 +229,12 @@ public class PreviewPanel extends JPanel
         context.setMarkAll(true);
         context.setWholeWord(false);
         context.setRegularExpression(false);
-        context.setSearchForward(true);
+        context.setSearchForward(forward);
         context.setSearchWrap(true);
 
         SearchResult result = SearchEngine.find(textArea, context);
-        // If you want to do something on not-found, you can check result.wasFound()
+        if (result.wasFound()) {
+            centerCurrentMatchInView();
+        }
     }
 }
