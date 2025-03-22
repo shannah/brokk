@@ -181,11 +181,6 @@ public class GitLogPanel extends JPanel {
             }
         };
         commitsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        // Set percentages for main columns (60%/20%/20%)
-        int tableWidth = commitsTable.getWidth();
-        commitsTable.getColumnModel().getColumn(0).setPreferredWidth((int)(tableWidth * 0.6)); // message
-        commitsTable.getColumnModel().getColumn(1).setPreferredWidth((int)(tableWidth * 0.2)); // author
-        commitsTable.getColumnModel().getColumn(2).setPreferredWidth((int)(tableWidth * 0.2)); // date
         
         // Hide id and unpushed columns
         commitsTable.getColumnModel().getColumn(3).setMinWidth(0);
@@ -872,6 +867,10 @@ public class GitLogPanel extends JPanel {
                                 isUnpushed
                         });
                     }
+
+                    // Fit column widths for author and date
+                    TableUtils.fitColumnWidth(commitsTable, 1); // Author column
+                    TableUtils.fitColumnWidth(commitsTable, 2); // Date column
 
                     if (commitsTableModel.getRowCount() > 0) {
                         commitsTable.setRowSelectionInterval(0, 0);
