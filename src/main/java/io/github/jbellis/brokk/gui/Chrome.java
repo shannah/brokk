@@ -44,22 +44,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Swing components:
     final JFrame frame;
-    private MarkdownOutputPanel llmStreamArea;
-    private JTextArea systemArea;
     private JLabel commandResultLabel;
     private RSyntaxTextArea commandInputField;
     private JLabel backgroundStatusLabel;
     private Dimension backgroundLabelPreferredSize;
-    private JScrollPane systemScrollPane;
 
-    // Context History Panel
-    private JTable contextHistoryTable;
-    private DefaultTableModel contextHistoryModel;
 
-    // Track the horizontal split that holds the history panel
-    private JSplitPane historySplitPane;
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
+    private HistoryOutputPane historyOutputPane;
 
     // Copy and reference panel buttons
     private JButton copyTextButton;
@@ -78,8 +71,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     volatile Future<?> currentUserTask;
-    private JScrollPane llmScrollPane;
-    JTextArea captureDescriptionArea;
+    JTextArea captureDescriptionArea; // Used by HistoryOutputPane
     
     // For STT (mic) usage
     private JButton micButton;
@@ -305,7 +297,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         logger.debug("Initializing theme manager");
         // Initialize theme manager now that all components are created
         // and conmtextManager should be properly set
-        themeManager = new GuiTheme(getProject(), frame, llmScrollPane, this);
+        themeManager = new GuiTheme(getProject(), frame, historyOutputPane.getLlmScrollPane(), this);
 
         // Apply current theme based on project settings
         String currentTheme = getProject().getTheme();
@@ -313,7 +305,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Apply the theme from project settings now
         boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
         themeManager.applyTheme(isDark);
-        llmStreamArea.updateTheme(isDark);
+        historyOutputPane.updateTheme(isDark);
     }
 
     /**
@@ -334,53 +326,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.gridx = 0;
         gbc.insets = new Insets(2, 2, 2, 2);
 
-        var rightPanel = new JPanel(new BorderLayout());
-
-        // LLM streaming area 
-        llmScrollPane = buildLLMStreamScrollPane();
-        var outputPanel = new JPanel(new BorderLayout());
-        outputPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Output",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-        outputPanel.add(llmScrollPane, BorderLayout.CENTER);
-
-        // Add capture output panel in the middle
-        var capturePanel = buildCaptureOutputPanel();
-        outputPanel.add(capturePanel, BorderLayout.SOUTH);
-
-        // Add system messages area at the bottom
-        systemScrollPane = buildSystemMessagesArea();
-        rightPanel.add(outputPanel, BorderLayout.CENTER);
-        rightPanel.add(systemScrollPane, BorderLayout.SOUTH);
-
-        // Build the history panel, but don't add it to the split pane yet
-        // We'll do this after we know the button size
-        var contextHistoryPanel = buildContextHistoryPanel();
-
-        // Store this horizontal split in our class field
-        this.historySplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        historySplitPane.setLeftComponent(contextHistoryPanel);
-        historySplitPane.setRightComponent(rightPanel);
-        historySplitPane.setResizeWeight(0.2); // 80% to output, 20% to history
-        
-        // Set minimum sizes to ensure components can be resized properly
-        historySplitPane.getLeftComponent().setMinimumSize(new Dimension(100, 0));
-        historySplitPane.getRightComponent().setMinimumSize(new Dimension(200, 0));
-        historySplitPane.setContinuousLayout(true);
-
+        // Create history output pane (combines history panel and output panel)
+        historyOutputPane = new HistoryOutputPane(this, contextManager);
+            
         // Create a split pane with output+history in top and command+context+status in bottom
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        verticalSplitPane.setTopComponent(historySplitPane);
+        verticalSplitPane.setTopComponent(historyOutputPane);
 
         // Create a panel for everything below the output area
         var bottomPanel = new JPanel(new BorderLayout());
 
-        // We will size the history panel after the frame is actually displayed
-        SwingUtilities.invokeLater(this::setInitialHistoryPanelWidth);
 
         // Create a top panel for the result label and command input
         var topControlsPanel = new JPanel(new BorderLayout(0, 2));
@@ -427,142 +382,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return panel;
     }
 
-    /**
-     * Builds the Context History panel that shows past contexts
-     */
-    private JPanel buildContextHistoryPanel() {
-        // Create history panel
-        var panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Context History",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-
-        // Create table model with columns - first two columns are visible, third is hidden
-        contextHistoryModel = new DefaultTableModel(
-                new Object[]{"", "Action", "Context"}, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-
-        contextHistoryTable = new JTable(contextHistoryModel);
-        contextHistoryTable.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
-        contextHistoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
-        // Remove table header
-        contextHistoryTable.setTableHeader(null);
-        
-        // Set up tooltip renderer for description column (index 1)
-        contextHistoryTable.getColumnModel().getColumn(1).setCellRenderer(new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(JTable table, Object value,
-                                                          boolean isSelected, boolean hasFocus, int row, int column) {
-                JLabel label = (JLabel)super.getTableCellRendererComponent(
-                        table, value, isSelected, hasFocus, row, column);
-                
-                // Set the tooltip to show the full text
-                if (value != null) {
-                    label.setToolTipText(value.toString());
-                }
-                
-                return label;
-            }
-        });
-
-        // Set up emoji renderer for first column
-        contextHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(JTable table, Object value,
-                                                          boolean isSelected, boolean hasFocus, int row, int column) {
-                JLabel label = (JLabel)super.getTableCellRendererComponent(
-                        table, value, isSelected, hasFocus, row, column);
-                
-                // Center-align the emoji
-                label.setHorizontalAlignment(JLabel.CENTER);
-                
-                return label;
-            }
-        });
-
-        // Add selection listener to preview context
-        contextHistoryTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                int row = contextHistoryTable.getSelectedRow();
-                if (row >= 0 && row < contextHistoryTable.getRowCount()) {
-                    // Get the context object from the hidden third column
-                    var ctx = (Context)contextHistoryModel.getValueAt(row, 2);
-                    contextManager.setSelectedContext(ctx);
-                    loadContext(ctx);
-                }
-            }
-        });
-
-        // Add right-click context menu for history operations
-        contextHistoryTable.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showContextHistoryPopupMenu(e);
-                }
-            }
-
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showContextHistoryPopupMenu(e);
-                }
-            }
-        });
-
-        // Adjust column widths - set emoji column width and hide the context object column
-        contextHistoryTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-        contextHistoryTable.getColumnModel().getColumn(0).setMinWidth(30);
-        contextHistoryTable.getColumnModel().getColumn(0).setMaxWidth(30);
-        contextHistoryTable.getColumnModel().getColumn(1).setPreferredWidth(150);
-        contextHistoryTable.getColumnModel().getColumn(2).setMinWidth(0);
-        contextHistoryTable.getColumnModel().getColumn(2).setMaxWidth(0);
-        contextHistoryTable.getColumnModel().getColumn(2).setWidth(0);
-
-        // Add table to scroll pane with SmartScroll
-        var scrollPane = new JScrollPane(contextHistoryTable);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-        new SmartScroll(scrollPane);
-
-        // Add undo/redo buttons at the bottom
-        var buttonPanel = new JPanel(new GridLayout(2, 1, 0, 5));
-        buttonPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
-
-        var undoButton = new JButton("Undo");
-        undoButton.setMnemonic(KeyEvent.VK_Z);
-        undoButton.setToolTipText("Undo the most recent history entry");
-        undoButton.addActionListener(e -> {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            currentUserTask = contextManager.undoContextAsync();
-        });
-
-        var redoButton = new JButton("Redo");
-        redoButton.setMnemonic(KeyEvent.VK_Y);
-        redoButton.setToolTipText("Redo the most recently undone entry");
-        redoButton.addActionListener(e -> {
-            disableUserActionButtons();
-            disableContextActionButtons();
-            currentUserTask = contextManager.redoContextAsync();
-        });
-
-        buttonPanel.add(undoButton);
-        buttonPanel.add(redoButton);
-
-        panel.add(scrollPane, BorderLayout.CENTER);
-        panel.add(buttonPanel, BorderLayout.SOUTH);
-
-        return panel;
-    }
 
     /**
      * Lightweight method to preview a context without updating history
@@ -576,20 +395,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
 
             // If there's textarea content, restore it to the LLM output area
-            llmStreamArea.setText(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
-
-            // Scroll to the top
-            SwingUtilities.invokeLater(() -> {
-                llmScrollPane.getVerticalScrollBar().setValue(0);
-            });
+            historyOutputPane.setLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
 
             updateCaptureButtons(ctx);
         });
     }
 
-    /**
-     * Shows the context menu for the context history table
-     */
     // Theme manager
     GuiTheme themeManager;
 
@@ -605,8 +416,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void switchTheme(boolean isDark) {
         themeManager.applyTheme(isDark);
 
-        // And the output
-        llmStreamArea.updateTheme(isDark);
+        // Update history output pane theme
+        historyOutputPane.updateTheme(isDark);
 
         // Update themes in all preview windows (if there are open ones)
         for (Window window : Window.getWindows()) {
@@ -619,102 +430,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
-    private void showContextHistoryPopupMenu(MouseEvent e) {
-        int row = contextHistoryTable.rowAtPoint(e.getPoint());
-        if (row < 0) return;
-
-        // Select the row under the cursor
-        contextHistoryTable.setRowSelectionInterval(row, row);
-
-        // Get the context from the selected row
-        Context context = (Context)contextHistoryModel.getValueAt(row, 2);
-
-        // Create popup menu
-        JPopupMenu popup = new JPopupMenu();
-        
-        JMenuItem undoToHereItem = new JMenuItem("Undo to here");
-        undoToHereItem.addActionListener(event -> undoHistoryUntil(context));
-        popup.add(undoToHereItem);
-        
-        JMenuItem resetToHereItem = new JMenuItem("Reset Context to Here");
-        resetToHereItem.addActionListener(event -> resetContextTo(context));
-        popup.add(resetToHereItem);
-
-        // Register popup with theme manager
-        if (themeManager != null) {
-            themeManager.registerPopupMenu(popup);
-        }
-
-        // Show popup menu
-        popup.show(contextHistoryTable, e.getX(), e.getY());
-    }
     
-    /**
-     * Creates a new context based on the files and fragments from a historical context,
-     * while preserving current conversation history
-     */
-    private void resetContextTo(Context targetContext) {
-        disableUserActionButtons();
-        disableContextActionButtons();
-        currentUserTask = contextManager.resetContextToAsync(targetContext);
-    }
 
-    /**
-     * Restore context to a specific point in history
-     */
-    private void undoHistoryUntil(Context targetContext) {
-        disableUserActionButtons();
-        disableContextActionButtons();
-        currentUserTask = contextManager.undoContextUntilAsync(targetContext);
-    }
 
     /**
      * Gets the current text from the LLM output area
      */
     public String getLlmOutputText() {
-        return SwingUtil.runOnEDT(() -> llmStreamArea.getText(), null);
+        return SwingUtil.runOnEDT(() -> historyOutputPane.getLlmOutputText(), null);
     }
 
-    private JScrollPane buildLLMStreamScrollPane() {
-        llmStreamArea = new MarkdownOutputPanel();
-
-        // Wrap it in a scroll pane so it can scroll if content is large
-        var jsp = new JScrollPane(llmStreamArea);
-        jsp.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-        jsp.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        new SmartScroll(jsp);
-
-        // Add a text change listener to update capture buttons
-        llmStreamArea.addTextChangeListener(() -> updateCaptureButtons(null));
-
-        return jsp;
-    }
-
-    /**
-     * Builds the system messages area that appears below the LLM output area.
-     */
-    private JScrollPane buildSystemMessagesArea() {
-        // Create text area for system messages
-        systemArea = new JTextArea();
-        systemArea.setEditable(false);
-        systemArea.setLineWrap(true);
-        systemArea.setWrapStyleWord(true);
-        systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        systemArea.setRows(3);
-
-        // Create scroll pane with border and title
-        systemScrollPane = new JScrollPane(systemArea);
-        systemScrollPane.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "System Messages",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-        new SmartScroll(systemScrollPane);
-
-        return systemScrollPane;
-    }
 
     /**
      * Creates the command result label used to display messages.
@@ -1013,7 +738,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
+        historyOutputPane.setLlmOutput("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
 
         disableUserActionButtons();
@@ -1033,7 +758,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("# Run\n" + commandInputField.getText() + "\n\n# Output\n");
+        historyOutputPane.setLlmOutput("# Run\n" + commandInputField.getText() + "\n\n# Output\n");
         commandInputField.setText("");
 
         disableUserActionButtons();
@@ -1063,7 +788,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("# Ask\n" + commandInputField.getText() + "\n\n# Response\n");
+        historyOutputPane.setLlmOutput("# Ask\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
 
         disableUserActionButtons();
@@ -1089,8 +814,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add to text history
         getProject().addToTextHistory(input, 20);
 
-        llmStreamArea.setText("# Search\n" + commandInputField.getText() + "\n\n");
-        llmStreamArea.append("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
+        historyOutputPane.setLlmOutput("# Search\n" + commandInputField.getText() + "\n\n");
+        historyOutputPane.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         commandInputField.setText("");
 
         disableUserActionButtons();
@@ -1100,7 +825,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void clear() {
         SwingUtilities.invokeLater(() -> {
-            llmStreamArea.clear();
+            historyOutputPane.clear();
         });
     }
 
@@ -1356,23 +1081,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void llmOutput(String token) {
         SwingUtilities.invokeLater(() -> {
-            llmStreamArea.append(token);
+            historyOutputPane.appendLlmOutput(token);
         });
     }
 
     @Override
     public void systemOutput(String message) {
         SwingUtilities.invokeLater(() -> {
-            // Format timestamp as HH:MM
-            String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-
-            // Add newline if needed
-            if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
-                systemArea.append("\n");
-            }
-
-            // Append timestamped message
-            systemArea.append(timestamp + ": " + message);
+            historyOutputPane.appendSystemOutput(message);
         });
     }
 
@@ -1527,10 +1243,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // Restore history split pane position
             int historyPos = getProject().getHistorySplitPosition();
             if (historyPos > 0) {
-                historySplitPane.setDividerLocation(historyPos);
+                historyOutputPane.setDividerLocation(historyPos);
             } else {
-                // If no saved position, use the previous calculation
-                setInitialHistoryPanelWidth();
+                // If no saved position, use the default
+                historyOutputPane.setInitialWidth();
             }
 
             // Restore context/git split pane position
@@ -1553,8 +1269,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             });
 
             // Add listeners to save split pane positions when they change
-            historySplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                getProject().saveHistorySplitPosition(historySplitPane.getDividerLocation());
+            historyOutputPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+                getProject().saveHistorySplitPosition(historyOutputPane.getDividerLocation());
             });
 
             verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
@@ -1579,38 +1295,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates the context history table with the current context history, and selects the given context
      */
     public void updateContextHistoryTable(Context contextToSelect) {
-        logger.debug("Updating context history table with context {}",
-                     contextToSelect != null ? contextToSelect.getAction() : "null");
-        SwingUtilities.invokeLater(() -> {
-            contextHistoryModel.setRowCount(0);
-
-            // Track which row to select
-            int rowToSelect = -1;
-            int currentRow = 0;
-
-            // Add rows for each context in history
-            for (var ctx : contextManager.getContextHistory()) {
-                // Add emoji for AI responses, empty for user actions
-                String emoji = (ctx.getParsedOutput() != null) ? "🤖" : "";
-                contextHistoryModel.addRow(new Object[]{
-                        emoji,
-                        ctx.getAction(),
-                        ctx // We store the actual context object in hidden column
-                });
-
-                // If this is the context we want to select, record its row
-                if (ctx.equals(contextToSelect)) {
-                    rowToSelect = currentRow;
-                }
-                currentRow++;
-            }
-
-            // Set selection if we found the context
-            if (rowToSelect >= 0) {
-                contextHistoryTable.setRowSelectionInterval(rowToSelect, rowToSelect);
-                contextHistoryTable.scrollRectToVisible(contextHistoryTable.getCellRect(rowToSelect, 0, true));
-            }
-        });
+        historyOutputPane.updateHistoryTable(contextToSelect);
     }
     
     /**
@@ -1618,7 +1303,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public JTable getContextHistoryTable() {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
-        return contextHistoryTable;
+        return historyOutputPane.getHistoryTable();
     }
 
     /**
@@ -1635,63 +1320,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return false;
     }
 
-    /**
-     * Builds the "Capture Output" panel with a horizontal layout:
-     * [References Label] [Capture Text] [Edit References]
-     */
-    private JPanel buildCaptureOutputPanel() {
-        var panel = new JPanel(new BorderLayout(5, 3));
-        panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
-
-        // References label in center - will get all extra space
-        captureDescriptionArea = new JTextArea("No references found");
-        captureDescriptionArea.setEditable(false);
-        captureDescriptionArea.setBackground(panel.getBackground());
-        captureDescriptionArea.setBorder(null);
-        captureDescriptionArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 12));
-        captureDescriptionArea.setLineWrap(true);
-        captureDescriptionArea.setWrapStyleWord(true);
-        panel.add(captureDescriptionArea, BorderLayout.CENTER);
-
-        // Buttons panel on the right
-        var buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-
-        // "Copy Text" button
-    copyTextButton = new JButton("Copy Text");
-    copyTextButton.setMnemonic(KeyEvent.VK_T);
-    copyTextButton.setToolTipText("Copy the output to clipboard");
-    copyTextButton.addActionListener(e -> {
-        String text = llmStreamArea.getText();
-        if (!text.isBlank()) {
-            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-                new java.awt.datatransfer.StringSelection(text), null);
-            toolErrorRaw("Copied to clipboard");
-        }
-    });
-    // Set minimum size
-    copyTextButton.setMinimumSize(copyTextButton.getPreferredSize());
-    buttonsPanel.add(copyTextButton);
-
-        // "Edit References" button
-        editReferencesButton = new JButton("Edit References");
-        editReferencesButton.setToolTipText("Edit the files referenced by the output");
-        editReferencesButton.setMnemonic(KeyEvent.VK_F);
-        editReferencesButton.setEnabled(false);
-        editReferencesButton.addActionListener(e -> {
-            contextManager.editFilesFromContextAsync();
-        });
-        // Set minimum size
-        editReferencesButton.setMinimumSize(editReferencesButton.getPreferredSize());
-        buttonsPanel.add(editReferencesButton);
-
-        // Add buttons panel to the right
-        panel.add(buttonsPanel, BorderLayout.EAST);
-
-        // We now use the MarkdownOutputPanel's text change listener instead
-        // which is set up in buildLLMStreamScrollPane()
-
-        return panel;
-    }
 
     /**
      * Updates the state of capture buttons based on textarea content
@@ -1700,16 +1328,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * and we should parse our raw text for references instead
      */
     public void updateCaptureButtons(Context ctx) {
-        String text = llmStreamArea.getText();
+        String text = historyOutputPane.getLlmOutputText();
         boolean hasText = !text.isBlank();
 
         SwingUtilities.invokeLater(() -> {
-            copyTextButton.setEnabled(hasText);  // Enable copy button when there's text
+            historyOutputPane.setCopyButtonEnabled(hasText);  // Enable copy button when there's text
             // Check for sources only if there's text
-            var files = hasText && getProject() != null 
+            var files = hasText && getProject() != null
                     ? ContextFragment.parseRepoFiles(text, getProject().getRepo())
                     : Set.<RepoFile>of();
-            editReferencesButton.setEnabled(!files.isEmpty());
+            historyOutputPane.setEditReferencesButtonEnabled(!files.isEmpty());
             updateFilesDescriptionLabel(files);
         });
     }
@@ -1796,25 +1424,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // This method is no longer needed as we use fixed width
 
-    private void setInitialHistoryPanelWidth() {
-        // Safety checks
-        if (historySplitPane == null) {
-            return;
-        }
-
-        // Don't override if we have a saved position from project settings
-        if (getProject() != null && getProject().getHistorySplitPosition() > 0) {
-            return;
-        }
-
-        // Keep the resize weight consistent with the initial setting (0.2)
-        // Don't reset it to 0.0 which causes right component to not give up space
-        historySplitPane.setDividerLocation(0.2);
-
-        // Re-validate to ensure the UI picks up changes
-        historySplitPane.revalidate();
-        historySplitPane.repaint();
-    }
 
     /**
      * Be very careful to run any UI updates on the EDT
@@ -1859,37 +1468,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         assert files != null;
 
         SwingUtilities.invokeLater(() -> {
-            if (files.isEmpty()) {
-                captureDescriptionArea.setText("No references found");
-                captureDescriptionArea.setToolTipText(null);
-                return;
-            }
-
-            // Build both the short version (for display) and full version (for tooltip)
-            var fileNames = files.stream()
-                    .map(file -> file.getFileName())
-                    .toList();
-
-            StringBuilder displayText = new StringBuilder();
-
-            if (fileNames.size() <= 3) {
-                // Show all references if 3 or fewer
-                displayText.append(String.join(", ", fileNames));
-            } else {
-                // Show first 3 references + "..." if more than 3
-                displayText.append(String.join(", ", fileNames.subList(0, 3)));
-                displayText.append(", ...");
-            }
-
-            // Set the text and tooltip
-            captureDescriptionArea.setText(displayText.toString());
-
-            // Only set tooltip if there are more than 3 files
-            if (fileNames.size() > 3) {
-                captureDescriptionArea.setToolTipText(String.join("\n", fileNames));
-            } else {
-                captureDescriptionArea.setToolTipText(null);
-            }
+            historyOutputPane.updateFilesDescription(files);
         });
     }
 
