@@ -854,8 +854,7 @@ public class GitPanel extends JPanel {
      */
     private void showFileHistoryDiff(String commitId, String filePath) {
         RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
-        java.awt.Rectangle bounds = contextManager.getProject().getDiffWindowBounds();
-        DiffPanel diffPanel = new DiffPanel(contextManager, bounds);
+        DiffPanel diffPanel = new DiffPanel(contextManager);
 
         String shortCommitId = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
         String dialogTitle = "Diff: " + file.getFileName() + " (" + shortCommitId + ")";
@@ -883,8 +882,7 @@ public class GitPanel extends JPanel {
      */
     private void showUncommittedFileDiff(String filePath) {
         RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
-        java.awt.Rectangle bounds = contextManager.getProject().getDiffWindowBounds();
-        DiffPanel diffPanel = new DiffPanel(contextManager, bounds);
+        DiffPanel diffPanel = new DiffPanel(contextManager);
 
         String dialogTitle = "Uncommitted Changes: " + file.getFileName();
         diffPanel.showFileDiff("UNCOMMITTED", file);

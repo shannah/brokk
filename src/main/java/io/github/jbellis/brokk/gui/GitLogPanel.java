@@ -9,8 +9,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.event.PopupMenuEvent;
-import javax.swing.event.PopupMenuListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
@@ -1568,8 +1566,7 @@ public class GitLogPanel extends JPanel {
      */
     private void showFileDiff(String commitId, String filePath) {
         RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
-        java.awt.Rectangle bounds = contextManager.getProject().getDiffWindowBounds();
-        DiffPanel diffPanel = new DiffPanel(contextManager, bounds);
+        DiffPanel diffPanel = new DiffPanel(contextManager);
 
         String shortCommitId = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
         String dialogTitle = "Diff: " + file.getFileName() + " (" + shortCommitId + ")";

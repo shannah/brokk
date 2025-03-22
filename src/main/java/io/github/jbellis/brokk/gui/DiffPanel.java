@@ -28,10 +28,6 @@ public class DiffPanel extends JPanel {
      * Creates a new DiffPanel for displaying file diffs.
      */
     public DiffPanel(ContextManager contextManager) {
-        this(contextManager, null);
-    }
-    
-    public DiffPanel(ContextManager contextManager, java.awt.Rectangle bounds) {
         super(new BorderLayout());
         this.contextManager = contextManager;
 
