@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Brokk;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
@@ -1686,26 +1685,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         SwingUtilities.invokeLater(() -> {
             copyTextButton.setEnabled(hasText);  // Enable copy button when there's text
-            var analyzer = contextManager == null ? null : contextManager.getAnalyzerNonBlocking();
-
             // Check for sources only if there's text
-            if (hasText && analyzer != null) {
-                // Use the sources method directly instead of a static method
-                ContextFragment.VirtualFragment fragment;
-                fragment = ctx == null
-                        ? new ContextFragment.StringFragment(text, "temp")
-                        : ctx.getParsedOutput().parsedFragment();
-                // parsedOutput can be null (no text to capture for that action)
-                var sources = fragment == null 
-                        ? Set.<CodeUnit>of() 
-                        : fragment.sources(analyzer, getProject().getRepo());
-                editReferencesButton.setEnabled(!sources.isEmpty());
-                // Update description with file names
-                updateFilesDescriptionLabel(sources);
-            } else {
-                editReferencesButton.setEnabled(false);
-                updateFilesDescriptionLabel(Set.of());
-            }
+            var files = hasText && getProject() != null 
+                    ? ContextFragment.parseRepoFiles(text, getProject().getRepo())
+                    : Set.<RepoFile>of();
+            editReferencesButton.setEnabled(!files.isEmpty());
+            updateFilesDescriptionLabel(files);
         });
     }
 
@@ -1849,17 +1834,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates the references description label with a formatted list of files
      * Shows up to 3 file names, with "..." if there are more, and sets a tooltip with all names
      */
-    private void updateFilesDescriptionLabel(Set<CodeUnit> sources) {
+    private void updateFilesDescriptionLabel(Set<RepoFile> files) {
+        assert files != null;
+
         SwingUtilities.invokeLater(() -> {
-            if (sources == null || sources.isEmpty()) {
+            if (files.isEmpty()) {
                 captureDescriptionArea.setText("No references found");
                 captureDescriptionArea.setToolTipText(null);
                 return;
             }
 
             // Build both the short version (for display) and full version (for tooltip)
-            var fileNames = sources.stream()
-                    .map(CodeUnit::name)
+            var fileNames = files.stream()
+                    .map(file -> file.getFileName())
                     .toList();
 
             StringBuilder displayText = new StringBuilder();

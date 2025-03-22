@@ -6,6 +6,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.RepoFile;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 public interface ContextFragment extends Serializable {
     /** short description in history */
@@ -34,6 +36,12 @@ public interface ContextFragment extends Serializable {
 
     /** should classes found in this fragment be included in AutoContext? */
     boolean isEligibleForAutoContext();
+
+    public static Set<RepoFile> parseRepoFiles(String text, IGitRepo repo) {
+        return repo.getTrackedFiles().stream().parallel()
+                .filter(f -> text.contains(f.toString()))
+                .collect(Collectors.toSet());
+    }
 
     sealed interface PathFragment extends ContextFragment 
         permits RepoPathFragment, ExternalPathFragment
@@ -135,12 +143,11 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return repo.getTrackedFiles().stream().parallel()
-                    .filter(f -> text().contains(f.toString()))
+            return parseRepoFiles(text(), repo).stream()
                     .flatMap(f -> analyzer.getClassesInFile(f).stream())
                     .collect(java.util.stream.Collectors.toSet());
         }
-
+        
         @Override
         public abstract String text(); // no exceptions
     }
