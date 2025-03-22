@@ -26,24 +26,20 @@ These allow some simple but powerful patterns:
 
 # Using Brokk
 
-When you start Brokk, you’ll see four main areas:
+When you start Brokk, you’ll see five main areas:
 
-![image](https://github.com/user-attachments/assets/32d5a1bd-67b2-4181-8bc8-bfd4d546b959)
+![image](https://github.com/user-attachments/assets/cb7f9948-f640-497b-b66f-df1c95d55259)
 
-1. Output Panel (Left Side): Displays the LLM or shell command output.
-1. History Panel (Right Side): Keeps a chronological list of your actions.  
-1. Command Input & Buttons (Bottom-Left): Code, Ask, Search, and Run in Shell specify how your input is interpreted.  Stop cancels the in-progress action.
-1. Context Panel (Bottom): Lists active code/text fragments in your current context, specifying whether they’re read-only or editable, and has
-   buttons to manipulate context.
+1. Output: Displays the LLM or shell command output.
+1. History: A chronological list of your actions.  Can undo changes to context as well as to your code.
+1. Command Input: Code, Ask, Search, and Run in Shell specify how your input is interpreted.  Stop cancels the in-progress action.
+1. Context: Lists active code/text fragments in your current context, specifying whether they’re read-only or editable. Manipulated
+   through right-click menu or top-level menu.
+1. Git: Log tab allows viewing diffs or adding them to context; Commit tab allows committing or stashing your changes
 
 As you add context, Brokk will automatically include summaries of the most closely-related classes
 as determined by a graph analysis of your codebase.  This helps the LLM avoid hallucinations when
-reasoning about your code.  You can change the number of classes included in the File menu:
-![image](https://github.com/user-attachments/assets/009ab017-1804-4b0c-8845-50395700c1a1)
-
-You can also see `Refresh Code Intelligence` in the above screenshot.  Brokk will automatically
-create the code intelligence graph on startup; it will set it to refresh automatically or manually
-based on how long that takes.  If it is on manual refresh, this menu item is how you invoke it.
+reasoning about your code.  This is the "[Auto]" row that you see in the screenshot.
 
 ## Primary Actions
 
@@ -59,7 +55,9 @@ based on how long that takes.  If it is on manual refresh, this menu item is how
 - Drop: Removes snippets you no longer want in context.
 - Copy, Paste: Copy snippets to your clipboard or paste external text into Brokk’s context.
   - Stacktraces get special treatment; they will be augmented with the source of referenced methods.
+  - URLs also get special treatment; their text will be retrieved and ingested
 - Symbol Usage: Pick a symbol (class, field, or method) and automatically gather all references into a snippet.
+- Call Graph To / Call Graph From: expands the call graph to or from the given function to the specified depth.
 
 You can doubleclick on any context to preview it.
 
@@ -153,4 +151,9 @@ There is a [Brokk Discord](https://discord.gg/QjhQDK8kAj) for questions and sugg
 
 - Brokk doesn't offer automatic running of tests (too much variance in what you might want it to do).
   Instead, Brokk allows you to run arbitrary shell commands, and import those as context with "Capture Text"
-  or "Edit Files."  You can easily run your tests this way and have Brokk work on the results.
+  or "Edit Files."  You can easily run your tests this way and have Brokk work on the results. If you really
+  want Brokk to always run a test suite after making edits, you can change `buildCommand` in `.brokk/project.properties`
+  accordingly.
+- There is some overlap between `Symbol Usage` and `Call Graph to Function`; besides the former being just a single level
+  deep in the call graph, Symbol Uage includes the entire source of each calling method while Call Graph to Function
+  only includes one line per call.
