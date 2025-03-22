@@ -30,14 +30,7 @@ public class TableUtils {
             width = Math.max(width, comp.getPreferredSize().width);
         }
         
-        // Add a small margin
-        width += 10;
-        
-        // Set maximum width to prevent excessive column width
-        // Limit to a reasonable maximum (e.g., 300 pixels)
-        int maxWidth = Math.min(width, 300);
-        
         column.setPreferredWidth(width);
-        column.setMaxWidth(maxWidth);
+        column.setMaxWidth(width);
     }
 }
