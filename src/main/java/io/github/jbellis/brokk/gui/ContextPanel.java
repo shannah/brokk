@@ -311,6 +311,12 @@ public class ContextPanel extends JPanel {
                             chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, selectedFragments);
                         });
                         contextMenu.add(dropSelectionItem);
+                        
+                        // Disable drop if only autocontext is selected and it's already disabled
+                        if (contextTable.getSelectedRowCount() == 1 && fragment instanceof ContextFragment.AutoContext)
+                        {
+                            dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
+                        }
                     } else {
                         // No row selected - show the popup with all options
                         tablePopupMenu.show(contextTable, e.getX(), e.getY());
