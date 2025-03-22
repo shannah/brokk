@@ -362,6 +362,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historySplitPane.setLeftComponent(contextHistoryPanel);
         historySplitPane.setRightComponent(rightPanel);
         historySplitPane.setResizeWeight(0.2); // 80% to output, 20% to history
+        
+        // Set minimum sizes to ensure components can be resized properly
+        historySplitPane.getLeftComponent().setMinimumSize(new Dimension(100, 0));
+        historySplitPane.getRightComponent().setMinimumSize(new Dimension(200, 0));
+        historySplitPane.setContinuousLayout(true);
 
         // Create a split pane with output+history in top and command+context+status in bottom
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
@@ -1792,7 +1797,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
-        historySplitPane.setResizeWeight(0.0); // left side can shrink/grow
+        // Keep the resize weight consistent with the initial setting (0.2)
+        // Don't reset it to 0.0 which causes right component to not give up space
         historySplitPane.setDividerLocation(0.2);
 
         // Re-validate to ensure the UI picks up changes
