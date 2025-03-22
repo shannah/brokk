@@ -85,13 +85,13 @@ public class GitRepo implements Closeable, IGitRepo {
     {
         try {
             var addCommand = git.add();
-            
+
             // Add each file pattern to the command
             for (var file : files) {
                 // Use toString() on RepoFile to get its relative path
                 addCommand.addFilepattern(file.toString());
             }
-            
+
             // Execute the command once for all files
             addCommand.call();
         } catch (GitAPIException e) {
@@ -283,7 +283,18 @@ public class GitRepo implements Closeable, IGitRepo {
     {
         try {
             add(files);
-            var commitResult = git.commit().setMessage(message).call();
+            var commitCommand = git.commit()
+                              .setMessage(message);
+            
+            // When a specific list of files is provided, only commit those
+            if (!files.isEmpty()) {
+                // First need to add each file to the commit command
+                for (var file : files) {
+                    commitCommand.setOnly(file.toString());
+                }
+            }
+            
+            var commitResult = commitCommand.call();
             var commitId = commitResult.getId().getName();
 
             refresh();
