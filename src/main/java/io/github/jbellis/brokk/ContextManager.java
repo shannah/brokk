@@ -994,6 +994,22 @@ public class ContextManager implements IContextManager
             }
         });
     }
+    
+    /** Reset the context to match the files and fragments from a historical context */
+    public Future<?> resetContextToAsync(Context targetContext)
+    {
+        return contextActionExecutor.submit(() -> {
+            try {
+                pushContext(ctx -> Context.createFrom(targetContext, ctx));
+                io.systemOutput("Reset context to match historical state!");
+            } catch (CancellationException cex) {
+                io.systemOutput("Reset context canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
+            }
+        });
+    }
 
     /** Inverts changes from a popped context to revert to prior state, returning a new context for re-inversion */
     @NotNull

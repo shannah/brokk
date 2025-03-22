@@ -48,7 +48,7 @@ public class Context implements Serializable {
     /** backup of original contents for /undo, does not carry forward to Context children */
     transient final Map<RepoFile, String> originalContents;
 
-    /** LLM output or other parsed content, with optional fragment */
+    /** LLM output or other parsed content, with optional fragment. May be null */
     transient final ParsedOutput parsedOutput;
 
     /** description of the action that created this context, can be a future (like PasteFragment) */
@@ -664,5 +664,30 @@ public class Context implements Serializable {
                 parsedOutput,
                 action
         );
+    }
+    
+    /**
+     * Creates a new Context that copies specific elements from the provided context.
+     * This creates a reset point by:
+     * - Using the files and fragments from the source context
+     * - Keeping the history messages from the current context
+     * - Setting up properly for rebuilding autoContext
+     * - Clearing parsed output and original contents
+     * - Setting a suitable action description
+     */
+    public static Context createFrom(Context sourceContext, Context currentContext) {
+        assert sourceContext != null;
+        assert currentContext != null;
+        
+        return new Context(currentContext.contextManager,
+                           sourceContext.editableFiles,
+                           sourceContext.readonlyFiles,
+                           sourceContext.virtualFragments,
+                           AutoContext.REBUILDING,
+                           sourceContext.autoContextFileCount,
+                           currentContext.historyMessages,
+                           Map.of(),
+                           null,
+                           CompletableFuture.completedFuture("Reset context to historical state")).refresh();
     }
 }

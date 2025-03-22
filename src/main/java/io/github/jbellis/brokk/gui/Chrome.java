@@ -625,15 +625,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Select the row under the cursor
         contextHistoryTable.setRowSelectionInterval(row, row);
-        
+
         // Get the context from the selected row
         Context context = (Context)contextHistoryModel.getValueAt(row, 2);
 
         // Create popup menu
         JPopupMenu popup = new JPopupMenu();
+        
         JMenuItem undoToHereItem = new JMenuItem("Undo to here");
         undoToHereItem.addActionListener(event -> undoHistoryUntil(context));
         popup.add(undoToHereItem);
+        
+        JMenuItem resetToHereItem = new JMenuItem("Reset Context to Here");
+        resetToHereItem.addActionListener(event -> resetContextTo(context));
+        popup.add(resetToHereItem);
 
         // Register popup with theme manager
         if (themeManager != null) {
@@ -642,6 +647,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Show popup menu
         popup.show(contextHistoryTable, e.getX(), e.getY());
+    }
+    
+    /**
+     * Creates a new context based on the files and fragments from a historical context,
+     * while preserving current conversation history
+     */
+    private void resetContextTo(Context targetContext) {
+        disableUserActionButtons();
+        disableContextActionButtons();
+        currentUserTask = contextManager.resetContextToAsync(targetContext);
     }
 
     /**
