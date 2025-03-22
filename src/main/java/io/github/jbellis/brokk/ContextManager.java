@@ -1419,19 +1419,17 @@ public class ContextManager implements IContextManager
      */
     public Set<RepoFile> getFilesFromFragment(ContextFragment fragment)
     {
+        // RepoPathFragment is the trivial case 
+        if (fragment instanceof ContextFragment.RepoPathFragment(RepoFile file)) {
+            return Set.of(file);
+        }
+
         var classnames = fragment.sources(project);
-        var files = classnames.stream()
+        return classnames.stream()
                 .map(cu -> getAnalyzer().pathOf(cu))
                 .filter(Option::isDefined)
                 .map(Option::get)
                 .collect(Collectors.toSet());
-
-        // If it's a PathFragment, make sure to include its file
-        if (fragment instanceof ContextFragment.PathFragment pf && pf.file() instanceof RepoFile rf) {
-            files.add(rf);
-        }
-
-        return files;
     }
 
     private String formattedOrNull(ContextFragment fragment)
