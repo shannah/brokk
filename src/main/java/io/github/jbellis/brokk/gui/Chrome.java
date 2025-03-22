@@ -73,13 +73,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     volatile Future<?> currentUserTask;
     JTextArea captureDescriptionArea; // Used by HistoryOutputPane
     
-    // For STT (mic) usage
-    private JButton micButton;
-    private volatile TargetDataLine micLine = null;
-    private volatile ByteArrayOutputStream micBuffer = null;
-    private volatile Thread micCaptureThread = null;
-    private ImageIcon micOnIcon;
-    private ImageIcon micOffIcon;
+    // For voice input
+    private VoiceInputButton micButton;
 
     private Project getProject() {
         return contextManager == null ? null : contextManager.getProject();
@@ -110,21 +105,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             logger.warn("Failed to set LAF, using default", e);
         }
         
-        // Load mic icons
-        try {
-            micOnIcon = new ImageIcon(getClass().getResource("/mic-on.png"));
-            micOffIcon = new ImageIcon(getClass().getResource("/mic-off.png"));
-            // Scale icons if needed
-            micOnIcon = new ImageIcon(micOnIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
-            micOffIcon = new ImageIcon(micOffIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
-            logger.debug("Successfully loaded mic icons");
-        } catch (Exception e) {
-            logger.warn("Failed to load mic icons", e);
-            // We'll fall back to text if icons can't be loaded
-            micOnIcon = null;
-            micOffIcon = null;
-        }
-
         // 2) Build main window
         frame = new JFrame("Brokk: Code Intelligence for AI");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -160,20 +140,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
-        // If STT is unavailable, disable it & set tooltip
-        boolean sttEnabled = contextManager != null 
+        // Configure STT availability for mic button
+        boolean sttEnabled = contextManager != null
                 && !(contextManager.getCoder().models.sttModel() instanceof Models.UnavailableSTT);
-        if (!sttEnabled) {
-            micButton.setEnabled(false);
-            micButton.setToolTipText("OpenAI key is required for STT");
-        } else {
-            micButton.setToolTipText("Click to start/stop recording");
-            setupMicButtonToggle(micButton);
-            // Ensure correct initial icon is set
-            if (micOffIcon != null) {
-                micButton.setIcon(micOffIcon);
-            }
-        }
+        micButton.configure(sttEnabled);
 
         if (contextManager == null) {
             frame.setTitle("Brokk (no project)");
@@ -497,25 +467,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         JPanel historyPanel = buildHistoryDropdown();
         wrapper.add(historyPanel, gbc);
 
-        // 2) Mic button on the left, spanning 2 rows:
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        gbc.gridwidth = 1;
-        gbc.gridheight = 1;  // span downward
-        gbc.weightx = 0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.insets = new Insets(2, 2, 2, 8);
-        micButton = new JButton();
-        if (micOffIcon != null) {
-            micButton.setIcon(micOffIcon);
-        } else {
-            micButton.setText("Mic");
-        }
-        micButton.setPreferredSize(new Dimension(32, 32));
-        micButton.setMinimumSize(new Dimension(32, 32));
-        micButton.setMaximumSize(new Dimension(32, 32));
-        wrapper.add(micButton, gbc);
-
         // 3) The command input field (scrollpane) in the middle column, row=1
         gbc.gridx = 1;
         gbc.gridy = 1;
@@ -544,6 +495,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandScrollPane.setPreferredSize(new Dimension(600, 80));
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
         wrapper.add(commandScrollPane, gbc);
+
+        // 2) Mic button on the left
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        gbc.gridheight = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.insets = new Insets(2, 2, 2, 8);
+        micButton = new VoiceInputButton(
+                commandInputField instanceof JTextArea ? (JTextArea)commandInputField : null,
+                contextManager,
+                () -> actionOutput("Recording"),
+                this::toolError
+        );
+        wrapper.add(micButton, gbc);
 
         // 4) The row of left buttons (Code/Ask/Search/Run) and right button (Stop) in row=2, col=1
         gbc.gridx = 1;
@@ -595,128 +562,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.getRootPane().setDefaultButton(codeButton);
 
         return wrapper;
-    }
-
-    /**
-     * Called only if STT is enabled. Click once to start recording,
-     * click again to stop and transcribe the result in the commandInputField.
-     */
-    private void setupMicButtonToggle(JButton button) {
-        // Track recording state
-        button.putClientProperty("isRecording", false);
-        
-        button.addActionListener(e -> {
-            boolean isRecording = (boolean)button.getClientProperty("isRecording");
-            if (isRecording) {
-                // If recording, stop and transcribe
-                stopMicCaptureAndTranscribe();
-                button.putClientProperty("isRecording", false);
-            } else {
-                // Otherwise start recording
-                startMicCapture();
-                button.putClientProperty("isRecording", true);
-            }
-        });
-    }
-
-    /**
-     * Starts capturing audio from the default microphone to micBuffer on a background thread.
-     */
-    private void startMicCapture() {
-        try {
-            // disable input field while capturing
-            commandInputField.setEnabled(false);
-            
-            // Change icon to mic-on
-            if (micOnIcon != null) {
-                micButton.setIcon(micOnIcon);
-            }
-
-            AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, true);
-            DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
-            micLine = (TargetDataLine) AudioSystem.getLine(info);
-            micLine.open(format);
-            micLine.start();
-
-            micBuffer = new ByteArrayOutputStream();
-            micCaptureThread = new Thread(() -> {
-                var data = new byte[4096];
-                while (micLine != null && micLine.isOpen()) {
-                    int bytesRead = micLine.read(data, 0, data.length);
-                    if (bytesRead > 0) {
-                        synchronized (micBuffer) {
-                            micBuffer.write(data, 0, bytesRead);
-                        }
-                    }
-                }
-            }, "mic-capture-thread");
-            micCaptureThread.start();
-            actionOutput("Recording");
-        } catch (Exception ex) {
-            logger.error("Failed to start mic capture", ex);
-            toolError("Error starting mic capture: " + ex.getMessage());
-            commandInputField.setEnabled(true);
-        }
-    }
-
-    /**
-     * Stops capturing and sends to STT on a background thread.
-     */
-    private void stopMicCaptureAndTranscribe()
-    {
-        // stop capturing
-        if (micLine != null) {
-            micLine.stop();
-            micLine.close();
-        }
-        micLine = null;
-        
-        // Change icon back to mic-off and restore background
-        if (micOffIcon != null) {
-            micButton.setIcon(micOffIcon);
-        }
-        micButton.setBackground(null); // Return to default button background
-
-        // Convert the in-memory raw PCM data to a valid .wav file
-        var audioBytes = micBuffer.toByteArray();
-
-        // We do the STT in the background so as not to block the UI
-        contextManager.submitUserTask("Transcribing Audio", () -> {
-            try {
-                // Our original AudioFormat from startMicCapture
-                AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, true);
-
-                // Create an AudioInputStream wrapping the raw data + format
-                try (var bais = new java.io.ByteArrayInputStream(audioBytes);
-                     var ais  = new AudioInputStream(bais, format, audioBytes.length / format.getFrameSize()))
-                {
-                    // Write to a temp .wav
-                    var tempFile = Files.createTempFile("brokk-stt-", ".wav");
-                    AudioSystem.write(ais, AudioFileFormat.Type.WAVE, tempFile.toFile());
-
-                    // call coder
-                    var transcript = contextManager.getCoder().transcribeAudio(tempFile);
-
-                    // put it in the command input field
-                    SwingUtilities.invokeLater(() -> {
-                        if (!transcript.isBlank()) {
-                            // If user typed something already, put a space
-                            if (!commandInputField.getText().isBlank()) {
-                                commandInputField.append(" ");
-                            }
-                            commandInputField.append(transcript);
-                            commandInputField.setEnabled(true);
-                        }
-                    });
-
-                    // cleanup
-                    try { Files.deleteIfExists(tempFile); } catch (IOException ignore) {}
-                }
-            } catch (IOException e) {
-                logger.error("Error writing audio data: {}", e.getMessage(), e);
-                toolError("Error writing audio data: " + e.getMessage());
-            }
-        });
     }
 
     /**
