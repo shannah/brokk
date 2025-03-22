@@ -139,6 +139,10 @@ public class GitPanel extends JPanel {
         // "Show Diff" menu item
         var viewDiffItem = new JMenuItem("Show Diff");
         uncommittedContextMenu.add(viewDiffItem);
+        
+        // "Edit File" menu item
+        var editFileItem = new JMenuItem("Edit File");
+        uncommittedContextMenu.add(editFileItem);
 
         // When the menu appears, select the row under the cursor so the right-click target is highlighted
         uncommittedContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener()
@@ -154,6 +158,8 @@ public class GitPanel extends JPanel {
                     {
                         uncommittedFilesTable.setRowSelectionInterval(row, row);
                     }
+                    // Update edit menu item state when popup becomes visible
+                    updateEditFileItemState(editFileItem);
                 });
             }
             @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
@@ -165,6 +171,24 @@ public class GitPanel extends JPanel {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
                 viewDiffForUncommittedRow(row);
+            }
+        });
+        
+        // Hook up "Edit File" action
+        editFileItem.addActionListener(e -> {
+            int row = uncommittedFilesTable.getSelectedRow();
+            if (row >= 0) {
+                String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
+                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
+                String filePath = path.isEmpty() ? filename : path + "/" + filename;
+                editFile(filePath);
+            }
+        });
+        
+        // Update edit menu item state based on selection
+        uncommittedFilesTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateEditFileItemState(editFileItem);
             }
         });
 
@@ -459,6 +483,31 @@ public class GitPanel extends JPanel {
             commitButton.setToolTipText("Commit all files with the message");
             stashButton.setText("Stash All");
             stashButton.setToolTipText("Save all your changes to the stash");
+        }
+    }
+    
+    /**
+     * Updates the state of the Edit File menu item based on whether the selected file
+     * is already in the editable context.
+     */
+    private void updateEditFileItemState(JMenuItem editFileItem) {
+        int row = uncommittedFilesTable.getSelectedRow();
+        if (row >= 0) {
+            String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
+            String path = (String) uncommittedFilesTable.getValueAt(row, 1);
+            String filePath = path.isEmpty() ? filename : path + "/" + filename;
+            var file = contextManager.toFile(filePath);
+            
+            // Check if this file is already in the editable context
+            boolean alreadyEditable = contextManager.getEditableFiles().contains(file);
+            
+            editFileItem.setEnabled(!alreadyEditable);
+            editFileItem.setToolTipText(alreadyEditable ? 
+                "File is already in editable context" : 
+                "Edit this file");
+        } else {
+            editFileItem.setEnabled(false);
+            editFileItem.setToolTipText("Select a file to edit");
         }
     }
 
