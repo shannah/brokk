@@ -585,11 +585,6 @@ public class GitPanel extends JPanel {
         fileHistoryTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         fileHistoryTable.setRowHeight(18);
 
-        // Set column widths to 80%/10%/10%
-        fileHistoryTable.getColumnModel().getColumn(0).setPreferredWidth(800); // message (80%)
-        fileHistoryTable.getColumnModel().getColumn(1).setPreferredWidth(100); // author (10%)
-        fileHistoryTable.getColumnModel().getColumn(2).setPreferredWidth(100); // date (10%)
-
         // Hide ID column
         fileHistoryTable.getColumnModel().getColumn(3).setMinWidth(0);
         fileHistoryTable.getColumnModel().getColumn(3).setMaxWidth(0);
@@ -733,7 +728,7 @@ public class GitPanel extends JPanel {
         fileHistoryTables.put(filePath, fileHistoryTable);
 
         // Load the file history
-        loadFileHistory(file, fileHistoryModel);
+        loadFileHistory(file, fileHistoryModel, fileHistoryTable);
     }
     
     private String getFileTabName(String filePath) {
@@ -757,7 +752,7 @@ public class GitPanel extends JPanel {
         gitLogPanel.selectCommitById(commitId);
     }
     
-    private void loadFileHistory(RepoFile file, DefaultTableModel model) {
+    private void loadFileHistory(RepoFile file, DefaultTableModel model, JTable table) {
         contextManager.submitBackgroundTask("Loading file history: " + file, () -> {
             try {
                 var history = getRepo().getFileHistory(file);
@@ -778,6 +773,10 @@ public class GitPanel extends JPanel {
                             commit.id()
                         });
                     }
+                    
+                    // Now that data is loaded, adjust column widths
+                    TableUtils.fitColumnWidth(table, 1); // author column
+                    TableUtils.fitColumnWidth(table, 2); // date column
                 });
             } catch (Exception e) {
                 logger.error("Error loading file history for: {}", file, e);
