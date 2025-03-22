@@ -62,8 +62,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
 
-    // Capture panel buttons
-    private JButton captureTextButton;
+    // Copy and reference panel buttons
+    private JButton copyTextButton;
     private JButton editReferencesButton;
 
     // Panels:
@@ -1637,16 +1637,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Buttons panel on the right
         var buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
 
-        // "Capture Text" button
-        captureTextButton = new JButton("Capture Text");
-        captureTextButton.setMnemonic(KeyEvent.VK_T);
-        captureTextButton.setToolTipText("Capture the output as context");
-        captureTextButton.addActionListener(e -> {
-            contextManager.captureTextFromContextAsync();
-        });
-        // Set minimum size
-        captureTextButton.setMinimumSize(captureTextButton.getPreferredSize());
-        buttonsPanel.add(captureTextButton);
+        // "Copy Text" button
+    copyTextButton = new JButton("Copy Text");
+    copyTextButton.setMnemonic(KeyEvent.VK_T);
+    copyTextButton.setToolTipText("Copy the output to clipboard");
+    copyTextButton.addActionListener(e -> {
+        String text = llmStreamArea.getText();
+        if (!text.isBlank()) {
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                new java.awt.datatransfer.StringSelection(text), null);
+            toolErrorRaw("Copied to clipboard");
+        }
+    });
+    // Set minimum size
+    copyTextButton.setMinimumSize(copyTextButton.getPreferredSize());
+    buttonsPanel.add(copyTextButton);
 
         // "Edit References" button
         editReferencesButton = new JButton("Edit References");
@@ -1671,7 +1676,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     /**
      * Updates the state of capture buttons based on textarea content
-     * 
+     *
      * If `ctx` is null it means we're processing a new response from the LLM
      * and we should parse our raw text for references instead
      */
@@ -1680,7 +1685,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         boolean hasText = !text.isBlank();
 
         SwingUtilities.invokeLater(() -> {
-            captureTextButton.setEnabled(hasText);
+            copyTextButton.setEnabled(hasText);  // Enable copy button when there's text
             var analyzer = contextManager == null ? null : contextManager.getAnalyzerNonBlocking();
 
             // Check for sources only if there's text
