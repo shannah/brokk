@@ -208,7 +208,7 @@ public boolean isGitIgnoreSet() {
         } catch (IOException e) {
             logger.error("Error reading style guide: {}", e.getMessage());
         }
-        return null;
+        return "";
     }
 
     public void saveStyleGuide(String styleGuide) {

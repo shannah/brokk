@@ -29,14 +29,7 @@ public abstract class DefaultPrompts {
     public String formatIntro(ContextManager cm) {
         var editableContents = cm.getEditableSummary();
         var readOnlyContents = cm.getReadOnlySummary();
-        String styleGuide = cm.getProject().getStyleGuide();
-        String styleGuildeContents = styleGuide == null
-                ? ""
-                : """
-                <style_guide>
-                %s
-                </style_guide>
-                """.stripIndent().formatted(styleGuide);
+        var styleGuide = cm.getProject().getStyleGuide();
                 
         var workspaceBuilder = new StringBuilder();
         workspaceBuilder.append("- Root: ").append(cm.getRoot().getFileName());
@@ -54,10 +47,12 @@ public abstract class DefaultPrompts {
                 <workspace>
                 %s
                 </workspace>
+                <style_guide>
                 %s
+                </style_guide>
                 """.stripIndent().formatted(systemIntro(),
                                             workspaceBuilder.toString(),
-                                            styleGuildeContents).trim();
+                                            styleGuide).trim();
     }
 
     public String systemIntro() {
