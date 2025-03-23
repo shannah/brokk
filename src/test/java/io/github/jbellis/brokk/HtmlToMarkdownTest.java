@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import org.junit.jupiter.api.Test;
 
 public class HtmlToMarkdownTest {

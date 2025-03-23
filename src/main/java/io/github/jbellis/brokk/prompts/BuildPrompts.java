@@ -4,11 +4,9 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.Environment;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public abstract class BuildPrompts extends DefaultPrompts {
     public static final BuildPrompts instance = new BuildPrompts() {};

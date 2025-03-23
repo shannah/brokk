@@ -1,10 +1,8 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.util;
 
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Scanner;
 
 public class Environment {

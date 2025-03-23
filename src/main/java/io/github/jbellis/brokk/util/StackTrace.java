@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.util;
 
 import java.util.ArrayList;
 import java.util.List;

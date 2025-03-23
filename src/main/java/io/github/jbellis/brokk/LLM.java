@@ -9,6 +9,7 @@ import io.github.jbellis.brokk.analyzer.RepoFile;
 import io.github.jbellis.brokk.prompts.BuildPrompts;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
+import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.util.StackTrace;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
