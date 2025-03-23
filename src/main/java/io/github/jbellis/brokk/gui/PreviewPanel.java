@@ -23,7 +23,7 @@ import java.awt.event.KeyEvent;
  */
 public class PreviewPanel extends JPanel
 {
-    private final RSyntaxTextArea textArea;
+    private final PreviewTextArea textArea;
     private final JTextField searchField;
     private final JButton nextButton;
     private final JButton previousButton;
@@ -46,6 +46,61 @@ public class PreviewPanel extends JPanel
      * @param syntaxStyle For example, SyntaxConstants.SYNTAX_STYLE_JAVA
      * @param guiTheme    The theme manager to use for styling the text area
      */
+    /**
+     * Custom RSyntaxTextArea implementation for preview panels with custom popup menu
+     */
+    public static class PreviewTextArea extends RSyntaxTextArea {
+        
+        public PreviewTextArea(String content, String syntaxStyle) {
+            setSyntaxEditingStyle(syntaxStyle != null ? syntaxStyle : SyntaxConstants.SYNTAX_STYLE_NONE);
+            setCodeFoldingEnabled(true);
+            setAntiAliasingEnabled(true);
+            setHighlightCurrentLine(false);
+            setEditable(false);
+            setText(content);
+        }
+        
+        @Override
+        protected JPopupMenu createPopupMenu() {
+            JPopupMenu menu = new JPopupMenu();
+            
+            // Add Copy option
+            Action copyAction = new AbstractAction("Copy") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    copy();
+                }
+            };
+            menu.add(copyAction);
+            
+            // Add Quick Edit option (disabled by default, will be enabled when text is selected)
+            Action quickEditAction = new AbstractAction("Quick Edit") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    // Implementation will be added later
+                }
+            };
+            quickEditAction.setEnabled(false);
+            menu.add(quickEditAction);
+            
+            // Update Quick Edit enabled state when popup becomes visible
+            menu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+                @Override
+                public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                    quickEditAction.setEnabled(getSelectedText() != null);
+                }
+                
+                @Override
+                public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
+                
+                @Override
+                public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+            });
+            
+            return menu;
+        }
+    }
+    
     public PreviewPanel(ContextManager contextManager, String content, String syntaxStyle, GuiTheme guiTheme)
     {
         super(new BorderLayout());
@@ -66,15 +121,7 @@ public class PreviewPanel extends JPanel
         searchPanel.add(nextButton);
 
         // === Text area with syntax highlighting ===
-        textArea = new RSyntaxTextArea();
-        textArea.setSyntaxEditingStyle(
-            syntaxStyle != null ? syntaxStyle : SyntaxConstants.SYNTAX_STYLE_NONE
-        );
-        textArea.setCodeFoldingEnabled(true);
-        textArea.setAntiAliasingEnabled(true);
-        textArea.setHighlightCurrentLine(false);
-        textArea.setEditable(false);
-        textArea.setText(content);
+        textArea = new PreviewTextArea(content, syntaxStyle);
 
         // Put the text area in a scroll pane
         RTextScrollPane scrollPane = new RTextScrollPane(textArea);

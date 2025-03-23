@@ -747,6 +747,7 @@ public class ContextManager implements IContextManager
             try {
                 io.systemOutput("Fetching " + clipboardText);
                 content = fetchUrlContent(clipboardText);
+                content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                 wasUrl = true;
                 io.actionComplete();
             } catch (IOException e) {
@@ -762,15 +763,12 @@ public class ContextManager implements IContextManager
             return;
         }
 
-        // Convert from HTML to markdown if needed
-        String convertedText = HtmlToMarkdown.maybeConvertToMarkdown(content);
-
         // Add as string fragment (possibly converted from HTML)
-        addPasteFragment(convertedText, submitSummarizeTaskForPaste(convertedText));
+        addPasteFragment(content, submitSummarizeTaskForPaste(content));
 
         // Inform the user about what happened
         String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-        if (!convertedText.equals(content)) {
+        if (!content.equals(content)) {
             message += " (converted from HTML)";
         }
         io.systemOutput(message);
