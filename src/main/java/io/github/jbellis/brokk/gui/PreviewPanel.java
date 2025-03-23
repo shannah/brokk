@@ -106,9 +106,6 @@ public class PreviewPanel extends JPanel
         super(new BorderLayout());
         this.contextManager = contextManager;
 
-        // Register ESC key to close the dialog
-        registerEscapeKey();
-
         // === Top search bar ===
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         searchField = new JTextField(20);
@@ -140,17 +137,17 @@ public class PreviewPanel extends JPanel
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
-                updateSearchHighlights();
+                updateSearchHighlights(true);
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
-                updateSearchHighlights();
+                updateSearchHighlights(true);
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                updateSearchHighlights();
+                updateSearchHighlights(true);
             }
         });
         
@@ -201,25 +198,58 @@ public class PreviewPanel extends JPanel
             @Override
             public void actionPerformed(ActionEvent e) {
                 searchField.requestFocusInWindow();
+                // If there's text in the search field, re-highlight matches
+                // without changing the caret position
+                String query = searchField.getText();
+                if (query != null && !query.trim().isEmpty()) {
+                    int originalCaretPosition = textArea.getCaretPosition();
+                    updateSearchHighlights(false);
+                    textArea.setCaretPosition(originalCaretPosition);
+                }
             }
         });
         
         // Scroll to the beginning of the document
         textArea.setCaretPosition(0);
+
+        // Register ESC key to close the dialog
+        registerEscapeKey();
     }
     
     /**
-     * Registers ESC key to close the preview panel
+     * Registers ESC key to first clear search highlights if search field has focus,
+     * otherwise close the preview panel
      */
     private void registerEscapeKey() {
+        // Register ESC handling for the search field
         KeyStroke escapeKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
+
+        // Add ESC handler to search field to clear highlights and defocus it
+        searchField.getInputMap(JComponent.WHEN_FOCUSED).put(escapeKeyStroke, "defocusSearch");
+        searchField.getActionMap().put("defocusSearch", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Clear all highlights but keep search text
+                SearchContext context = new SearchContext();
+                context.setMarkAll(false);
+                SearchEngine.markAll(textArea, context);
+                // Clear the current selection/highlight as well
+                textArea.setCaretPosition(textArea.getCaretPosition());
+                textArea.requestFocusInWindow();
+            }
+        });
+        
+        // Add ESC handler to panel to close window when search is not focused
         getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(escapeKeyStroke, "closePreview");
         getActionMap().put("closePreview", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                Window window = SwingUtilities.getWindowAncestor(PreviewPanel.this);
-                if (window != null) {
-                    window.dispose();
+                // Only close if search field doesn't have focus
+                if (!searchField.hasFocus()) {
+                    Window window = SwingUtilities.getWindowAncestor(PreviewPanel.this);
+                    if (window != null) {
+                        window.dispose();
+                    }
                 }
             }
         });
@@ -227,11 +257,17 @@ public class PreviewPanel extends JPanel
 
     /**
      * Called whenever the user types in the search field, to highlight all matches (case-insensitive).
+     * 
+     * @param jumpToFirst If true, jump to the first occurrence; if false, maintain current position
      */
-    private void updateSearchHighlights()
+    private void updateSearchHighlights(boolean jumpToFirst)
     {
         String query = searchField.getText();
         if (query == null || query.trim().isEmpty()) {
+            // Clear all highlights if query is empty
+            SearchContext clearContext = new SearchContext();
+            clearContext.setMarkAll(false);
+            SearchEngine.markAll(textArea, clearContext);
             return;
         }
 
@@ -245,17 +281,19 @@ public class PreviewPanel extends JPanel
 
         // Mark all occurrences
         SearchEngine.markAll(textArea, context);
-        
-        // Jump to the first occurrence as the user types
-        int originalCaretPosition = textArea.getCaretPosition();
-        textArea.setCaretPosition(0); // Start search from beginning
-        SearchResult result = SearchEngine.find(textArea, context);
-        if (!result.wasFound() && originalCaretPosition > 0) {
-            // If not found from beginning, restore caret position
-            textArea.setCaretPosition(originalCaretPosition);
-        } else if (result.wasFound()) {
-            // Center the match in the viewport
-            centerCurrentMatchInView();
+
+        if (jumpToFirst) {
+            // Jump to the first occurrence as the user types
+            int originalCaretPosition = textArea.getCaretPosition();
+            textArea.setCaretPosition(0); // Start search from beginning
+            SearchResult result = SearchEngine.find(textArea, context);
+            if (!result.wasFound() && originalCaretPosition > 0) {
+                // If not found from beginning, restore caret position
+                textArea.setCaretPosition(originalCaretPosition);
+            } else if (result.wasFound()) {
+                // Center the match in the viewport
+                centerCurrentMatchInView();
+            }
         }
     }
     
