@@ -36,7 +36,6 @@ public class HistoryOutputPane extends JSplitPane {
     private JScrollPane systemScrollPane;
     private JTextArea captureDescriptionArea;
     private JButton copyTextButton;
-    private JButton editReferencesButton;
 
     /**
      * Constructs a new HistoryOutputPane.
@@ -391,14 +390,14 @@ public class HistoryOutputPane extends JSplitPane {
     
     /**
      * Builds the "Capture Output" panel with a horizontal layout:
-     * [References Label] [Capture Text] [Edit References]
+     * [Capture Text]
      */
     private JPanel buildCaptureOutputPanel() {
         var panel = new JPanel(new BorderLayout(5, 3));
         panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
 
-        // References label in center - will get all extra space
-        captureDescriptionArea = new JTextArea("No references found");
+        // Placeholder area in center - will get all extra space
+        captureDescriptionArea = new JTextArea("");
         captureDescriptionArea.setEditable(false);
         captureDescriptionArea.setBackground(panel.getBackground());
         captureDescriptionArea.setBorder(null);
@@ -426,17 +425,6 @@ public class HistoryOutputPane extends JSplitPane {
         copyTextButton.setMinimumSize(copyTextButton.getPreferredSize());
         buttonsPanel.add(copyTextButton);
 
-        // "Edit References" button
-        editReferencesButton = new JButton("Edit References");
-        editReferencesButton.setToolTipText("Edit the files referenced by the output");
-        editReferencesButton.setMnemonic(KeyEvent.VK_F);
-        editReferencesButton.setEnabled(false);
-        editReferencesButton.addActionListener(e -> {
-            contextManager.editFilesFromContextAsync();
-        });
-        // Set minimum size
-        editReferencesButton.setMinimumSize(editReferencesButton.getPreferredSize());
-        buttonsPanel.add(editReferencesButton);
 
         // Add buttons panel to the right
         panel.add(buttonsPanel, BorderLayout.EAST);
@@ -500,46 +488,19 @@ public class HistoryOutputPane extends JSplitPane {
     
     /**
      * Sets the enabled state of the edit references button
+     * 
+     * @deprecated This method is kept for compatibility with Chrome class but does nothing now
      */
     public void setEditReferencesButtonEnabled(boolean enabled) {
-        editReferencesButton.setEnabled(enabled);
+        // Edit References button has been removed
     }
     
     /**
      * Updates the files description area with formatted file list
      */
     public void updateFilesDescription(Set<RepoFile> files) {
-        if (files.isEmpty()) {
-            captureDescriptionArea.setText("No references found");
-            captureDescriptionArea.setToolTipText(null);
-            return;
-        }
-
-        // Build both the short version (for display) and full version (for tooltip)
-        var fileNames = files.stream()
-                .map(file -> file.getFileName())
-                .toList();
-
-        StringBuilder displayText = new StringBuilder();
-
-        if (fileNames.size() <= 3) {
-            // Show all references if 3 or fewer
-            displayText.append(String.join(", ", fileNames));
-        } else {
-            // Show first 3 references + "..." if more than 3
-            displayText.append(String.join(", ", fileNames.subList(0, 3)));
-            displayText.append(", ...");
-        }
-
-        // Set the text and tooltip
-        captureDescriptionArea.setText(displayText.toString());
-
-        // Only set tooltip if there are more than 3 files
-        if (fileNames.size() > 3) {
-            captureDescriptionArea.setToolTipText(String.join("\n", fileNames));
-        } else {
-            captureDescriptionArea.setToolTipText(null);
-        }
+        // Method kept for compatibility with Chrome class but does nothing now
+        // References are no longer shown in the output pane
     }
     
     /**
