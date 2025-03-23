@@ -382,7 +382,7 @@ public interface ContextFragment extends Serializable {
 
     class SkeletonFragment extends VirtualFragment {
         private static final long serialVersionUID = 2L;
-        private final Map<CodeUnit, String> skeletons;
+        final Map<CodeUnit, String> skeletons;
 
         public SkeletonFragment(Map<CodeUnit, String> skeletons) {
             super();

@@ -5,6 +5,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,6 +19,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -329,6 +331,11 @@ public class Context implements Serializable {
             return AutoContext.EMPTY;
         }
 
+        var sf = buildAutoContext(analyzer, weightedSeeds, ineligibleSources, autoContextFileCount);
+        return sf.skeletons.isEmpty() ? AutoContext.EMPTY : new AutoContext(sf);
+    }
+
+    public static SkeletonFragment buildAutoContext(IAnalyzer analyzer, Map<String, Double> weightedSeeds, Set<CodeUnit> ineligibleSources, int topK) {
         var pagerankResults = AnalyzerUtil.combinedPageRankFor(analyzer, weightedSeeds);
 
         // build skeleton map
@@ -344,17 +351,12 @@ public class Context implements Serializable {
                     skeletonMap.put(CodeUnit.cls(fqName), opt.get());
                 }
             }
-            if (skeletonMap.size() >= autoContextFileCount) {
+            if (skeletonMap.size() >= topK) {
                 break;
             }
         }
-        if (skeletonMap.isEmpty()) {
-            return AutoContext.EMPTY;
-        }
-        
-        var skeleton = new SkeletonFragment(skeletonMap);
 
-        return new AutoContext(skeleton);
+        return new SkeletonFragment(skeletonMap);
     }
 
     // ---------------------------------------------------------
