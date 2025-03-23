@@ -486,6 +486,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Enable undo/redo
         commandInputField.setAutoIndentEnabled(false);
 
+        // Add Ctrl+Enter shortcut to trigger the default button
+        var ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK);
+        commandInputField.getInputMap().put(ctrlEnter, "submitDefault");
+        commandInputField.getActionMap().put("submitDefault", new AbstractAction() 
+        {
+            @Override
+            public void actionPerformed(ActionEvent e) 
+            {
+                // If there's a default button, "click" it
+                var rootPane = SwingUtilities.getRootPane(commandInputField);
+                if (rootPane != null && rootPane.getDefaultButton() != null) 
+                {
+                    rootPane.getDefaultButton().doClick();
+                }
+            }
+        });
+
         // Create a scrollpane for the text area
         var commandScrollPane = new JScrollPane(commandInputField);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
