@@ -25,6 +25,23 @@ import static java.lang.Math.min;
  * Utility for extracting and applying before/after search-replace blocks in content.
  */
 public class EditBlock {
+    /**
+     * Helper that returns the first code block found between triple backticks.
+     * Returns an empty string if none found.
+     */
+    static String extractCodeFromTripleBackticks(String text) {
+        // Pattern: ``` some code ```
+        var matcher = Pattern.compile(
+                "```(.*?)```",
+                Pattern.DOTALL
+        ).matcher(text);
+
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "";
+    }
+
     public enum EditBlockFailureReason {
         FILE_NOT_FOUND,
         NO_MATCH,

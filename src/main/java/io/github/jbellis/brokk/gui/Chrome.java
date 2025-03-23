@@ -978,7 +978,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Create a JFrame to hold the new PreviewPanel
         var frame = new JFrame("Preview: " + fragment.shortDescription());
         // Pass the theme manager to properly style the preview
-        var previewPanel = new PreviewPanel(contextManager, content, syntaxType, themeManager);
+        var previewPanel = new PreviewPanel(contextManager,
+                                            fragment instanceof ContextFragment.RepoPathFragment(RepoFile file) ? file : null,
+                                            content,
+                                            syntaxType,
+                                            themeManager);
         frame.setContentPane(previewPanel);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

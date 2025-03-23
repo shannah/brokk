@@ -1,12 +1,14 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import io.github.jbellis.brokk.prompts.BuildPrompts;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
+import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -15,6 +17,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class LLM {
     private static final Logger logger = LogManager.getLogger(LLM.class);
@@ -188,6 +192,96 @@ public class LLM {
         if (!pendingHistory.isEmpty()) {
             coder.contextManager.addToHistory(pendingHistory, originalContents, userInput);
         }
+    }
+
+    /**
+     * Runs a quick-edit session where we:
+     * 1) Gather the entire file content plus related context (buildAutoContext)
+     * 2) Use QuickEditPrompts to ask for a single fenced code snippet
+     * 3) Replace the old text with the new snippet in the file
+     */
+    public static void runQuickSession(ContextManager cm,
+                                       IConsoleIO io,
+                                       RepoFile file,
+                                       String oldText,
+                                       String instructions)
+    {
+        var coder = cm.getCoder();
+        var analyzer = cm.getAnalyzer();
+
+        // Use up to 5 related classes as context
+        var seeds = analyzer.getClassesInFile(file).stream()
+                .collect(Collectors.toMap(
+                        CodeUnit::fqName,   // use the class name as the key
+                        cls -> 1.0    // assign a default weight of 1.0 to each class
+                ));
+        var relatedCode = Context.buildAutoContext(analyzer, seeds, Set.of(), 5);
+
+        // (5) Wrap read() in UncheckedIOException
+        String fileContents;
+        try {
+            fileContents = file.read();
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+
+        var styleGuide = cm.getProject().getStyleGuide();
+
+        // Build the prompt messages
+        var messages = QuickEditPrompts.instance.collectMessages(fileContents, relatedCode, styleGuide);
+
+        // The user instructions
+        var instructionsMsg = QuickEditPrompts.instance.formatInstructions(oldText, instructions);
+        messages.add(new UserMessage(instructionsMsg));
+
+        // Non-streaming model for quick application
+        var result = coder.sendStreaming(coder.models.applyModel(), messages, false);
+        var responseText = result.chatResponse().aiMessage().text();
+        if (responseText.isBlank()) {
+            io.systemOutput("No response from LLM for quick edit.");
+            return;
+        }
+
+        // Extract the new snippet
+        var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
+        if (newSnippet.isEmpty()) {
+            io.systemOutput("Could not parse a fenced code snippet from LLM response.");
+            return;
+        }
+
+        // Attempt to replace old snippet in the file
+        // If oldText not found, do nothing
+        String updatedFileContents;
+        try {
+            if (!fileContents.contains(oldText)) {
+                io.systemOutput("The selected snippet was not found in the file. No changes applied.");
+                return;
+            }
+            updatedFileContents = fileContents.replaceFirst(
+                    java.util.regex.Pattern.quote(oldText.stripLeading()),
+                    java.util.regex.Matcher.quoteReplacement(newSnippet.stripLeading())
+            );
+        } catch (Exception ex) {
+            io.systemOutput("Failed to replace text: " + ex.getMessage());
+            return;
+        }
+
+        // (5) Wrap write() in UncheckedIOException
+        try {
+            file.write(updatedFileContents);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+
+        // Record the original content so we can undo if necessary
+        var originalContents = Map.<RepoFile,String>of(file, fileContents);
+
+        // Save to context history
+        var pendingHistory = List.of(
+                new UserMessage(instructionsMsg),
+                new AiMessage(responseText)
+        );
+        cm.addToHistory(pendingHistory, originalContents, "Quick Edit: " + file.getFileName());
     }
 
     /**
