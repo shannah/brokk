@@ -453,7 +453,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public String format() throws IOException {
+        public String format() {
             assert !isEmpty(); // skeleton in autocontext can be empty, but doesn't call this
             return """
             <summary classes="%s">
@@ -575,7 +575,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public String format() throws IOException {
+        public String format() {
             if (isEmpty()) {
                 return "";
             }
