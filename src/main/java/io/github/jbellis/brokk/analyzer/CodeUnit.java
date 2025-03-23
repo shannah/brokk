@@ -79,6 +79,18 @@ public record CodeUnit(CodeUnitType kind, String fqName)
         };
     }
 
+    /**
+     * @return the package portion of the fully qualified name up to the first capitalized component
+     *         in the dot-separated hierarchy.
+     */
+    public String getPackage()
+    {
+        var parts = fqName.split("\\.");
+        return Arrays.stream(parts)
+                .takeWhile(part -> part.isEmpty() || !Character.isUpperCase(part.charAt(0)))
+                .collect(Collectors.joining("."));
+    }
+
     @Override
     public int compareTo(CodeUnit other)
     {

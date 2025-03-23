@@ -6,7 +6,6 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.RepoFile;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -401,9 +400,8 @@ public interface ContextFragment extends Serializable {
             var skeletonsByPackage = skeletons.entrySet().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                     entry -> {
-                        var fqName = entry.getKey().fqName();
-                        int lastDotIndex = fqName.lastIndexOf('.');
-                        return lastDotIndex == -1 ? "(default package)" : fqName.substring(0, lastDotIndex);
+                        var packageName = entry.getKey().getPackage();
+                        return packageName.isEmpty() ? "(default package)" : packageName;
                     },
                     java.util.stream.Collectors.toMap(
                         Map.Entry::getKey,
