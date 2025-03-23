@@ -132,7 +132,7 @@ public class Project implements IProject {
             }
 
             // Use atomic save method
-            FileUtil.atomicSaveProperties(file, properties, comment);
+            AtomicWrites.atomicSaveProperties(file, properties, comment);
         } catch (IOException e) {
             logger.error("Error saving properties to {}: {}", file, e.getMessage());
         }
@@ -214,7 +214,7 @@ public boolean isGitIgnoreSet() {
     public void saveStyleGuide(String styleGuide) {
         try {
             Files.createDirectories(styleGuidePath.getParent());
-            FileUtil.atomicOverwrite(styleGuidePath, styleGuide);
+            AtomicWrites.atomicOverwrite(styleGuidePath, styleGuide);
         } catch (IOException e) {
             logger.error("Error saving style guide: {}", e.getMessage());
         }
@@ -575,7 +575,7 @@ public boolean isGitIgnoreSet() {
         try {
             Properties keyProps = new Properties();
             keys.forEach(keyProps::setProperty);
-            FileUtil.atomicSaveProperties(keysPath, keyProps, "Brokk LLM API keys");
+            AtomicWrites.atomicSaveProperties(keysPath, keyProps, "Brokk LLM API keys");
         } catch (IOException e) {
             logger.error("Error saving LLM keys: {}", e.getMessage());
         }
@@ -651,7 +651,7 @@ public boolean isGitIgnoreSet() {
         }
 
         try {
-            FileUtil.atomicSaveProperties(RECENT_PROJECTS_PATH, props, "Recently opened Brokk projects");
+            AtomicWrites.atomicSaveProperties(RECENT_PROJECTS_PATH, props, "Recently opened Brokk projects");
         } catch (IOException e) {
             logger.error("Error saving recent projects: {}", e.getMessage());
         }

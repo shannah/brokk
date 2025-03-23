@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Properties;
 
-public class FileUtil {
+public class AtomicWrites {
     /**
      * Overwrites the content of a file with the provided text data.
      * <p>
