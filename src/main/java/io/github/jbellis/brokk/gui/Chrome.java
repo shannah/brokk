@@ -12,18 +12,12 @@ import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
-import javax.sound.sampled.*;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -984,7 +978,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Create a JFrame to hold the new PreviewPanel
         var frame = new JFrame("Preview: " + fragment.shortDescription());
         // Pass the theme manager to properly style the preview
-        var previewPanel = new PreviewPanel(content, syntaxType, themeManager);
+        var previewPanel = new PreviewPanel(contextManager, content, syntaxType, themeManager);
         frame.setContentPane(previewPanel);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

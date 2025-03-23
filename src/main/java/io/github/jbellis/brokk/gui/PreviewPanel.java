@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.ContextManager;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
-import org.fife.ui.rsyntaxtextarea.Theme;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
 import org.fife.ui.rtextarea.SearchContext;
@@ -14,7 +14,6 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 
 /**
@@ -28,6 +27,7 @@ public class PreviewPanel extends JPanel
     private final JTextField searchField;
     private final JButton nextButton;
     private final JButton previousButton;
+    private final ContextManager contextManager;
     
     /**
      * Updates the theme of this panel
@@ -41,14 +41,16 @@ public class PreviewPanel extends JPanel
     
     /**
      * Constructs a new PreviewPanel with the given content and syntax style.
+     *
      * @param content     The text content to display
      * @param syntaxStyle For example, SyntaxConstants.SYNTAX_STYLE_JAVA
      * @param guiTheme    The theme manager to use for styling the text area
      */
-    public PreviewPanel(String content, String syntaxStyle, GuiTheme guiTheme)
+    public PreviewPanel(ContextManager contextManager, String content, String syntaxStyle, GuiTheme guiTheme)
     {
         super(new BorderLayout());
-        
+        this.contextManager = contextManager;
+
         // Register ESC key to close the dialog
         registerEscapeKey();
 
