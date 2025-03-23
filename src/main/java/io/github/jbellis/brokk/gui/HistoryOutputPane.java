@@ -424,6 +424,20 @@ public class HistoryOutputPane extends JSplitPane {
         // Set minimum size
         copyTextButton.setMinimumSize(copyTextButton.getPreferredSize());
         buttonsPanel.add(copyTextButton);
+        
+        // "Open in New Window" button
+        var openWindowButton = new JButton("Open in New Window");
+        openWindowButton.setMnemonic(KeyEvent.VK_W);
+        openWindowButton.setToolTipText("Open the output in a new window");
+        openWindowButton.addActionListener(e -> {
+            String text = llmStreamArea.getText();
+            if (!text.isBlank()) {
+                new OutputWindow(text, chrome.themeManager != null && chrome.themeManager.isDarkTheme());
+            }
+        });
+        // Set minimum size
+        openWindowButton.setMinimumSize(openWindowButton.getPreferredSize());
+        buttonsPanel.add(openWindowButton);
 
 
         // Add buttons panel to the right
@@ -509,11 +523,59 @@ public class HistoryOutputPane extends JSplitPane {
     public void updateTheme(boolean isDark) {
         llmStreamArea.updateTheme(isDark);
     }
-    
+
     /**
      * Gets the LLM scroll pane
      */
     public JScrollPane getLlmScrollPane() {
         return llmScrollPane;
+    }
+    
+    /**
+     * Inner class representing a detached window for viewing output text
+     */
+    private class OutputWindow extends JFrame {
+        /**
+         * Creates a new output window with the given text content
+         * 
+         * @param text The markdown text to display
+         * @param isDark Whether to use dark theme
+         */
+        public OutputWindow(String text, boolean isDark) {
+            super("Output");
+            setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            
+            // Create markdown panel with the text
+            var outputPanel = new MarkdownOutputPanel();
+            outputPanel.updateTheme(isDark);
+            outputPanel.setText(text);
+            
+            // Add to a scroll pane
+            var scrollPane = new JScrollPane(outputPanel);
+            scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            
+            // Add the scroll pane to the frame
+            add(scrollPane);
+            
+            // Set size and position
+            setSize(800, 600);
+            setLocationRelativeTo(null);
+            
+            // Add ESC key binding to close the window
+            var rootPane = getRootPane();
+            var actionMap = rootPane.getActionMap();
+            var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+            
+            inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeWindow");
+            actionMap.put("closeWindow", new AbstractAction() {
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    dispose();
+                }
+            });
+            
+            // Make window visible
+            setVisible(true);
+        }
     }
 }
