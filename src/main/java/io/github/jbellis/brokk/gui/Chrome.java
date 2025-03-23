@@ -38,6 +38,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Used as the default text for the background tasks label
     private final String BGTASK_EMPTY = "No background tasks";
+    
+    // For collapsing/expanding the Git panel
+    private int lastGitPanelDividerLocation = -1;
 
     // Dependencies:
     ContextManager contextManager;
@@ -1317,6 +1320,27 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
     }
 
+    /**
+     * Collapses or restores the bottom (Git) panel in the contextGitSplitPane.
+     * Toggling once hides the git panel, toggling again restores it to its last size.
+     */
+    public void toggleGitPanel()
+    {
+        // Store the current divider location
+        lastGitPanelDividerLocation = contextGitSplitPane.getDividerLocation();
+        // Move divider down to hide the git panel completely
+        // (We subtract a little extra so the bottom border is truly out of sight)
+        var totalHeight = contextGitSplitPane.getHeight();
+        var dividerSize = contextGitSplitPane.getDividerSize();
+        contextGitSplitPane.setDividerLocation(totalHeight - dividerSize - 1);
+
+        logger.debug("Git panel collapsed; stored divider location={}", lastGitPanelDividerLocation);
+
+        // Force a re-layout
+        contextGitSplitPane.revalidate();
+        contextGitSplitPane.repaint();
+    }
+    
     public void updateContextTable() {
         contextPanel.updateContextTable();
     }

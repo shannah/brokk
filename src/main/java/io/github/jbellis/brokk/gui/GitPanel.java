@@ -58,7 +58,7 @@ public class GitPanel extends JPanel {
 
         setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
-                "Git",
+                "Git ▼",
                 javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
@@ -72,6 +72,18 @@ public class GitPanel extends JPanel {
         Dimension panelSize = new Dimension(preferredWidth, totalHeight);
         setPreferredSize(panelSize);
 
+        // Add a mouse listener to the panel to handle clicks on the title
+        this.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                // Check if the click is in the top region where the title resides
+                // This is a simple approach assuming the title is in the top area
+                if (e.getY() < 20) {  // Approximate height of the title area
+                    chrome.toggleGitPanel();
+                }
+            }
+        });
+
         // Tabbed pane
         tabbedPane = new JTabbedPane();
         add(tabbedPane, BorderLayout.CENTER);
@@ -83,8 +95,6 @@ public class GitPanel extends JPanel {
         // 2) Log tab (moved into GitLogPanel)
         gitLogPanel = new GitLogPanel(chrome, contextManager);
         tabbedPane.addTab("Log", gitLogPanel);
-
-        // The Stash functionality has been moved to the Log tab as a virtual branch
     }
 
     /**
