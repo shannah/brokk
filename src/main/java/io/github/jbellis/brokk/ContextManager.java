@@ -120,29 +120,11 @@ public class ContextManager implements IContextManager
 
     private Mode mode = Mode.EDIT;
 
-    public void editSources(ContextFragment fragment) {
-        contextActionExecutor.submit(() -> {
-            var analyzer = getAnalyzer();
-            Set<CodeUnit> sources = fragment.sources(project);
-            if (!sources.isEmpty()) {
-                Set<RepoFile> files = sources.stream()
-                        .map(analyzer::pathOf)
-                        .filter(Option::isDefined)
-                        .map(Option::get)
-                        .collect(Collectors.toSet());
-
-                if (!files.isEmpty()) {
-                    editFiles(files);
-                }
-            }
-        });
-    }
-
     public Coder getCoder() {
         return coder;
     }
 
-    public enum Mode { EDIT, APPLY }
+    public enum Mode { EDIT}
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
@@ -227,22 +209,6 @@ public class ContextManager implements IContextManager
         contextHistory.replaceContext(context, replacement);
         io.updateContextHistoryTable();
         io.updateContextTable();
-    }
-
-    /**
-     * Get the current mode
-     */
-    public Mode getMode()
-    {
-        return mode;
-    }
-
-    /**
-     * Set the current mode
-     */
-    public void setMode(Mode mode)
-    {
-        this.mode = mode;
     }
 
     /**
@@ -535,14 +501,6 @@ public class ContextManager implements IContextManager
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Show the symbol selection dialog
-     */
-    private String showSymbolSelectionDialog()
-    {
-        return showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL);
-    }
-    
     /**
      * Show the symbol selection dialog with a type filter
      */
@@ -1077,56 +1035,6 @@ public class ContextManager implements IContextManager
     public void addVirtualFragment(VirtualFragment fragment)
     {
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
-    }
-
-    /**
-     * Captures text from the LLM output area and adds it to the context.
-     * Called from Chrome's capture button.
-     */
-    public void captureTextFromContextAsync()
-    {
-        contextActionExecutor.submit(() -> {
-            try {
-                // Use reflection or pass chrome reference in constructor to avoid direct dependency
-                var selectedCtx = selectedContext();
-                if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
-                    addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
-                    io.systemOutput("Content captured from output");
-                } else {
-                    io.toolErrorRaw("No content to capture");
-                }
-            } catch (CancellationException cex) {
-                io.systemOutput("Capture canceled.");
-            } finally {
-                io.enableContextActionButtons();
-                io.enableUserActionButtons();
-            }
-        });
-    }
-
-    /**
-     * Finds sources in the current output text and edits them.
-     * Called from Chrome's edit files button.
-     */
-    public void editFilesFromContextAsync()
-    {
-        contextActionExecutor.submit(() -> {
-            try {
-                // Use reflection or pass chrome reference in constructor to avoid direct dependency
-                var selectedCtx = selectedContext();
-                if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
-                    var fragment = selectedCtx.getParsedOutput().parsedFragment();
-                    editSources(fragment);
-                } else {
-                    io.toolErrorRaw("No content with file references to edit");
-                }
-            } catch (CancellationException cex) {
-                io.systemOutput("Edit files canceled.");
-            } finally {
-                io.enableContextActionButtons();
-                io.enableUserActionButtons();
-            }
-        });
     }
 
     /** usage for identifier */

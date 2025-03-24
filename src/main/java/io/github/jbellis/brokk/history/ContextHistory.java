@@ -4,7 +4,6 @@ import io.github.jbellis.brokk.Context;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /**
@@ -31,16 +30,6 @@ public class ContextHistory {
      */
     public synchronized List<Context> getHistory() {
         return List.copyOf(history);
-    }
-
-    /**
-     * Get a specific context at the given index
-     */
-    public synchronized Context getContextAt(int index) {
-        if (index < 0 || index >= history.size()) {
-            return null;
-        }
-        return history.get(index);
     }
 
     /**

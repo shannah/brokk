@@ -262,9 +262,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         htmlPane.setAlignmentX(LEFT_ALIGNMENT);
         htmlPane.setBackground(textBackgroundColor);
 
-        var kit = new HTMLEditorKit();
-        var styleSheet = ((HTMLEditorKit) htmlPane.getEditorKit()).getStyleSheet();
-
         String bgColorHex = String.format("#%02x%02x%02x",
                                           textBackgroundColor.getRed(),
                                           textBackgroundColor.getGreen(),

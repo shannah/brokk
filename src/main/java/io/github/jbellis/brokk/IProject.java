@@ -5,7 +5,5 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 public interface IProject {
     IAnalyzer getAnalyzer();
 
-    IAnalyzer getAnalyzerNonBlocking();
-
     IGitRepo getRepo();
 }

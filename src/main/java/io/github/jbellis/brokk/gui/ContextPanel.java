@@ -1,15 +1,12 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import io.github.jbellis.brokk.Models;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import scala.Option;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -416,7 +413,6 @@ public class ContextPanel extends JPanel {
 
                                          {
                                              if (!e.getValueIsAdjusting()) {
-                                                 updateContextActions();
                                              }
                                          });
 
@@ -455,10 +451,6 @@ public class ContextPanel extends JPanel {
 
             private void handleScrollPanePopup(MouseEvent e) {
                 if (e.isPopupTrigger()) {
-                    // Only show if we're not on the table itself
-                    Point viewPosition = tableScrollPane.getViewport().getViewPosition();
-                    Rectangle tableRect = new Rectangle(viewPosition, tableScrollPane.getViewport().getExtentSize());
-                    
                     // Get the event point in view coordinates
                     Point viewPoint = SwingUtilities.convertPoint(tableScrollPane, e.getPoint(), 
                                                                  tableScrollPane.getViewport().getView());
@@ -508,24 +500,12 @@ public class ContextPanel extends JPanel {
     }
 
     /**
-     * Updates actions based on context availability
-     */
-    public void updateContextActions() {
-        SwingUtilities.invokeLater(() -> {
-            var ctx = (contextManager == null) ? null : contextManager.selectedContext();
-            boolean hasContext = (ctx != null && !ctx.isEmpty());
-            // Context actions are now in menus, but we need this for Chrome to check status
-        });
-    }
-
-    /**
      * Populates the context table from a Context object.
      */
     public void populateContextTable(Context ctx) {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
         var tableModel = (DefaultTableModel) contextTable.getModel();
         tableModel.setRowCount(0);
-        updateContextActions();
 
         if (ctx == null || ctx.isEmpty()) {
             ((JLabel) locSummaryLabel.getComponent(0)).setText(
@@ -606,34 +586,6 @@ public class ContextPanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             populateContextTable(contextManager.selectedContext());
         });
-    }
-
-    /**
-     * Updates the capture description area if needed
-     */
-    public void updateFilesDescriptionLabel(Set<? extends CodeUnit> sources, IAnalyzer analyzer) {
-        if (chrome.captureDescriptionArea == null) {
-            return;
-        }
-
-        if (sources.isEmpty()) {
-            chrome.captureDescriptionArea.setText("Files referenced: None");
-            return;
-        }
-        if (analyzer == null) {
-            chrome.captureDescriptionArea.setText("Files referenced: ?");
-            return;
-        }
-
-        var fileNames = sources.stream()
-                .map(analyzer::pathOf)
-                .filter(Option::isDefined)
-                .map(Option::get)
-                .map(RepoFile::getFileName)
-                .collect(Collectors.toSet());
-
-        String filesText = "Files referenced: " + String.join(", ", fileNames);
-        chrome.captureDescriptionArea.setText(filesText);
     }
 
     /**

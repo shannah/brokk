@@ -551,20 +551,6 @@ public class GitPanel extends JPanel {
     }
 
     /**
-     * Allows external code to size the commit-related buttons consistently.
-     */
-    public void setSuggestCommitButtonSize(Dimension preferredSize) {
-        suggestMessageButton.setPreferredSize(preferredSize);
-        suggestMessageButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-
-        commitButton.setPreferredSize(preferredSize);
-        commitButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-
-        stashButton.setPreferredSize(preferredSize);
-        stashButton.setMaximumSize(new Dimension(preferredSize.width, preferredSize.height));
-    }
-    
-    /**
      * Creates a new tab showing the history of a specific file
      */
     public void addFileHistoryTab(RepoFile file) {

@@ -12,10 +12,6 @@ public class FileReferenceData {
     private final RepoFile repoFile; // Optional, if available
     private final CodeUnit codeUnit; // Optional, if available
 
-    public FileReferenceData(String fileName, String fullPath, RepoFile repoFile) {
-        this(fileName, fullPath, repoFile, null);
-    }
-
     public FileReferenceData(String fileName, String fullPath, RepoFile repoFile, CodeUnit codeUnit) {
         this.fileName = fileName;
         this.fullPath = fullPath;

@@ -602,22 +602,6 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * List commits
-     * @return List of commit information (simplified for now)
-     */
-    public List<String> listCommits() {
-        try {
-            var commits = new ArrayList<String>();
-            for (var commit : git.log().call()) {
-                commits.add(commit.getName() + ": " + commit.getShortMessage());
-            }
-            return commits;
-        } catch (GitAPIException e) {
-            throw new UncheckedIOException(new IOException("Failed to list commits", e));
-        }
-    }
-
-    /**
      * Get current branch name
      * @return The current branch name
      */

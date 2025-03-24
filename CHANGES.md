@@ -1,3 +1,10 @@
+0.6.4
+
+## Fixes
+- Git push works with SSH remotes
+- Partial stashing works as intended
+
+
 0.6.3
 
 ## Features

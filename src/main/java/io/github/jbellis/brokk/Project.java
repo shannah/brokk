@@ -597,7 +597,6 @@ public boolean isGitIgnoreSet() {
     /**
      * Gets the analyzer without blocking, may return null if not available
      */
-    @Override
     public IAnalyzer getAnalyzerNonBlocking() {
         return analyzerWrapper.getNonBlocking();
     }

@@ -50,10 +50,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JSplitPane contextGitSplitPane;
     private HistoryOutputPane historyOutputPane;
 
-    // Copy and reference panel buttons
-    private JButton copyTextButton;
-    private JButton editReferencesButton;
-
     // Panels:
     private ContextPanel contextPanel;
     private GitPanel gitPanel;
@@ -67,8 +63,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Track the currently running user-driven future (Code/Ask/Search/Run)
     volatile Future<?> currentUserTask;
-    JTextArea captureDescriptionArea; // Used by HistoryOutputPane
-    
+
     // For voice input
     private VoiceInputButton micButton;
 
@@ -680,7 +675,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         currentUserTask = contextManager.runSearchAsync(input);
     }
 
-    @Override
     public void clear() {
         SwingUtilities.invokeLater(() -> {
             historyOutputPane.clear();
@@ -726,7 +720,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void enableContextActionButtons() {
         // No longer needed - buttons are in menus now
-        contextPanel.updateContextActions();
     }
 
     /**
@@ -1029,50 +1022,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Determines the appropriate syntax style for a fragment
-     */
-    private String getSyntaxStyleForFragment(ContextFragment fragment) {
-        // Default to Java
-        var style = SyntaxConstants.SYNTAX_STYLE_JAVA;
-
-        // Check fragment path if it's a file
-        if (fragment instanceof ContextFragment.RepoPathFragment) {
-            var path = ((ContextFragment.RepoPathFragment) fragment).file().getFileName().toLowerCase();
-
-            if (path.endsWith(".md") || path.endsWith(".markdown")) {
-                style = SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
-            } else if (path.endsWith(".py")) {
-                style = SyntaxConstants.SYNTAX_STYLE_PYTHON;
-            } else if (path.endsWith(".js")) {
-                style = SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT;
-            } else if (path.endsWith(".html") || path.endsWith(".htm")) {
-                style = SyntaxConstants.SYNTAX_STYLE_HTML;
-            } else if (path.endsWith(".xml")) {
-                style = SyntaxConstants.SYNTAX_STYLE_XML;
-            } else if (path.endsWith(".json")) {
-                style = SyntaxConstants.SYNTAX_STYLE_JSON;
-            } else if (path.endsWith(".css")) {
-                style = SyntaxConstants.SYNTAX_STYLE_CSS;
-            } else if (path.endsWith(".sql")) {
-                style = SyntaxConstants.SYNTAX_STYLE_SQL;
-            } else if (path.endsWith(".sh") || path.endsWith(".bash")) {
-                style = SyntaxConstants.SYNTAX_STYLE_UNIX_SHELL;
-            } else if (path.endsWith(".c") || path.endsWith(".h")) {
-                style = SyntaxConstants.SYNTAX_STYLE_C;
-            } else if (path.endsWith(".cpp") || path.endsWith(".hpp") ||
-                    path.endsWith(".cc") || path.endsWith(".hh")) {
-                style = SyntaxConstants.SYNTAX_STYLE_CPLUSPLUS;
-            } else if (path.endsWith(".properties")) {
-                style = SyntaxConstants.SYNTAX_STYLE_PROPERTIES_FILE;
-            } else if (path.endsWith(".kt")) {
-                style = SyntaxConstants.SYNTAX_STYLE_KOTLIN;
-            }
-        }
-
-        return style;
-    }
-
-    /**
      * Loads window size and position from project properties
      */
     private void loadWindowSizeAndPosition() {
@@ -1158,14 +1107,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void updateContextHistoryTable(Context contextToSelect) {
         historyOutputPane.updateHistoryTable(contextToSelect);
-    }
-    
-    /**
-     * Gets the context history table for selection checks
-     */
-    public JTable getContextHistoryTable() {
-        assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
-        return historyOutputPane.getHistoryTable();
     }
 
     /**
@@ -1293,16 +1234,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void focusInput() {
         SwingUtilities.invokeLater(() -> {
             this.commandInputField.requestFocus();
-        });
-    }
-
-    /**
-     * Prefills the command input field with the given text
-     */
-    public void prefillCommand(String command) {
-        SwingUtilities.invokeLater(() -> {
-            commandInputField.setText(command);
-            runButton.requestFocus();
         });
     }
 

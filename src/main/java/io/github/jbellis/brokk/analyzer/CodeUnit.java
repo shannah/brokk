@@ -54,36 +54,10 @@ public record CodeUnit(CodeUnitType kind, String fqName)
     }
 
     /**
-     * @return the package portion of the fully qualified name,
-     *         excluding whatever shortName() would return.
-     */
-    public String packageName()
-    {
-        return switch (kind)
-        {
-            case CLASS ->
-            {
-                var lastDotIndex = fqName.lastIndexOf('.');
-                if (lastDotIndex == -1)
-                    yield "";
-                yield fqName.substring(0, lastDotIndex);
-            }
-            default ->
-            {
-                var parts = fqName.split("\\.");
-                if (parts.length <= 2)
-                    yield "";
-                yield Arrays.stream(parts, 0, parts.length - 2)
-                        .collect(Collectors.joining("."));
-            }
-        };
-    }
-
-    /**
      * @return the package portion of the fully qualified name up to the first capitalized component
      *         in the dot-separated hierarchy.
      */
-    public String getPackage()
+    public String packageName()
     {
         var parts = fqName.split("\\.");
         return Arrays.stream(parts)

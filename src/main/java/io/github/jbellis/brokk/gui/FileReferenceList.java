@@ -58,14 +58,7 @@ public class FileReferenceList extends JPanel {
         revalidate();
         repaint();
     }
-    
-    /**
-     * Gets the currently displayed file references
-     */
-    public List<FileReferenceData> getFileReferences() {
-        return new ArrayList<>(fileReferences);
-    }
-    
+
     /**
      * Sets the selection state of this component
      * @param selected true if this component is in a selected table row

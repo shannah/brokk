@@ -464,10 +464,6 @@ public class PreviewPanel extends JPanel
                 appendSystemMessage(message);
             }
 
-            @Override
-            public void clear() {
-                systemArea.setText("");
-            }
         }
         var resultsIo = new QuickResultsIo();
 

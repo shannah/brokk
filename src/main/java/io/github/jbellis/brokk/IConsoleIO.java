@@ -13,9 +13,6 @@ public interface IConsoleIO {
     void toolErrorRaw(String msg);
 
     void llmOutput(String token);
-    
-    default void clear() {
-    }
 
     default void systemOutput(String message) {
         llmOutput("\n" + message);

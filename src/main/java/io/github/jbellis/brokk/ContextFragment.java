@@ -400,7 +400,7 @@ public interface ContextFragment extends Serializable {
             var skeletonsByPackage = skeletons.entrySet().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                     entry -> {
-                        var packageName = entry.getKey().getPackage();
+                        var packageName = entry.getKey().packageName();
                         return packageName.isEmpty() ? "(default package)" : packageName;
                     },
                     java.util.stream.Collectors.toMap(

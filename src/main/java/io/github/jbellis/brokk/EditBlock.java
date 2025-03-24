@@ -776,13 +776,6 @@ public class EditBlock {
     }
 
     /**
-     * Convenience overload using threshold=0.6
-     */
-    public static String findSimilarLines(String search, String content) {
-        return findSimilarLines(search, content, 0.6);
-    }
-
-    /**
      * Collects suggestions for failed blocks by examining file contents
      */
     public static Map<FailedBlock, String> collectSuggestions(List<FailedBlock> failedBlocks, IContextManager cm) {

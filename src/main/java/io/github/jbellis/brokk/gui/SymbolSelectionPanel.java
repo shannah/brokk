@@ -17,8 +17,6 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.function.Consumer;
 
 /**
  * A reusable panel for selecting Java symbols (classes and members) with autocomplete.
@@ -27,7 +25,6 @@ public class SymbolSelectionPanel extends JPanel {
 
     private final JTextField symbolInput;
     private final AutoCompletion autoCompletion;
-    private final IAnalyzer analyzer;
     private final Set<CodeUnitType> typeFilter;
     private final int maxResults;
 
@@ -38,8 +35,7 @@ public class SymbolSelectionPanel extends JPanel {
     public SymbolSelectionPanel(IAnalyzer analyzer, Set<CodeUnitType> typeFilter, int maxResults) {
         super(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        
-        this.analyzer = analyzer;
+
         this.typeFilter = typeFilter;
         this.maxResults = maxResults;
         assert analyzer != null;
@@ -84,13 +80,6 @@ public class SymbolSelectionPanel extends JPanel {
      */
     public String getSymbolText() {
         return symbolInput.getText().trim();
-    }
-
-    /**
-     * Set the text for the input field
-     */
-    public void setSymbolText(String text) {
-        symbolInput.setText(text);
     }
 
     /**

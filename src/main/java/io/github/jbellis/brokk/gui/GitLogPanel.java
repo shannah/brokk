@@ -9,10 +9,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.event.PopupMenuEvent;
-import javax.swing.event.PopupMenuListener;
-import javax.swing.event.PopupMenuEvent;
-import javax.swing.event.PopupMenuListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
@@ -1675,79 +1671,6 @@ public class GitLogPanel extends JPanel {
         // Adjust as needed if you change order
         menu.getComponent(2).setEnabled(isLocal);
         menu.getComponent(3).setEnabled(isLocal && !isCurrentBranch); // Can't delete current branch
-    }
-
-    /**
-     * Holds a parsed "owner" and "repo" from a Git remote URL
-     */
-    private record OwnerRepo(String owner, String repo) {}
-
-    /**
-     * Parse a Git remote URL of form:
-     *   - https://github.com/OWNER/REPO.git
-     *   - git@github.com:OWNER/REPO.git
-     *   - ssh://github.com/OWNER/REPO
-     *   - or any variant that ends with OWNER/REPO(.git)
-     * This attempts to extract the last two path segments
-     * as "owner" and "repo". Returns null if it cannot.
-     */
-    private OwnerRepo parseOwnerRepoFromUrl(String remoteUrl)
-    {
-        if (remoteUrl == null || remoteUrl.isBlank()) {
-            logger.warn("Remote URL is blank or null");
-            return null;
-        }
-
-        // Strip trailing ".git" if present
-        String cleaned = remoteUrl.endsWith(".git")
-                ? remoteUrl.substring(0, remoteUrl.length() - 4)
-                : remoteUrl;
-        logger.debug("Cleaned repo url is {}", cleaned);
-
-        // Remove leading protocol-like segments, e.g. "ssh://", "https://", "git@", etc.
-        // Then we will split on '/' or ':' to capture path segments.
-        // e.g. "git@github.com:owner/repo" => "github.com owner repo"
-        // e.g. "ssh://github.com/owner/repo" => "github.com owner repo"
-        // e.g. "https://somehost/owner/repo" => "somehost owner repo"
-
-        // Normalize any backslashes, just in case
-        cleaned = cleaned.replace('\\', '/');
-
-        // If there's a '://' pattern, drop everything up through that
-        int protocolIndex = cleaned.indexOf("://");
-        if (protocolIndex >= 0) {
-            cleaned = cleaned.substring(protocolIndex + 3);
-        }
-
-        // If there's a '@' pattern (ssh form), drop everything up through that
-        // e.g. "git@github.com:owner/repo" -> "github.com:owner/repo"
-        int atIndex = cleaned.indexOf('@');
-        if (atIndex >= 0) {
-            cleaned = cleaned.substring(atIndex + 1);
-        }
-
-        // Now split on '/' or ':'
-        // e.g. "github.com:owner/repo" => ["github.com","owner","repo"]
-        // e.g. "somehost/owner/repo" => ["somehost","owner","repo"]
-        var segments = cleaned.split("[/:]+");
-
-        if (segments.length < 2) {
-            logger.warn("Unable to parse owner/repo from remote URL: {}", remoteUrl);
-            return null;
-        }
-
-        // The last 2 entries are presumed to be owner, repo
-        String repo = segments[segments.length - 1];
-        String owner = segments[segments.length - 2];
-        logger.debug("Parsed repo as {} owned by {}", repo, owner);
-
-        // Basic sanity checks
-        if (owner.isBlank() || repo.isBlank()) {
-            logger.warn("Parsed blank owner/repo from remote URL: {}", remoteUrl);
-            return null;
-        }
-
-        return new OwnerRepo(owner, repo);
     }
 
     /**

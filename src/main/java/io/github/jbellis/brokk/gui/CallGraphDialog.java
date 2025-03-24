@@ -220,11 +220,4 @@ public class CallGraphDialog extends JDialog {
     public Map<String, List<CallSite>> getCallGraph() {
         return callGraph;
     }
-    
-    /**
-     * Return true if this is a caller graph (to), false if callee graph (from)
-     */
-    public boolean isCallerGraph() {
-        return isCallerGraph;
-    }
 }
