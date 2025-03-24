@@ -9,6 +9,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
@@ -235,13 +239,11 @@ public class GitLogPanel extends JPanel {
         JMenuItem popStashCommitItem = new JMenuItem("Pop Stash");
         JMenuItem applyStashCommitItem = new JMenuItem("Apply Stash");
         JMenuItem dropStashCommitItem = new JMenuItem("Drop Stash");
-        
+
+
         commitsContextMenu.add(addToContextItem);
         commitsContextMenu.add(softResetItem);
         commitsContextMenu.add(revertCommitItem);
-        
-        // Create separator but don't add it yet - will be shown dynamically
-        JPopupMenu.Separator stashSeparator = new JPopupMenu.Separator();
         
         commitsContextMenu.add(popStashCommitItem);
         commitsContextMenu.add(applyStashCommitItem);
@@ -266,56 +268,48 @@ public class GitLogPanel extends JPanel {
                             commitsTable.setRowSelectionInterval(row, row);
                         }
                     }
-                    
-                    // Check if we're in stashes branch
-                    int branchRow = branchTable.getSelectedRow();
-                    boolean isStashesBranch = branchRow >= 0 &&
-                        "stashes".equals(branchTableModel.getValueAt(branchRow, 1));
 
-                    // Update menu item states based on selection
-                    int[] sel = commitsTable.getSelectedRows();
-                    softResetItem.setEnabled(sel.length == 1 && !isStashesBranch);
-                    revertCommitItem.setEnabled(!isStashesBranch);
+                    updateCommitContextMenu();
 
-                    // Show/hide stash operations and separator
-                    boolean showStashItems = isStashesBranch;
-                    
-                    // Add or remove separator dynamically based on whether stash items are shown
-                    if (showStashItems) {
-                        // Check if separator is already in menu to avoid duplicates
-                        boolean hasSeparator = false;
-                        for (int i = 0; i < commitsContextMenu.getComponentCount(); i++) {
-                            if (commitsContextMenu.getComponent(i) instanceof JPopupMenu.Separator) {
-                                hasSeparator = true;
-                                break;
-                            }
-                        }
-                        if (!hasSeparator) {
-                            commitsContextMenu.insert(stashSeparator, 3); // Insert after revertCommitItem
-                        }
-                    } else {
-                        // Remove separator if it exists
-                        for (int i = 0; i < commitsContextMenu.getComponentCount(); i++) {
-                            if (commitsContextMenu.getComponent(i) instanceof JPopupMenu.Separator) {
-                                commitsContextMenu.remove(i);
-                                break;
-                            }
-                        }
+                    // Close and reopen menu to force update visually
+                    if (commitsContextMenu.isVisible()) {
+                        commitsContextMenu.setVisible(false);
                     }
-                    
-                    popStashCommitItem.setVisible(showStashItems);
-                    applyStashCommitItem.setVisible(showStashItems);
-                    dropStashCommitItem.setVisible(showStashItems);
 
-                    // Only enable "Pop" for stash@{0} if in stashes branch
-                    if (isStashesBranch && row >= 0) {
-                        String commitMessage = (String) commitsTableModel.getValueAt(row, 0);
-                        boolean isStash0 = commitMessage.contains("stash@{0}");
-                        popStashCommitItem.setEnabled(isStash0);
-                    }
-                    
-                    commitsContextMenu.show(commitsTable, e.getX(), e.getY());
+                    SwingUtilities.invokeLater(() ->
+                                                       commitsContextMenu.show(commitsTable, e.getX(), e.getY())
+                    );
                 }
+            }
+
+            private void updateCommitContextMenu() {
+                int row = commitsTable.getSelectedRow();
+                logger.debug("selected row: {}", row);
+                if (row < 0) {
+                    addToContextItem.setVisible(false);
+                    softResetItem.setVisible(false);
+                    revertCommitItem.setVisible(false);
+                    popStashCommitItem.setVisible(false);
+                    applyStashCommitItem.setVisible(false);
+                    dropStashCommitItem.setVisible(false);
+                    return;
+                }
+
+                int branchRow = branchTable.getSelectedRow();
+                boolean isStashesBranch = branchRow >= 0
+                        && "stashes".equals(branchTableModel.getValueAt(branchRow, 1));
+
+                addToContextItem.setVisible(true);
+                int[] sel = commitsTable.getSelectedRows();
+
+                softResetItem.setVisible(!isStashesBranch);
+                softResetItem.setEnabled(sel.length == 1);
+                revertCommitItem.setVisible(!isStashesBranch);
+
+                popStashCommitItem.setVisible(isStashesBranch);
+                popStashCommitItem.setEnabled(isStashesBranch && row == 0);
+                applyStashCommitItem.setVisible(isStashesBranch);
+                dropStashCommitItem.setVisible(isStashesBranch);
             }
         });
 
@@ -452,6 +446,27 @@ public class GitLogPanel extends JPanel {
         changesContextMenu.add(viewDiffItem);
         changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(editFileItem);
+        // Assign the popup menu so the LAF automatically shows/hides it on right-click:
+        changesTree.setComponentPopupMenu(changesContextMenu);
+        // Add a minimal mouse listener to select the node on right-click.
+        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeSelectPath(e);
+            }
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeSelectPath(e);
+            }
+            private void maybeSelectPath(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    var path = changesTree.getPathForLocation(e.getX(), e.getY());
+                    if (path != null && !changesTree.isPathSelected(path)) {
+                        changesTree.setSelectionPath(path);
+                    }
+                }
+            }
+        });
         // Add mouse listener for changes tree popup
         changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -765,6 +780,9 @@ public class GitLogPanel extends JPanel {
                         List<GitRepo.StashInfo> stashes = getRepo().listStashes();
                         if (!stashes.isEmpty()) {
                             branchTableModel.addRow(new Object[]{"", "stashes"});
+                            if ("stashes".equals(currentBranch)) {
+                                currentBranchRow = branchTableModel.getRowCount() - 1;
+                            }
                         }
                     } catch (IOException e) {
                         logger.warn("Could not fetch stashes", e);
@@ -778,10 +796,8 @@ public class GitLogPanel extends JPanel {
                         // Ensure active branch is visible by scrolling to it
                         branchTable.scrollRectToVisible(branchTable.getCellRect(currentBranchRow, 0, true));
                         updateCommitsForBranch(currentBranch);
-                    } else if (branchTableModel.getRowCount() > 0) {
-                        branchTable.setRowSelectionInterval(0, 0);
-                        String branchName = (String) branchTableModel.getValueAt(0, 1);
-                        updateCommitsForBranch(branchName);
+                    } else {
+                        logger.error("Current branch {} disappeared from branch list", currentBranch);
                     }
                 });
             } catch (Exception e) {
