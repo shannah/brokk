@@ -812,6 +812,99 @@ public class GitRepo implements Closeable, IGitRepo {
             throw new IOException("Failed to create stash: " + e.getMessage(), e);
         }
     }
+    
+    /**
+     * Create a stash containing only the specified files.
+     * This involves a more complex workflow:
+     * 1. Get all uncommitted files
+     * 2. Add UN-selected files to index (i.e., everything EXCEPT the files we want to stash)
+     * 3. Commit those unselected files to a temporary branch
+     * 4. Stash what's left (which will be only our selected files)
+     * 5. Soft-reset back to restore the working directory with the UN-selected files uncommitted
+     * 6. Clean up the temporary branch
+     *
+     * @param message The stash message
+     * @param filesToStash The specific files to include in the stash
+     * @throws IOException If there's an error during the stash process
+     */
+    public void createPartialStash(String message, List<RepoFile> filesToStash) throws IOException {
+        assert message != null && !message.isEmpty();
+        assert filesToStash != null && !filesToStash.isEmpty();
+
+        try {
+            logger.debug("Creating partial stash with message: {} for {} files", message, filesToStash.size());
+            
+            // Get all uncommitted files
+            var allUncommittedFiles = getUncommittedFiles();
+            // Sanity check
+            if (!new HashSet<>(allUncommittedFiles).containsAll(filesToStash)) {
+                throw new IOException("Files to stash are not actually uncommitted!?");
+            }
+            
+            // Create a set of files to stash for faster lookups
+            Set<String> filesToStashPaths = filesToStash.stream()
+                                              .map(RepoFile::toString)
+                                              .collect(Collectors.toSet());
+            
+            // Filter to get the complement - files NOT to stash (i.e., to temporarily commit)
+            var filesToCommit = allUncommittedFiles.stream()
+                                 .filter(file -> !filesToStashPaths.contains(file.toString()))
+                                 .collect(Collectors.toList());
+            
+            logger.debug("Files to temporarily commit {}", filesToCommit);
+            
+            if (filesToCommit.isEmpty()) {
+                // If all changed files are selected for stashing, just do a regular stash
+                logger.debug("All changed files are selected for stashing, using regular stash");
+                createStash(message);
+                return;
+            }
+            
+            // Remember the original branch
+            String originalBranch = getCurrentBranch();
+            String tempBranchName = "temp-stash-branch-" + System.currentTimeMillis();
+            
+            // First, add the UN-selected files to the index
+            add(filesToCommit);
+            
+            // Create a temporary branch and commit those files
+            logger.debug("Creating temporary branch: {}", tempBranchName);
+            git.branchCreate().setName(tempBranchName).call();
+            
+            logger.debug("Committing UN-selected files to temporary branch");
+            git.commit()
+                .setMessage("Temporary commit to facilitate partial stash")
+                .call();
+            
+            // Now stash the remaining changes (which are only our selected files)
+            logger.debug("Creating stash with only the selected files");
+            var stashId = git.stashCreate()
+                    .setWorkingDirectoryMessage(message)
+                    .call();
+            
+            logger.debug("Partial stash created with ID: {}", (stashId != null ? stashId.getName() : "none"));
+            
+            // Do a soft reset to get back the uncommitted files that weren't stashed
+            logger.debug("Soft resetting to restore UN-selected files as uncommitted");
+            git.reset()
+               .setMode(org.eclipse.jgit.api.ResetCommand.ResetType.SOFT)
+               .setRef("HEAD~1")
+               .call();
+            
+            // Checkout the original branch
+            logger.debug("Checking out original branch: {}", originalBranch);
+            git.checkout().setName(originalBranch).call();
+            
+            // Delete the temporary branch
+            logger.debug("Deleting temporary branch");
+            git.branchDelete().setBranchNames(tempBranchName).setForce(true).call();
+            
+            refresh();
+        } catch (GitAPIException e) {
+            logger.error("Partial stash creation failed: {}", e.getMessage());
+            throw new IOException("Failed to create partial stash: " + e.getMessage(), e);
+        }
+    }
 
     /**
      * Lists all stashes in the repository

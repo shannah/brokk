@@ -274,10 +274,13 @@ public class GitPanel extends JPanel {
             contextManager.submitUserTask("Stashing changes", () -> {
                 try {
                     if (selectedFiles.isEmpty()) {
-                        getRepo().createStash(stashDescription.isEmpty() ? null : stashDescription);
+                        // If no files selected, stash all changes
+                        getRepo().createStash(stashDescription.isEmpty() ? "Stash created by Brokk" : stashDescription);
                     } else {
-                        getRepo().add(selectedFiles);
-                        getRepo().createStash(stashDescription.isEmpty() ? null : stashDescription);
+                        // Create a partial stash with only the selected files
+                        getRepo().createPartialStash(
+                            stashDescription.isEmpty() ? "Partial stash created by Brokk" : stashDescription, 
+                            selectedFiles);
                     }
                     SwingUtilities.invokeLater(() -> {
                         if (selectedFiles.isEmpty()) {
