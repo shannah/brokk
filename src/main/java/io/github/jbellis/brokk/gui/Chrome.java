@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Future;
 
 import io.github.jbellis.brokk.analyzer.RepoFile;
@@ -364,7 +363,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // If there's textarea content, restore it to the LLM output area
             historyOutputPane.setLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
 
-            updateCaptureButtons(ctx);
+            updateCaptureButtons();
         });
     }
 
@@ -1190,18 +1189,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * If `ctx` is null it means we're processing a new response from the LLM
      * and we should parse our raw text for references instead
      */
-    public void updateCaptureButtons(Context ctx) {
+    public void updateCaptureButtons() {
         String text = historyOutputPane.getLlmOutputText();
-        boolean hasText = !text.isBlank();
 
         SwingUtilities.invokeLater(() -> {
-            historyOutputPane.setCopyButtonEnabled(hasText);  // Enable copy button when there's text
-            // Check for sources only if there's text
-            var files = hasText && getProject() != null
-                    ? ContextFragment.parseRepoFiles(text, getProject().getRepo())
-                    : Set.<RepoFile>of();
-            historyOutputPane.setEditReferencesButtonEnabled(!files.isEmpty());
-            updateFilesDescriptionLabel(files);
+            historyOutputPane.setCopyButtonEnabled(!text.isBlank());  // Enable copy button when there's text
         });
     }
 
@@ -1320,18 +1312,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void setCommitMessageText(String message) {
         SwingUtilities.invokeLater(() -> {
             gitPanel.setCommitMessageText(message);
-        });
-    }
-
-    /**
-     * Updates the references description label with a formatted list of files
-     * Shows up to 3 file names, with "..." if there are more, and sets a tooltip with all names
-     */
-    private void updateFilesDescriptionLabel(Set<RepoFile> files) {
-        assert files != null;
-
-        SwingUtilities.invokeLater(() -> {
-            historyOutputPane.updateFilesDescription(files);
         });
     }
 

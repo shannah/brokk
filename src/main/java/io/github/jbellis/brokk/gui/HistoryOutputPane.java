@@ -1,9 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Context;
-import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -15,8 +13,6 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.List;
-import java.util.Set;
 
 /**
  * A component that combines the context history panel with the output panel in a horizontal split pane.
@@ -357,7 +353,7 @@ public class HistoryOutputPane extends JSplitPane {
         new SmartScroll(jsp);
 
         // Add a text change listener to update capture buttons
-        llmStreamArea.addTextChangeListener(() -> chrome.updateCaptureButtons(null));
+        llmStreamArea.addTextChangeListener(() -> chrome.updateCaptureButtons());
 
         return jsp;
     }
@@ -499,24 +495,7 @@ public class HistoryOutputPane extends JSplitPane {
     public void setCopyButtonEnabled(boolean enabled) {
         copyTextButton.setEnabled(enabled);
     }
-    
-    /**
-     * Sets the enabled state of the edit references button
-     * 
-     * @deprecated This method is kept for compatibility with Chrome class but does nothing now
-     */
-    public void setEditReferencesButtonEnabled(boolean enabled) {
-        // Edit References button has been removed
-    }
-    
-    /**
-     * Updates the files description area with formatted file list
-     */
-    public void updateFilesDescription(Set<RepoFile> files) {
-        // Method kept for compatibility with Chrome class but does nothing now
-        // References are no longer shown in the output pane
-    }
-    
+
     /**
      * Updates the theme of the output components
      */
