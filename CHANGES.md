@@ -3,6 +3,7 @@
 ## Fixes
 - Git push works with SSH remotes
 - Partial stashing works as intended
+- Symbol usage now includes references in return types
 
 
 0.6.3

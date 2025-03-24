@@ -395,6 +395,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
    * - fields typed with that class
    * - parameters/locals typed with that class
    * - classes that inherit from that class
+   * - methods that return that class
    */
   protected def referencesToClassAsType(classFullName: String): List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
@@ -412,7 +413,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
         }.l
       }
 
-    // Params typed with this class → return as function CodeUnits
+    // Parameters typed with this class → return as function CodeUnits
     val paramRefs = cpg.parameter
       .typeFullName(typePattern)
       .method
@@ -423,10 +424,20 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       .map(CodeUnit.fn)
       .l
 
-    // Locals typed with this class
+    // Locals typed with this class → return as function CodeUnits
     val localRefs = cpg.local
       .typeFullName(typePattern)
       .method
+      .filter(m => !partOfClass(classFullName, m.typeDecl.fullName.l.head))
+      .fullName
+      .map(chopColon)
+      .map(resolveMethodName)
+      .map(CodeUnit.fn)
+      .l
+
+    // (NEW) Methods returning this class → return as function CodeUnits
+    val methodReturnRefs = cpg.method
+      .where(_.methodReturn.typeFullName(typePattern))
       .filter(m => !partOfClass(classFullName, m.typeDecl.fullName.l.head))
       .fullName
       .map(chopColon)
@@ -442,7 +453,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       .map(CodeUnit.cls)
       .l
 
-    (fieldRefs ++ paramRefs ++ localRefs ++ inheritingClasses).toList.distinct
+    (fieldRefs ++ paramRefs ++ localRefs ++ methodReturnRefs ++ inheritingClasses).toList.distinct
   }
 
   override def getUses(symbol: String): java.util.List[CodeUnit] = {

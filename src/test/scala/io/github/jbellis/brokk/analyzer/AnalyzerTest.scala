@@ -394,6 +394,9 @@ class AnalyzerTest {
     // Verify that XExtendsY is specifically a CLASS type reference
     val classErrorMsg = s"Expected XExtendsY to be a CLASS type usage. Class references: ${classRefs.mkString(", ")}"
     assertTrue(classRefs.exists(name => name.contains("XExtendsY")), classErrorMsg)
+    
+    // New test: Methods returning BaseClass should be included (e.g. MethodReturner.getBase)
+    assertTrue(refs.exists(name => name.contains("MethodReturner.getBase")), "Expected MethodReturner.getBase to be included in BaseClass usages")
   }
   
   @Test
