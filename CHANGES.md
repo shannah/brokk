@@ -1,7 +1,17 @@
+0.6.3
+
+## Features
+- Preview improvements including Quick Edit on right-click
+- Add "collapse" trigger to Git panel
+- Use new gpt4o model for voice transcription
+
+## Fixes
+- Ctrl-enter works again to submit instructions on Linux
+
+
 0.6.2
 
 ## Fixes
-
 - Fix starting Brokk with no Project
 
 
