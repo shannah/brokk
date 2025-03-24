@@ -78,7 +78,6 @@ public record Models(StreamingChatLanguageModel editModel,
       provider: openai
       key: OPENAI_API_KEY
       name: o3-mini
-      reasoning_effort: low
       maxTokens: 100000
     
     search_model:
