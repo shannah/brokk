@@ -210,8 +210,10 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
                 if (fencePos < 0) {
                     // No more fences in this line: append everything to current block
                     currentBlockContent.append(line.substring(startIdx));
-                    // Only add a newline if this isn't the last line of the chunk or if the last line ended with a newline
-                    if (i < lines.length - 1 || (newText.endsWith("\n"))) {
+                    // Only add a newline if this isn't the last line of the chunk
+                    // (in the corner case where the last line ended with a newline, split() will give us an extra
+                    // empty line, so we still don't want to add a newline in that case)
+                    if (i < lines.length - 1) {
                         currentBlockContent.append("\n");
                     }
                     updateActiveBlock();
