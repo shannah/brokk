@@ -421,6 +421,17 @@ public class HistoryOutputPane extends JSplitPane {
         copyButton.setMinimumSize(copyButton.getPreferredSize());
         buttonsPanel.add(copyButton);
         
+        // "Capture" button
+        var captureButton = new JButton("Capture");
+        captureButton.setMnemonic(KeyEvent.VK_C);
+        captureButton.setToolTipText("Add the output to context");
+        captureButton.addActionListener(e -> {
+            contextManager.captureTextFromContextAsync();
+        });
+        // Set minimum size
+        captureButton.setMinimumSize(captureButton.getPreferredSize());
+        buttonsPanel.add(captureButton);
+        
         // "Open in New Window" button
         var openWindowButton = new JButton("Open in New Window");
         openWindowButton.setMnemonic(KeyEvent.VK_W);

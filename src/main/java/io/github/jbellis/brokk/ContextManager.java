@@ -698,7 +698,7 @@ public class ContextManager implements IContextManager
         processClipboardText(clipboardText);
     }
 
-    private void processClipboardText(String clipboardText) {
+    public void processClipboardText(String clipboardText) {
         clipboardText = clipboardText.trim();
         // Check if it's a URL
         String content = clipboardText;
@@ -1039,6 +1039,30 @@ public class ContextManager implements IContextManager
     public void addVirtualFragment(VirtualFragment fragment)
     {
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
+    }
+
+    /**
+     * Captures text from the LLM output area and adds it to the context.
+     * Called from Chrome's capture button.
+     */
+    public void captureTextFromContextAsync()
+    {
+        contextActionExecutor.submit(() -> {
+            try {
+                var selectedCtx = selectedContext();
+                if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
+                    addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
+                    io.systemOutput("Content captured from output");
+                } else {
+                    io.toolErrorRaw("No content to capture");
+                }
+            } catch (CancellationException cex) {
+                io.systemOutput("Capture canceled.");
+            } finally {
+                io.enableContextActionButtons();
+                io.enableUserActionButtons();
+            }
+        });
     }
 
     /** usage for identifier */
