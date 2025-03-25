@@ -208,9 +208,7 @@ public class ContextPanel extends JPanel {
 
                         // Show Contents as the first action
                         JMenuItem showContentsItem = new JMenuItem("Show Contents");
-                        showContentsItem.addActionListener(e1 -> {
-                            showFragmentPreview(fragment);
-                        });
+                        showContentsItem.addActionListener(e1 -> showFragmentPreview(fragment));
                         contextMenu.add(showContentsItem);
                         contextMenu.addSeparator();
 
@@ -301,7 +299,7 @@ public class ContextPanel extends JPanel {
                             chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
                         });
                         contextMenu.add(copySelectionItem);
-
+                        
                         JMenuItem dropSelectionItem = new JMenuItem("Drop");
                         dropSelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
@@ -309,9 +307,9 @@ public class ContextPanel extends JPanel {
                         });
                         contextMenu.add(dropSelectionItem);
                         
-                        // Disable drop if only autocontext is selected and it's already disabled
-                        if (contextTable.getSelectedRowCount() == 1 && fragment instanceof ContextFragment.AutoContext)
-                        {
+                        if (!contextManager.selectedContext().equals(contextManager.topContext())) {
+                            dropSelectionItem.setEnabled(false);
+                        } else if (contextTable.getSelectedRowCount() == 1 && fragment instanceof ContextFragment.AutoContext) {
                             dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
                         }
                     } else {
@@ -378,9 +376,9 @@ public class ContextPanel extends JPanel {
 
         JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
         dropAllMenuItem.addActionListener(e -> {
-                                              chrome.disableContextActionButtons();
-                                              chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, List.of());
-                                          });
+            chrome.disableContextActionButtons();
+            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, List.of());
+        });
         tablePopupMenu.add(dropAllMenuItem);
 
         JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
