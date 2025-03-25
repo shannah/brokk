@@ -79,10 +79,6 @@ public class EditBlock {
             if (file != null) {
                 // if the user gave a valid file name, try to apply it there first
                 try {
-                    // Save original content before first change
-                    if (!changedFiles.containsKey(file)) {
-                        changedFiles.put(file, file.exists() ? file.read() : "");
-                    }
                     finalUpdated = doReplace(file, block.beforeText(), block.afterText());
                 } catch (IOException e) {
                     io.toolError("Failed reading/writing " + file + ": " + e.getMessage());
@@ -115,6 +111,15 @@ public class EditBlock {
                 var failedBlock = new FailedBlock(block, EditBlockFailureReason.NO_MATCH);
                 failed.add(failedBlock);
             } else {
+                // Save original content before first change
+                if (!changedFiles.containsKey(file)) {
+                    try {
+                        changedFiles.put(file, file.exists() ? file.read() : "");
+                    } catch (IOException e) {
+                        io.toolError("Failed reading " + file + ": " + e.getMessage());
+                    }
+                }
+
                 // Actually write the file if it changed
                 var error = false;
                 try {
