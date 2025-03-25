@@ -453,12 +453,25 @@ public class HistoryOutputPane extends JSplitPane {
      */
     public void setLlmOutput(String text) {
         llmStreamArea.setText(text);
+    }
+
+    /**
+     * Sets the text in the LLM output area
+     */
+    public void resetLlmOutput(String text) {
+        // this is called by the context selection listener, but when we just finished streaming a response
+        // we don't want scroll-to-top behavior
+        if (llmStreamArea.getText().equals(text)) {
+            return;
+        }
+
+        setLlmOutput(text);
         // Scroll to the top
         SwingUtilities.invokeLater(() -> {
             llmScrollPane.getVerticalScrollBar().setValue(0);
         });
     }
-    
+
     /**
      * Appends text to the LLM output area
      */

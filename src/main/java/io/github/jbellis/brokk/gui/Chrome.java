@@ -356,7 +356,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
 
             // If there's textarea content, restore it to the LLM output area
-            historyOutputPane.setLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
+            historyOutputPane.resetLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
 
             updateCaptureButtons();
         });
