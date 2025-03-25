@@ -336,7 +336,9 @@ public class ContextManager implements IContextManager
 
                 // stream from coder
                 var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
-                if (response.chatResponse() != null) {
+                if (response.cancelled()) {
+                    io.systemOutput("Cancelled!");
+                } else if (response.chatResponse() != null) {
                     addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
                 }
             } catch (CancellationException cex) {
