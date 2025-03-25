@@ -432,7 +432,7 @@ public class Context implements Serializable {
                                      acPlaceholder,
                                      autoContextFileCount,
                                      historyMessages,
-                                     Map.of(),
+                                     originalContents,
                                      parsedOutput,
                                      action);
         contextManager.submitBackgroundTask("Computing AutoContext", () -> {
@@ -444,7 +444,7 @@ public class Context implements Serializable {
                                           newAutoContext,
                                           autoContextFileCount,
                                           historyMessages,
-                                          Map.of(),
+                                          originalContents,
                                           parsedOutput,
                                           action);
             contextManager.replaceContext(newContext, replacement);

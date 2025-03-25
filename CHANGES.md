@@ -4,6 +4,7 @@
 - Git push works with SSH remotes
 - Partial stashing works as intended
 - Symbol usage now includes references in return types
+- Fixed regression to undoing changes on filesystem
 
 
 0.6.3

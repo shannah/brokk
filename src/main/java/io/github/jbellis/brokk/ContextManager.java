@@ -977,7 +977,9 @@ public class ContextManager implements IContextManager
         var redoContents = new HashMap<RepoFile,String>();
         original.originalContents.forEach((file, oldText) -> {
             try {
+                logger.debug("Reading current content for file: " + file.absPath());
                 var current = Files.readString(file.absPath());
+                logger.debug("Stored current content for file: " + file.absPath() + " (length: " + current.length() + ")");
                 redoContents.put(file, current);
             } catch (IOException e) {
                 io.toolError("Failed reading current contents of " + file + ": " + e.getMessage());
@@ -988,7 +990,9 @@ public class ContextManager implements IContextManager
         var changedFiles = new ArrayList<RepoFile>();
         original.originalContents.forEach((file, oldText) -> {
             try {
+                logger.debug("Restoring file: " + file.absPath() + " with old content length: " + oldText.length());
                 Files.writeString(file.absPath(), oldText);
+                logger.debug("Restored file: " + file.absPath() + " successfully");
                 changedFiles.add(file);
             } catch (IOException e) {
                 io.toolError("Failed to restore file " + file + ": " + e.getMessage());
@@ -1576,6 +1580,7 @@ public class ContextManager implements IContextManager
             return;
         }
         var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
+        logger.debug("Adding to history with {} changed files", originalContents.size());
         pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 
