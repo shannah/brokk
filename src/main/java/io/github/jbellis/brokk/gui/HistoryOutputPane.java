@@ -31,7 +31,7 @@ public class HistoryOutputPane extends JSplitPane {
     private JTextArea systemArea;
     private JScrollPane systemScrollPane;
     private JTextArea captureDescriptionArea;
-    private JButton copyTextButton;
+    private JButton copyButton;
 
     /**
      * Constructs a new HistoryOutputPane.
@@ -406,10 +406,10 @@ public class HistoryOutputPane extends JSplitPane {
         var buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
 
         // "Copy Text" button
-        copyTextButton = new JButton("Copy Text");
-        copyTextButton.setMnemonic(KeyEvent.VK_T);
-        copyTextButton.setToolTipText("Copy the output to clipboard");
-        copyTextButton.addActionListener(e -> {
+        copyButton = new JButton("Copy");
+        copyButton.setMnemonic(KeyEvent.VK_T);
+        copyButton.setToolTipText("Copy the output to clipboard");
+        copyButton.addActionListener(e -> {
             String text = llmStreamArea.getText();
             if (!text.isBlank()) {
                 java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
@@ -418,8 +418,8 @@ public class HistoryOutputPane extends JSplitPane {
             }
         });
         // Set minimum size
-        copyTextButton.setMinimumSize(copyTextButton.getPreferredSize());
-        buttonsPanel.add(copyTextButton);
+        copyButton.setMinimumSize(copyButton.getPreferredSize());
+        buttonsPanel.add(copyButton);
         
         // "Open in New Window" button
         var openWindowButton = new JButton("Open in New Window");
@@ -506,7 +506,7 @@ public class HistoryOutputPane extends JSplitPane {
      * Sets the enabled state of the copy text button
      */
     public void setCopyButtonEnabled(boolean enabled) {
-        copyTextButton.setEnabled(enabled);
+        copyButton.setEnabled(enabled);
     }
 
     /**
