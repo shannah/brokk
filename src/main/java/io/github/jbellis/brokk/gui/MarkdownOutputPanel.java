@@ -55,6 +55,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
 
     // Listeners to notify whenever text changes
     private final List<Runnable> textChangeListeners = new ArrayList<>();
+    private String pendingBuffer = "";
 
     // Flexmark parser and renderer for normal Markdown blocks
     private final Parser parser;
@@ -147,7 +148,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     {
         assert text != null;
         if (!text.isEmpty()) {
-            logger.debug("Appending new text chunk, length={}", text.length());
+            logger.debug("Appending new chunk {}", text);
             markdownBuffer.append(text);
             parseIncremental(text);
             revalidate();
@@ -189,7 +190,17 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      */
     private void parseIncremental(String newText)
     {
-        var lines = newText.split("\\r?\\n", -1);
+        var textToParse = pendingBuffer + newText;
+        pendingBuffer = "";
+        var backtickCount = 0;
+        for (int i = textToParse.length() - 1; i >= 0 && textToParse.charAt(i) == '`'; i--) {
+            backtickCount++;
+        }
+        if (backtickCount > 0 && backtickCount < 3) {
+            pendingBuffer = textToParse.substring(textToParse.length() - backtickCount);
+            textToParse = textToParse.substring(0, textToParse.length() - backtickCount);
+        }
+        var lines = textToParse.split("\\r?\\n", -1);
 
         for (int i = 0; i < lines.length; i++) {
             var line = lines[i];
@@ -303,10 +314,9 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     private void updateActiveBlock()
     {
         if (currentState == ParseState.TEXT && activeTextPane != null) {
-            // Re-render using Flexmark
             var html = renderer.render(parser.parse(currentBlockContent.toString()));
             activeTextPane.setText("<html><body>" + html + "</body></html>");
-        } else if (currentState == ParseState.CODE && activeCodeArea != null) {
+        } else if (currentState == ParseState.CODE) {
             activeCodeArea.setText(currentBlockContent.toString());
         }
     }
