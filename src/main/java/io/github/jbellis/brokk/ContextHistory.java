@@ -1,8 +1,13 @@
-package io.github.jbellis.brokk.history;
+package io.github.jbellis.brokk;
 
-import io.github.jbellis.brokk.Context;
+import io.github.jbellis.brokk.analyzer.RepoFile;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.function.Function;
 
@@ -10,6 +15,7 @@ import java.util.function.Function;
  * Manages the context history with thread-safe operations for undo/redo functionality.
  */
 public class ContextHistory {
+    private final Logger logger = LogManager.getLogger(ContextHistory.class);
     private static final int MAX_UNDO_DEPTH = 100;
     
     // All access to history must be synchronized to prevent race conditions between threads
@@ -104,10 +110,10 @@ public class ContextHistory {
     /**
      * Undo a number of steps
      * @param stepsToUndo Number of steps to undo
-     * @param inverter Function to invert changes in a context
+     * @param io Console to output messages
      * @return UndoResult with success status and number of steps undone
      */
-    public synchronized UndoResult undo(int stepsToUndo, Function<Context, Context> inverter) {
+    public synchronized UndoResult undo(int stepsToUndo, IConsoleIO io) {
         int finalStepsToUndo = Math.min(stepsToUndo, history.size() - 1);
 
         if (history.size() <= 1) {
@@ -116,7 +122,7 @@ public class ContextHistory {
 
         for (int i = 0; i < finalStepsToUndo; i++) {
             var popped = history.removeLast();
-            var redoContext = inverter.apply(popped);
+            var redoContext = undoAndInvertChanges(popped, io);
             redoHistory.add(redoContext);
         }
 
@@ -131,10 +137,10 @@ public class ContextHistory {
     /**
      * Undo until the specified context is reached
      * @param targetContext The context to undo to
-     * @param inverter Function to invert changes in a context
+     * @param io Console to output messages
      * @return UndoResult with success status and number of steps undone
      */
-    public synchronized UndoResult undoUntil(Context targetContext, Function<Context, Context> inverter) {
+    public synchronized UndoResult undoUntil(Context targetContext, IConsoleIO io) {
         // Find the target context's index
         int targetIndex = history.indexOf(targetContext);
         if (targetIndex < 0) {
@@ -153,20 +159,20 @@ public class ContextHistory {
         // Set the target context as selected before undoing
         selectedContext = targetContext;
         
-        return undo(stepsToUndo, inverter);
+        return undo(stepsToUndo, io);
     }
 
     /**
      * Redo the last undone operation
-     * @param inverter Function to invert changes in a context
+     * @param io Console to output messages
      * @return true if an operation was redone, false if none available
      */
-    public synchronized boolean redo(Function<Context, Context> inverter) {
+    public synchronized boolean redo(IConsoleIO io) {
         if (redoHistory.isEmpty()) {
             return false;
         }
         var popped = redoHistory.removeLast();
-        var undoContext = inverter.apply(popped);
+        var undoContext = undoAndInvertChanges(popped, io);
         history.add(undoContext);
 
         // Set the newly redone context as selected
@@ -205,5 +211,38 @@ public class ContextHistory {
             return history.getLast(); // Default to top if invalid
         }
         return selectedContext;
+    }
+    /**
+     * Inverts changes from a popped context to revert to prior state, returning a new context for re-inversion
+     */
+    private Context undoAndInvertChanges(Context original, IConsoleIO io) {
+        var redoContents = new HashMap<RepoFile,String>();
+        original.originalContents.forEach((file, oldText) -> {
+            try {
+                logger.debug("Reading current content for file: " + file.absPath());
+                var current = Files.readString(file.absPath());
+                logger.debug("Stored current content for file: " + file.absPath() + " (length: " + current.length() + ")");
+                redoContents.put(file, current);
+            } catch (IOException e) {
+                io.toolError("Failed reading current contents of " + file + ": " + e.getMessage());
+            }
+        });
+
+        // restore
+        var changedFiles = new ArrayList<RepoFile>();
+        original.originalContents.forEach((file, oldText) -> {
+            try {
+                logger.debug("Restoring file: " + file.absPath() + " with old content length: " + oldText.length());
+                Files.writeString(file.absPath(), oldText);
+                logger.debug("Restored file: " + file.absPath() + " successfully");
+                changedFiles.add(file);
+            } catch (IOException e) {
+                io.toolError("Failed to restore file " + file + ": " + e.getMessage());
+            }
+        });
+        if (!changedFiles.isEmpty()) {
+            io.systemOutput("Modified " + changedFiles);
+        }
+        return original.withOriginalContents(redoContents);
     }
 }

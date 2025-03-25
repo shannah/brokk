@@ -35,7 +35,6 @@ import scala.Option;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -59,8 +58,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import io.github.jbellis.brokk.history.ContextHistory;
-import io.github.jbellis.brokk.history.ContextHistory.UndoResult;
+
+import io.github.jbellis.brokk.ContextHistory.UndoResult;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -893,7 +892,7 @@ public class ContextManager implements IContextManager
     {
         return contextActionExecutor.submit(() -> {
             try {
-                UndoResult result = contextHistory.undo(stepsToUndo, this::undoAndInvertChanges);
+                UndoResult result = contextHistory.undo(stepsToUndo, io);
                 if (result.wasUndone()) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
@@ -915,7 +914,7 @@ public class ContextManager implements IContextManager
     {
         return contextActionExecutor.submit(() -> {
             try {
-                UndoResult result = contextHistory.undoUntil(targetContext, this::undoAndInvertChanges);
+                UndoResult result = contextHistory.undoUntil(targetContext, io);
                 if (result.wasUndone()) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
@@ -937,7 +936,7 @@ public class ContextManager implements IContextManager
     {
         return contextActionExecutor.submit(() -> {
             try {
-                boolean wasRedone = contextHistory.redo(this::undoAndInvertChanges);
+                boolean wasRedone = contextHistory.redo(io);
                 if (wasRedone) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
@@ -970,39 +969,6 @@ public class ContextManager implements IContextManager
         });
     }
 
-    /** Inverts changes from a popped context to revert to prior state, returning a new context for re-inversion */
-    @NotNull
-    private Context undoAndInvertChanges(Context original)
-    {
-        var redoContents = new HashMap<RepoFile,String>();
-        original.originalContents.forEach((file, oldText) -> {
-            try {
-                logger.debug("Reading current content for file: " + file.absPath());
-                var current = Files.readString(file.absPath());
-                logger.debug("Stored current content for file: " + file.absPath() + " (length: " + current.length() + ")");
-                redoContents.put(file, current);
-            } catch (IOException e) {
-                io.toolError("Failed reading current contents of " + file + ": " + e.getMessage());
-            }
-        });
-
-        // restore
-        var changedFiles = new ArrayList<RepoFile>();
-        original.originalContents.forEach((file, oldText) -> {
-            try {
-                logger.debug("Restoring file: " + file.absPath() + " with old content length: " + oldText.length());
-                Files.writeString(file.absPath(), oldText);
-                logger.debug("Restored file: " + file.absPath() + " successfully");
-                changedFiles.add(file);
-            } catch (IOException e) {
-                io.toolError("Failed to restore file " + file + ": " + e.getMessage());
-            }
-        });
-        if (!changedFiles.isEmpty()) {
-            io.systemOutput("Modified " + changedFiles);
-        }
-        return original.withOriginalContents(redoContents);
-    }
 
     /** Pasting content as read-only snippet */
     public void addPasteFragment(String pastedContent, Future<String> summaryFuture)
