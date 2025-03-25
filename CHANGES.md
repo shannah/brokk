@@ -1,5 +1,8 @@
 0.6.4
 
+## Features
+- Basic context management works better in the absence of Code Intelligence
+
 ## Fixes
 - Git push works with SSH remotes
 - Partial stashing works as intended

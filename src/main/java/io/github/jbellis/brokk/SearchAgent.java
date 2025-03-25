@@ -170,6 +170,8 @@ public class SearchAgent {
      */
     public ContextFragment.VirtualFragment execute() {
         // Initialize
+        var analyzer = contextManager.getProject().getAnalyzer();
+        var repo = contextManager.getRepo();
         var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {
             String text;
             try {
@@ -183,7 +185,7 @@ public class SearchAgent {
             %s
             </fragment>
             """.stripIndent().formatted(f.description(),
-                                        (f.sources(contextManager.getProject()).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
+                                        (f.sources(analyzer, repo).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
                                         text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
         if (!contextWithClasses.isBlank()) {

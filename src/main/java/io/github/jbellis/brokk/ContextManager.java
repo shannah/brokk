@@ -30,7 +30,6 @@ import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
-import scala.Option;
 
 import javax.swing.*;
 import java.io.File;
@@ -599,10 +598,8 @@ public class ContextManager implements IContextManager
         });
     }
 
-    private void doEditAction(List<ContextFragment> selectedFragments)
-    {
+    private void doEditAction(List<ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
-            // Show a file selection dialog to add new files - editable files must be in the repo
             var files = toRepoFiles(showFileSelectionDialog("Add Context", false));
             if (!files.isEmpty()) {
                 editFiles(files);
@@ -612,16 +609,14 @@ public class ContextManager implements IContextManager
         } else {
             var files = new HashSet<RepoFile>();
             for (var fragment : selectedFragments) {
-                files.addAll(getFilesFromFragment(fragment));
+                files.addAll(fragment.files(project.getRepo()));
             }
             editFiles(files);
         }
     }
 
-    private void doReadAction(List<ContextFragment> selectedFragments)
-    {
+    private void doReadAction(List<ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
-            // Show a file selection dialog for read-only - can include external files
             var files = showFileSelectionDialog("Read Context", true);
             if (!files.isEmpty()) {
                 addReadOnlyFiles(files);
@@ -631,7 +626,7 @@ public class ContextManager implements IContextManager
         } else {
             var files = new HashSet<RepoFile>();
             for (var fragment : selectedFragments) {
-                files.addAll(getFilesFromFragment(fragment));
+                files.addAll(fragment.files(project.getRepo()));
             }
             addReadOnlyFiles(files);
         }
@@ -816,7 +811,7 @@ public class ContextManager implements IContextManager
         } else {
             // Extract sources from selected fragments
             for (var frag : selectedFragments) {
-                sources.addAll(frag.sources(project));
+                sources.addAll(frag.sources(project.getAnalyzer(), project.getRepo()));
             }
             sourceDescription = selectedFragments.size() + " fragments";
         }
@@ -1331,24 +1326,6 @@ public class ContextManager implements IContextManager
      */
     public void setSelectedContext(Context context) {
         contextHistory.setSelectedContext(context);
-    }
-
-    /**
-     * Return the set of files for the given fragment
-     */
-    public Set<RepoFile> getFilesFromFragment(ContextFragment fragment)
-    {
-        // RepoPathFragment is the trivial case 
-        if (fragment instanceof ContextFragment.RepoPathFragment(RepoFile file)) {
-            return Set.of(file);
-        }
-
-        var classnames = fragment.sources(project);
-        return classnames.stream()
-                .map(cu -> getAnalyzer().pathOf(cu))
-                .filter(Option::isDefined)
-                .map(Option::get)
-                .collect(Collectors.toSet());
     }
 
     private String formattedOrNull(ContextFragment fragment)
