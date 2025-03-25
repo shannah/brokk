@@ -117,14 +117,15 @@ public class StackTrace {
     // Group 2: Source file (e.g. "Assert.java") or null
     // Group 3: Line number (e.g. "86") or null
     // Group 4: Special source (e.g. "Native Method") or null
-    private static final String STACK_TRACE_LINE_REGEX = "\\s*at\\s+([^(]+)\\((?:([^:]+):([0-9]+)|([^)]+))\\)$";
+    private static final String STACK_TRACE_LINE_REGEX = ".*\\s+at\\s+([^(]+)\\((?:([^:]+):([0-9]+)|([^)]+))\\).*$";
     private static final Pattern STACK_TRACE_LINE_PATTERN = Pattern.compile(STACK_TRACE_LINE_REGEX);
     
     private static String parseExceptionType(String firstLine) {
         String[] parts = firstLine.split(":");
-        if (parts.length > 2) {
+        if (parts.length < 1) {
             return null;
         }
+        
         String[] typeParts = parts[0].split("\\.");
         return typeParts[typeParts.length - 1];
     }
@@ -140,8 +141,11 @@ public class StackTrace {
     public static StackTrace parse(String stackTraceString) {
         String[] lines = stackTraceString.split("\n");
         
-        // Find first stack trace line that matches the pattern
+        // Find the exception line (which might have a prefix) and the first stack trace line
+        int exceptionLineIndex = -1;
         int firstStackLineIndex = -1;
+        
+        // First find a stack trace line ("... at ...")
         for (int i = 0; i < lines.length; i++) {
             if (STACK_TRACE_LINE_PATTERN.matcher(lines[i]).matches()) {
                 firstStackLineIndex = i;
@@ -201,7 +205,9 @@ public class StackTrace {
                 relevantTrace.append(lines[i]).append("\n");
             }
         }
-        String cleanedTrace = relevantTrace.substring(0, relevantTrace.length() - 1);
+        String cleanedTrace = relevantTrace.length() > 0
+                ? relevantTrace.substring(0, relevantTrace.length() - 1)
+                : relevantTrace.toString();
         
         return new StackTrace(firstLine, stackTraceLines, cleanedTrace);
     }

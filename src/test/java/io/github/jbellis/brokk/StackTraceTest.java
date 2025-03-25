@@ -57,5 +57,16 @@ public class StackTraceTest {
         var st = StackTrace.parse(stackTraceStr);
         assertEquals("UnsupportedOperationException", st.getExceptionType());
         assertEquals(1, st.getFrames().size());
+        
+        stackTraceStr = """
+        [error] Exception in thread "AWT-EventQueue-0" java.lang.NullPointerException: Cannot invoke "java.io.ByteArrayOutputStream.toByteArray()" because "this.micBuffer" is null
+        [error]         at io.github.jbellis.brokk.gui.VoiceInputButton.stopMicCaptureAndTranscribe(VoiceInputButton.java:175)
+        [error]         at io.github.jbellis.brokk.gui.VoiceInputButton.lambda$new$0(VoiceInputButton.java:89)
+        """;
+        
+        var st2 = StackTrace.parse(stackTraceStr);
+        assertEquals("NullPointerException", st2.getExceptionType());
+        assertEquals(2, st2.getFrames().size());
+        assertEquals(2, st2.getFrames("io.github.jbellis.brokk.gui").size());
     }
 }
