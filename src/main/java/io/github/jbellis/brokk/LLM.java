@@ -327,8 +327,13 @@ public class LLM {
             return "";
         }
 
+        io.llmOutput("""
+        %s
+        ```
+        %s
+        ```
+        """.stripIndent().formatted(result.error(), result.output()));
         io.systemOutput("Build failed (details above)");
-        io.llmOutput(result.error() + "\n\n" + result.output() + "\n\n");
         buildErrors.add(result.error() + "\n\n" + result.output());
 
         StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
@@ -392,30 +397,45 @@ public class LLM {
         // build an error message
         int count = failed.size();
         boolean singular = (count == 1);
-        StringBuilder sb = new StringBuilder();
-        sb.append("# ").append(count).append(" SEARCH/REPLACE block")
-          .append(singular ? " " : "s ")
-          .append("failed to match!\n");
+        var failedText = failed.entrySet().stream()
+                .map(entry -> {
+                    var f = entry.getKey();
+                    String fname = (f.block().filename() == null ? "(none)" : f.block().filename());
+                    return """
+                    ## Failed to match in file: `%s`
+                    ```
+                    <<<<<<< SEARCH
+                    %s
+                    =======
+                    %s
+                    >>>>>>> REPLACE
+                    ```
 
-        for (var entry : failed.entrySet()) {
-            var f = entry.getKey();
-            String fname = (f.block().filename() == null ? "(none)" : f.block().filename());
-            sb.append("## Failed to match in file: ").append(fname).append("\n");
-            sb.append("<<<<<<< SEARCH\n").append(f.block().beforeText())
-              .append("=======\n").append(f.block().afterText())
-              .append(">>>>>>> REPLACE\n\n");
-
-            String suggestion = entry.getValue();
-            sb.append(suggestion).append("\n");
-        }
-
-        sb.append("The SEARCH text must match exactly the lines in the file.\n");
-        if (succeededCount > 0) {
-            sb.append("\n# The other ").append(succeededCount).append(" SEARCH/REPLACE block")
-              .append(succeededCount == 1 ? " was" : "s were").append(" applied successfully.\n");
-            sb.append("Don't re-send them. Just fix the failing blocks above.\n");
-        }
-
-        return sb.toString();
+                    %s
+                    """.stripIndent().formatted(fname,
+                                  f.block().beforeText(),
+                                  f.block().afterText(),
+                                  entry.getValue());
+                })
+                .collect(Collectors.joining("\n"));
+        var successfulText = succeededCount > 0
+                ? "\n# The other %d SEARCH/REPLACE block%s %s applied successfully. Don't re-send them. Just fix the failing blocks above.\n"
+                .formatted(
+                        succeededCount,
+                        succeededCount == 1 ? " was" : "s were",
+                        succeededCount
+                )
+                : "";
+        return """
+        # %d SEARCH/REPLACE block%s failed to match!
+        
+        %s
+        
+        The SEARCH text must match exactly the lines in the file.
+        %s
+        """.stripIndent().formatted(count,
+                      singular ? " " : "s",
+                      failedText,
+                      successfulText);
     }
 }

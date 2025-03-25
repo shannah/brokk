@@ -792,18 +792,22 @@ public class EditBlock {
             try {
                 String fileContent = cm.toFile(failedBlock.block().filename()).read();
                 String snippet = findSimilarLines(failedBlock.block().beforeText(), fileContent, 0.6);
-                StringBuilder suggestion = new StringBuilder();
-                if (!snippet.isEmpty()) {
-                    suggestion.append("Did you mean:\n").append(snippet).append("\n");
-                }
+                String suggestion = "";
                 if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    suggestion.append("""
+                    suggestion = """
                     Note: The replacement text is already present in the file. If we no longer need to apply
                     this block, omit it from your reply.
-                    """.stripIndent());
+                    """.stripIndent();
+                } else if (!snippet.isEmpty()) {
+                    suggestion = """
+                    Did you mean:
+                    ```
+                    %s
+                    ```
+                    """.stripIndent().formatted(snippet);
                 }
-                if (suggestion.length() > 0) {
-                    suggestions.put(failedBlock, suggestion.toString());
+                if (!suggestion.isEmpty()) {
+                    suggestions.put(failedBlock, suggestion);
                 }
             } catch (IOException ignored) {
                 // Skip suggestions if we can't read the file
