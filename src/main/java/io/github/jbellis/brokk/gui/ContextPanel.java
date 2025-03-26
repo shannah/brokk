@@ -12,6 +12,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
@@ -328,6 +329,13 @@ public class ContextPanel extends JPanel {
 
         // Set selection mode to allow multiple selection
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        // Add Ctrl+V shortcut for paste in the table
+        contextTable.registerKeyboardAction(
+                e -> chrome.getContextManager().performContextActionAsync(Chrome.ContextAction.PASTE, List.of()),
+                KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+                JComponent.WHEN_FOCUSED
+        );
 
         // Setup right-click popup menu for when no rows are selected
         tablePopupMenu = new JPopupMenu();
