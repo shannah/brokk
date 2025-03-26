@@ -56,13 +56,13 @@ public class SearchAgent {
     private final IConsoleIO io;
 
     // Budget and action control state
-    private boolean allowSearch = true;
-    private boolean allowInspect = true;
-    private boolean allowPagerank = true;
-    private boolean allowAnswer = true;
-    private boolean allowSubstringSearch = false; // Starts disabled until searchSymbols is called
-    private boolean symbolsFound = false;
-    private boolean beastMode = false;
+    private boolean allowSearch;
+    private boolean allowInspect;
+    private boolean allowPagerank;
+    private boolean allowAnswer;
+    private boolean allowTextSearch;
+    private boolean symbolsFound;
+    private boolean beastMode;
 
     // Search state
     private final String query;
@@ -82,6 +82,13 @@ public class SearchAgent {
         this.analyzer = contextManager.getProject().getAnalyzer();
         this.coder = coder;
         this.io = io;
+        allowSearch = true;
+        allowInspect = true;
+        allowPagerank = true;
+        allowAnswer = true;
+        allowTextSearch = analyzer.isEmpty(); // otherwise, allowed after symbols search
+        symbolsFound = false;
+        beastMode = false;
     }
 
     /**
@@ -230,36 +237,36 @@ public class SearchAgent {
             updateActionControlsBasedOnContext();
 
             // Decide what action to take for this query
-            var tools = determineNextActions();
+            var toolCalls = determineNextActions();
             if (Thread.interrupted()) {
                 io.systemOutput("Interrupted; stopping search");
                 return null;
             }
-            if (tools.isEmpty()) {
+            if (toolCalls.isEmpty()) {
                 io.systemOutput("Unable to get a response from the LLM; giving up search");
                 return null;
             }
 
             // Remember these signatures for future checks, and return the call
-            for (var call: tools) {
+            for (var call: toolCalls) {
                 toolCallSignatures.addAll(createToolCallSignatures(call));
                 trackClassNamesFromToolCall(call);
             }
 
-            if (tools.isEmpty()) {
+            if (toolCalls.isEmpty()) {
                 logger.debug("No valid actions determined");
                 io.systemOutput("No valid actions returned; retrying");
                 continue;
             }
 
             // Print some debug/log info
-            var explanation = tools.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
+            var explanation = toolCalls.stream().map(st -> getExplanationForTool(st.getRequest().name(), st)).collect(Collectors.joining("\n"));
             io.systemOutput(explanation);
             logger.debug("{}; token usage: {}", explanation, totalUsage);
-            logger.debug("Actions: {}", tools);
+            logger.debug("Actions: {}", toolCalls);
 
             // Execute the steps
-            var results = tools.stream().parallel().peek(step -> {
+            var results = toolCalls.stream().parallel().peek(step -> {
                 step.execute();
                 
                 // Start summarization for specific tools
@@ -275,13 +282,13 @@ public class SearchAgent {
             }).toList();
 
             // Check if we should terminate
-            String firstToolName = tools.getFirst().getRequest().name();
+            String firstToolName = toolCalls.getFirst().getRequest().name();
             if (firstToolName.equals("answer")) {
                 logger.debug("Search complete");
-                assert tools.size() == 1 : tools;
+                assert toolCalls.size() == 1 : toolCalls;
 
                 try {
-                    ToolCall answerCall = tools.getFirst();
+                    ToolCall answerCall = toolCalls.getFirst();
                     var arguments = answerCall.argumentsMap();
                     @SuppressWarnings("unchecked")
                     var classNames = (List<String>) arguments.get("classNames");
@@ -303,7 +310,7 @@ public class SearchAgent {
                 }
             } else if (firstToolName.equals("abort")) {
                 logger.debug("Search aborted");
-                assert tools.size() == 1 : tools;
+                assert toolCalls.size() == 1 : toolCalls;
                 return new ContextFragment.StringFragment(query, results.getFirst().result);
             }
 
@@ -614,37 +621,7 @@ public class SearchAgent {
     private List<ToolSpecification> createToolSpecifications() {
         List<ToolSpecification> tools = new ArrayList<>();
 
-        if (!beastMode || allowSearch) {
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("searchSymbols")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getUsages")));
-        }
-
-        if (!beastMode || allowSubstringSearch) {
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("searchSubstrings")));
-        }
-
-        if (!beastMode || allowPagerank) {
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getRelatedClasses")));
-        }
-
-        if (!beastMode || allowInspect) {
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getClassSkeletons")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getClassSources")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getMethodSources")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getCallGraphTo")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getCallGraphFrom")));
-        }
-
-        if (beastMode || allowAnswer) {
+        if (allowAnswer) {
             tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
                     getMethodByName("answer")));
 
@@ -653,6 +630,41 @@ public class SearchAgent {
                     getMethodByName("abort")));
         }
 
+        if (!beastMode) {
+            return tools;
+        }
+
+        if (!analyzer.isEmpty()) {
+            if (allowSearch) {
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("searchSymbols")));
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getUsages")));
+            }
+            if (allowPagerank) {
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getRelatedClasses")));
+            }
+            if (allowInspect) {
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getClassSkeletons")));
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getClassSources")));
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getMethodSources")));
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getCallGraphTo")));
+                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                        getMethodByName("getCallGraphFrom")));
+            }
+        }
+
+        if (allowTextSearch) {
+            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
+                    getMethodByName("searchSubstrings")));
+        }
+
+        logger.debug("Available tools are {}", tools);
         return tools;
     }
 
@@ -731,7 +743,7 @@ public class SearchAgent {
                 // Force finalize only
                 allowAnswer = true;
                 allowSearch = false;
-                allowSubstringSearch = false;
+                allowTextSearch = false;
                 allowInspect = false;
                 allowPagerank = false;
             }
@@ -830,7 +842,7 @@ public class SearchAgent {
         }
 
         // Enable substring search after the first successful searchSymbols call
-        allowSubstringSearch = true;
+        allowTextSearch = true;
 
         Set<CodeUnit> allDefinitions = new HashSet<>();
         for (String pattern : patterns) {
