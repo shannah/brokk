@@ -159,7 +159,7 @@ public class SearchAgent {
             )));
 
             // Use the quick model for summarization
-            var response = coder.sendMessage(coder.models.searchModel(), messages);
+            var response = coder.sendMessage(coder.models.searchModel(), messages).chatResponse();
             return response.aiMessage().text();
         });
     }
@@ -196,13 +196,22 @@ public class SearchAgent {
             Make sure to include the fully qualified source (class, method, etc) as well as the code.
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var response = coder.sendMessage(coder.models.searchModel(), messages);
-            knowledge.add(new Tuple2<>("Initial context", response.aiMessage().text()));
+            var result = coder.sendMessage(coder.models.searchModel(), messages);
+            if (result.cancelled()) {
+                io.systemOutput("Cancelled; stopping search");
+                return null;
+            }
+            if (result.error() != null) {
+                io.systemOutput("LLM error evaluating context; stopping search");
+                return null;
+            }
+            knowledge.add(new Tuple2<>("Initial context", result.chatResponse().aiMessage().text()));
         }
 
         while (true) {
             // If thread interrupted, bail out
             if (Thread.interrupted()) {
+                io.systemOutput("Interrupted; stopping search");
                 return null;
             }
 
@@ -585,6 +594,7 @@ public class SearchAgent {
         var result = coder.sendMessage(coder.models.searchModel(), messages, tools);
         if (result.cancelled()) {
             Thread.currentThread().interrupt();
+            return List.of();
         }
         if (result.error() != null) {
             return List.of();

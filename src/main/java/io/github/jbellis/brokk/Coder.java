@@ -183,8 +183,8 @@ public class Coder {
         return R.chatResponse.aiMessage().text().trim();
     }
 
-    public ChatResponse sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages) {
-        return sendMessage(model, messages, List.of()).chatResponse;
+    public StreamingResult sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages) {
+        return sendMessage(model, messages, List.of());
     }
     
 
@@ -279,9 +279,7 @@ public class Coder {
                 }
             } catch (InterruptedException e) {
                 io.systemOutput("Interrupted!");
-                // Return a dummy with cancellation
-                cr = ChatResponse.builder().aiMessage(new AiMessage("Cancelled during backoff")).build();
-                return new StreamingResult(cr, true, null);
+                return new StreamingResult(null, true, null);
             }
         }
 
@@ -494,6 +492,12 @@ public class Coder {
         }
     }
 
-    // Represents the outcome of a streaming request.
-    public record StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {}
+    /**
+     * Represents the outcome of a streaming request.
+     */
+    public record StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
+        public StreamingResult {
+            assert cancelled || error != null || chatResponse != null;
+        }
+    }
 }

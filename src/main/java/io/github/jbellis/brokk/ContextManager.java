@@ -1471,7 +1471,7 @@ public class ContextManager implements IContextManager
             submitBackgroundTask("Inferring build command", () -> {
                 String response;
                 try {
-                    response = coder.sendMessage(coder.models.searchModel(), messages).aiMessage().text().trim();
+                    response = coder.sendMessage(coder.models.searchModel(), messages).chatResponse().aiMessage().text().trim();
                 } catch (Throwable th) {
                     return BuildCommand.failure(th.getMessage());
                 }
