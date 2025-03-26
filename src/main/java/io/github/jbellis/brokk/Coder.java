@@ -245,12 +245,14 @@ public class Coder {
             }
 
             error = response.error;
-            var cr = response.chatResponse;
-            boolean isEmpty = (cr.aiMessage().text() == null || cr.aiMessage().text().isBlank())
-                    && !cr.aiMessage().hasToolExecutionRequests();
-            if (error == null && !isEmpty) {
-                writeToHistory("Response", cr.aiMessage().text());
-                return response;
+            if (error == null) {
+                var cr = response.chatResponse;
+                boolean isEmpty = (cr.aiMessage().text() == null || cr.aiMessage().text().isBlank())
+                        && !cr.aiMessage().hasToolExecutionRequests();
+                if (!isEmpty) {
+                    writeToHistory("Response", cr.aiMessage().text());
+                    return response;
+                }
             }
 
             // wait between retries
