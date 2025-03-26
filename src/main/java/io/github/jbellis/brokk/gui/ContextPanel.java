@@ -474,11 +474,11 @@ public class ContextPanel extends JPanel {
         add(tablePanel, BorderLayout.CENTER);
 
         add(contextSummaryPanel, BorderLayout.SOUTH);
-
-        addMouseListener(new MouseAdapter() {
+        
+        tableScrollPane.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                requestFocusInWindow();
+                contextTable.requestFocusInWindow();
             }
         });
     }
