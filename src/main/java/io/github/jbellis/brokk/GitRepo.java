@@ -246,29 +246,21 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Returns a list of uncommitted RepoFiles.
      */
-    public List<RepoFile> getUncommittedFiles()
-    {
-        var diffSt = diff();
-        if (diffSt.isEmpty()) {
-            return List.of();
-        }
-
-        var filePaths = new HashSet<String>();
-        for (var line : diffSt.split("\n")) {
-            var trimmed = line.trim();
-            if (trimmed.startsWith("diff --git")) {
-                var parts = trimmed.split(" ");
-                if (parts.length >= 4) {
-                    // 'diff --git a/... b/...'
-                    // parts[3] will look like 'b/foo/Bar.java'; skip "b/"
-                    var path = parts[3].substring(2);
-                    filePaths.add(path);
-                }
-            }
-        }
-        return filePaths.stream()
+    public List<RepoFile> getModifiedFiles() {
+        try {
+            var status = git.status().call();
+            var filePaths = new HashSet<String>();
+            filePaths.addAll(status.getModified());
+            filePaths.addAll(status.getChanged());
+            filePaths.addAll(status.getAdded());
+            filePaths.addAll(status.getRemoved());
+            filePaths.addAll(status.getMissing());
+            return filePaths.stream()
                     .map(path -> new RepoFile(root, path))
                     .collect(Collectors.toList());
+        } catch (GitAPIException e) {
+            throw new UncheckedIOException(new IOException(e));
+        }
     }
 
     /**
@@ -818,8 +810,8 @@ public class GitRepo implements Closeable, IGitRepo {
         try {
             logger.debug("Creating partial stash with message: {} for {} files", message, filesToStash.size());
             
-            // Get all uncommitted files
-            var allUncommittedFiles = getUncommittedFiles();
+            // Get all modified files including deleted ones
+            var allUncommittedFiles = getModifiedFiles();
             // Sanity check
             if (!new HashSet<>(allUncommittedFiles).containsAll(filesToStash)) {
                 throw new IOException("Files to stash are not actually uncommitted!?");

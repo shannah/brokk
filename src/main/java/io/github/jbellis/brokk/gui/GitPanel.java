@@ -42,6 +42,7 @@ public class GitPanel extends JPanel {
     // History tabs
     private JTabbedPane tabbedPane;
     private final Map<String, JTable> fileHistoryTables = new HashMap<>();
+    private Map<String, String> fileStatusMap = new HashMap<>();
     
     
 
@@ -118,6 +119,32 @@ public class GitPanel extends JPanel {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         uncommittedFilesTable = new JTable(model);
+        uncommittedFilesTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
+            @Override
+            public java.awt.Component getTableCellRendererComponent(javax.swing.JTable table, Object value,
+                                                                   boolean isSelected, boolean hasFocus,
+                                                                   int row, int column) {
+                var cell = (javax.swing.table.DefaultTableCellRenderer) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                String filename = (String) table.getModel().getValueAt(row, 0);
+                String path = (String) table.getModel().getValueAt(row, 1);
+                String fullPath = path.isEmpty() ? filename : path + "/" + filename;
+                String status = fileStatusMap.get(fullPath);
+                if (!isSelected) {
+                    if ("new".equals(status)) {
+                        cell.setForeground(java.awt.Color.GREEN);
+                    } else if ("deleted".equals(status)) {
+                        cell.setForeground(java.awt.Color.RED);
+                    } else if ("modified".equals(status)) {
+                        cell.setForeground(java.awt.Color.BLUE);
+                    } else {
+                        cell.setForeground(java.awt.Color.BLACK);
+                    }
+                } else {
+                    cell.setForeground(table.getSelectionForeground());
+                }
+                return cell;
+            }
+        });
         uncommittedFilesTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         uncommittedFilesTable.setRowHeight(18);
         uncommittedFilesTable.getColumnModel().getColumn(0).setPreferredWidth(150);
@@ -321,7 +348,7 @@ public class GitPanel extends JPanel {
             contextManager.submitUserTask("Committing files", () -> {
                 try {
                     if (selectedFiles.isEmpty()) {
-                        var allDirtyFiles = getRepo().getUncommittedFiles();
+                        var allDirtyFiles = getRepo().getModifiedFiles();
                         contextManager.getProject().getRepo().commitFiles(allDirtyFiles, msg);
                     } else {
                         contextManager.getProject().getRepo().commitFiles(selectedFiles, msg);
@@ -419,21 +446,37 @@ public class GitPanel extends JPanel {
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             logger.debug("Background task for uncommitted files started");
             try {
-                logger.debug("Calling getRepo().getUncommittedFiles()");
-                var uncommittedFiles = getRepo().getUncommittedFiles();
-                logger.debug("Got {} uncommitted files", uncommittedFiles.size());
+                logger.debug("Calling getRepo().getModifiedFiles()");
+                var uncommittedFiles = getRepo().getModifiedFiles();
+                logger.debug("Got {} modified files", uncommittedFiles.size());
+                var gitStatus = getRepo().getGit().status().call();
+                var addedSet = gitStatus.getAdded();
+                var removedSet = new java.util.HashSet<>(gitStatus.getRemoved());
+                removedSet.addAll(gitStatus.getMissing());
                 SwingUtilities.invokeLater(() -> {
                     logger.debug("In Swing thread updating uncommitted files table");
+                    fileStatusMap.clear();
+                    for (var file : uncommittedFiles) {
+                        String fullPath = file.getParent().isEmpty() ? file.getFileName() : file.getParent() + "/" + file.getFileName();
+                        if (addedSet.contains(fullPath)) {
+                            fileStatusMap.put(fullPath, "new");
+                        } else if (removedSet.contains(fullPath)) {
+                            fileStatusMap.put(fullPath, "deleted");
+                        } else {
+                            fileStatusMap.put(fullPath, "modified");
+                        }
+                    }
+                    
                     var model = (DefaultTableModel) uncommittedFilesTable.getModel();
                     model.setRowCount(0);
 
                     if (uncommittedFiles.isEmpty()) {
-                        logger.debug("No uncommitted files found");
+                        logger.debug("No modified files found");
                         suggestMessageButton.setEnabled(false);
                         commitButton.setEnabled(false);
                         stashButton.setEnabled(false);
                     } else {
-                        logger.debug("Found {} uncommitted files to display", uncommittedFiles.size());
+                        logger.debug("Found {} modified files to display", uncommittedFiles.size());
                         // Track row indices for files that were previously selected
                         List<Integer> rowsToSelect = new ArrayList<>();
 
