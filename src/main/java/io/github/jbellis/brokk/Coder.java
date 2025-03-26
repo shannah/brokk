@@ -348,25 +348,23 @@ public class Coder {
             messages = new ArrayList<>(messages); // so we can modify it
             String toolsDescription = tools.stream()
                     .map(tool -> {
-                        StringBuilder sb = new StringBuilder();
-                        sb.append("- ").append(tool.name()).append(": ").append(tool.description());
-
-                        // Add parameters information if available
-                        sb.append("\n  Parameters:");
-                        for (var entry : tool.parameters().properties().entrySet()) {
-                            sb.append("\n    - ").append(entry.getKey());
-
-                            // Try to extract description if available
-                            try {
-                                JsonNode node = mapper.valueToTree(entry.getValue());
-                                if (node.has("description")) {
-                                    sb.append(": ").append(node.get("description").asText());
-                                }
-                            } catch (Exception e) {
-                                // Ignore, just don't add the description
-                            }
-                        }
-                        return sb.toString();
+                        var parametersInfo = tool.parameters().properties().entrySet().stream()
+                                .map(entry -> {
+                                    try {
+                                        var node = mapper.valueToTree(entry.getValue());
+                                        var description = node.has("description") ? ": " + node.get("description").asText() : "";
+                                        return "    - %s%s".formatted(entry.getKey(), description);
+                                    } catch (Exception e) {
+                                        return "    - %s".formatted(entry.getKey());
+                                    }
+                                })
+                                .collect(Collectors.joining("\n"));
+    
+                        return """
+                               - %s: %s
+                                 Parameters:
+                               %s
+                               """.formatted(tool.name(), tool.description(), parametersInfo);
                     })
                     .reduce((a, b) -> a + "\n" + b)
                     .orElse("");
