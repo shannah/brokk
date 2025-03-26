@@ -1,14 +1,18 @@
-0.6.4
+0.7.0
 
 ## Features
 - "Open dependency" automatically decompiles a jar and opens it as a Brokk project
-- Basic context management works better in the absence of Code Intelligence
+- Basic context management and Search works better in the absence of Code Intelligence
+- Multiple projects may be open concurrently
+- Better prompting when copying to an external LLM
+- Incremental output parsing improves responsiveness of the UI with fewer flickers
 
 ## Fixes
 - Git push works with SSH remotes
 - Partial stashing works as intended
 - Symbol usage now includes references in return types
 - Fixed regression to undoing changes on filesystem
+- Keyboard paste into context table works as intended
 
 
 0.6.3
