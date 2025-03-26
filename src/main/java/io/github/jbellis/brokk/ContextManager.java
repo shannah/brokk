@@ -1221,6 +1221,7 @@ public class ContextManager implements IContextManager
             - Apply model: %s
             - Quick model: %s
             - Git repo at %s with %d files
+            - Analyzer language: %s
             """.formatted(
                 welcomeMarkdown,
                 version,
@@ -1228,7 +1229,8 @@ public class ContextManager implements IContextManager
                 models.applyModelName(),
                 models.quickModelName(),
                 project.getRoot(),
-                trackedFiles.size()
+                trackedFiles.size(),
+                project.getAnalyzerLanguage()
             );
     }
 

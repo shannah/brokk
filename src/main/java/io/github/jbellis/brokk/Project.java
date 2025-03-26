@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
+import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.util.AtomicWrites;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -94,13 +95,25 @@ public class Project implements IProject {
         return projectProps.getProperty("buildCommand");
     }
 
+    public Language getAnalyzerLanguage() {
+        String lang = projectProps.getProperty("code_intelligence_language");
+        if (lang == null || lang.isBlank()) {
+            return Language.Java;
+        }
+        try {
+            return Language.valueOf(lang.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return Language.None;
+        }
+    }
+
     public void setBuildCommand(String command) {
         projectProps.setProperty("buildCommand", command);
         saveProjectProperties();
     }
 
     /**
-     * Saves project-specific properties (buildCommand, cpg_refresh)
+     * Saves project-specific properties (buildCommand, code_intelligence_refresh)
      */
     public void saveProjectProperties() {
         saveProperties(propertiesFile, projectProps, "Brokk project configuration");
@@ -161,30 +174,30 @@ public class Project implements IProject {
     }
 
     public enum CpgRefresh {
-    AUTO,
-    MANUAL,
-    UNSET
-}
-
-/**
- * Check if .brokk entries exist in .gitignore
- * @return true if .gitignore contains entries for .brokk
- */
-public boolean isGitIgnoreSet() {
-    try {
-        var gitignorePath = root.resolve(".gitignore");
-        if (Files.exists(gitignorePath)) {
-            var content = Files.readString(gitignorePath);
-            return content.contains(".brokk/") || content.contains(".brokk/**");
-        }
-    } catch (IOException e) {
-        logger.error("Error checking .gitignore: {}", e.getMessage());
+        AUTO,
+        MANUAL,
+        UNSET
     }
-    return false;
-}
+
+    /**
+     * Check if .brokk entries exist in .gitignore
+     * @return true if .gitignore contains entries for .brokk
+     */
+    public boolean isGitIgnoreSet() {
+        try {
+            var gitignorePath = root.resolve(".gitignore");
+            if (Files.exists(gitignorePath)) {
+                var content = Files.readString(gitignorePath);
+                return content.contains(".brokk/") || content.contains(".brokk/**");
+            }
+        } catch (IOException e) {
+            logger.error("Error checking .gitignore: {}", e.getMessage());
+        }
+        return false;
+    }
 
     public CpgRefresh getCpgRefresh() {
-        String value = projectProps.getProperty("cpg_refresh");
+        String value = projectProps.getProperty("code_intelligence_refresh");
         if (value == null) {
             return CpgRefresh.UNSET;
         }
@@ -197,7 +210,7 @@ public boolean isGitIgnoreSet() {
 
     public void setCpgRefresh(CpgRefresh value) {
         assert value != null;
-        projectProps.setProperty("cpg_refresh", value.name());
+        projectProps.setProperty("code_intelligence_refresh", value.name());
         saveProjectProperties();
     }
 
@@ -473,8 +486,7 @@ public boolean isGitIgnoreSet() {
     /**
      * Store the GitHub token in workspace properties.
      */
-    public void setGitHubToken(String token)
-    {
+    public void setGitHubToken(String token) {
         workspaceProps.setProperty("githubToken", token);
         saveWorkspaceProperties();
     }
@@ -482,8 +494,7 @@ public boolean isGitIgnoreSet() {
     /**
      * Retrieve the GitHub token from workspace properties (may be null).
      */
-    public String getGitHubToken()
-    {
+    public String getGitHubToken() {
         return workspaceProps.getProperty("githubToken");
     }
 
@@ -530,7 +541,7 @@ public boolean isGitIgnoreSet() {
             return -1;
         }
     }
-    
+
     /**
      * Save context/git split pane position
      */

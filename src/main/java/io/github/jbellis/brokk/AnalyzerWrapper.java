@@ -3,8 +3,11 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.Project.CpgRefresh;
 import java.awt.KeyboardFocusManager;
 
+import io.github.jbellis.brokk.analyzer.DisabledAnalyzer;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.JavaAnalyzer;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,8 +46,8 @@ public class AnalyzerWrapper {
 
     private volatile boolean running = true;
 
-    private volatile Future<JavaAnalyzer> future;
-    private volatile JavaAnalyzer currentAnalyzer = null;
+    private volatile Future<IAnalyzer> future;
+    private volatile IAnalyzer currentAnalyzer = null;
     private volatile boolean rebuildInProgress = false;
     private volatile boolean externalRebuildRequested = false;
     private volatile boolean rebuildPending = false;
@@ -174,8 +177,12 @@ public class AnalyzerWrapper {
      *   1) If the .brokk/joern.cpg file is up to date, reuse it;
      *   2) Otherwise, rebuild a fresh Analyzer.
      */
-    private JavaAnalyzer loadOrCreateAnalyzer() {
-        logger.debug("Loading/creating analyzer");
+    private IAnalyzer loadOrCreateAnalyzer() {
+        logger.debug("Loading/creating analyzer for {}", project.getAnalyzerLanguage());
+        if (project.getAnalyzerLanguage() == Language.None) {
+            return new DisabledAnalyzer();
+        }
+
         Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
         if (project.getCpgRefresh() == CpgRefresh.UNSET) {
             logger.debug("First startup: timing CPG creation");
@@ -188,18 +195,23 @@ public class AnalyzerWrapper {
             } else if (duration > 5000) {
                 project.setCpgRefresh(CpgRefresh.MANUAL);
                 var msg = """
-                CPG creation was slow (%,d ms); code intelligence will only refresh when explicitly requested via File menu.
+                Code Intelligence found %d classes in %,d ms.
+                Since this was slow, code intelligence will only refresh when explicitly requested via File menu.
                 (Code intelligence will still refresh once automatically at startup.)
-                You can change this with the cpg_refresh parameter in .brokk/project.properties.
-                """.stripIndent().formatted(duration);
+                You can change this with the code_intelligence_refresh parameter in .brokk/project.properties.
+                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
             } else {
                 project.setCpgRefresh(CpgRefresh.AUTO);
                 var msg = """
-                CPG creation was fast (%,d ms); code intelligence will refresh automatically when changes are made to tracked files.
-                You can change this with the cpg_refresh parameter in .brokk/project.properties.
-                """.stripIndent().formatted(duration);
+                Code Intelligence found %d classes in %,d ms.
+                If this is fewer than expected, it's probably because Brokk only looks for %s files.
+                If this is not a useful subset of your project, the best option is to disable
+                Code Intelligence by setting code_intelligence_language=%s in .brokk/project.properties.
+                Otherwise, Code Intelligence will refresh automatically when changes are made to tracked files.
+                You can change this with the code_intelligence_refresh parameter in .brokk/project.properties.
+                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration, Language.Java, Language.None);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
                 startWatcher();
@@ -297,7 +309,7 @@ public class AnalyzerWrapper {
     /**
      * Get the analyzer, showing a spinner UI while waiting if requested.
      */
-    private JavaAnalyzer get(boolean notifyWhenBlocked) {
+    private IAnalyzer get(boolean notifyWhenBlocked) {
         if (SwingUtilities.isEventDispatchThread()) {
             throw new UnsupportedOperationException("Never call blocking get() from EDT");
         }
@@ -317,7 +329,7 @@ public class AnalyzerWrapper {
         }
         try {
             // Block until the future analyzer finishes building
-            JavaAnalyzer built = future.get();
+            var built = future.get();
             currentAnalyzer = built;
             return built;
         } catch (InterruptedException e) {
@@ -332,14 +344,14 @@ public class AnalyzerWrapper {
      * Get the analyzer, showing a spinner UI while waiting.
      * For use in user-facing operations.
      */
-    public JavaAnalyzer get() {
+    public IAnalyzer get() {
         return get(true);
     }
 
     /**
      * @return null if analyzer is not ready yet
      */
-    public JavaAnalyzer getNonBlocking() {
+    public IAnalyzer getNonBlocking() {
         try {
             // Try to get with zero timeout - returns null if not done
             return future.get(0, TimeUnit.MILLISECONDS);
