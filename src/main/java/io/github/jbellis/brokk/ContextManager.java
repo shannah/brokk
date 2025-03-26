@@ -9,6 +9,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
+import io.github.jbellis.brokk.ContextHistory.UndoResult;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
@@ -34,6 +35,7 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,8 +59,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-
-import io.github.jbellis.brokk.ContextHistory.UndoResult;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -715,8 +715,7 @@ public class ContextManager implements IContextManager
 
         // Try to parse as stacktrace
         var stacktrace = StackTrace.parse(content);
-        if (stacktrace != null) {
-            addStacktraceFragment(content);
+        if (stacktrace != null && addStacktraceFragment(stacktrace)) {
             return;
         }
 
@@ -725,9 +724,6 @@ public class ContextManager implements IContextManager
 
         // Inform the user about what happened
         String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-        if (!content.equals(content)) {
-            message += " (converted from HTML)";
-        }
         io.systemOutput(message);
     }
 
@@ -736,7 +732,7 @@ public class ContextManager implements IContextManager
     }
 
     private String fetchUrlContent(String urlString) throws IOException {
-        var url = new java.net.URL(urlString);
+        var url = URI.create(urlString).toURL();
         var connection = url.openConnection();
         // Set a reasonable timeout
         connection.setConnectTimeout(5000);
@@ -1099,13 +1095,10 @@ public class ContextManager implements IContextManager
     }
 
     /** parse stacktrace */
-    public void addStacktraceFragment(String stacktraceText)
+    public boolean addStacktraceFragment(StackTrace stacktrace)
     {
-        var stacktrace = StackTrace.parse(stacktraceText);
-        if (stacktrace == null) {
-            io.toolErrorRaw("unable to parse stacktrace");
-            return;
-        }
+        assert stacktrace != null;
+
         var exception = stacktrace.getExceptionType();
         var content = new StringBuilder();
         var sources = new HashSet<CodeUnit>();
@@ -1120,13 +1113,14 @@ public class ContextManager implements IContextManager
             }
         }
         if (content.isEmpty()) {
-            io.toolErrorRaw("no relevant methods found in stacktrace");
-            return;
+            io.toolErrorRaw("No relevant methods found in stacktrace -- adding as text");
+            return false;
         }
         pushContext(ctx -> {
-            var fragment = new ContextFragment.StacktraceFragment(sources, stacktraceText, exception, content.toString());
+            var fragment = new ContextFragment.StacktraceFragment(sources, stacktrace.getOriginalText(), exception, content.toString());
             return ctx.addVirtualFragment(fragment);
         });
+        return true;
     }
 
     /** Summarize classes => adds skeleton fragments */
