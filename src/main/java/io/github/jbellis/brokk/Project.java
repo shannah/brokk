@@ -86,6 +86,12 @@ public class Project implements IProject {
         }
     }
 
+    public static void removeRecentProject(Path path) {
+        var currentMap = loadRecentProjects();
+        currentMap.remove(path.toAbsolutePath().toString());
+        saveRecentProjects(currentMap);
+    }
+
     @Override
     public GitRepo getRepo() {
         return repo;
@@ -677,5 +683,10 @@ public class Project implements IProject {
         var currentMap = loadRecentProjects();
         currentMap.put(abs, System.currentTimeMillis());
         saveRecentProjects(currentMap);
+    }
+
+    public boolean isDependency() {
+        var dPath = Path.of(".brokk", "dependencies");
+        return root.toString().contains(dPath.toString());
     }
 }

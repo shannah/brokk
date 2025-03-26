@@ -1,7 +1,8 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.Brokk;
+
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
@@ -61,6 +62,15 @@ public class MenuBar {
         var recentProjectsMenu = new JMenu("Recent Projects");
         fileMenu.add(recentProjectsMenu);
         rebuildRecentProjectsMenu(recentProjectsMenu);
+
+        fileMenu.addSeparator();
+
+        var openDependencyItem = new JMenuItem("Open Dependency...");
+        openDependencyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        openDependencyItem.addActionListener(e -> {
+            Brokk.openJarDependency(chrome);
+        });
+        fileMenu.add(openDependencyItem);
 
         menuBar.add(fileMenu);
 

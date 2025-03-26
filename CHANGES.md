@@ -1,6 +1,7 @@
 0.6.4
 
 ## Features
+- "Open dependency" automatically decompiles a jar and opens it as a Brokk project
 - Basic context management works better in the absence of Code Intelligence
 
 ## Fixes

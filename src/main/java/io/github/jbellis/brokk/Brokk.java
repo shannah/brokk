@@ -1,18 +1,25 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.util.DecompileHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Map;
-import java.util.Properties;
+import java.util.function.Predicate;
+
 
 public class Brokk {
     private static final Logger logger = LogManager.getLogger(Brokk.class);
@@ -28,7 +35,7 @@ public class Brokk {
      */
     public static void main(String[] args) {
         logger.debug("Brokk starting");
-        
+
         // Set macOS to use system menu bar
         System.setProperty("apple.laf.useScreenMenuBar", "true");
 
@@ -74,11 +81,18 @@ public class Brokk {
                     // find the project with the largest lastOpened time
                     var mostRecent = recents.entrySet().stream()
                             .max(Comparator.comparingLong(Map.Entry::getValue))
-                            .get()
-                            .getKey();
+                            .map(Map.Entry::getKey)
+                            .orElseThrow();
+
                     var path = Path.of(mostRecent);
+                    // Check if the most recent path still exists and is a git repo
                     if (GitRepo.hasGitRepo(path)) {
                         openProject(path);
+                    } else {
+                        Project.removeRecentProject(path); // Remove invalid entry
+                        io = new Chrome(null); // Open empty UI for now
+                        io.onComplete();
+                        io.systemOutput("Most recent project path not found or not a git repo: " + path);
                     }
                 }
             }
@@ -90,8 +104,13 @@ public class Brokk {
      * The folder must contain a .git subdirectory or else we will show an error.
      */
     public static void openProject(Path projectPath) {
+        // Normalize the path to handle potential inconsistencies (e.g., trailing slashes)
+        projectPath = projectPath.toAbsolutePath().normalize();
+
         if (!GitRepo.hasGitRepo(projectPath)) {
-            if (io != null) {
+            if (io == null) {
+                System.out.println("Not a valid git project: " + projectPath);
+            } else {
                 io.toolErrorRaw("Not a valid git project: " + projectPath);
             }
             return;
@@ -100,17 +119,22 @@ public class Brokk {
         // Save to recent projects
         Project.updateRecentProject(projectPath);
 
-        // Dispose of the old Chrome if it exists
+        // Dispose of the old Chrome if it exists - ensure this happens on EDT
         if (io != null) {
-            io.close();
+            SwingUtil.runOnEDT(() -> {
+                if (io != null) {
+                    io.close();
+                }
+            });
         }
+
 
         // If there's an existing contextManager, shut it down
         if (contextManager != null) {
             contextManager.shutdown();
         }
 
-        // Create new Project, ContextManager, Coder
+        // --- Reinitialize everything ---
         contextManager = new ContextManager(projectPath);
         Models models;
         String modelsError = null;
@@ -120,13 +144,13 @@ public class Brokk {
             modelsError = th.getMessage();
             models = Models.disabled();
         }
-        
+
         // Create a new Chrome instance with the fresh ContextManager
         io = new Chrome(contextManager);
 
         // Create the Coder with the new IO
         coder = new Coder(models, io, projectPath, contextManager);
-        
+
         // Resolve circular references
         contextManager.resolveCircularReferences(io, coder);
         io.onComplete();
@@ -135,6 +159,226 @@ public class Brokk {
         if (!coder.isLlmAvailable()) {
             io.toolError("\nError loading models: " + modelsError);
             io.toolError("AI will not be available this session");
+        }
+        io.focusInput();
+    }
+
+
+    /**
+     * Prompts the user to select a JAR file using FileSelectionDialog,
+     * then decompiles it to a project directory (.brokk/dependencies/[jarname])
+     * within the currently open project and opens the decompiled source as a new project.
+     */
+    public static void openJarDependency() {
+        // Fixme ensure the menu item is disabled if no project is open
+        assert contextManager != null;
+        assert contextManager.getProject() != null;
+        logger.debug("Entered openJarDependency");
+
+        var jarCandidates = contextManager.submitBackgroundTask("Scaning for JAR files", DecompileHelper::findCommonDependencyJars);
+
+        // Now show the dialog on the EDT
+        SwingUtilities.invokeLater(() -> {
+            Predicate<File> jarFilter = file -> file.isDirectory() || file.getName().toLowerCase().endsWith(".jar");
+            FileSelectionDialog dialog = new FileSelectionDialog(
+                    io.getFrame(),
+                    contextManager.getProject(), // Pass the current project
+                    "Select JAR Dependency to Decompile",
+                    true, // Allow external files
+                    jarFilter, // Filter tree view for .jar files (and directories)
+                    jarCandidates // Provide candidates for autocomplete
+            );
+            dialog.setVisible(true); // Show the modal dialog
+
+            if (dialog.isConfirmed() && dialog.getSelectedFile() != null) {
+                var selectedFile = dialog.getSelectedFile();
+                Path jarPath = selectedFile.absPath();
+                assert Files.isRegularFile(jarPath) && jarPath.toString().toLowerCase().endsWith(".jar");
+                decompileAndOpenJar(jarPath);
+            } else {
+                logger.debug("JAR selection cancelled by user.");
+            }
+        });
+    }
+
+    /**
+     * Performs the decompilation and opening of the selected JAR file.
+     * Separated from openJarDependency to keep UI selection logic cleaner.
+     * This method assumes jarPath is a valid JAR file.
+     *
+     * @param jarPath Path to the JAR file to decompile.
+     */
+    private static void decompileAndOpenJar(Path jarPath) {
+        try {
+            String jarName = jarPath.getFileName().toString();
+            // Use the *original* project's root to determine the .brokk directory
+            Path originalProjectRoot = contextManager.getRoot();
+            Path brokkDir = originalProjectRoot.resolve(".brokk");
+            Path depsDir = brokkDir.resolve("dependencies");
+            Path outputDir = depsDir.resolve(jarName.replaceAll("\\.jar$", "")); // Decompile target dir
+
+            logger.debug("Original project root: {}", originalProjectRoot);
+            logger.debug("Decompile output directory: {}", outputDir);
+
+            Files.createDirectories(depsDir);
+
+            // Check if already decompiled
+            if (Files.exists(outputDir)) {
+                int choice = JOptionPane.showConfirmDialog(
+                        io.getFrame(), // Use current IO frame
+                        """
+                        This JAR appears to have been decompiled previously.
+                        Output directory: %s
+
+                        Open existing decompiled project?
+                        (Choosing 'No' will delete the existing directory and re-decompile)
+                        """.formatted(outputDir.toString()),
+                        "Dependency exists",
+                        JOptionPane.YES_NO_CANCEL_OPTION,
+                        JOptionPane.QUESTION_MESSAGE
+                );
+
+                if (choice == JOptionPane.YES_OPTION) {
+                    logger.debug("Opening previously decompiled dependency at {}", outputDir);
+                    // Ensure the dummy .git dir exists before opening
+                    DecompileHelper.ensureGitDirectory(outputDir);
+                    openProject(outputDir);
+                    return;
+                } else if (choice == JOptionPane.NO_OPTION) {
+                    logger.debug("Removing old decompiled contents at {}", outputDir);
+                    try {
+                        DecompileHelper.deleteDirectoryRecursive(outputDir);
+                    } catch (IOException e) {
+                        logger.error("Failed to delete existing directory: {}", outputDir, e);
+                        io.toolErrorRaw("Error deleting existing decompiled directory: " + e.getMessage());
+                        return; // Stop if deletion fails
+                    }
+                    // Recreate the directory after deletion
+                    Files.createDirectories(outputDir);
+                } else { // CANCEL_OPTION or closed dialog
+                    logger.debug("User cancelled decompilation for {}", jarPath);
+                    return;
+                }
+            } else {
+                // Create the output directory if it didn't exist
+                Files.createDirectories(outputDir);
+            }
+
+
+            io.systemOutput("Decompiling " + jarName + "...");
+
+            // Decompilation Worker
+            SwingWorker<Void, Void> worker = new SwingWorker<>() {
+                @Override
+                protected Void doInBackground() throws Exception { // Allow exceptions
+                    logger.debug("Starting decompilation in background thread for {}", jarPath);
+                    Path tempDir = null; // To store the path of the temporary directory
+
+                    try {
+                        // 1. Create a temporary directory
+                        tempDir = Files.createTempDirectory("fernflower-extracted-");
+                        logger.debug("Created temporary directory: {}", tempDir);
+
+                        // 2. Extract the JAR contents to the temporary directory
+                        DecompileHelper.extractJarToTemp(jarPath, tempDir);
+                        logger.debug("Extracted JAR contents to temporary directory.");
+
+                        // 3. Set up Decompiler with the *final* output directory
+                        Map<String, Object> options = Map.of("hes", "1", // hide empty super
+                                                             "hdc", "1", // hide default constructor
+                                                             "dgs", "1", // decompile generic signature
+                                                             "ren", "1" /* rename ambiguous */);
+                        ConsoleDecompiler decompiler = new ConsoleDecompiler(
+                                outputDir.toFile(), // Use the final desired output directory here
+                                options,
+                                new org.jetbrains.java.decompiler.main.extern.IFernflowerLogger() {
+                                    @Override
+                                    public void writeMessage(String message, Severity severity) {
+                                        switch (severity) {
+                                            case ERROR -> logger.error("Fernflower: {}", message);
+                                            case WARN  -> logger.warn("Fernflower: {}", message);
+                                            case INFO  -> logger.info("Fernflower: {}", message);
+                                            case TRACE -> logger.trace("Fernflower: {}", message);
+                                            default    -> logger.debug("Fernflower: {}", message);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void writeMessage(String message, Severity severity, Throwable t) {
+                                        switch (severity) {
+                                            case ERROR -> logger.error("Fernflower: {}", message, t);
+                                            case WARN  -> logger.warn("Fernflower: {}", message, t);
+                                            case INFO  -> logger.info("Fernflower: {}", message, t);
+                                            case TRACE -> logger.trace("Fernflower: {}", message, t);
+                                            default   -> logger.debug("Fernflower: {}", message, t);
+                                        }
+                                    }
+                                }
+                        );
+
+                        // 4. Add the *temporary directory* as the source
+                        decompiler.addSource(tempDir.toFile());
+
+                        // 5. Decompile
+                        logger.info("Starting decompilation process...");
+                        decompiler.decompileContext();
+                        logger.info("Decompilation process finished.");
+
+                        return null; // Indicate success
+                    } catch (Exception e) {
+                        // Log and rethrow to be caught by done()
+                        logger.error("Error during decompilation background task for {}", jarPath, e);
+                        throw e;
+                    } finally {
+                        // 6. Clean up the temporary directory
+                        if (tempDir != null) {
+                            try {
+                                logger.debug("Cleaning up temporary directory: {}", tempDir);
+                                DecompileHelper.deleteDirectoryRecursive(tempDir);
+                                logger.debug("Temporary directory deleted.");
+                            } catch (IOException e) {
+                                logger.error("Failed to delete temporary directory: {}", tempDir, e);
+                                // Don't prevent opening the project if temp dir cleanup fails
+                            }
+                        }
+                    }
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        get(); // Check for exceptions from doInBackground()
+                        io.systemOutput("Decompilation completed. Opening decompiled project.");
+
+                        // Create a simple .git folder so it's recognized as a git project by openProject
+                        DecompileHelper.ensureGitDirectory(outputDir);
+
+
+                        // Log final directory structure for troubleshooting
+                        logger.debug("Final contents of {} after decompilation:", outputDir);
+                        try (var pathStream = Files.walk(outputDir, 1)) { // Walk only one level deep for brevity
+                            pathStream.forEach(path -> logger.debug("   {}", path.getFileName()));
+                        } catch (IOException e) {
+                            logger.warn("Error listing output directory contents", e);
+                        }
+
+                        // Open the decompiled directory as a new project
+                        openProject(outputDir);
+
+                    } catch (Exception e) {
+                        // Handle exceptions from get() or other logic in done()
+                        Throwable cause = (e instanceof java.util.concurrent.ExecutionException) ? e.getCause() : e;
+                        io.toolErrorRaw("Error during decompilation process: " + cause.getMessage());
+                        logger.error("Error completing decompilation task for {}", jarPath, cause);
+                    }
+                }
+            };
+
+            worker.execute(); // Start the background decompilation
+        } catch (IOException e) {
+            // Error *before* starting the worker (e.g., creating directories)
+            io.toolErrorRaw("Error preparing decompilation: " + e.getMessage());
+            logger.error("Error preparing decompilation for {}", jarPath, e);
         }
     }
 
@@ -146,6 +390,7 @@ public class Brokk {
             if (welcomeStream != null) {
                 return new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8);
             }
+            logger.warn("WELCOME.md resource not found.");
             return "Welcome to Brokk!";
         } catch (IOException e) {
             throw new UncheckedIOException(e);

@@ -52,7 +52,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Panels:
     private ContextPanel contextPanel;
-    private GitPanel gitPanel;
+    private GitPanel gitPanel; // Will be null for dependency projects
 
     // Buttons for the command input panel:
     private JButton codeButton;  // renamed from goButton
@@ -67,7 +67,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // For voice input
     private VoiceInputButton micButton;
 
-    private Project getProject() {
+    public Project getProject() {
         return contextManager == null ? null : contextManager.getProject();
     }
 
@@ -145,8 +145,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             loadWindowSizeAndPosition();
 
             // populate the git panel
-            updateCommitPanel();
-            gitPanel.updateRepo();
+            if (getProject().isDependency()) {
+                gitPanel.setEnabled(false);
+            } else {
+                updateCommitPanel();
+                gitPanel.updateRepo();
+            }
         }
 
         // show the window
@@ -241,8 +245,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 
                 // Update commit message
                 SwingUtilities.invokeLater(() -> {
-                    gitPanel.setCommitMessageText("Update for Brokk project files");
-                    updateCommitPanel();
+                    if (gitPanel != null) {
+                gitPanel.setCommitMessageText("Update for Brokk project files");
+                updateCommitPanel();
+            }
                 });
                 
             } catch (Exception e) {
@@ -318,7 +324,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         this.contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         contextGitSplitPane.setTopComponent(contextPanel);
 
-        // 4b. Git panel at the bottom
+        // 4b. Git panel at the bottom (skip for dependency projects)
         gitPanel = new GitPanel(this, contextManager);
         contextGitSplitPane.setBottomComponent(gitPanel);
 
@@ -735,11 +741,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Updates the uncommitted files table and the state of the suggest commit button
      */
     public void updateCommitPanel() {
-        gitPanel.updateCommitPanel();
+        if (gitPanel != null) {
+            gitPanel.updateCommitPanel();
+        }
     }
 
     public void updateGitRepo() {
-        gitPanel.updateRepo();
+        if (gitPanel != null) {
+            gitPanel.updateRepo();
+        }
     }
 
     /**
@@ -1242,7 +1252,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void setCommitMessageText(String message) {
         SwingUtilities.invokeLater(() -> {
-            gitPanel.setCommitMessageText(message);
+            if (gitPanel != null) {
+                gitPanel.setCommitMessageText(message);
+            }
         });
     }
 
@@ -1287,7 +1299,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     GitPanel getGitPanel() {
-        return gitPanel;
+        return gitPanel; // May be null for dependency projects
     }
 
     /**

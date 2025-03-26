@@ -24,7 +24,10 @@ scalacOptions ++= Seq(
 )
 
 // Additional repositories
-resolvers += "Gradle Libs" at "https://repo.gradle.org/gradle/libs-releases"
+resolvers ++= Seq(
+  "Gradle Libs" at "https://repo.gradle.org/gradle/libs-releases",
+  "IntelliJ Releases" at "https://www.jetbrains.com/intellij-repository/releases"
+)
 
 libraryDependencies ++= Seq(
   // File watching
@@ -63,6 +66,9 @@ libraryDependencies ++= Seq(
   "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test,
   "org.junit.jupiter" % "junit-jupiter-engine"  % "5.10.2" % Test,
   "com.github.sbt.junit" % "jupiter-interface"  % "0.13.3" % Test,
+  
+  // Java Decompiler
+  "com.jetbrains.intellij.java" % "java-decompiler-engine" % "243.25659.59",
 )
 
 Compile / unmanagedResources := {

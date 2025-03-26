@@ -19,6 +19,7 @@ import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
+import io.github.jbellis.brokk.gui.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
@@ -473,9 +474,9 @@ public class ContextManager implements IContextManager
      */
     private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles)
     {
-        var dialogRef = new AtomicReference<FileSelectionDialog>();
+        var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new FileSelectionDialog(io.getFrame(), project, title, allowExternalFiles);
+            var dialog = new MultiFileSelectionDialog(io.getFrame(), project, title, allowExternalFiles);
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);

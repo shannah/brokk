@@ -233,19 +233,23 @@ public class ContextPanel extends JPanel {
                             contextMenu.add(setAutoContextCustomItem);
 
                         } else {
-                            // Otherwise, show "View History" if it's a RepoPathFragment
-                            JMenuItem viewHistoryItem = new JMenuItem("View History");
-                            viewHistoryItem.addActionListener(ev -> {
-                                int selectedRow = contextTable.getSelectedRow();
-                                if (selectedRow >= 0) {
-                                    var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
-                                    if (selectedFragment instanceof ContextFragment.RepoPathFragment(RepoFile f)) {
-                                        chrome.getGitPanel().addFileHistoryTab(f);
+                            // Otherwise, show "View History" if it's a RepoPathFragment and not a dependency
+                            boolean isDependency = contextManager != null && contextManager.getProject() != null 
+                                    && contextManager.getProject().isDependency();
+                            if (!isDependency && chrome.getGitPanel() != null) {
+                                JMenuItem viewHistoryItem = new JMenuItem("View History");
+                                viewHistoryItem.addActionListener(ev -> {
+                                    int selectedRow = contextTable.getSelectedRow();
+                                    if (selectedRow >= 0) {
+                                        var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
+                                        if (selectedFragment instanceof ContextFragment.RepoPathFragment(RepoFile f)) {
+                                            chrome.getGitPanel().addFileHistoryTab(f);
+                                        }
                                     }
-                                }
-                            });
-                            contextMenu.add(viewHistoryItem);
-                            viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+                                });
+                                contextMenu.add(viewHistoryItem);
+                                viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+                            }
                         }
 
                         // If the user right-clicked on the references column, show reference options
@@ -347,7 +351,11 @@ public class ContextPanel extends JPanel {
         editMenuItem.addActionListener(e -> {
                                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, List.of());
                                        });
-        addMenu.add(editMenuItem);
+        // Only add Edit Files for non-dependency projects
+        if (contextManager != null && contextManager.getProject() != null 
+                && !contextManager.getProject().isDependency()) {
+            addMenu.add(editMenuItem);
+        }
 
         JMenuItem readMenuItem = new JMenuItem("Read Files");
         readMenuItem.addActionListener(e -> {
@@ -651,6 +659,12 @@ public class ContextPanel extends JPanel {
                 chrome.toolErrorRaw("Cannot add file: " + fileRef.getFullPath() + " - no RepoFile available");
             }
         });
+        // Disable for dependency projects
+        if (contextManager != null && contextManager.getProject() != null 
+                && contextManager.getProject().isDependency()) {
+            addItem.setEnabled(false);
+            addItem.setToolTipText("Editing not available for dependencies");
+        }
         return addItem;
     }
 
