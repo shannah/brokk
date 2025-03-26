@@ -220,6 +220,15 @@ public class SearchAgent {
 
             // Decide what action to take for this query
             var tools = determineNextActions();
+            if (Thread.interrupted()) {
+                io.systemOutput("Interrupted; stopping search");
+                return null;
+            }
+            if (tools.isEmpty()) {
+                io.systemOutput("Unable to get a response from the LLM; giving up search");
+                return null;
+            }
+
             // Remember these signatures for future checks, and return the call
             for (var call: tools) {
                 toolCallSignatures.addAll(createToolCallSignatures(call));
@@ -573,7 +582,14 @@ public class SearchAgent {
 
         // Ask LLM for next action with tools
         var tools = createToolSpecifications();
-        var response = coder.sendMessage(coder.models.searchModel(), messages, tools);
+        var result = coder.sendMessage(coder.models.searchModel(), messages, tools);
+        if (result.cancelled()) {
+            Thread.currentThread().interrupt();
+        }
+        if (result.error() != null) {
+            return List.of();
+        }
+        var response = result.chatResponse();
         totalUsage = TokenUsage.sum(totalUsage, response.tokenUsage());
 
         // Parse response into potentially multiple actions
@@ -752,9 +768,7 @@ public class SearchAgent {
     private List<ToolCall> parseResponse(AiMessage response) {
         if (!response.hasToolExecutionRequests()) {
             logger.debug("No tool execution requests found in response");
-            var dummyTer = ToolExecutionRequest.builder().name("MISSING_TOOL_CALL").build();
-            var errorCall = new ToolCall(dummyTer, "Error: No tool execution requests found in response");
-            return List.of(errorCall);
+            return List.of();
         }
 
         // Process each tool execution request with duplicate detection

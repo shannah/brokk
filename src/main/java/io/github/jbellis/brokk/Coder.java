@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class Coder {
     private final Logger logger = LogManager.getLogger(Coder.class);
@@ -179,28 +180,29 @@ public class Coder {
      */
     public String sendMessage(List<ChatMessage> messages) {
         var R = sendMessage(models.quickModel(), messages, List.of());
-        return R.aiMessage().text().trim();
+        return R.chatResponse.aiMessage().text().trim();
     }
 
     public ChatResponse sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages) {
-        return sendMessage(model, messages, List.of());
+        return sendMessage(model, messages, List.of()).chatResponse;
     }
     
 
     /**
      * Send a message to a specific model with tool support
      *
-     * @param model       The model to use
-     * @param messages    The messages to send
-     * @param tools       List of tools to enable for the LLM
+     * @param model    The model to use
+     * @param messages The messages to send
+     * @param tools    List of tools to enable for the LLM
      * @return The LLM response as a string
      */
-    public ChatResponse sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools) {
+    public StreamingResult sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools) {
 
-        var cr = sendMessageWithRetry(model, messages, tools, false, MAX_ATTEMPTS).chatResponse();
+        var result = sendMessageWithRetry(model, messages, tools, false, MAX_ATTEMPTS);
+        var cr = result.chatResponse();
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
         // Also needed for our DeepSeek emulation if it returns a response without a tool call
-        while (!tools.isEmpty() && !cr.aiMessage().hasToolExecutionRequests()) {
+        while (!result.cancelled && result.error == null && !tools.isEmpty() && !cr.aiMessage().hasToolExecutionRequests()) {
             io.systemOutput("Enforcing tool selection");
             var extraMessages = new ArrayList<>(messages);
             extraMessages.add(cr.aiMessage());
@@ -212,7 +214,7 @@ public class Coder {
                 extraMessages.add(new UserMessage("At least one tool execution request is required"));
             }
 
-            cr = sendMessageWithRetry(model, extraMessages, tools, false, MAX_ATTEMPTS).chatResponse();
+            result = sendMessageWithRetry(model, extraMessages, tools, false, MAX_ATTEMPTS);
         }
 
         if (model instanceof AnthropicChatModel) {
@@ -220,7 +222,7 @@ public class Coder {
             writeToHistory("Cache usage", "%s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
         }
 
-        return cr;
+        return result;
     }
 
     /**
@@ -244,14 +246,15 @@ public class Coder {
 
             error = response.error;
             var cr = response.chatResponse;
-            boolean isEmpty = (cr.aiMessage() == null || cr.aiMessage().text().isBlank());
+            boolean isEmpty = (cr.aiMessage().text() == null || cr.aiMessage().text().isBlank())
+                    && !cr.aiMessage().hasToolExecutionRequests();
             if (error == null && !isEmpty) {
                 writeToHistory("Response", cr.aiMessage().text());
                 return response;
             }
 
             // wait between retries
-            logger.debug("LLM error", error);
+            logger.debug("LLM error / empty message in {}", response);
             if (attempt == maxAttempts) {
                 // don't sleep if this is the last attempt
                 break;
@@ -261,12 +264,8 @@ public class Coder {
             long backoffSeconds = 1L << (attempt - 1);
             backoffSeconds = Math.min(backoffSeconds, 16);
 
-            if (echo) {
-                io.systemOutput(
-                        String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
-                                      attempt, maxAttempts, (double)backoffSeconds)
-                );
-            }
+            io.systemOutput(String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
+                                  attempt, maxAttempts, (double) backoffSeconds));
 
             // Busywait with countdown
             long startTime = System.currentTimeMillis();
@@ -275,11 +274,11 @@ public class Coder {
                 while (System.currentTimeMillis() < endTime) {
                     double remainingSeconds = (endTime - System.currentTimeMillis()) / 1000.0;
                     if (remainingSeconds <= 0) break;
-                    if (echo) io.actionOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
+                    io.actionOutput(String.format("Retrying in %.1f seconds...", remainingSeconds));
                     Thread.sleep(100); // Update every 100ms
                 }
             } catch (InterruptedException e) {
-                if (echo) io.systemOutput("Session interrupted during backoff");
+                io.systemOutput("Interrupted!");
                 // Return a dummy with cancellation
                 cr = ChatResponse.builder().aiMessage(new AiMessage("Cancelled during backoff")).build();
                 return new StreamingResult(cr, true, null);
@@ -291,7 +290,7 @@ public class Coder {
             // Return a minimal ChatResponse indicating empty
             writeToHistory("Error", "LLM returned empty or null after max retries");
             var cr = ChatResponse.builder().aiMessage(new AiMessage("Empty response after max retries")).build();
-            return new StreamingResult(cr, false, null);
+            return new StreamingResult(cr, false, new IllegalStateException("LLM returned empty or null"));
         }
         writeToHistory("Error", error.getClass() + ": " + error.getMessage());
         // Return a minimal ChatResponse with an error text so caller knows
