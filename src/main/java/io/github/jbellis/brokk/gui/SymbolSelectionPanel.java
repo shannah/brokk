@@ -158,7 +158,7 @@ public class SymbolSelectionPanel extends JPanel {
                     .max()
                     .orElseThrow();
             // this doesn't seem to work at all, maybe it's hardcoded at startup
-            autoCompletion.setChoicesWindowSize(maxWidth + 10, 3 * fontMetrics.getHeight() + 10); // 5px margin on each side
+            autoCompletion.setChoicesWindowSize(maxWidth + 20, 3 * fontMetrics.getHeight() + 10); // 5px margin on each side
 
             autoCompletion.setShowDescWindow(true);
             int maxDescWidth = L.stream()

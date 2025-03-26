@@ -6,7 +6,7 @@ import io.github.jbellis.brokk.GitRepo;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.fife.ui.autocomplete.AutoCompletion;
-import org.fife.ui.autocomplete.BasicCompletion;
+import org.fife.ui.autocomplete.ShorthandCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionProvider;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
@@ -161,13 +161,6 @@ public class FileSelectionDialog extends JDialog {
         setContentPane(mainPanel);
         pack();
         setLocationRelativeTo(parent);
-        // Make the autocomplete popup match the width of the dialog
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowOpened(WindowEvent e) {
-                autoCompletion.setChoicesWindowSize((int) (mainPanel.getWidth() * 0.9), 300);
-            }
-        });
     }
 
     /**
@@ -326,7 +319,7 @@ public class FileSelectionDialog extends JDialog {
     /**
      * Custom CompletionProvider for files that replicates the old logic.
      */
-    public static class FileCompletionProvider extends DefaultCompletionProvider {
+    public class FileCompletionProvider extends DefaultCompletionProvider {
 
         private final Collection<RepoFile> repoFiles;
 
@@ -335,6 +328,7 @@ public class FileSelectionDialog extends JDialog {
             this.repoFiles = repoFiles;
         }
 
+        // only complete the current filename, which allows others in the input area to be left alone
         @Override
         public String getAlreadyEnteredText(javax.swing.text.JTextComponent comp)
         {
@@ -363,14 +357,38 @@ public class FileSelectionDialog extends JDialog {
         @Override
         public List<Completion> getCompletions(JTextComponent tc) {
             var input = getAlreadyEnteredText(tc);
-            return Completions.getFileCompletions(input, repoFiles).stream()
+            var L = Completions.getFileCompletions(input, repoFiles).stream()
                     .map(this::createCompletion)
                     .toList();
+
+            if (L.isEmpty()) {
+                autoCompletion.setShowDescWindow(false);
+                return L;
+            }
+
+            // Dynamically size the description window based on the longest filename
+            var tooltipFont = UIManager.getFont("ToolTip.font");
+            var fontMetrics = fileInput.getFontMetrics(tooltipFont);
+            int maxWidth = L.stream()
+                    .mapToInt(c -> fontMetrics.stringWidth(c.getInputText()))
+                    .max()
+                    .orElseThrow();
+            // this doesn't seem to work at all, maybe it's hardcoded at startup
+            autoCompletion.setChoicesWindowSize(maxWidth + 10, 3 * fontMetrics.getHeight() + 10); // 5px margin on each side
+
+            autoCompletion.setShowDescWindow(true);
+            int maxDescWidth = L.stream()
+                    .mapToInt(c -> fontMetrics.stringWidth(c.getReplacementText()))
+                    .max()
+                    .orElseThrow();
+            // Desc uses a different (monospaced) font but I'm not sure how to infer which
+            // So, hack in a 1.2 factor
+            autoCompletion.setDescriptionWindowSize((int) (1.2 * maxDescWidth + 10), 3 * fontMetrics.getHeight() + 10);
+            return L;
         }
 
         private Completion createCompletion(RepoFile file) {
-            String replacement = file.toString() + " ";
-            return new BasicCompletion(this, replacement, file.getFileName(), file.toString());
+            return new ShorthandCompletion(this, file.getFileName(), file.toString() + " ");
         }
     }
     /**
