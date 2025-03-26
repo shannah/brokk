@@ -71,9 +71,6 @@ public class SearchAgent {
     private final Set<String> toolCallSignatures = new HashSet<>();
     private final Set<String> trackedClassNames = new HashSet<>();
 
-    // ThreadLocal to store the current ToolCall being processed
-    private static final ThreadLocal<ToolCall> currentToolCall = new ThreadLocal<>();
-
     private TokenUsage totalUsage = new TokenUsage(0, 0);
 
     public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io) {
@@ -271,7 +268,7 @@ public class SearchAgent {
 
                 // Start summarization for specific tools
                 var toolName = step.getRequest().name();
-                var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings");
+                var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings", "searchFilenames", "getFileContents");
                 if (toolsRequiringSummaries.contains(toolName) && Models.getApproximateTokens(step.result) > SUMMARIZE_THRESHOLD) {
                     step.summarizeFuture = summarizeResultAsync(query, step);
                 } else if (toolName.equals("searchSymbols")) {
@@ -1169,7 +1166,7 @@ public class SearchAgent {
     }
 
     @Tool("""
-    Returns class names whose text contents match Java regular expression patterns.
+    Returns file names whose text contents match Java regular expression patterns.
     This is slower than searchSymbols but can find references to external dependencies and comment strings.
     """)
     public String searchSubstrings(
@@ -1199,42 +1196,38 @@ public class SearchAgent {
             }
 
             // Get all tracked files from GitRepo and process them functionally
-            var matchingClasses = contextManager.getProject().getRepo().getTrackedFiles().parallelStream().map(file -> {
+            var matchingFilenames = contextManager.getProject().getRepo().getTrackedFiles().parallelStream().map(file -> {
                         try {
-                            RepoFile repoFile = new RepoFile(contextManager.getProject().getRoot(), file.toString());
-                            String fileContents = new String(Files.readAllBytes(repoFile.absPath()));
+                            if (!file.isText()) {
+                                return null;
+                            }
+                            String fileContents = new String(Files.readAllBytes(file.absPath()));
 
                             // Return the repoFile if its contents match any of the patterns, otherwise null
                             for (Pattern compiledPattern : compiledPatterns) {
                                 if (compiledPattern.matcher(fileContents).find()) {
-                                    return repoFile;
+                                    return file;
                                 }
                             }
                             return null;
                         } catch (Exception e) {
-                            logger.debug("Error processing file {}: {}", file, e.getMessage());
+                            logger.debug("Error processing file {}", file, e);
                             return null;
                         }
                     })
                     .filter(Objects::nonNull) // Filter out nulls (files with errors or no matches)
-                    .flatMap(repoFile -> {
-                        try {
-                            // For each matching file, get all non-inner classes and flatten them into the stream
-                            return analyzer.getClassesInFile(repoFile).stream()
-                                    .map(CodeUnit::fqName)
-                                    .filter(reference -> !reference.contains("$"));
-                        } catch (Exception e) {
-                            logger.debug("Error getting classes for file {}: {}", repoFile, e.getMessage());
-                            return Stream.empty();
-                        }
-                    })
+                    .map(RepoFile::toString)
                     .collect(Collectors.toSet()); // Collect to a set to eliminate duplicates
 
-            if (matchingClasses.isEmpty()) {
-                return "No classes found with content matching patterns: " + String.join(", ", patterns);
+            if (matchingFilenames.isEmpty()) {
+                var msg = "No files found with content matching patterns: " + String.join(", ", patterns);
+                logger.debug(msg);
+                return msg;
             }
 
-            return "Classes with content matching patterns: " + String.join(", ", matchingClasses);
+            var msg = "Files with content matching patterns: " + String.join(", ", matchingFilenames);
+            logger.debug(msg);
+            return msg;
         } catch (Exception e) {
             logger.error("Error searching file contents", e);
             return "Error searching file contents: " + e.getMessage();
@@ -1416,7 +1409,6 @@ public class SearchAgent {
                 return;
             }
 
-            currentToolCall.set(this);
             try {
                 // Use TER's tool name as the method name
                 String methodName = request.name();
@@ -1449,7 +1441,7 @@ public class SearchAgent {
                 logger.error("Tool method invocation error for {}: {}", request.name(), cause.getMessage(), cause);
                 result = "Error executing tool " + request.name() + ": " + cause.getMessage();
             } finally {
-                currentToolCall.remove();
+                logger.debug("Tool call completed: {}", result);
             }
         }
 
