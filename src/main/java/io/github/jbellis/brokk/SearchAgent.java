@@ -159,7 +159,7 @@ public class SearchAgent {
             )));
 
             // Use the quick model for summarization
-            var response = coder.sendMessage(coder.models.searchModel(), messages);
+            var response = coder.sendMessage(coder.models.searchModel(), messages).chatResponse();
             return response.aiMessage().text();
         });
     }
@@ -198,13 +198,22 @@ public class SearchAgent {
             Make sure to include the fully qualified source (class, method, etc) as well as the code.
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var response = coder.sendMessage(coder.models.searchModel(), messages);
-            knowledge.add(new Tuple2<>("Initial context", response.aiMessage().text()));
+            var result = coder.sendMessage(coder.models.searchModel(), messages);
+            if (result.cancelled()) {
+                io.systemOutput("Cancelled; stopping search");
+                return null;
+            }
+            if (result.error() != null) {
+                io.systemOutput("LLM error evaluating context; stopping search");
+                return null;
+            }
+            knowledge.add(new Tuple2<>("Initial context", result.chatResponse().aiMessage().text()));
         }
 
         while (true) {
             // If thread interrupted, bail out
             if (Thread.interrupted()) {
+                io.systemOutput("Interrupted; stopping search");
                 return null;
             }
 
@@ -222,6 +231,15 @@ public class SearchAgent {
 
             // Decide what action to take for this query
             var tools = determineNextActions();
+            if (Thread.interrupted()) {
+                io.systemOutput("Interrupted; stopping search");
+                return null;
+            }
+            if (tools.isEmpty()) {
+                io.systemOutput("Unable to get a response from the LLM; giving up search");
+                return null;
+            }
+
             // Remember these signatures for future checks, and return the call
             for (var call: tools) {
                 toolCallSignatures.addAll(createToolCallSignatures(call));
@@ -575,7 +593,15 @@ public class SearchAgent {
 
         // Ask LLM for next action with tools
         var tools = createToolSpecifications();
-        var response = coder.sendMessage(coder.models.searchModel(), messages, tools);
+        var result = coder.sendMessage(coder.models.searchModel(), messages, tools);
+        if (result.cancelled()) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        }
+        if (result.error() != null) {
+            return List.of();
+        }
+        var response = result.chatResponse();
         totalUsage = TokenUsage.sum(totalUsage, response.tokenUsage());
 
         // Parse response into potentially multiple actions
@@ -754,9 +780,7 @@ public class SearchAgent {
     private List<ToolCall> parseResponse(AiMessage response) {
         if (!response.hasToolExecutionRequests()) {
             logger.debug("No tool execution requests found in response");
-            var dummyTer = ToolExecutionRequest.builder().name("MISSING_TOOL_CALL").build();
-            var errorCall = new ToolCall(dummyTer, "Error: No tool execution requests found in response");
-            return List.of(errorCall);
+            return List.of();
         }
 
         // Process each tool execution request with duplicate detection

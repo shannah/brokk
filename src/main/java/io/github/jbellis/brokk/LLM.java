@@ -235,7 +235,7 @@ public class LLM {
         var instructionsMsg = QuickEditPrompts.instance.formatInstructions(oldText, instructions);
         messages.add(new UserMessage(instructionsMsg));
 
-        // Non-streaming model for quick application
+        // No echo for Quick Edit
         var result = coder.sendStreaming(coder.models.applyModel(), messages, false);
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText.isBlank()) {
