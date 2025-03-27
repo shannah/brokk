@@ -15,6 +15,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -67,7 +68,11 @@ public class Brokk {
                     System.exit(1);
                 }
             } else {
-                // No argument provided - attempt to load the most recent project if any
+                // No argument provided - attempt to load open projects if any
+            var openProjects = Project.getOpenProjects();
+            
+            if (openProjects.isEmpty()) {
+                // No open projects - try to load the most recent project
                 var recents = Project.loadRecentProjects();
                 if (recents.isEmpty()) {
                     // Create an empty UI with no project
@@ -79,7 +84,7 @@ public class Brokk {
                             .max(Comparator.comparingLong(Map.Entry::getValue))
                             .map(Map.Entry::getKey)
                             .orElseThrow();
-
+    
                     var path = Path.of(mostRecent);
                     // Check if the most recent path still exists and is a git repo
                     if (GitRepo.hasGitRepo(path)) {
@@ -91,6 +96,30 @@ public class Brokk {
                         io.systemOutput("Most recent project path not found or not a git repo: " + path);
                     }
                 }
+            } else {
+                // Open all previously open projects
+                logger.info("Opening {} previously open projects", openProjects.size());
+                
+                // Clear the open projects list first to avoid infinite loop if app crashes
+                var projectsCopy = new ArrayList<>(openProjects);
+                Project.clearOpenProjects();
+                
+                // Open the first project
+                if (!projectsCopy.isEmpty()) {
+                    openProject(projectsCopy.getFirst());
+                    
+                    // Open any remaining projects
+                    if (projectsCopy.size() > 1) {
+                        for (int i = 1; i < projectsCopy.size(); i++) {
+                            var projectPath = projectsCopy.get(i);
+                            if (GitRepo.hasGitRepo(projectPath)) {
+                                // Open each additional project in a new instance
+                                SwingUtilities.invokeLater(() -> openProject(projectPath));
+                            }
+                        }
+                    }
+                }
+            }
             }
         });
     }
@@ -109,7 +138,7 @@ public class Brokk {
             return;
         }
 
-        // Save to recent projects
+        // Save to recent projects and mark as open
         Project.updateRecentProject(projectPath);
 
         var contextManager = new ContextManager(projectPath);

@@ -683,6 +683,114 @@ public class Project implements IProject {
         var currentMap = loadRecentProjects();
         currentMap.put(abs, System.currentTimeMillis());
         saveRecentProjects(currentMap);
+        
+        // Also add to open projects
+        addToOpenProjects(projectDir);
+    }
+    
+    /**
+     * Path to the file storing currently open projects
+     */
+    private static final Path OPEN_PROJECTS_PATH = Path.of(System.getProperty("user.home"),
+                                                          ".config", "brokk", "open_projects.properties");
+    
+    /**
+     * Adds a project to the list of currently open projects
+     */
+    public static void addToOpenProjects(Path projectDir) {
+        var abs = projectDir.toAbsolutePath().toString();
+        var props = new Properties();
+        
+        // Load existing open projects if file exists
+        if (Files.exists(OPEN_PROJECTS_PATH)) {
+            try (var reader = Files.newBufferedReader(OPEN_PROJECTS_PATH)) {
+                props.load(reader);
+            } catch (IOException e) {
+                logger.warn("Unable to read open projects file: {}", e.getMessage());
+            }
+        }
+        
+        // Add the current project with timestamp
+        props.setProperty(abs, Long.toString(System.currentTimeMillis()));
+        
+        try {
+            AtomicWrites.atomicSaveProperties(OPEN_PROJECTS_PATH, props, "Currently open Brokk projects");
+        } catch (IOException e) {
+            logger.error("Error saving open projects: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Removes a project from the list of currently open projects
+     */
+    public static void removeFromOpenProjects(Path projectDir) {
+        var abs = projectDir.toAbsolutePath().toString();
+        var props = new Properties();
+        
+        // Load existing open projects if file exists
+        if (Files.exists(OPEN_PROJECTS_PATH)) {
+            try (var reader = Files.newBufferedReader(OPEN_PROJECTS_PATH)) {
+                props.load(reader);
+                props.remove(abs);
+                AtomicWrites.atomicSaveProperties(OPEN_PROJECTS_PATH, props, "Currently open Brokk projects");
+            } catch (IOException e) {
+                logger.warn("Unable to update open projects file: {}", e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Gets the list of currently open projects
+     * @return List of paths to currently open projects
+     */
+    public static List<Path> getOpenProjects() {
+        var result = new ArrayList<Path>();
+        
+        if (!Files.exists(OPEN_PROJECTS_PATH)) {
+            return result;
+        }
+        
+        var props = new Properties();
+        try (var reader = Files.newBufferedReader(OPEN_PROJECTS_PATH)) {
+            props.load(reader);
+            
+            for (String key : props.stringPropertyNames()) {
+                try {
+                    var path = Path.of(key);
+                    // Only include paths that still exist and have git repos
+                    if (Files.exists(path) && GitRepo.hasGitRepo(path)) {
+                        result.add(path);
+                    } else {
+                        // Clean up entries for non-existent projects
+                        props.remove(key);
+                    }
+                } catch (Exception e) {
+                    logger.warn("Invalid path in open_projects.properties: {}", key);
+                    props.remove(key);
+                }
+            }
+            
+            // Save cleaned-up properties if any invalid entries were removed
+            if (props.size() != props.stringPropertyNames().size()) {
+                AtomicWrites.atomicSaveProperties(OPEN_PROJECTS_PATH, props, "Currently open Brokk projects");
+            }
+            
+        } catch (IOException e) {
+            logger.warn("Unable to read open projects file: {}", e.getMessage());
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Clears the list of open projects
+     */
+    public static void clearOpenProjects() {
+        try {
+            AtomicWrites.atomicSaveProperties(OPEN_PROJECTS_PATH, new Properties(), "Currently open Brokk projects");
+        } catch (IOException e) {
+            logger.error("Error clearing open projects: {}", e.getMessage());
+        }
     }
 
     public boolean isDependency() {

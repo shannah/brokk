@@ -163,7 +163,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandInputField.requestFocusInWindow();
         
         // Check if .gitignore is set and prompt user to update if needed
-        if (contextManager != null) {
+        if (getProject() != null && !getProject().isDependency()) {
             contextManager.submitBackgroundTask("Checking .gitignore", () -> {
                 if (!getProject().isGitIgnoreSet()) {
                     SwingUtilities.invokeLater(() -> {
