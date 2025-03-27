@@ -44,8 +44,15 @@ public interface ContextFragment extends Serializable {
     boolean isEligibleForAutoContext();
 
     static Set<RepoFile> parseRepoFiles(String text, IGitRepo repo) {
-        return repo.getTrackedFiles().stream().parallel()
+        var exactMatches = repo.getTrackedFiles().stream().parallel()
                 .filter(f -> text.contains(f.toString()))
+                .collect(Collectors.toSet());
+        if (!exactMatches.isEmpty()) {
+            return exactMatches;
+        }
+
+        return repo.getTrackedFiles().stream().parallel()
+                .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
     }
 
