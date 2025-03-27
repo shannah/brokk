@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionDialog;
-import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.util.DecompileHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,9 +24,6 @@ public class Brokk {
     private static final Logger logger = LogManager.getLogger(Brokk.class);
 
     public static final String ICON_RESOURCE = "/brokk-icon.png";
-    private static Chrome io;
-    private static ContextManager contextManager;
-    private static Coder coder;
 
     /**
      * Main entry point: Start up Brokk with no project loaded,
@@ -75,7 +71,7 @@ public class Brokk {
                 var recents = Project.loadRecentProjects();
                 if (recents.isEmpty()) {
                     // Create an empty UI with no project
-                    io = new Chrome(null);
+                    var io = new Chrome(null);
                     io.onComplete();
                 } else {
                     // find the project with the largest lastOpened time
@@ -90,7 +86,7 @@ public class Brokk {
                         openProject(path);
                     } else {
                         Project.removeRecentProject(path); // Remove invalid entry
-                        io = new Chrome(null); // Open empty UI for now
+                        var io = new Chrome(null); // Open empty UI for now
                         io.onComplete();
                         io.systemOutput("Most recent project path not found or not a git repo: " + path);
                     }
@@ -108,34 +104,15 @@ public class Brokk {
         projectPath = projectPath.toAbsolutePath().normalize();
 
         if (!GitRepo.hasGitRepo(projectPath)) {
-            if (io == null) {
-                System.out.println("Not a valid git project: " + projectPath);
-            } else {
-                io.toolErrorRaw("Not a valid git project: " + projectPath);
-            }
+            // FIXME should only happen from cmdline
+            System.out.println("Not a valid git project: " + projectPath);
             return;
         }
 
         // Save to recent projects
         Project.updateRecentProject(projectPath);
 
-        // Dispose of the old Chrome if it exists - ensure this happens on EDT
-        if (io != null) {
-            SwingUtil.runOnEDT(() -> {
-                if (io != null) {
-                    io.close();
-                }
-            });
-        }
-
-
-        // If there's an existing contextManager, shut it down
-        if (contextManager != null) {
-            contextManager.shutdown();
-        }
-
-        // --- Reinitialize everything ---
-        contextManager = new ContextManager(projectPath);
+        var contextManager = new ContextManager(projectPath);
         Models models;
         String modelsError = null;
         try {
@@ -146,10 +123,10 @@ public class Brokk {
         }
 
         // Create a new Chrome instance with the fresh ContextManager
-        io = new Chrome(contextManager);
+        var io = new Chrome(contextManager);
 
         // Create the Coder with the new IO
-        coder = new Coder(models, io, projectPath, contextManager);
+        var coder = new Coder(models, io, projectPath, contextManager);
 
         // Resolve circular references
         contextManager.resolveCircularReferences(io, coder);
@@ -169,20 +146,21 @@ public class Brokk {
      * then decompiles it to a project directory (.brokk/dependencies/[jarname])
      * within the currently open project and opens the decompiled source as a new project.
      */
-    public static void openJarDependency() {
+    public static void openJarDependency(Chrome io) {
         // Fixme ensure the menu item is disabled if no project is open
-        assert contextManager != null;
-        assert contextManager.getProject() != null;
+        assert io.getContextManager() != null;
+        assert io.getProject() != null;
         logger.debug("Entered openJarDependency");
+        var cm = io.getContextManager();
 
-        var jarCandidates = contextManager.submitBackgroundTask("Scaning for JAR files", DecompileHelper::findCommonDependencyJars);
+        var jarCandidates = cm.submitBackgroundTask("Scaning for JAR files", DecompileHelper::findCommonDependencyJars);
 
         // Now show the dialog on the EDT
         SwingUtilities.invokeLater(() -> {
             Predicate<File> jarFilter = file -> file.isDirectory() || file.getName().toLowerCase().endsWith(".jar");
             FileSelectionDialog dialog = new FileSelectionDialog(
                     io.getFrame(),
-                    contextManager.getProject(), // Pass the current project
+                    cm.getProject(), // Pass the current project
                     "Select JAR Dependency to Decompile",
                     true, // Allow external files
                     jarFilter, // Filter tree view for .jar files (and directories)
@@ -194,7 +172,7 @@ public class Brokk {
                 var selectedFile = dialog.getSelectedFile();
                 Path jarPath = selectedFile.absPath();
                 assert Files.isRegularFile(jarPath) && jarPath.toString().toLowerCase().endsWith(".jar");
-                decompileAndOpenJar(jarPath);
+                decompileAndOpenJar(io, jarPath);
             } else {
                 logger.debug("JAR selection cancelled by user.");
             }
@@ -208,11 +186,11 @@ public class Brokk {
      *
      * @param jarPath Path to the JAR file to decompile.
      */
-    private static void decompileAndOpenJar(Path jarPath) {
+    private static void decompileAndOpenJar(Chrome io, Path jarPath) {
         try {
             String jarName = jarPath.getFileName().toString();
             // Use the *original* project's root to determine the .brokk directory
-            Path originalProjectRoot = contextManager.getRoot();
+            Path originalProjectRoot = io.getContextManager().getRoot();
             Path brokkDir = originalProjectRoot.resolve(".brokk");
             Path depsDir = brokkDir.resolve("dependencies");
             Path outputDir = depsDir.resolve(jarName.replaceAll("\\.jar$", "")); // Decompile target dir
