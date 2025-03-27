@@ -98,7 +98,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         
         // 2) Build main window
         frame = new JFrame("Brokk: Code Intelligence for AI");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(800, 1200);  // Taller than wide
         frame.setLayout(new BorderLayout());
 
