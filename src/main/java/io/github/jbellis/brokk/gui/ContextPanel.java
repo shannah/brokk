@@ -548,19 +548,10 @@ public class ContextPanel extends JPanel {
 
             // Build file references
             List<FileReferenceData> fileReferences = new ArrayList<>();
-            if (analyzer != null && !(frag instanceof ContextFragment.RepoPathFragment)) {
-                fileReferences = frag.sources(analyzer, contextManager.getProject().getRepo())
+            if (!(frag instanceof ContextFragment.RepoPathFragment)) {
+                fileReferences = frag.files(contextManager.getProject().getRepo())
                         .stream()
-                        .map(source -> {
-                            var pathOpt = analyzer.pathOf(source);
-                            return pathOpt.isDefined()
-                                    ? new FileReferenceData(pathOpt.get().getFileName(),
-                                                            pathOpt.get().toString(),
-                                                            pathOpt.get(),
-                                                            source)
-                                    : null;
-                        })
-                        .filter(Objects::nonNull)
+                        .map(file -> new FileReferenceData(file.getFileName(), file.toString(), file))
                         .distinct()
                         .sorted(Comparator.comparing(FileReferenceData::getFileName))
                         .collect(Collectors.toList());
@@ -699,7 +690,7 @@ public class ContextPanel extends JPanel {
     private JMenuItem buildSummarizeMenuItem(FileReferenceData fileRef) {
         JMenuItem summarizeItem = new JMenuItem("Summarize " + fileRef.getFullPath());
         summarizeItem.addActionListener(e -> {
-            if (fileRef.getCodeUnit() != null && fileRef.getRepoFile() != null) {
+            if (fileRef.getRepoFile() != null) {
                 chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
                         Chrome.ContextAction.SUMMARIZE,
                         List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
