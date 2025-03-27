@@ -17,7 +17,6 @@ import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.SwingUtil;
@@ -36,7 +35,9 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -1195,7 +1196,18 @@ public class ContextManager implements IContextManager
      * Build a welcome message with environment information
      */
     private String buildWelcomeMessage(Models models) {
-        var welcomeMarkdown = Brokk.readWelcomeMarkdown();
+        String welcomeMarkdown;
+        var mdPath = project.isDependency() ? "/DEPENDENCY.md" : "/WELCOME.md";
+        try (var welcomeStream = Brokk.class.getResourceAsStream(mdPath)) {
+            if (welcomeStream != null) {
+                welcomeMarkdown = new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8);
+            } else {
+                logger.warn("WELCOME.md resource not found.");
+                welcomeMarkdown = "Welcome to Brokk!";
+            }
+        } catch (IOException e1) {
+            throw new UncheckedIOException(e1);
+        }
 
         Properties props = new Properties();
         try {

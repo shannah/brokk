@@ -11,11 +11,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
@@ -388,18 +385,4 @@ public class Brokk {
         }
     }
 
-    /**
-     * Read the welcome message from the resource file
-     */
-    public static String readWelcomeMarkdown() {
-        try (var welcomeStream = Brokk.class.getResourceAsStream("/WELCOME.md")) {
-            if (welcomeStream != null) {
-                return new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            logger.warn("WELCOME.md resource not found.");
-            return "Welcome to Brokk!";
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
 }
