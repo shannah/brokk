@@ -16,13 +16,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
 
 public class Brokk {
     private static final Logger logger = LogManager.getLogger(Brokk.class);
+    
+    private static final ConcurrentHashMap<Path, Chrome> openProjectWindows = new ConcurrentHashMap<>();
+    private static final Path EMPTY_PROJECT = Path.of(":EMPTY:");
 
     public static final String ICON_RESOURCE = "/brokk-icon.png";
 
@@ -69,72 +72,50 @@ public class Brokk {
                 }
             } else {
                 // No argument provided - attempt to load open projects if any
-            var openProjects = Project.getOpenProjects();
-            
-            if (openProjects.isEmpty()) {
-                // No open projects - try to load the most recent project
-                var recents = Project.loadRecentProjects();
-                if (recents.isEmpty()) {
-                    // Create an empty UI with no project
+                var openProjects = Project.getOpenProjects();
+
+                if (openProjects.isEmpty()) {
                     var io = new Chrome(null);
                     io.onComplete();
+                    openProjectWindows.put(EMPTY_PROJECT, io);
                 } else {
-                    // find the project with the largest lastOpened time
-                    var mostRecent = recents.entrySet().stream()
-                            .max(Comparator.comparingLong(Map.Entry::getValue))
-                            .map(Map.Entry::getKey)
-                            .orElseThrow();
-    
-                    var path = Path.of(mostRecent);
-                    // Check if the most recent path still exists and is a git repo
-                    if (GitRepo.hasGitRepo(path)) {
-                        openProject(path);
-                    } else {
-                        Project.removeRecentProject(path); // Remove invalid entry
-                        var io = new Chrome(null); // Open empty UI for now
-                        io.onComplete();
-                        io.systemOutput("Most recent project path not found or not a git repo: " + path);
-                    }
-                }
-            } else {
-                // Open all previously open projects
-                logger.info("Opening {} previously open projects", openProjects.size());
-                
-                // Clear the open projects list first to avoid infinite loop if app crashes
-                var projectsCopy = new ArrayList<>(openProjects);
-                Project.clearOpenProjects();
-                
-                // Open the first project
-                if (!projectsCopy.isEmpty()) {
-                    openProject(projectsCopy.getFirst());
-                    
-                    // Open any remaining projects
-                    if (projectsCopy.size() > 1) {
-                        for (int i = 1; i < projectsCopy.size(); i++) {
-                            var projectPath = projectsCopy.get(i);
-                            if (GitRepo.hasGitRepo(projectPath)) {
-                                // Open each additional project in a new instance
-                                SwingUtilities.invokeLater(() -> openProject(projectPath));
-                            }
+                    // Open all previously open projects
+                    logger.info("Opening {} previously open projects", openProjects.size());
+                    for (var projectPath : openProjects) {
+                        if (GitRepo.hasGitRepo(projectPath)) {
+                            openProject(projectPath);
                         }
                     }
                 }
-            }
             }
         });
     }
 
     /**
-     * Opens the given project folder in Brokk, discarding any previously loaded project.
+     * Opens the given project folder in Brokk, or brings existing window to front.
      * The folder must contain a .git subdirectory or else we will show an error.
      */
-    public static void openProject(Path projectPath) {
+    public static void openProject(Path path) {
         // Normalize the path to handle potential inconsistencies (e.g., trailing slashes)
-        projectPath = projectPath.toAbsolutePath().normalize();
+        final Path projectPath = path.toAbsolutePath().normalize();
 
         if (!GitRepo.hasGitRepo(projectPath)) {
             // FIXME should only happen from cmdline
             System.out.println("Not a valid git project: " + projectPath);
+            return;
+        }
+
+        // Check if this project is already open
+        var existingWindow = openProjectWindows.get(projectPath);
+        if (existingWindow != null) {
+            logger.info("Project already open: {}. Bringing window to front.", projectPath);
+            SwingUtilities.invokeLater(() -> {
+                var frame = existingWindow.getFrame();
+                frame.setState(Frame.NORMAL); // Restore if minimized
+                frame.toFront();
+                frame.requestFocus();
+                existingWindow.focusInput();
+            });
             return;
         }
 
@@ -167,6 +148,24 @@ public class Brokk {
             io.toolError("AI will not be available this session");
         }
         io.focusInput();
+        
+        // Add to open projects map
+        openProjectWindows.put(projectPath, io);
+        
+        // Add window listener to remove from map when closed
+        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                openProjectWindows.remove(projectPath).close();
+                Project.removeFromOpenProjects(projectPath);
+                logger.debug("Removed project from open windows map: {}", projectPath);
+            }
+        });
+
+        // remove placeholder frame if present
+        if (openProjectWindows.get(EMPTY_PROJECT) != null) {
+            openProjectWindows.remove(EMPTY_PROJECT).close();
+        }
     }
 
 
