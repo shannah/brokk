@@ -136,11 +136,22 @@ Other languages will follow.
 
 # Getting started
 
+Run using jbang:
+
+1. Install jbang: `curl -fsSL https://get.jbang.dev | bash` or others from https://www.jbang.dev/download/
+2. Run `jbang install brokk@jbellis/brokk`
+3. Run `brokk`
+
+Manual install:
+
 1. Install Java 21+.  If you don't already have a preferred way of doing this, [sdkman](https://sdkman.io/) is a good choice.
 2. Download the latest Brokk jar from the [releases page](https://github.com/jbellis/brokk/releases).
 3. Run Brokk by doubleclicking on the jar or with `java -jar path/to/brokk/brokk-0.X.Y.jar`.
-4. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
-5. Go to `File -> Open Project` to open your project.
+
+Usage: 
+
+1. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
+2. Go to `File -> Open Project` to open your project.
 
 Brokk will attempt to infer a build command and style guide for your project. You can edit these 
 in `.brokk/project.properties` and `.brokk/style.md`, respectively.
