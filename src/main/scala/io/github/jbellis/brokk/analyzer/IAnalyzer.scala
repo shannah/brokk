@@ -27,10 +27,10 @@ trait IAnalyzer {
   def getSkeletonHeader(className: String): Option[String] = 
     throw new UnsupportedOperationException()
     
-  def pathOf(codeUnit: CodeUnit): Option[RepoFile] = 
+  def getFileFor(fqcn: String): Option[RepoFile] =
     throw new UnsupportedOperationException()
     
-  def getDefinitions(pattern: String): util.List[CodeUnit] = 
+  def getDefinitions(pattern: String): util.List[CodeUnit] =
     throw new UnsupportedOperationException()
     
   def getUses(symbol: String): util.List[CodeUnit] = 

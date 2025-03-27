@@ -31,7 +31,7 @@ class DisabledAnalyzer extends IAnalyzer {
   override def getSkeletonHeader(className: String): Option[String] =
     None
 
-  override def pathOf(codeUnit: CodeUnit): Option[RepoFile] =
+  override def getFileFor(fqcn: String): Option[RepoFile] =
     None
 
   override def getDefinitions(pattern: String): util.List[CodeUnit] =

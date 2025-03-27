@@ -341,14 +341,15 @@ public class Context implements Serializable {
         // build skeleton map
         var skeletonMap = new HashMap<CodeUnit, String>();
         for (var fqName : pagerankResults) {
+            var sourceFile = analyzer.getFileFor(fqName).get();
             // Check if the class or its parent is in ineligible classnames
-            boolean eligible = !(ineligibleSources.contains(CodeUnit.cls(fqName))
-                    || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(fqName.substring(0, fqName.indexOf('$'))))));
+            boolean eligible = !(ineligibleSources.contains(CodeUnit.cls(sourceFile, fqName))
+                    || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(sourceFile, fqName.substring(0, fqName.indexOf('$'))))));
 
             if (eligible) {
                 var opt = analyzer.getSkeleton(fqName);
                 if (opt.isDefined()) {
-                    skeletonMap.put(CodeUnit.cls(fqName), opt.get());
+                    skeletonMap.put(CodeUnit.cls(sourceFile, fqName), opt.get());
                 }
             }
             if (skeletonMap.size() >= topK) {

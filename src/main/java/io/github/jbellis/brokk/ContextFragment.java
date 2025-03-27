@@ -9,6 +9,7 @@ import io.github.jbellis.brokk.analyzer.RepoFile;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -174,7 +175,6 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public abstract String text();
-
     }
 
     class StringFragment extends VirtualFragment {
@@ -235,6 +235,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
             return sources;
+        }
+
+        @Override
+        public Set<RepoFile> files(IGitRepo repo) {
+            return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
         @Override
@@ -345,6 +350,11 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public Set<RepoFile> files(IGitRepo repo) {
+            return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
+        }
+
+        @Override
         public String description() {
             return "stacktrace of " + exception;
         }
@@ -367,18 +377,18 @@ public interface ContextFragment extends Serializable {
         private static final long serialVersionUID = 1L;
         private final String type;
         private final String targetIdentifier;
-        private final Set<CodeUnit> classnames;
+        private final Set<CodeUnit> classes;
         private final String code;
 
-        public UsageFragment(String type, String targetIdentifier, Set<CodeUnit> classnames, String code) {
+        public UsageFragment(String type, String targetIdentifier, Set<CodeUnit> classes, String code) {
             super();
             assert type != null;
             assert targetIdentifier != null;
-            assert classnames != null;
+            assert classes != null;
             assert code != null;
             this.type = type;
             this.targetIdentifier = targetIdentifier;
-            this.classnames = classnames;
+            this.classes = classes;
             this.code = code;
         }
 
@@ -389,7 +399,12 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return classnames;
+            return classes;
+        }
+
+        @Override
+        public Set<RepoFile> files(IGitRepo repo) {
+            return classes.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
         @Override
@@ -442,13 +457,22 @@ public interface ContextFragment extends Serializable {
                     .collect(Collectors.joining("\n\n"));
         }
 
+        private Set<CodeUnit> nonDummy() {
+            return skeletons.keySet().stream().filter(k -> k.source() != AutoContext.DUMMY).collect(Collectors.toSet());
+        }
+
         private boolean isEmpty() {
-            return skeletons.size() == 1 && skeletons.values().iterator().next().isEmpty();
+            return nonDummy().isEmpty();
         }
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return skeletons.keySet();
+            return nonDummy();
+        }
+
+        @Override
+        public Set<RepoFile> files(IGitRepo repo) {
+            return nonDummy().stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
         @Override
@@ -510,6 +534,11 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public Set<RepoFile> files(IGitRepo repo) {
+            return Set.of();
+        }
+
+        @Override
         public String description() {
             return "Conversation history (" + messages.size() + " messages)";
         }
@@ -540,12 +569,13 @@ public interface ContextFragment extends Serializable {
 
     record AutoContext(SkeletonFragment fragment) implements ContextFragment {
         private static final long serialVersionUID = 2L;
+        private static final RepoFile DUMMY = new RepoFile(Path.of("/dummy"), Path.of("dummy"));
         public static final AutoContext EMPTY =
-                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Enabled, but no references found"), "")));
+                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Enabled, but no references found"), "")));
         public static final AutoContext DISABLED =
-                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Disabled"), "")));
+                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Disabled"), "")));
         public static final AutoContext REBUILDING =
-                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls("Updating"), "")));
+                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Updating"), "")));
 
         public boolean isEmpty() {
             return fragment.isEmpty();
@@ -563,8 +593,6 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<RepoFile> files(IGitRepo repo) {
-            // For completeness, if you want the actual files underlying the skeleton classes,
-            // forward to the underlying SkeletonFragment's .files()
             return fragment.files(repo);
         }
 
@@ -578,7 +606,7 @@ public interface ContextFragment extends Serializable {
         @Override
         public String shortDescription() {
             if (isEmpty()) {
-                return "Autosummary " + fragment.skeletons.keySet().stream().findFirst().orElse(CodeUnit.cls("None"));
+                return "Autosummary " + fragment.skeletons.keySet().stream().findFirst().orElse(CodeUnit.cls(null, "None"));
             }
             return "Autosummary of " + fragment.skeletons.keySet().stream()
                     .map(CodeUnit::name)

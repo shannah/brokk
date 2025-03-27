@@ -143,12 +143,15 @@ public class ContextSerializationTest {
     void testAllVirtualFragmentTypes() throws Exception {
         Context context = new Context(mockContextManager, 5);
         
+        // Create mock RepoFile for CodeUnit construction
+        RepoFile mockFile = new RepoFile(tempDir, "Mock.java");
+
         // Add examples of each VirtualFragment type
         context = context
             .addVirtualFragment(new ContextFragment.StringFragment("string content", "String Fragment"))
-            .addVirtualFragment(new ContextFragment.SearchFragment("query", "explanation", Set.of(CodeUnit.cls("Test"))))
+            .addVirtualFragment(new ContextFragment.SearchFragment("query", "explanation", Set.of(CodeUnit.cls(mockFile, "Test"))))
             .addVirtualFragment(new ContextFragment.SkeletonFragment(
-                Map.of(CodeUnit.cls("com.test.Test"), "class Test {}")
+                Map.of(CodeUnit.cls(mockFile, "com.test.Test"), "class Test {}")
             ));
         
         // Add fragments that use Future
@@ -160,15 +163,15 @@ public class ContextSerializationTest {
         
         // Add fragment with usage
         context = context.addVirtualFragment(
-            new ContextFragment.UsageFragment("Uses", "Test.method", Set.of(CodeUnit.cls("com.test.Test")), "Test.method()")
+            new ContextFragment.UsageFragment("Uses", "Test.method", Set.of(CodeUnit.cls(mockFile, "com.test.Test")), "Test.method()")
         );
         
         // Add stacktrace fragment
         context = context.addVirtualFragment(
             new ContextFragment.StacktraceFragment(
-                Set.of(CodeUnit.cls("com.test.Test")), 
-                "original", 
-                "NPE", 
+                Set.of(CodeUnit.cls(mockFile, "com.test.Test")),
+                "original",
+                "NPE",
                 "code"
             )
         );

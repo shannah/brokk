@@ -297,7 +297,7 @@ public class SearchAgent {
                             .toList();
 
                     var sources = coalesced.stream()
-                            .map(CodeUnit::cls)
+                            .map(fqcn -> CodeUnit.cls(analyzer.getFileFor(fqcn).get(), fqcn))
                             .collect(Collectors.toSet());
                     return new ContextFragment.SearchFragment(query, results.getFirst().result, sources);
                 } catch (Exception e) {
@@ -1058,7 +1058,7 @@ public class SearchAgent {
 
         for (String className : classNames) {
             if (!className.isBlank()) {
-                String classSource = analyzer.getClassSource(className);
+                String classSource = analyzer.getClassSource(className).toString();
                 if (classSource != null && !classSource.isEmpty() && !processedSources.contains(classSource)) {
                     processedSources.add(classSource);
                     if (!result.isEmpty()) {

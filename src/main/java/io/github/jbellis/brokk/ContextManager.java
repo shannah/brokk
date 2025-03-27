@@ -1060,12 +1060,16 @@ public class ContextManager implements IContextManager
 
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
-        sources.add(CodeUnit.cls(ContextFragment.toClassname(methodName)));
+        String className = ContextFragment.toClassname(methodName);
+        var sourceFile = getAnalyzer().getFileFor(className);
+        if (sourceFile.isDefined()) {
+            sources.add(CodeUnit.cls(sourceFile.get(), className));
+        }
 
         // The output is similar to UsageFragment, so we'll use that
         var fragment = new ContextFragment.UsageFragment("Callers (depth " + depth + ")", methodName, sources, formattedCallGraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
-        
+
         int totalCallSites = callgraph.values().stream().mapToInt(List::size).sum();
         io.systemOutput("Added call graph with " + totalCallSites + " call sites for callers of " + methodName + " with depth " + depth);
     }
@@ -1086,12 +1090,16 @@ public class ContextManager implements IContextManager
 
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
-        sources.add(CodeUnit.cls(ContextFragment.toClassname(methodName)));
+        String className = ContextFragment.toClassname(methodName);
+        var sourceFile = getAnalyzer().getFileFor(className);
+        if (sourceFile.isDefined()) {
+            sources.add(CodeUnit.cls(sourceFile.get(), className));
+        }
 
         // The output is similar to UsageFragment, so we'll use that
         var fragment = new ContextFragment.UsageFragment("Callees (depth " + depth + ")", methodName, sources, formattedCallGraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
-        
+
         int totalCallSites = callgraph.values().stream().mapToInt(List::size).sum();
         io.systemOutput("Added call graph with " + totalCallSites + " call sites for methods called by " + methodName + " with depth " + depth);
     }
@@ -1109,7 +1117,11 @@ public class ContextManager implements IContextManager
             var methodFullName = element.getClassName() + "." + element.getMethodName();
             var methodSource = getAnalyzer().getMethodSource(methodFullName);
             if (methodSource.isDefined()) {
-                sources.add(CodeUnit.cls(ContextFragment.toClassname(methodFullName)));
+                String className = ContextFragment.toClassname(methodFullName);
+                var sourceFile = getAnalyzer().getFileFor(className);
+                if (sourceFile.isDefined()) {
+                    sources.add(CodeUnit.cls(sourceFile.get(), className));
+                }
                 content.append(methodFullName).append(":\n");
                 content.append(methodSource.get()).append("\n\n");
             }
@@ -1498,14 +1510,14 @@ public class ContextManager implements IContextManager
                 var codeForLLM = new StringBuilder();
                 var tokens = 0;
                 for (var fqcn : topClasses) {
-                    var pathOption = analyzer.pathOf(CodeUnit.cls(fqcn));
-                    if (pathOption.isEmpty()) continue;
-                    var path = pathOption.get();
+                    var fileOption = analyzer.getFileFor(fqcn);
+                    if (fileOption.isEmpty()) continue;
+                    var file = fileOption.get();
                     String chunk;
                     try {
-                        chunk = "<file path=%s>\n%s\n</file>\n".formatted(pathOption, path.read());
+                        chunk = "<file path=%s>\n%s\n</file>\n".formatted(file, file.read());
                     } catch (IOException e) {
-                        logger.error("Failed to read {}: {}", path, e.getMessage());
+                        logger.error("Failed to read {}: {}", file, e.getMessage());
                         continue;
                     }
                     var chunkTokens = Models.getApproximateTokens(chunk);
