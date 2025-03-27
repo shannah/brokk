@@ -144,13 +144,47 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             initializeThemeManager();
             loadWindowSizeAndPosition();
 
-            // populate the git panel
+            // Setup the context/git panels based on project type
+            // Get the existing bottom panel (which already contains NORTH and SOUTH components)
+            var bottomPanel = (JPanel) verticalSplitPane.getBottomComponent();
+
+            // DO NOT removeAll() here. Instead, add the correct component to the CENTER.
+
             if (getProject().isDependency()) {
-                gitPanel.setEnabled(false);
+                // For dependency projects, just add the context panel directly to the center
+                gitPanel = null;
+                // Ensure contextPanel is created if buildMainPanel didn't already
+                if (contextPanel == null) {
+                    contextPanel = new ContextPanel(this, contextManager);
+                }
+                bottomPanel.add(contextPanel, BorderLayout.CENTER);
             } else {
+                // For main projects, create a split pane with both panels for the center
+                this.contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+                // Ensure contextPanel is created if buildMainPanel didn't already
+                if (contextPanel == null) {
+                    contextPanel = new ContextPanel(this, contextManager);
+                }
+                contextGitSplitPane.setTopComponent(contextPanel);
+
+                // Create and add git panel
+                gitPanel = new GitPanel(this, contextManager);
+                contextGitSplitPane.setBottomComponent(gitPanel);
+
+                // Set resize weight so context panel gets extra space
+                contextGitSplitPane.setResizeWeight(0.7); // 70% to context, 30% to git
+
+                // Add the split pane to the center of the bottom panel
+                bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
+
+                // Update git panel state
                 updateCommitPanel();
                 gitPanel.updateRepo();
             }
+
+            // Force layout update for the bottom panel
+            bottomPanel.revalidate();
+            bottomPanel.repaint();
         }
 
         // show the window
@@ -161,7 +195,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
-        
+
         // Check if .gitignore is set and prompt user to update if needed
         if (getProject() != null && !getProject().isDependency()) {
             contextManager.submitBackgroundTask("Checking .gitignore", () -> {
@@ -184,7 +218,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             });
         }
     }
-    
+
     /**
      * Sets up .gitignore entries and adds .brokk project files to git
      */
@@ -245,10 +279,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 
                 // Update commit message
                 SwingUtilities.invokeLater(() -> {
-                    if (gitPanel != null) {
-                gitPanel.setCommitMessageText("Update for Brokk project files");
-                updateCommitPanel();
-            }
+                    gitPanel.setCommitMessageText("Update for Brokk project files");
+                    updateCommitPanel();
                 });
                 
             } catch (Exception e) {
@@ -295,52 +327,36 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Create history output pane (combines history panel and output panel)
         historyOutputPane = new HistoryOutputPane(this, contextManager);
-            
+
         // Create a split pane with output+history in top and command+context+status in bottom
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         verticalSplitPane.setTopComponent(historyOutputPane);
 
-        // Create a panel for everything below the output area
+        // Create a panel for everything below the output area, using BorderLayout
+        // North: Command input/results
+        // Center: Context/Git (added in onComplete)
+        // South: Status label
         var bottomPanel = new JPanel(new BorderLayout());
 
-
-        // Create a top panel for the result label and command input
+        // Create and add the top controls (result label + command input panel)
         var topControlsPanel = new JPanel(new BorderLayout(0, 2));
-
-        // 2. Command result label
         var resultLabel = buildCommandResultLabel();
         topControlsPanel.add(resultLabel, BorderLayout.NORTH);
-
-        // 3. Command input with prompt
         var commandPanel = buildCommandInputPanel();
         topControlsPanel.add(commandPanel, BorderLayout.SOUTH);
-
-        // Add the top controls to the top of the bottom panel
         bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
 
-        // 4. Create a vertical split pane to hold the context panel and git panel
-        // 4a. Context panel (with border title) at the top
+        // Create the context panel (will be added to bottomPanel.CENTER later)
         contextPanel = new ContextPanel(this, contextManager);
-        this.contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        contextGitSplitPane.setTopComponent(contextPanel);
 
-        // 4b. Git panel at the bottom (skip for dependency projects)
-        gitPanel = new GitPanel(this, contextManager);
-        contextGitSplitPane.setBottomComponent(gitPanel);
-
-        // Set resize weight so context panel gets extra space
-        contextGitSplitPane.setResizeWeight(0.7); // 70% to context, 30% to git
-
-        // Add the split pane to the bottom panel
-        bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
-
-        // 5. Background status label at the very bottom
+        // Create and add the background status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
         bottomPanel.add(statusLabel, BorderLayout.SOUTH);
 
+        // Set the fully constructed bottomPanel (minus the center component)
         verticalSplitPane.setBottomComponent(bottomPanel);
 
-        // Add the vertical split pane to the content panel
+        // Add the vertical split pane to the main content panel
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(verticalSplitPane, gbc);
@@ -348,7 +364,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.add(contentPanel, BorderLayout.CENTER);
         return panel;
     }
-
 
     /**
      * Lightweight method to preview a context without updating history
@@ -1070,10 +1085,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 historyOutputPane.setInitialWidth();
             }
 
-            // Restore context/git split pane position
-            int contextGitPos = getProject().getContextGitSplitPosition();
-            if (contextGitPos > 0) {
-                contextGitSplitPane.setDividerLocation(contextGitPos);
+            // Restore context/git split pane position (only if not a dependency project)
+            if (contextGitSplitPane != null) {
+                int contextGitPos = getProject().getContextGitSplitPosition();
+                if (contextGitPos > 0) {
+                    contextGitSplitPane.setDividerLocation(contextGitPos);
+                }
             }
 
             // Add listener to save window size and position when they change
@@ -1098,9 +1115,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 getProject().saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
             });
 
-            contextGitSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                getProject().saveContextGitSplitPosition(contextGitSplitPane.getDividerLocation());
-            });
+            if (contextGitSplitPane != null) {
+                contextGitSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+                    getProject().saveContextGitSplitPosition(contextGitSplitPane.getDividerLocation());
+                });
+            }
         });
     }
 
@@ -1264,6 +1283,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void toggleGitPanel()
     {
+        if (contextGitSplitPane == null) {
+            // No split pane for dependency projects
+            return;
+        }
+        
         // Store the current divider location
         lastGitPanelDividerLocation = contextGitSplitPane.getDividerLocation();
         // Move divider down to hide the git panel completely
