@@ -271,7 +271,7 @@ public class Project implements IProject {
                 byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
                 return Context.deserialize(serialized, welcomeMessage).withContextManager(contextManager);
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.error("Error loading context: {}", e.getMessage());
             clearSavedContext();
         }
