@@ -1053,78 +1053,102 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Loads window size and position from project properties
      */
     private void loadWindowSizeAndPosition() {
-        Rectangle bounds = getProject() == null ? null : getProject().getMainWindowBounds();
-
-        // Only apply saved values if they're valid
-        if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
-            // If no valid size is saved, center the window
+        var project = getProject();
+        if (project == null) {
+            // If no project, just center the window
             frame.setLocationRelativeTo(null);
             return;
         }
 
-        frame.setSize(bounds.width, bounds.height);
-        // Only use the position if it was actually set (not -1)
-        if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
-            frame.setLocation(bounds.x, bounds.y);
-        } else {
-            // If not on a visible screen, center the window
+        // 1) Apply saved window bounds
+        var bounds = project.getMainWindowBounds();
+        if (bounds.width <= 0 || bounds.height <= 0) {
+            // No valid saved size, just center the window
             frame.setLocationRelativeTo(null);
+        } else {
+            frame.setSize(bounds.width, bounds.height);
+            if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
+                frame.setLocation(bounds.x, bounds.y);
+            } else {
+                // If off-screen or invalid, center
+                frame.setLocationRelativeTo(null);
+            }
         }
 
-        // Restore split pane positions after the frame has been shown and sized
-        SwingUtilities.invokeLater(() -> {
-            // Restore vertical split pane position
-            int verticalPos = getProject().getVerticalSplitPosition();
-            if (verticalPos > 0) {
-                verticalSplitPane.setDividerLocation(verticalPos);
-            } else {
-                // For new projects with no saved position, set a reasonable default
-                // to prevent the top component from collapsing to zero height
-                verticalSplitPane.setDividerLocation(0.4);
+        // 2) Listen for window moves/resizes and save
+        frame.addComponentListener(new java.awt.event.ComponentAdapter()
+        {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e)
+            {
+                project.saveMainWindowBounds(frame);
             }
 
-            // Restore history split pane position
-            int historyPos = getProject().getHistorySplitPosition();
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e)
+            {
+                project.saveMainWindowBounds(frame);
+            }
+        });
+
+        // 3) Defer JSplitPane divider calls until after the frame is shown
+        SwingUtilities.invokeLater(() -> {
+            // --- HistoryOutput pane divider ---
+            int historyPos = project.getHistorySplitPosition();
             if (historyPos > 0) {
                 historyOutputPane.setDividerLocation(historyPos);
             } else {
-                // If no saved position, use the default
-                historyOutputPane.setInitialWidth();
+                // If none saved, pick an initial ratio
+                historyOutputPane.setInitialWidth(); // calls setDividerLocation(0.2)
             }
 
-            // Restore context/git split pane position (only if not a dependency project)
+            // Save changes to the history divider as the user drags/resizes
+            historyOutputPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e ->
+            {
+                // Only store if fully realized and actually visible
+                if (historyOutputPane.isShowing()) {
+                    var newPos = historyOutputPane.getDividerLocation();
+                    if (newPos > 0) {
+                        project.saveHistorySplitPosition(newPos);
+                    }
+                }
+            });
+
+            // --- Vertical split pane divider ---
+            int verticalPos = project.getVerticalSplitPosition();
+            if (verticalPos > 0) {
+                verticalSplitPane.setDividerLocation(verticalPos);
+            } else {
+                verticalSplitPane.setDividerLocation(0.4); // default ratio
+            }
+
+            verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e ->
+            {
+                if (verticalSplitPane.isShowing()) {
+                    var newPos = verticalSplitPane.getDividerLocation();
+                    if (newPos > 0) {
+                        project.saveVerticalSplitPosition(newPos);
+                    }
+                }
+            });
+
+            // --- Context/Git split pane divider ---
             if (contextGitSplitPane != null) {
-                int contextGitPos = getProject().getContextGitSplitPosition();
+                int contextGitPos = project.getContextGitSplitPosition();
                 if (contextGitPos > 0) {
                     contextGitSplitPane.setDividerLocation(contextGitPos);
-                }
-            }
-
-            // Add listener to save window size and position when they change
-            frame.addComponentListener(new java.awt.event.ComponentAdapter() {
-                @Override
-                public void componentResized(java.awt.event.ComponentEvent e) {
-                    getProject().saveMainWindowBounds(frame);
+                } else {
+                    contextGitSplitPane.setDividerLocation(0.7); // default ratio
                 }
 
-                @Override
-                public void componentMoved(java.awt.event.ComponentEvent e) {
-                    getProject().saveMainWindowBounds(frame);
-                }
-            });
-
-            // Add listeners to save split pane positions when they change
-            historyOutputPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                getProject().saveHistorySplitPosition(historyOutputPane.getDividerLocation());
-            });
-
-            verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                getProject().saveVerticalSplitPosition(verticalSplitPane.getDividerLocation());
-            });
-
-            if (contextGitSplitPane != null) {
-                contextGitSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                    getProject().saveContextGitSplitPosition(contextGitSplitPane.getDividerLocation());
+                contextGitSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e ->
+                {
+                    if (contextGitSplitPane.isShowing()) {
+                        var newPos = contextGitSplitPane.getDividerLocation();
+                        if (newPos > 0) {
+                            project.saveContextGitSplitPosition(newPos);
+                        }
+                    }
                 });
             }
         });
