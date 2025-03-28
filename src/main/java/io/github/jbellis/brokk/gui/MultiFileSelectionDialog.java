@@ -417,7 +417,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
             }
             String lowerInput = input.toLowerCase();
 
-            List<Completion> completions = new ArrayList<>();
+            List<ShorthandCompletion> completions = new ArrayList<>();
 
             if (repo != null && !repoFiles.isEmpty()) {
                 if (input.contains("*") || input.contains("?")) {
@@ -443,27 +443,8 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                 // If input is empty, we might want to show top-level repo dirs/files? For now, require some input.
             }
 
-            if (completions.isEmpty()) {
-                autoCompletion.setShowDescWindow(false);
-            } else {
-                // Adjust window size (basic estimation)
-                var tooltipFont = UIManager.getFont("ToolTip.font");
-                if (tooltipFont != null) {
-                    var fontMetrics = tc.getFontMetrics(tooltipFont);
-                    int maxInputWidth = completions.stream()
-                            .mapToInt(c -> fontMetrics.stringWidth(c.getInputText()))
-                            .max().orElse(200);
-                    int maxDescWidth = completions.stream()
-                            .mapToInt(c -> fontMetrics.stringWidth(getCompletionDescription(c)))
-                            .max().orElse(300);
-
-                    autoCompletion.setChoicesWindowSize(Math.min(800, maxInputWidth + 40), Math.min(400, completions.size() * (fontMetrics.getHeight() + 2) + 20));
-                    autoCompletion.setShowDescWindow(true);
-                    autoCompletion.setDescriptionWindowSize(Math.min(800, maxDescWidth + 40), Math.min(400, completions.size() * (fontMetrics.getHeight() + 2) + 20));
-                } else {
-                    autoCompletion.setShowDescWindow(false);
-                }
-            }
+            // Dynamically size the popup windows
+            AutoCompleteUtil.sizePopupWindows(autoCompletion, tc, completions);
 
             // Deduplicate and sort
             return completions.stream()
@@ -473,19 +454,13 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                             (existing, replacement) -> existing
                     ))
                     .values().stream()
+                    .map(shc -> (Completion) shc)
                     .sorted(Comparator.comparing(Completion::getInputText))
                     .toList();
         }
 
-        private String getCompletionDescription(Completion c) {
-            if (c instanceof ShorthandCompletion sc) {
-                return sc.getReplacementText();
-            }
-            return c.getToolTipText() != null ? c.getToolTipText() : c.toString();
-        }
-
         // Creates a completion item for a RepoFile.
-        private Completion createRepoCompletion(RepoFile file) {
+        private ShorthandCompletion createRepoCompletion(RepoFile file) {
             String relativePath = file.toString();
             // Add trailing space, quote if needed. Replacement should replace the token + add space.
             String replacement = relativePath.contains(" ") ? "\"" + relativePath + "\" " : relativePath + " ";

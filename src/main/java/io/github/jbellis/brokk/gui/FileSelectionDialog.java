@@ -331,7 +331,7 @@ public class FileSelectionDialog extends JDialog {
             }
             String lowerInput = input.toLowerCase();
 
-            List<Completion> completions;
+            List<ShorthandCompletion> completions;
             try {
                 completions = autocompletePaths.get().stream()
                         .filter(path -> path.toAbsolutePath().toString().toLowerCase().contains(lowerInput))
@@ -342,6 +342,9 @@ public class FileSelectionDialog extends JDialog {
                 throw new RuntimeException(e);
             }
 
+            // Dynamically size the popup windows
+            AutoCompleteUtil.sizePopupWindows(autoCompletion, tc, completions);
+
             // Deduplicate and sort
             return completions.stream()
                     .collect(Collectors.toMap(
@@ -350,12 +353,13 @@ public class FileSelectionDialog extends JDialog {
                             (existing, replacement) -> existing
                     ))
                     .values().stream()
+                    .map(shc -> (Completion) shc)
                     .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text
                     .toList();
         }
 
         /** Creates a completion item for an external Path. */
-        private Completion createExternalCompletion(Path path) {
+        private ShorthandCompletion createExternalCompletion(Path path) {
             String absolutePath = path.toAbsolutePath().toString();
             String shortText = path.getFileName().toString(); // Simpler display for single file
             // Display filename, summary is absolute path, replacement is absolute path
