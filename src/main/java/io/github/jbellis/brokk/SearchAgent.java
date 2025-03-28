@@ -531,6 +531,11 @@ public class SearchAgent {
      */
     private ToolCall replaceDuplicateCallIfNeeded(ToolCall call)
     {
+        if (analyzer.isEmpty()) {
+            // TODO try the ideas at https://github.com/jbellis/brokk/pull/43#issuecomment-2760530791
+            return call;
+        }
+
         // Get signatures for this call
         List<String> callSignatures = createToolCallSignatures(call);
 
