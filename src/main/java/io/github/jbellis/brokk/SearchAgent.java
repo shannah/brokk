@@ -297,18 +297,26 @@ public class SearchAgent {
                             .toList();
 
                     var sources = coalesced.stream()
+                            .filter(fqcn -> {
+                                var fileOption = analyzer.getFileFor(fqcn);
+                                if (fileOption.isEmpty()) {
+                                    logger.warn("No file found for class: {}", fqcn);
+                                    return false;
+                                }
+                                return true;
+                            })
                             .map(fqcn -> CodeUnit.cls(analyzer.getFileFor(fqcn).get(), fqcn))
                             .collect(Collectors.toSet());
                     return new ContextFragment.SearchFragment(query, results.getFirst().result, sources);
                 } catch (Exception e) {
                     // something went wrong parsing out the classnames
                     logger.error("Error creating SearchFragment", e);
-                    return new ContextFragment.StringFragment(query, results.getFirst().result);
+                    return new ContextFragment.StringFragment(results.getFirst().result, "Search: " + query);
                 }
             } else if (firstToolName.equals("abort")) {
                 logger.debug("Search aborted");
                 assert toolCalls.size() == 1 : toolCalls;
-                return new ContextFragment.StringFragment(query, results.getFirst().result);
+                return new ContextFragment.StringFragment(results.getFirst().result, "Search: " + query);
             }
 
             // Record the steps in history
