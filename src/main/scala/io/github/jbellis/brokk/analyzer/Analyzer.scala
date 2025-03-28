@@ -423,21 +423,43 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     (fieldRefs ++ paramRefs ++ localRefs ++ methodReturnRefs ++ inheritingClasses).toList.distinct
   }
 
+  /**
+   * Recursively collects the fully-qualified names of all subclasses of the given class.
+   */
+  private[brokk] def allSubclasses(className: String): Set[String] = {
+    val direct = cpg.typeDecl.l.filter { td =>
+      td.inheritsFromTypeFullName.contains(className)
+    }.map(_.fullName).toSet
+    direct ++ direct.flatMap { sub => allSubclasses(sub) }
+  }
+
   override def getUses(symbol: String): java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
 
     // (1) Method matches?
-    val methodMatches = methodsFromName(symbol)
-    if (methodMatches.nonEmpty) {
-      // collect all callers
-      val calls = methodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
+    // Expand method lookup to include overrides in subclasses.
+    val baseMethodMatches = methodsFromName(symbol)
+    val expandedMethodMatches = if (symbol.contains(".")) {
+      val lastDot = symbol.lastIndexOf('.')
+      val classPart = symbol.substring(0, lastDot)
+      val methodPart = symbol.substring(lastDot + 1)
+      val subclasses = allSubclasses(classPart)
+      // Create a set of candidate fully-qualified method names: original and each subclass override.
+      val expandedSymbols = (Set(symbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
+      expandedSymbols.flatMap(mn => methodsFromName(mn))
+    } else {
+      baseMethodMatches
+    }
+    if (expandedMethodMatches.nonEmpty) {
+      // Collect all callers from all matched methods.
+      val calls = expandedMethodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
       return calls.flatMap { methodName =>
-            // Find method to get file
-            val methods = cpg.method.fullName(s"$methodName:.*").l
-            if (methods.nonEmpty) {
-              toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-            } else None
-          }.asJava
+        // Find method to get file
+        val methods = cpg.method.fullName(s"$methodName:.*").l
+        if (methods.nonEmpty) {
+          toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
+        } else None
+      }.asJava
     }
 
     // (2) Possibly a field: com.foo.Bar.field
@@ -466,30 +488,36 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     if (classDecls.isEmpty)
       throw new IllegalArgumentException(s"Symbol '$symbol' not found as a method, field, or class")
 
-    // (3a) Method references from the same class, but exclude self references
-    val methodUses = classDecls.flatMap(td => td.method.l.flatMap(m => callersOfMethodNode(m, true)))
+    // Include the original class plus all subclasses.
+    val allClasses = (classDecls.map(_.fullName).toSet ++ allSubclasses(symbol)).toList
 
-    // (3b) Field references from the same class, exclude self references
-    val fieldRefUses = classDecls.flatMap(td =>
+    // (3a) Method references from the same class and its subclasses, but exclude self references.
+    val methodUses = allClasses.flatMap { cn =>
+      cpg.typeDecl.fullNameExact(cn).l.flatMap { td =>
+        td.method.l.flatMap(m => callersOfMethodNode(m, true))
+      }
+    }
+
+    // (3b) Field references from the same class, exclude self references (unchanged).
+    val fieldRefUses = classDecls.flatMap { td =>
       td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
-    )
+    }
 
-    // (3c) Type references
-    val typeUses = referencesToClassAsType(symbol)
+    // (3c) Type references from the same class and its subclasses.
+    val typeUses = allClasses.flatMap { cn =>
+      referencesToClassAsType(cn)
+    }
 
-    (methodUses ++ fieldRefUses).flatMap { methodName =>
-      // Find method to get file
+    (methodUses.flatMap { methodName =>
+      // Find method to get file.
       val methods = cpg.method.fullName(s"$methodName:.*").l
       if (methods.nonEmpty) {
         toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
       } else None
-    }.distinct
-      .++(typeUses)
-      .distinct
-      .asJava
+    } ++ typeUses).distinct.asJava
   }
 
-  /**
+/**
    * Builds either a forward or reverse call graph from a starting method up to a given depth.
    */
   private def buildCallGraph(
