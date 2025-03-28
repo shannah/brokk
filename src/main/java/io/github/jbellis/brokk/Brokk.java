@@ -58,15 +58,27 @@ public class Brokk {
         }
 
         SwingUtilities.invokeLater(() -> {
-            // If a command line argument is provided, use it as project path
-            if (args.length > 0) {
-                var projectPath = Path.of(args[0]);
+            // Check for --no-project flag
+            boolean noProjectFlag = false;
+            String projectPathArg = null;
+            
+            for (String arg : args) {
+                if (arg.equals("--no-project")) {
+                    noProjectFlag = true;
+                } else if (!arg.startsWith("--")) {
+                    projectPathArg = arg;
+                }
+            }
+            
+            // If a project path is provided, use it
+            if (projectPathArg != null) {
+                var projectPath = Path.of(projectPathArg);
                 openProject(projectPath);
             } else {
-                // No argument provided - attempt to load open projects if any
+                // No project specified - attempt to load open projects if any
                 var openProjects = Project.getOpenProjects();
 
-                if (openProjects.isEmpty()) {
+                if (noProjectFlag || openProjects.isEmpty()) {
                     var io = new Chrome(null);
                     io.onComplete();
                     openProjectWindows.put(EMPTY_PROJECT, io);
