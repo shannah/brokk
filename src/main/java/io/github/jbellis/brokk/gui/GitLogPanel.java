@@ -439,10 +439,11 @@ public class GitLogPanel extends JPanel {
         JMenuItem viewHistoryItem = new JMenuItem("View History");
         JMenuItem editFileItem = new JMenuItem("Edit File(s)");
         changesContextMenu.add(addFileToContextItem);
-        changesContextMenu.add(viewDiffItem);
-        changesContextMenu.add(compareFileWithLocalItem);
-        changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(editFileItem);
+        changesContextMenu.addSeparator();
+        changesContextMenu.add(viewDiffItem);
+        changesContextMenu.add(viewHistoryItem);
+        changesContextMenu.add(compareFileWithLocalItem);
 
         // Add mouse listener for changes tree popup
         changesTree.addMouseListener(new java.awt.event.MouseAdapter()
