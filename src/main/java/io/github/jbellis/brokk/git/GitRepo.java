@@ -438,8 +438,35 @@ public class GitRepo implements Closeable, IGitRepo {
     }
     
     /**
-     * Checkout a remote branch, creating a local tracking branch with a specified name
+     * Create a new branch from an existing one and check it out
      * 
+     * @param newBranchName The name for the new branch
+     * @param sourceBranchName The name of the source branch to copy from
+     * @throws IOException If there's an error creating the branch
+     */
+    public void createAndCheckoutBranch(String newBranchName, String sourceBranchName) throws IOException {
+        try {
+            if (listLocalBranches().contains(newBranchName)) {
+                throw new IOException("Branch '" + newBranchName + "' already exists. Choose a different name.");
+            }
+
+            logger.debug("Creating new branch '{}' from '{}'", newBranchName, sourceBranchName);
+            git.checkout()
+                    .setCreateBranch(true)
+                    .setName(newBranchName)
+                    .setStartPoint(sourceBranchName)
+                    .call();
+            logger.debug("Successfully created and checked out branch '{}'", newBranchName);
+
+            refresh();
+        } catch (GitAPIException e) {
+            throw new IOException("Failed to create new branch: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Checkout a remote branch, creating a local tracking branch with a specified name
+     *
      * @param remoteBranchName The remote branch to checkout (e.g. "origin/main" or "pr-25/master")
      * @param localBranchName The name to use for the local branch
      * @throws IOException If there's an error creating the branch

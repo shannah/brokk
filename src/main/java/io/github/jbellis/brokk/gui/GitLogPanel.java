@@ -706,10 +706,12 @@ public class GitLogPanel extends JPanel {
             });
         }
         JMenuItem checkoutItem = new JMenuItem("Checkout");
+        JMenuItem newBranchItem = new JMenuItem("New Branch From This");
         JMenuItem mergeItem = new JMenuItem("Merge into HEAD");
         JMenuItem renameItem = new JMenuItem("Rename");
         JMenuItem deleteItem = new JMenuItem("Delete");
         branchContextMenu.add(checkoutItem);
+        branchContextMenu.add(newBranchItem);
         branchContextMenu.add(mergeItem);
         branchContextMenu.add(renameItem);
         branchContextMenu.add(deleteItem);
@@ -746,6 +748,13 @@ public class GitLogPanel extends JPanel {
             if (selectedRow != -1) {
                 String branchDisplay = (String) branchTableModel.getValueAt(selectedRow, 1);
                 checkoutBranch(branchDisplay);
+            }
+        });
+        newBranchItem.addActionListener(e -> {
+            int selectedRow = branchTable.getSelectedRow();
+            if (selectedRow != -1) {
+                String sourceBranch = (String) branchTableModel.getValueAt(selectedRow, 1);
+                createNewBranchFrom(sourceBranch);
             }
         });
         mergeItem.addActionListener(e -> {
@@ -1245,6 +1254,30 @@ public class GitLogPanel extends JPanel {
     }
 
     /**
+     * Creates a new branch from an existing one and checks it out.
+     */
+    private void createNewBranchFrom(String sourceBranch) {
+        String newName = JOptionPane.showInputDialog(
+                this,
+                "Enter name for new branch from '" + sourceBranch + "':",
+                "Create New Branch",
+                JOptionPane.QUESTION_MESSAGE
+        );
+        if (newName != null && !newName.trim().isEmpty()) {
+            contextManager.submitUserTask("Creating new branch: " + newName + " from " + sourceBranch, () -> {
+                try {
+                    getRepo().createAndCheckoutBranch(newName, sourceBranch);
+                    update();
+                    chrome.systemOutput("Created and checked out new branch '" + newName + "' from '" + sourceBranch + "'");
+                } catch (IOException e) {
+                    logger.error("Error creating new branch from {}: {}", sourceBranch, e);
+                    chrome.toolErrorRaw("Error creating new branch: " + e.getMessage());
+                }
+            });
+        }
+    }
+
+    /**
      * Rename a local branch.
      */
     private void renameBranch(String branchName) {
@@ -1685,10 +1718,11 @@ public class GitLogPanel extends JPanel {
             isCurrentBranch = "✓".equals(checkmark);
         }
 
-        // rename = menu.getComponent(2), delete = menu.getComponent(3)
+        // newBranch = menu.getComponent(1), merge = menu.getComponent(2)
+        // rename = menu.getComponent(3), delete = menu.getComponent(4)
         // Adjust as needed if you change order
-        menu.getComponent(2).setEnabled(isLocal);
-        menu.getComponent(3).setEnabled(isLocal && !isCurrentBranch); // Can't delete current branch
+        menu.getComponent(3).setEnabled(isLocal);
+        menu.getComponent(4).setEnabled(isLocal && !isCurrentBranch); // Can't delete current branch
     }
 
     /**
