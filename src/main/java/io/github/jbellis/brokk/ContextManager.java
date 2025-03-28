@@ -1564,11 +1564,11 @@ public class ContextManager implements IContextManager
     @Override
     public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
     {
-        var llmOutputText = io.getLlmOutputText();
-        if (llmOutputText == null) {
-            io.systemOutput("Interrupted!");
-            return;
-        }
+        addToHistory(messages, originalContents, action, io.getLlmOutputText());
+    }
+
+    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action, String llmOutputText)
+    {
         var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
         logger.debug("Adding to history with {} changed files", originalContents.size());
         pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));

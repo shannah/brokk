@@ -282,7 +282,7 @@ public class LLM {
                 new UserMessage(instructionsMsg),
                 new AiMessage(responseText)
         );
-        cm.addToHistory(pendingHistory, originalContents, "Quick Edit: " + file.getFileName());
+        cm.addToHistory(pendingHistory, originalContents, "Quick Edit: " + file.getFileName(), responseText);
     }
 
     /**
