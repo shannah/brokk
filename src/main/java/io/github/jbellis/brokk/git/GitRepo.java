@@ -513,6 +513,7 @@ public class GitRepo implements Closeable, IGitRepo {
     public void renameBranch(String oldName, String newName) throws IOException {
         try {
             git.branchRename().setOldName(oldName).setNewName(newName).call();
+            refresh();
         } catch (GitAPIException e) {
             throw new IOException("Failed to rename branch: " + e.getMessage(), e);
         }

@@ -1291,7 +1291,8 @@ public class GitLogPanel extends JPanel {
             contextManager.submitUserTask("Renaming branch: " + branchName, () -> {
                 try {
                     getRepo().renameBranch(branchName, newName);
-                    update();
+                    SwingUtilities.invokeLater(this::update);
+                    chrome.systemOutput("Branch '" + branchName + "' renamed to '" + newName + "' successfully.");
                 } catch (IOException e) {
                     logger.error("Error renaming branch: {}", branchName, e);
                     chrome.toolErrorRaw("Error renaming branch: " + e.getMessage());
@@ -1377,7 +1378,7 @@ public class GitLogPanel extends JPanel {
                 }
 
                 logger.debug("Branch '{}' deletion completed successfully", branchName);
-                update();
+                SwingUtilities.invokeLater(this::update);
                 chrome.systemOutput("Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
             } catch (IOException e) {
                 logger.error("Error deleting branch '{}': {}", branchName, e.getMessage(), e);
