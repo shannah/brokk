@@ -43,7 +43,7 @@ public class ContextSerializationTest {
                     }
 
                     @Override
-                    public List<Tuple2<String, Double>> getPagerank(Map<String, Double> seedClassWeights, int k, boolean reversed) {
+                    public List<Tuple2<CodeUnit, Double>> getPagerank(Map<String, Double> seedClassWeights, int k, boolean reversed) {
                         return List.of();
                     }
                 };

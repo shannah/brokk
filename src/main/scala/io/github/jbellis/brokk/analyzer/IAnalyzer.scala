@@ -18,10 +18,10 @@ trait IAnalyzer {
   def isClassInProject(className: String): Boolean = 
     throw new UnsupportedOperationException()
     
-  def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[(String, java.lang.Double)] = 
+  def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[scala.Tuple2[CodeUnit, java.lang.Double]] =
     throw new UnsupportedOperationException()
-    
-  def getSkeleton(className: String): Option[String] = 
+
+  def getSkeleton(className: String): Option[String] =
     throw new UnsupportedOperationException()
     
   def getSkeletonHeader(className: String): Option[String] = 

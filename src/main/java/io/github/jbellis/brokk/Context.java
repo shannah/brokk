@@ -336,25 +336,26 @@ public class Context implements Serializable {
     }
 
     public static SkeletonFragment buildAutoContext(IAnalyzer analyzer, Map<String, Double> weightedSeeds, Set<CodeUnit> ineligibleSources, int topK) {
-        var pagerankResults = AnalyzerUtil.combinedPageRankFor(analyzer, weightedSeeds);
+        var pagerankResults = AnalyzerUtil.combinedPagerankFor(analyzer, weightedSeeds);
 
         // build skeleton map
         var skeletonMap = new HashMap<CodeUnit, String>();
-        for (var fqName : pagerankResults) {
-            var sourceFileOption = analyzer.getFileFor(fqName);
+        for (var codeUnit : pagerankResults) {
+            var fqcn = codeUnit.fqName();
+            var sourceFileOption = analyzer.getFileFor(fqcn);
             if (sourceFileOption.isEmpty()) {
-                logger.warn("No source file found for class {}", fqName);
+                logger.warn("No source file found for class {}", fqcn);
                 continue;
             }
             var sourceFile = sourceFileOption.get();
             // Check if the class or its parent is in ineligible classnames
-            boolean eligible = !(ineligibleSources.contains(CodeUnit.cls(sourceFile, fqName))
-                    || (fqName.contains("$") && ineligibleSources.contains(CodeUnit.cls(sourceFile, fqName.substring(0, fqName.indexOf('$'))))));
+            boolean eligible = !(ineligibleSources.contains(codeUnit)
+                    || (fqcn.contains("$") && ineligibleSources.contains(CodeUnit.cls(sourceFile, fqcn.substring(0, fqcn.indexOf('$'))))));
 
             if (eligible) {
-                var opt = analyzer.getSkeleton(fqName);
+                var opt = analyzer.getSkeleton(fqcn);
                 if (opt.isDefined()) {
-                    skeletonMap.put(CodeUnit.cls(sourceFile, fqName), opt.get());
+                    skeletonMap.put(codeUnit, opt.get());
                 }
             }
             if (skeletonMap.size() >= topK) {

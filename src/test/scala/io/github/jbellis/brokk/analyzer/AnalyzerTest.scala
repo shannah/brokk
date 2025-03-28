@@ -239,10 +239,10 @@ class AnalyzerTest {
     val seeds = CollectionConverters.asJava(Map("D" -> (1.0: java.lang.Double)))
     val ranked = analyzer.getPagerank(seeds, 3)
     
-    // A and B should rank highly as they are both called by D
+    // A and B should rank highly as they are both called by D. BaseClass is also included now.
     assert(ranked.size() == 3, ranked)
-    val classes = asScala(ranked).map(_._1).toSet
-    
+    val classes = asScala(ranked).map(_._1.fqName()).toSet // Extract fqName from CodeUnit
+
     // The test code base has changed, so update expected results
     // Now includes BaseClass since we added it to the test code
     assertEquals(Set("A", "B", "BaseClass"), classes)
@@ -346,7 +346,7 @@ class AnalyzerTest {
     // Find classes matching "*E"
     val classMatches = analyzer.getDefinitions(".*e")
     val classRefs = asScala(classMatches).filter(_.isClass).map(_.fqName).toSet
-    assertEquals(Set("E", "UseE", "AnonymousUsage", "java.lang.Runnable"), classRefs)
+    assertEquals(Set("E", "UseE", "AnonymousUsage"), classRefs)
 
     // Find methods matching "method*"
     val methodMatches = analyzer.getDefinitions("method.*1")

@@ -22,7 +22,7 @@ class DisabledAnalyzer extends IAnalyzer {
   override def isClassInProject(className: String): Boolean =
     false
 
-  override def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[(String, java.lang.Double)] =
+  override def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[scala.Tuple2[CodeUnit, java.lang.Double]] =
     Collections.emptyList()
 
   override def getSkeleton(className: String): Option[String] =

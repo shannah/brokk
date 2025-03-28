@@ -35,7 +35,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import static java.lang.Math.min;
 
@@ -997,12 +996,15 @@ public class SearchAgent {
             weightedSeeds.put(className, 1.0);
         }
 
-        var pageRankResults = AnalyzerUtil.combinedPageRankFor(analyzer, weightedSeeds);
+        var pageRankUnits = AnalyzerUtil.combinedPagerankFor(analyzer, weightedSeeds);
 
-        if (pageRankResults.isEmpty()) {
+        if (pageRankUnits.isEmpty()) {
             return "No related code found via PageRank";
         }
 
+        var pageRankResults = pageRankUnits.stream().map(CodeUnit::fqName).toList();
+
+        // Get skeletons for the top few *original* seed classes, not the PR results
         var prResult = classNames.stream().distinct()
                 .limit(10) // padding in case of not defined
                 .map(analyzer::getSkeleton)
@@ -1010,9 +1012,10 @@ public class SearchAgent {
                 .limit(5)
                 .map(Option::get)
                 .collect(Collectors.joining("\n\n"));
-        var formattedPrResult = prResult.isEmpty() ? "" : "# Summaries of top 5 related classes: \n\n" + prResult + "\n\n";
+        var formattedPrResult = prResult.isEmpty() ? "" : "# Summaries of top 5 seed classes: \n\n" + prResult + "\n\n";
 
-        List<String> resultsList = pageRankResults.stream().limit(50).collect(Collectors.toList());
+        // Format the compressed list of related classes found by pagerank
+        List<String> resultsList = pageRankResults.stream().limit(50).toList();
         var formattedResults = formatCompressedSymbols("# List of related classes", resultsList);
 
         return formattedPrResult + formattedResults;

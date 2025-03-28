@@ -7,13 +7,14 @@
 - Better prompting when copying to an external LLM
 - Incremental output parsing improves responsiveness of the UI with fewer flickers
 - Add default models for Google Gemini
+- Multiple improvements to Git functionality
 
 ## Fixes
 - Git push works with SSH remotes
 - Partial stashing works as intended
-- Symbol usage now includes references in return types
+- Symbol usage now includes references in return types and references to subclasses
 - Fixed regression to undoing changes on filesystem
-- Keyboard paste into context table works as intended
+- Keyboard-hotkey paste into context table works as intended
 
 
 0.6.3

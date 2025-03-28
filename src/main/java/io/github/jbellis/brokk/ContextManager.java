@@ -1505,7 +1505,8 @@ public class ContextManager implements IContextManager
             try {
                 io.systemOutput("Generating project style guide...");
                 var analyzer = project.getAnalyzer();
-                var topClasses = AnalyzerUtil.combinedPageRankFor(analyzer, Map.of());
+                var topClassUnits = AnalyzerUtil.combinedPagerankFor(analyzer, Map.of());
+                var topClasses = topClassUnits.stream().map(CodeUnit::fqName).toList();
 
                 var codeForLLM = new StringBuilder();
                 var tokens = 0;

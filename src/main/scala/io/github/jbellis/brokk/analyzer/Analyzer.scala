@@ -667,10 +667,10 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
                             seedClassWeights: java.util.Map[String, java.lang.Double],
                             k: Int,
                             reversed: Boolean
-                          ): java.util.List[(String, java.lang.Double)] = {
+                          ): java.util.List[(CodeUnit, java.lang.Double)] = {
     import scala.jdk.CollectionConverters.*
     val seedWeights = seedClassWeights.asScala.view.mapValues(_.doubleValue()).toMap
-    // restrict to classes that are in the graph
+    // restrict to classes (FQCNs) that are in the graph
     var validSeeds = seedWeights.keys.toSeq.filter(classesForPagerank.contains)
     if (validSeeds.isEmpty) validSeeds = classesForPagerank.toSeq
 
@@ -732,42 +732,59 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
 
     val sortedAll = scores.toList.sortBy { case (_, s) => -s }
     val filteredSortedAll = sortedAll.filterNot { case (cls, _) =>
+      // cls here is the FQCN string from the sorted scores
       seedWeights.keys.exists(seed => partOfClass(seed, cls))
     }
 
-    def coalesceInnerClasses(initial: List[(String, Double)], limit: Int): mutable.Buffer[(String, Double)] = {
+    // Coalesce inner classes: if both parent and inner class are present, keep only the parent.
+    // Operates on a buffer of (CodeUnit, Double) tuples.
+    def coalesceInnerClasses(initial: List[(CodeUnit, Double)], limit: Int): mutable.Buffer[(CodeUnit, Double)] = {
       var results = initial.take(limit).toBuffer
       var offset = limit
       var changed = true
+      val initialFqns = initial.map(_._1.fqName()).toSet // For quick lookups during addition
 
       while (changed) {
         changed = false
-        val toRemove = mutable.Set[String]()
+        val fqnsToRemove = mutable.Set[String]() // Store FQNs of inner classes to remove
         for (i <- results.indices) {
-          val (pClass, _) = results(i)
+          val pFqn = results(i)._1.fqName()
           for (j <- results.indices if j != i) {
-            val (cClass, _) = results(j)
-            if (partOfClass(pClass, cClass)) toRemove += cClass
+            val cFqn = results(j)._1.fqName()
+            if (partOfClass(pFqn, cFqn)) fqnsToRemove += cFqn
           }
         }
-        if (toRemove.nonEmpty) {
+        if (fqnsToRemove.nonEmpty) {
           changed = true
-          results = results.filterNot { case (cls, _) => toRemove.contains(cls) }
+          results = results.filterNot { case (cu, _) => fqnsToRemove.contains(cu.fqName()) }
         }
+        // Add new candidates until the limit is reached
         while (results.size < limit && offset < initial.size) {
-          val candidate @ (cls, _) = initial(offset)
+          val candidate @ (cu, _) = initial(offset)
           offset += 1
-          if (!results.exists(_._1 == cls) && !toRemove.contains(cls)) {
-            results += candidate
-            changed = true
+          // Add if not already present (by FQN) and not marked for removal
+          if (!results.exists(_._1.fqName() == cu.fqName()) && !fqnsToRemove.contains(cu.fqName())) {
+            // Also ensure its potential parent isn't already in initialFqns if it's an inner class
+            val isInner = cu.fqName().contains('$')
+            val parentFqnOpt = if (isInner) Some(cu.fqName().substring(0, cu.fqName().lastIndexOf('$'))) else None
+            if (!isInner || parentFqnOpt.forall(p => !initialFqns.contains(p))) {
+               results += candidate
+               changed = true
+            }
           }
         }
       }
-      results
+      results // Buffer[(CodeUnit, Double)]
     }
 
-    coalesceInnerClasses(filteredSortedAll, k)
-      .map { case (s, d) => (s, java.lang.Double.valueOf(d)) }
+    // Map sorted FQCNs to CodeUnit tuples, filtering out those without files
+    val sortedCodeUnits = filteredSortedAll.flatMap { case (fqcn, score) =>
+      getFileFor(fqcn).map(file => (CodeUnit.cls(file, fqcn), score))
+    }
+
+    // Coalesce and convert score to Java Double
+    coalesceInnerClasses(sortedCodeUnits, k)
+      .map { case (cu, d) => (cu, java.lang.Double.valueOf(d)) }
       .asJava
   }
 
