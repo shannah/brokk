@@ -644,55 +644,35 @@ public class GitRepo implements Closeable, IGitRepo {
      * List changed files in a specific commit
      */
     /**
-     * List changed RepoFiles in a specific commit.
+     * List changed RepoFiles in a commit range.
+     * Compares the tree of firstCommitId against the tree of the commit preceding lastCommitId.
      */
-    public List<RepoFile> listChangedFilesInCommit(String commitId)
-    {
+    public List<RepoFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId) {
         try {
-            var commitObj = repository.resolve(commitId);
+            var firstCommitObj = repository.resolve(firstCommitId);
+            var lastCommitObj = repository.resolve(lastCommitId + "^");
             try (var revWalk = new RevWalk(repository)) {
-                var commit = revWalk.parseCommit(commitObj);
-                var parentCommit = commit.getParentCount() > 0 ? commit.getParent(0) : null;
-
-                var files = new ArrayList<String>();
-                if (parentCommit == null) {
-                    // Root commit, just list everything in this tree
-                    try (var treeWalk = new TreeWalk(repository)) {
-                        treeWalk.addTree(commit.getTree());
-                        treeWalk.setRecursive(true);
-                        while (treeWalk.next()) {
-                            files.add(treeWalk.getPathString());
+                var firstCommit = revWalk.parseCommit(firstCommitObj);
+                var lastCommit = revWalk.parseCommit(lastCommitObj);
+                try (var diffFormatter = new org.eclipse.jgit.diff.DiffFormatter(new ByteArrayOutputStream())) {
+                    diffFormatter.setRepository(repository);
+                    var diffs = diffFormatter.scan(lastCommit.getTree(), firstCommit.getTree());
+                    var fileSet = new HashSet<String>();
+                    for (var diff : diffs) {
+                        if (diff.getNewPath() != null && !"/dev/null".equals(diff.getNewPath())) {
+                            fileSet.add(diff.getNewPath());
+                        }
+                        if (diff.getOldPath() != null && !"/dev/null".equals(diff.getOldPath())) {
+                            fileSet.add(diff.getOldPath());
                         }
                     }
-                } else {
-                    parentCommit = revWalk.parseCommit(parentCommit.getId());
-                    try (var diffFormatter =
-                                 new org.eclipse.jgit.diff.DiffFormatter(new ByteArrayOutputStream()))
-                    {
-                        diffFormatter.setRepository(repository);
-                        var diffs = diffFormatter.scan(parentCommit.getTree(), commit.getTree());
-                        for (var diff : diffs) {
-                            if (diff.getNewPath() != null
-                                && !diff.getNewPath().equals("/dev/null"))
-                            {
-                                files.add(diff.getNewPath());
-                            }
-                            if (diff.getOldPath() != null
-                                && !diff.getOldPath().equals("/dev/null")
-                                && !files.contains(diff.getOldPath()))
-                            {
-                                files.add(diff.getOldPath());
-                            }
-                        }
-                    }
+                    return fileSet.stream()
+                                  .map(path -> new RepoFile(root, path))
+                                  .collect(Collectors.toList());
                 }
-                revWalk.dispose();
-                return files.stream()
-                            .map(path -> new RepoFile(root, path))
-                            .collect(Collectors.toList());
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to list changed files in commit", e);
+            throw new UncheckedIOException(new IOException("Failed to list changed files in commit range", e));
         }
     }
 
@@ -729,9 +709,6 @@ public class GitRepo implements Closeable, IGitRepo {
         }
     }
 
-    /**
-     * Show diff for a specific file between two commits
-     */
     /**
      * Show diff for a specific file between two commits.
      */

@@ -229,7 +229,7 @@ public class GitLogPanel extends JPanel {
                 }
             });
         }
-        JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
+        JMenuItem addToContextItem = new JMenuItem("Capture Diff");
         JMenuItem softResetItem = new JMenuItem("Soft Reset to Here");
         JMenuItem revertCommitItem = new JMenuItem("Revert Commit");
         JMenuItem popStashCommitItem = new JMenuItem("Pop Stash");
@@ -420,7 +420,7 @@ public class GitLogPanel extends JPanel {
         changesTree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
         changesPanel.add(new JScrollPane(changesTree), BorderLayout.CENTER);
 
-        // Context menu on changes tree
+// Context menu on changes tree
         JPopupMenu changesContextMenu = new JPopupMenu();
         if (chrome.themeManager != null) {
             chrome.themeManager.registerPopupMenu(changesContextMenu);
@@ -432,58 +432,46 @@ public class GitLogPanel extends JPanel {
                 }
             });
         }
-        JMenuItem addFileToContextItem = new JMenuItem("Add Changes to Context");
+
+        JMenuItem addFileToContextItem = new JMenuItem("Capture Diff");
         JMenuItem compareFileWithLocalItem = new JMenuItem("Compare with Local");
-        JMenuItem viewDiffItem = new JMenuItem("Show Diff");
+        JMenuItem viewDiffItem = new JMenuItem("View Diff");
         JMenuItem viewHistoryItem = new JMenuItem("View History");
-        JMenuItem editFileItem = new JMenuItem("Edit File");
+        JMenuItem editFileItem = new JMenuItem("Edit File(s)");
         changesContextMenu.add(addFileToContextItem);
-        changesContextMenu.add(compareFileWithLocalItem);
         changesContextMenu.add(viewDiffItem);
+        changesContextMenu.add(compareFileWithLocalItem);
         changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(editFileItem);
-        // Assign the popup menu so the LAF automatically shows/hides it on right-click:
-        changesTree.setComponentPopupMenu(changesContextMenu);
-        // Add a minimal mouse listener to select the node on right-click.
-        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                maybeSelectPath(e);
-            }
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                maybeSelectPath(e);
-            }
-            private void maybeSelectPath(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    var path = changesTree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null && !changesTree.isPathSelected(path)) {
-                        changesTree.setSelectionPath(path);
-                    }
-                }
-            }
-        });
+
         // Add mouse listener for changes tree popup
-        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
+        changesTree.addMouseListener(new java.awt.event.MouseAdapter()
+        {
             @Override
-            public void mousePressed(MouseEvent e) {
+            public void mousePressed(MouseEvent e)
+            {
                 handleChangesPopup(e);
             }
 
             @Override
-            public void mouseReleased(MouseEvent e) {
+            public void mouseReleased(MouseEvent e)
+            {
                 handleChangesPopup(e);
             }
 
-            private void handleChangesPopup(MouseEvent e) {
-                if (e.isPopupTrigger()) {
+            private void handleChangesPopup(MouseEvent e)
+            {
+                if (e.isPopupTrigger())
+                {
                     int row = changesTree.getRowForLocation(e.getX(), e.getY());
-                    if (row >= 0) {
-                        if (!changesTree.isRowSelected(row)) {
+                    if (row >= 0)
+                    {
+                        if (!changesTree.isRowSelected(row))
+                        {
                             changesTree.setSelectionRow(row);
                         }
                     }
-                    
+
                     TreePath[] paths = changesTree.getSelectionPaths();
                     boolean hasFileSelection = paths != null && paths.length > 0 && hasFileNodesSelected(paths);
                     int[] selRows = commitsTable.getSelectedRows();
@@ -493,12 +481,12 @@ public class GitLogPanel extends JPanel {
                     compareFileWithLocalItem.setEnabled(hasFileSelection && isSingleCommit);
                     viewHistoryItem.setEnabled(hasFileSelection);
                     editFileItem.setEnabled(hasFileSelection);
-                    
+
                     changesContextMenu.show(changesTree, e.getX(), e.getY());
                 }
             }
         });
-        
+
         // Add double-click handler to show diff
         changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -913,7 +901,7 @@ public class GitLogPanel extends JPanel {
                 for (var row : selectedRows) {
                     if (row >= 0 && row < commitsTableModel.getRowCount()) {
                         var commitId = (String) commitsTableModel.getValueAt(row, 3);
-                        var changedFiles = getRepo().listChangedFilesInCommit(commitId);  // now returns List<RepoFile>
+                        var changedFiles = getRepo().listChangedFilesInCommitRange(commitId, commitId);
                         allChangedFiles.addAll(changedFiles);
                     }
                 }
@@ -990,15 +978,17 @@ public class GitLogPanel extends JPanel {
                 }
                 logger.debug("Found {} bytes of changes in diff", diff.length());
 
+                List<String> fileNames = getRepo().listChangedFilesInCommitRange(firstCommitId, lastCommitId)
+                        .stream()
+                        .map(RepoFile::getFileName)
+                        .collect(Collectors.toList());
+                String filesTxt = String.join(", ", fileNames);
                 String firstShortHash = firstCommitId.substring(0, 7);
                 String lastShortHash = lastCommitId.substring(0, 7);
-                String description;
-                if (selectedRows.length > 1) {
-                    description = String.format("git %s..%s: Changes across %d commits",
-                                                firstShortHash, lastShortHash, selectedRows.length);
-                } else {
-                    description  = String.format("git %s", firstShortHash);
-                }
+                var hashTxt = firstCommitId.equals(lastCommitId)
+                        ? firstShortHash
+                        : String.format("%s..%s", firstShortHash, lastShortHash);
+                String description = String.format("Diff of %s [%s]", filesTxt, hashTxt);
 
                 ContextFragment.StringFragment fragment =
                         new ContextFragment.StringFragment(diff, description);
@@ -1048,20 +1038,17 @@ public class GitLogPanel extends JPanel {
 
                 String firstShortHash = firstCommitId.substring(0, 7);
                 String lastShortHash = lastCommitId.substring(0, 7);
-
-                List<String> fileNames = filePaths.stream()
+                var filesTxt = filePaths.stream()
                         .map(path -> {
                             int slashPos = path.lastIndexOf('/');
                             return (slashPos >= 0 ? path.substring(slashPos + 1) : path);
                         })
-                        .collect(Collectors.toList());
-                String fileList = String.join(", ", fileNames);
+                        .collect(Collectors.joining(", "));
 
-                String description = String.format("git %s..%s [%s]: Changes across %d commits",
-                                                   firstShortHash, lastShortHash, fileList, selectedRows.length);
+                var hashTxt = firstCommitId.equals(lastCommitId) ? firstShortHash : "%s..%s".formatted(firstShortHash, lastShortHash);
+                var description = String.format("Diff of %s [%s]", filesTxt, hashTxt);
 
-                ContextFragment.StringFragment fragment =
-                        new ContextFragment.StringFragment(diffs, description);
+                ContextFragment.StringFragment fragment = new ContextFragment.StringFragment(diffs, description);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added changes for selected files in commit range to context");
             } catch (Exception ex) {
@@ -1092,13 +1079,8 @@ public class GitLogPanel extends JPanel {
                 }
 
                 String shortHash = commitId.substring(0, 7);
-                StringBuilder fileList = new StringBuilder();
-                for (String fp : filePaths) {
-                    if (!fileList.isEmpty()) fileList.append(", ");
-                    int lastSlash = fp.lastIndexOf('/');
-                    fileList.append(lastSlash >= 0 ? fp.substring(lastSlash + 1) : fp);
-                }
-                String description = "git local vs " + shortHash + " [" + fileList + "]";
+                String fileList = repoFiles.stream().map(RepoFile::getFileName).collect(Collectors.joining(", "));
+                String description = String.format("Diff of %s [local vs %s]", fileList, shortHash);
 
                 ContextFragment.StringFragment fragment =
                         new ContextFragment.StringFragment(allDiffs, description);

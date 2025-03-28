@@ -173,12 +173,11 @@ public class GitPanel extends JPanel {
         var uncommittedContextMenu = new JPopupMenu();
         uncommittedFilesTable.setComponentPopupMenu(uncommittedContextMenu);
 
-        // "Show Diff" menu item
-        var viewDiffItem = new JMenuItem("Show Diff");
+        var captureDiffItem = new JMenuItem("Capture Diff");
+        uncommittedContextMenu.add(captureDiffItem);
+        var viewDiffItem = new JMenuItem("View Diff");
         uncommittedContextMenu.add(viewDiffItem);
-        
-        // "Edit File" menu item
-        var editFileItem = new JMenuItem("Edit File");
+        var editFileItem = new JMenuItem("Edit File(s)");
         uncommittedContextMenu.add(editFileItem);
 
         // When the menu appears, select the row under the cursor so the right-click target is highlighted
@@ -195,8 +194,8 @@ public class GitPanel extends JPanel {
                     {
                         uncommittedFilesTable.setRowSelectionInterval(row, row);
                     }
-                    // Update edit menu item state when popup becomes visible
-                    updateEditFileItemState(editFileItem);
+                    // Update menu item states when popup becomes visible
+                    updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem);
                 });
             }
             @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
@@ -210,7 +209,12 @@ public class GitPanel extends JPanel {
                 viewDiffForUncommittedRow(row);
             }
         });
-        
+
+        // Hook up "Capture Diff" action
+        captureDiffItem.addActionListener(e -> {
+            captureUncommittedDiff();
+        });
+
         // Hook up "Edit File" action
         editFileItem.addActionListener(e -> {
             int row = uncommittedFilesTable.getSelectedRow();
@@ -222,10 +226,10 @@ public class GitPanel extends JPanel {
             }
         });
         
-        // Update edit menu item state based on selection
+        // Update context menu item states based on selection
         uncommittedFilesTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                updateEditFileItemState(editFileItem);
+                updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem);
             }
         });
 
@@ -538,27 +542,48 @@ public class GitPanel extends JPanel {
     }
     
     /**
-     * Updates the state of the Edit File menu item based on whether the selected file
-     * is already in the editable context.
+     * Updates the enabled state of context menu items for the uncommitted files table
+     * based on the current selection.
      */
-    private void updateEditFileItemState(JMenuItem editFileItem) {
-        int row = uncommittedFilesTable.getSelectedRow();
-        if (row >= 0) {
+    private void updateUncommittedContextMenuState(JMenuItem captureDiffItem, JMenuItem viewDiffItem, JMenuItem editFileItem) {
+        int[] selectedRows = uncommittedFilesTable.getSelectedRows();
+        int selectionCount = selectedRows.length;
+
+        if (selectionCount == 0) {
+            // No files selected: disable everything
+            captureDiffItem.setEnabled(false);
+            captureDiffItem.setToolTipText("Select file(s) to capture diff");
+            viewDiffItem.setEnabled(false);
+            viewDiffItem.setToolTipText("Select a file to view its diff");
+            editFileItem.setEnabled(false);
+            editFileItem.setToolTipText("Select a file to edit");
+        } else if (selectionCount == 1) {
+            // Exactly one file selected
+            captureDiffItem.setEnabled(true);
+            captureDiffItem.setToolTipText("Capture diff of selected file to context");
+            viewDiffItem.setEnabled(true);
+            viewDiffItem.setToolTipText("View diff of selected file");
+
+            // Conditionally enable Edit File
+            int row = selectedRows[0];
             String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
             String path = (String) uncommittedFilesTable.getValueAt(row, 1);
             String filePath = path.isEmpty() ? filename : path + "/" + filename;
             var file = contextManager.toFile(filePath);
-            
-            // Check if this file is already in the editable context
             boolean alreadyEditable = contextManager.getEditableFiles().contains(file);
-            
+
             editFileItem.setEnabled(!alreadyEditable);
-            editFileItem.setToolTipText(alreadyEditable ? 
-                "File is already in editable context" : 
-                "Edit this file");
+            editFileItem.setToolTipText(alreadyEditable ?
+                    "File is already in editable context" :
+                    "Edit this file");
         } else {
-            editFileItem.setEnabled(false);
-            editFileItem.setToolTipText("Select a file to edit");
+            // More than one file selected
+            captureDiffItem.setEnabled(true);
+            captureDiffItem.setToolTipText("Capture diff of selected files to context");
+            viewDiffItem.setEnabled(false); // Disable View Diff for multiple files
+            viewDiffItem.setToolTipText("Select a single file to view its diff");
+            editFileItem.setEnabled(false); // Disable Edit File for multiple files
+            editFileItem.setToolTipText("Select a single file to edit");
         }
     }
 
@@ -899,8 +924,34 @@ public class GitPanel extends JPanel {
         diffPanel.showInDialog(this, dialogTitle);
     }
 
-    // ================ Stash Methods ==================
+    /**
+     * Captures the diff of selected uncommitted files and adds it to the context.
+     */
+    private void captureUncommittedDiff() {
+        List<RepoFile> selectedFiles = getSelectedFilesFromTable();
+        if (selectedFiles.isEmpty()) {
+            chrome.systemOutput("No files selected to capture diff");
+            return;
+        }
 
+        contextManager.submitContextTask("Capturing uncommitted diff", () -> {
+            try {
+                String diff = getRepo().diffFiles(selectedFiles);
+                if (diff.isEmpty()) {
+                    chrome.systemOutput("No uncommitted changes found for selected files");
+                    return;
+                }
+
+                String description = "Diff of %s".formatted(selectedFiles.stream().map(RepoFile::getFileName).collect(Collectors.joining(", ")));
+                ContextFragment.StringFragment fragment = new ContextFragment.StringFragment(diff, description);
+                contextManager.addVirtualFragment(fragment);
+                chrome.systemOutput("Added uncommitted diff for " + selectedFiles.size() + " file(s) to context");
+            } catch (Exception ex) {
+                logger.error("Error capturing uncommitted diff", ex);
+                chrome.toolErrorRaw("Error capturing uncommitted diff: " + ex.getMessage());
+            }
+        });
+    }
 
     /**
      * Shows the diff for an uncommitted file.
