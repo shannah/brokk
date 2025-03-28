@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.git.GitRepo.CommitInfo;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -476,6 +477,7 @@ public class GitLogPanel extends JPanel {
         JMenuItem addFileToContextItem = new JMenuItem("Capture Diff");
         JMenuItem compareFileWithLocalItem = new JMenuItem("Compare with Local");
         JMenuItem viewDiffItem = new JMenuItem("View Diff");
+        JMenuItem viewFileAtRevisionItem = new JMenuItem("View File at Revision");
         JMenuItem viewHistoryItem = new JMenuItem("View History");
         JMenuItem editFileItem = new JMenuItem("Edit File(s)");
         JMenuItem comparePrevWithLocalItem = new JMenuItem("Compare Previous with Local");
@@ -484,6 +486,7 @@ public class GitLogPanel extends JPanel {
         changesContextMenu.addSeparator();
         changesContextMenu.add(viewDiffItem);
         changesContextMenu.add(viewHistoryItem);
+        changesContextMenu.add(viewFileAtRevisionItem);
         changesContextMenu.add(compareFileWithLocalItem);
         changesContextMenu.add(comparePrevWithLocalItem);
 
@@ -515,6 +518,7 @@ public class GitLogPanel extends JPanel {
 
                     addFileToContextItem.setEnabled(hasFileSelection);
                     viewDiffItem.setEnabled(paths.length == 1);
+                    viewFileAtRevisionItem.setEnabled(paths.length == 1 && isSingleCommit);
                     compareFileWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
                     comparePrevWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
                     viewHistoryItem.setEnabled(paths.length == 1);
@@ -575,6 +579,21 @@ public class GitLogPanel extends JPanel {
                     if (selRows.length == 1) {
                         String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
                         comparePreviousFilesWithLocal(commitId, selectedFiles);
+                    }
+                }
+            }
+        });
+
+        viewFileAtRevisionItem.addActionListener(e -> {
+            TreePath[] paths = changesTree.getSelectionPaths();
+            if (paths != null && paths.length == 1) {
+                List<String> selectedFiles = getSelectedFilePaths(paths);
+                if (selectedFiles.size() == 1) {
+                    int[] selRows = commitsTable.getSelectedRows();
+                    if (selRows.length == 1) {
+                        String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+                        String filePath = selectedFiles.get(0);
+                        viewFileAtRevision(commitId, filePath);
                     }
                 }
             }
@@ -1624,6 +1643,34 @@ public class GitLogPanel extends JPanel {
             var commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
             showFileDiff(commitId, filePath);
         }
+    }
+
+    /**
+     * Shows the contents of a file at a specific revision.
+     */
+    private void viewFileAtRevision(String commitId, String filePath) {
+        contextManager.submitUserTask("Viewing file at revision", () -> {
+            try {
+                var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+                var content = getRepo().getFileContent(commitId, repoFile);
+                
+                if (content.isEmpty()) {
+                    chrome.systemOutput("File not found in this revision or is empty.");
+                    return;
+                }
+                
+                SwingUtilities.invokeLater(() -> {
+                    String shortHash = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
+                    String title = String.format("%s at %s", repoFile.getFileName(), shortHash);
+                    
+                    var fragment = new ContextFragment.StringFragment(content, title);
+                    chrome.openFragmentPreview(fragment, SyntaxConstants.SYNTAX_STYLE_JAVA);
+                });
+            } catch (Exception ex) {
+                logger.error("Error viewing file at revision", ex);
+                chrome.toolErrorRaw("Error viewing file at revision: " + ex.getMessage());
+            }
+        });
     }
 
     /**
