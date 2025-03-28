@@ -965,14 +965,16 @@ public class GitPanel extends JPanel {
     }
 
     /**
-     * Shows the diff for an uncommitted file.
+     * Shows the diff for an uncommitted file by comparing HEAD to what's on disk.
      */
     private void showUncommittedFileDiff(String filePath) {
-        RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
-        DiffPanel diffPanel = new DiffPanel(contextManager);
+        var file = new RepoFile(contextManager.getRoot(), filePath);
+        var diffPanel = new DiffPanel(contextManager);
 
         String dialogTitle = "Uncommitted Changes: " + file.getFileName();
-        diffPanel.showFileDiff("UNCOMMITTED", file);
+
+        // Use the unified compare-with-local approach for HEAD vs. disk
+        diffPanel.showCompareWithLocal("HEAD", file, /*useParent=*/ false);
         diffPanel.showInDialog(this, dialogTitle);
     }
     

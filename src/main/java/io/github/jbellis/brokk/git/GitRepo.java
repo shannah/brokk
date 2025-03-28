@@ -5,6 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
@@ -677,35 +678,100 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * Show diff between two commits
-     * Special handling for when HEAD is used as a reference in the working directory
-     * @param newCommitId The newer commit (or HEAD for working directory)
-     * @param oldCommitId The older commit to compare against
-     * @return String containing the diff output
+     * Show diff between two commits (or a commit and the working directory if newCommitId == HEAD).
+     * Returns an empty string if either commit reference cannot be resolved.
      */
-    public String showDiff(String newCommitId, String oldCommitId) {
+    public String showDiff(String newCommitId, String oldCommitId)
+    {
         try (var out = new ByteArrayOutputStream()) {
             logger.debug("Generating diff from {} to {}", oldCommitId, newCommitId);
+
+            // Prepare old tree
+            var oldTreeIter = prepareTreeParser(oldCommitId);
+            if (oldTreeIter == null) {
+                logger.warn("Old commit/tree {} not found. Returning empty diff.", oldCommitId);
+                return "";
+            }
+
+            // If comparing to HEAD (working tree), set new tree to null
             if ("HEAD".equals(newCommitId)) {
                 git.diff()
-                        .setOldTree(prepareTreeParser(oldCommitId))
+                        .setOldTree(oldTreeIter)
                         .setNewTree(null) // Working tree
                         .setOutputStream(out)
                         .call();
             } else {
+                var newTreeIter = prepareTreeParser(newCommitId);
+                if (newTreeIter == null) {
+                    logger.warn("New commit/tree {} not found. Returning empty diff.", newCommitId);
+                    return "";
+                }
+
                 git.diff()
-                        .setOldTree(prepareTreeParser(oldCommitId))
-                        .setNewTree(prepareTreeParser(newCommitId))
+                        .setOldTree(oldTreeIter)
+                        .setNewTree(newTreeIter)
                         .setOutputStream(out)
                         .call();
             }
+
             var result = out.toString(StandardCharsets.UTF_8);
             logger.debug("Generated diff of {} bytes", result.length());
             return result;
-        } catch (IOException | GitAPIException e) {
-            logger.error("Failed to show diff between {} and {}: {}", 
-                       oldCommitId, newCommitId, e.getMessage());
+        }
+        catch (IOException | GitAPIException e) {
+            logger.error("Failed to show diff between {} and {}: {}", oldCommitId, newCommitId, e.getMessage(), e);
             throw new UncheckedIOException(new IOException("Failed to show diff", e));
+        }
+    }
+
+    /**
+     * Retrieves the contents of {@code file} at a given commit ID, or returns an empty string if
+     * the commit or file is not found.
+     *
+     * @param commitId the commit hash or ref (e.g., "main", "abc123", etc.)
+     * @param file the RepoFile whose contents to retrieve
+     * @return the file's text contents at that commit, or "" if not found
+     * @throws IOException if there's an error reading from Git
+     */
+    public String getFileContent(String commitId, RepoFile file)
+            throws IOException
+    {
+        if (commitId == null || commitId.isBlank()) {
+            logger.debug("getFileContent called with blank commitId; returning empty string");
+            return "";
+        }
+
+        var objId = repository.resolve(commitId);
+        if (objId == null) {
+            logger.debug("Could not resolve commitId '{}' to an object; returning empty string", commitId);
+            return "";
+        }
+
+        try (var revWalk = new RevWalk(repository)) {
+            var commit = revWalk.parseCommit(objId);
+            var tree = commit.getTree();
+            try (var treeWalk = new TreeWalk(repository)) {
+                treeWalk.addTree(tree);
+                treeWalk.setRecursive(true);
+                while (treeWalk.next()) {
+                    if (treeWalk.getPathString().equals(file.toString())) {
+                        var blobId = treeWalk.getObjectId(0);
+                        var loader = repository.open(blobId);
+                        return new String(loader.getBytes(), StandardCharsets.UTF_8);
+                    }
+                }
+            }
+        }
+        logger.debug("File '{}' not found at commit '{}'", file, commitId);
+        return "";
+    }
+
+    @Override
+    public ObjectId resolve(String stringId) {
+        try {
+            return repository.resolve(stringId);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -738,8 +804,24 @@ public class GitRepo implements Closeable, IGitRepo {
         }
     }
 
-    private org.eclipse.jgit.treewalk.AbstractTreeIterator prepareTreeParser(String objectId) throws IOException {
+    /**
+     * Prepares an AbstractTreeIterator for the given commit-ish string.
+     * Returns null if the reference cannot be resolved (e.g., no parent).
+     */
+    private org.eclipse.jgit.treewalk.AbstractTreeIterator prepareTreeParser(String objectId)
+            throws IOException
+    {
+        if (objectId == null || objectId.isBlank()) {
+            logger.warn("prepareTreeParser called with blank ref. Returning null iterator.");
+            return null;
+        }
+
         var objId = repository.resolve(objectId);
+        if (objId == null) {
+            logger.warn("Could not resolve ref: {}. Returning null iterator.", objectId);
+            return null;
+        }
+
         try (var revWalk = new RevWalk(repository)) {
             var commit = revWalk.parseCommit(objId);
             var treeId = commit.getTree().getId();
@@ -1044,12 +1126,7 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /**
      * Get the commit history for a specific file
-     *
-     * @param filePath Path to the file relative to repository root
      * @return List of commits that modified the file
-     */
-    /**
-     * Get the commit history for a specific RepoFile.
      */
     public List<CommitInfo> getFileHistory(RepoFile file)
     {

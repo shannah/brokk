@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * - Search functionality
  */
 public class GitLogPanel extends JPanel {
-    
+
     // Methods to expose to GitPanel for finding and selecting commits by ID
 
     private static final Logger logger = LogManager.getLogger(GitLogPanel.class);
@@ -73,6 +73,33 @@ public class GitLogPanel extends JPanel {
     }
 
     /**
+     * Compare the previous version of each file (commitId^) to the local on-disk file.
+     * If commitId has no parent (i.e. first commit), we treat the old content as empty.
+     */
+    private void comparePreviousFilesWithLocal(String commitId, List<String> filePaths) {
+        contextManager.submitUserTask("Comparing previous version with local", () -> {
+            try {
+                for (String path : filePaths) {
+                    var repoFile = new RepoFile(contextManager.getRoot(), path);
+
+                    SwingUtilities.invokeLater(() -> {
+                        DiffPanel diffPanel = new DiffPanel(contextManager);
+                        // We'll pass true to instruct the panel to use commitId^ (parent), or else empty
+                        diffPanel.showCompareWithLocal(commitId, repoFile, /*useParent=*/ true);
+
+                        String shortHash = (commitId + "^").substring(0, Math.min(commitId.length() + 1, 7));
+                        String title = String.format("Diff: %s [Local vs %s]", repoFile.getFileName(), shortHash);
+                        diffPanel.showInDialog(GitLogPanel.this, title);
+                    });
+                }
+            } catch (Exception ex) {
+                logger.error("Error comparing previous version with local", ex);
+                chrome.toolErrorRaw("Error comparing previous version with local: " + ex.getMessage());
+            }
+        });
+    }
+
+    /**
      * Creates and arranges all the "Log" tab sub-panels:
      * - Branches (local + remote)
      * - Commits
@@ -92,17 +119,22 @@ public class GitLogPanel extends JPanel {
 
         JPanel branchesPanel = new JPanel(new BorderLayout());
         branchesPanel.setBorder(BorderFactory.createTitledBorder("Branches"));
-        
+
         // Create tabbed pane for Local and Remote branches
         JTabbedPane branchTabbedPane = new JTabbedPane();
-        
+
         // Local branches panel
         JPanel localBranchPanel = new JPanel(new BorderLayout());
         branchTableModel = new DefaultTableModel(new Object[]{"", "Branch"}, 0) {
             @Override
-            public boolean isCellEditable(int row, int column) { return false; }
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+
             @Override
-            public Class<?> getColumnClass(int columnIndex) { return String.class; }
+            public Class<?> getColumnClass(int columnIndex) {
+                return String.class;
+            }
         };
         branchTable = new JTable(branchTableModel) {
             @Override
@@ -125,14 +157,19 @@ public class GitLogPanel extends JPanel {
         branchTable.getColumnModel().getColumn(0).setMinWidth(20);
         branchTable.getColumnModel().getColumn(0).setPreferredWidth(20);
         localBranchPanel.add(new JScrollPane(branchTable), BorderLayout.CENTER);
-        
+
         // Remote branches panel
         JPanel remoteBranchPanel = new JPanel(new BorderLayout());
         remoteBranchTableModel = new DefaultTableModel(new Object[]{"Branch"}, 0) {
             @Override
-            public boolean isCellEditable(int row, int column) { return false; }
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+
             @Override
-            public Class<?> getColumnClass(int columnIndex) { return String.class; }
+            public Class<?> getColumnClass(int columnIndex) {
+                return String.class;
+            }
         };
         remoteBranchTable = new JTable(remoteBranchTableModel);
         remoteBranchTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -163,8 +200,11 @@ public class GitLogPanel extends JPanel {
                 if (columnIndex == 4) return Boolean.class;
                 return String.class;
             }
+
             @Override
-            public boolean isCellEditable(int row, int column) { return false; }
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
         };
         commitsTable = new JTable(commitsTableModel) {
             // Add tooltip to show full commit message
@@ -179,7 +219,7 @@ public class GitLogPanel extends JPanel {
             }
         };
         commitsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        
+
         // Hide id and unpushed columns
         commitsTable.getColumnModel().getColumn(3).setMinWidth(0);
         commitsTable.getColumnModel().getColumn(3).setMaxWidth(0);
@@ -240,7 +280,7 @@ public class GitLogPanel extends JPanel {
         commitsContextMenu.add(addToContextItem);
         commitsContextMenu.add(softResetItem);
         commitsContextMenu.add(revertCommitItem);
-        
+
         commitsContextMenu.add(popStashCommitItem);
         commitsContextMenu.add(applyStashCommitItem);
         commitsContextMenu.add(dropStashCommitItem);
@@ -335,7 +375,7 @@ public class GitLogPanel extends JPanel {
                 revertCommit(commitId);
             }
         });
-        
+
         // Add handlers for stash operations in the commit context menu
         popStashCommitItem.addActionListener(e -> {
             int row = commitsTable.getSelectedRow();
@@ -393,21 +433,21 @@ public class GitLogPanel extends JPanel {
                 }
             }
         });
-        
+
 
         commitsPanel.add(new JScrollPane(commitsTable), BorderLayout.CENTER);
 
         // Buttons below commits table
         JPanel commitsPanelButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        
+
         // Push button for local branches
         pushButton = new JButton("Push");
         pushButton.setToolTipText("Push commits to remote repository");
         pushButton.setEnabled(false);
         pushButton.addActionListener(e -> pushBranch());
         commitsPanelButtons.add(pushButton);
-        
-        
+
+
         commitsPanel.add(commitsPanelButtons, BorderLayout.SOUTH);
 
         // ============ Changes Panel (right ~25%) ============
@@ -438,37 +478,32 @@ public class GitLogPanel extends JPanel {
         JMenuItem viewDiffItem = new JMenuItem("View Diff");
         JMenuItem viewHistoryItem = new JMenuItem("View History");
         JMenuItem editFileItem = new JMenuItem("Edit File(s)");
+        JMenuItem comparePrevWithLocalItem = new JMenuItem("Compare Previous with Local");
         changesContextMenu.add(addFileToContextItem);
         changesContextMenu.add(editFileItem);
         changesContextMenu.addSeparator();
         changesContextMenu.add(viewDiffItem);
         changesContextMenu.add(viewHistoryItem);
         changesContextMenu.add(compareFileWithLocalItem);
+        changesContextMenu.add(comparePrevWithLocalItem);
 
         // Add mouse listener for changes tree popup
-        changesTree.addMouseListener(new java.awt.event.MouseAdapter()
-        {
+        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void mousePressed(MouseEvent e)
-            {
+            public void mousePressed(MouseEvent e) {
                 handleChangesPopup(e);
             }
 
             @Override
-            public void mouseReleased(MouseEvent e)
-            {
+            public void mouseReleased(MouseEvent e) {
                 handleChangesPopup(e);
             }
 
-            private void handleChangesPopup(MouseEvent e)
-            {
-                if (e.isPopupTrigger())
-                {
+            private void handleChangesPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
                     int row = changesTree.getRowForLocation(e.getX(), e.getY());
-                    if (row >= 0)
-                    {
-                        if (!changesTree.isRowSelected(row))
-                        {
+                    if (row >= 0) {
+                        if (!changesTree.isRowSelected(row)) {
                             changesTree.setSelectionRow(row);
                         }
                     }
@@ -481,6 +516,7 @@ public class GitLogPanel extends JPanel {
                     addFileToContextItem.setEnabled(hasFileSelection);
                     viewDiffItem.setEnabled(paths.length == 1);
                     compareFileWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
+                    comparePrevWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
                     viewHistoryItem.setEnabled(paths.length == 1);
                     editFileItem.setEnabled(hasFileSelection);
 
@@ -493,11 +529,9 @@ public class GitLogPanel extends JPanel {
         changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2)
-                {
+                if (e.getClickCount() == 2) {
                     var path = changesTree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null)
-                    {
+                    if (path != null) {
                         viewDiffForChangesTree(path);
                     }
                 }
@@ -532,6 +566,20 @@ public class GitLogPanel extends JPanel {
             }
         });
 
+        comparePrevWithLocalItem.addActionListener(e -> {
+            TreePath[] paths = changesTree.getSelectionPaths();
+            if (paths != null && paths.length > 0) {
+                List<String> selectedFiles = getSelectedFilePaths(paths);
+                if (!selectedFiles.isEmpty()) {
+                    int[] selRows = commitsTable.getSelectedRows();
+                    if (selRows.length == 1) {
+                        String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+                        comparePreviousFilesWithLocal(commitId, selectedFiles);
+                    }
+                }
+            }
+        });
+
         // We only show a single-file diff if there is exactly one commit selected
         viewDiffItem.addActionListener(e -> {
             TreePath[] paths = changesTree.getSelectionPaths();
@@ -539,7 +587,7 @@ public class GitLogPanel extends JPanel {
                 viewDiffForChangesTree(paths[0]);
             }
         });
-        
+
         viewHistoryItem.addActionListener(e -> {
             TreePath[] paths = changesTree.getSelectionPaths();
             if (paths != null && paths.length > 0) {
@@ -760,7 +808,7 @@ public class GitLogPanel extends JPanel {
                             currentBranchRow = branchTableModel.getRowCount() - 1;
                         }
                     }
-                    
+
                     // Add virtual "stashes" branch if there are stashes
                     try {
                         List<GitRepo.StashInfo> stashes = getRepo().listStashes();
@@ -808,7 +856,6 @@ public class GitLogPanel extends JPanel {
         contextManager.submitBackgroundTask("Fetching commits for " + branchName, () -> {
             try {
                 List<CommitInfo> commits;
-                boolean isLocalBranch;
                 Set<String> unpushedCommitIds = new HashSet<>();
                 boolean canPush = false;
 
@@ -816,17 +863,14 @@ public class GitLogPanel extends JPanel {
                 if ("stashes".equals(branchName)) {
                     try {
                         commits = getStashesAsCommits();
-                        isLocalBranch = false; // Don't treat stashes as pushable
                     } catch (IOException e) {
                         logger.error("Error fetching stashes", e);
                         commits = List.of();
-                        isLocalBranch = false;
                     }
                 } else {
                     // Normal branch handling
                     commits = getRepo().listCommitsDetailed(branchName);
-                    isLocalBranch = branchName.equals(getRepo().getCurrentBranch()) || !branchName.contains("/");
-                    
+                    var isLocalBranch = branchName.equals(getRepo().getCurrentBranch()) || !branchName.contains("/");
                     if (isLocalBranch) {
                         try {
                             unpushedCommitIds.addAll(getRepo().getUnpushedCommitIds(branchName));
@@ -847,8 +891,8 @@ public class GitLogPanel extends JPanel {
 
                     pushButton.setEnabled(finalCanPush);
                     pushButton.setToolTipText(finalCanPush
-                                                     ? "Push " + unpushedCount + " commit(s) to remote"
-                                                     : "No unpushed commits or no upstream branch configured");
+                                                      ? "Push " + unpushedCount + " commit(s) to remote"
+                                                      : "No unpushed commits or no upstream branch configured");
                     pushButton.setVisible(!branchName.equals("stashes")); // Hide push button for stashes
 
                     if (finalCommits.isEmpty()) {
@@ -895,8 +939,7 @@ public class GitLogPanel extends JPanel {
     /**
      * Fills the "Changes" tree with files from the selected commits.
      */
-    private void updateChangesForCommits(int[] selectedRows)
-    {
+    private void updateChangesForCommits(int[] selectedRows) {
         contextManager.submitBackgroundTask("Fetching changes for commits", () -> {
             try {
                 var allChangedFiles = new HashSet<RepoFile>();
@@ -1059,35 +1102,29 @@ public class GitLogPanel extends JPanel {
             }
         });
     }
-    
+
     /**
-     * Compare selected files from a commit with the local working copy.
+     * Compare each selected file from the given commit to the actual local (on-disk) contents.
+     * Instead of using JGit's null-tree approach, we do an in-memory diff so we can handle
+     * uncommitted edits and corner-case commits.
      */
     private void compareFilesWithLocal(String commitId, List<String> filePaths) {
         contextManager.submitUserTask("Comparing files with local", () -> {
             try {
-                var repoFiles = filePaths.stream()
-                        .map(path -> new RepoFile(contextManager.getRoot(), path))
-                        .toList();
-                        
-                String allDiffs = repoFiles.stream()
-                        .map(file -> getRepo().showFileDiff("HEAD", commitId, file))
-                        .filter(s -> !s.isEmpty())
-                        .collect(Collectors.joining("\n\n"));
+                // For each file selected, show a diff in its own DiffPanel
+                for (String path : filePaths) {
+                    var repoFile = new RepoFile(contextManager.getRoot(), path);
 
-                if (allDiffs.isEmpty()) {
-                    chrome.systemOutput("No differences found between selected files and local working copy");
-                    return;
+                    SwingUtilities.invokeLater(() -> {
+                        DiffPanel diffPanel = new DiffPanel(contextManager);
+                        // New method in DiffPanel; see below
+                        diffPanel.showCompareWithLocal(commitId, repoFile, /*useParent=*/ false);
+
+                        String shortHash = commitId.length() >= 7 ? commitId.substring(0, 7) : commitId;
+                        String title = String.format("Diff: %s [Local vs %s]", repoFile.getFileName(), shortHash);
+                        diffPanel.showInDialog(GitLogPanel.this, title);
+                    });
                 }
-
-                String shortHash = commitId.substring(0, 7);
-                String fileList = repoFiles.stream().map(RepoFile::getFileName).collect(Collectors.joining(", "));
-                String description = String.format("Diff of %s [local vs %s]", fileList, shortHash);
-
-                ContextFragment.StringFragment fragment =
-                        new ContextFragment.StringFragment(allDiffs, description);
-                contextManager.addVirtualFragment(fragment);
-                chrome.systemOutput("Added comparison with local for " + filePaths.size() + " file(s) to context");
             } catch (Exception ex) {
                 logger.error("Error comparing files with local", ex);
                 chrome.toolErrorRaw("Error comparing files with local: " + ex.getMessage());
@@ -1281,9 +1318,9 @@ public class GitLogPanel extends JPanel {
     private void performBranchDeletion(String branchName, boolean force) {
         contextManager.submitUserTask("Deleting branch: " + branchName, () -> {
             try {
-                logger.debug("Initiating {} deletion for branch: {}", 
-                           force ? "force" : "normal", branchName);
-                
+                logger.debug("Initiating {} deletion for branch: {}",
+                             force ? "force" : "normal", branchName);
+
                 // Check if branch exists before trying to delete
                 List<String> localBranches = getRepo().listLocalBranches();
                 if (!localBranches.contains(branchName)) {
@@ -1291,7 +1328,7 @@ public class GitLogPanel extends JPanel {
                     chrome.toolErrorRaw("Cannot delete branch '" + branchName + "' - it doesn't exist locally");
                     return;
                 }
-                
+
                 // Check if it's the current branch
                 String currentBranch = getRepo().getCurrentBranch();
                 if (branchName.equals(currentBranch)) {
@@ -1299,13 +1336,13 @@ public class GitLogPanel extends JPanel {
                     chrome.toolErrorRaw("Cannot delete the current branch. Please checkout a different branch first.");
                     return;
                 }
-                
+
                 if (force) {
                     getRepo().forceDeleteBranch(branchName);
                 } else {
                     getRepo().deleteBranch(branchName);
                 }
-                
+
                 logger.debug("Branch '{}' deletion completed successfully", branchName);
                 update();
                 chrome.systemOutput("Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
@@ -1389,9 +1426,9 @@ public class GitLogPanel extends JPanel {
             java.time.LocalDate commitDate = date.toInstant()
                     .atZone(java.time.ZoneId.systemDefault())
                     .toLocalDate();
-            
+
             String timeStr = new java.text.SimpleDateFormat("HH:mm:ss").format(date);
-            
+
             if (commitDate.equals(today)) {
                 // If it's today's date, just show the time with "today"
                 return "Today " + timeStr;
@@ -1404,7 +1441,7 @@ public class GitLogPanel extends JPanel {
                 dayName = dayName.substring(0, 1).toUpperCase() + dayName.substring(1).toLowerCase();
                 return dayName + " " + timeStr;
             }
-            
+
             // Otherwise, show the standard date format
             return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
         } catch (Exception e) {
@@ -1423,57 +1460,57 @@ public class GitLogPanel extends JPanel {
         for (GitRepo.StashInfo stash : stashes) {
             String baseName = stash.message();
             String stashRef = "stash@{" + stash.index() + "}";
-            
+
             try {
                 // Get additional commits for this stash
                 var additionalCommits = getRepo().listAdditionalStashCommits(stashRef);
-                
+
                 // If we have index or untracked commits, add them with appropriate labels
                 if (!additionalCommits.isEmpty()) {
                     // Add the main stash first with working tree label
                     stashCommits.add(new CommitInfo(
-                        stash.id(),
-                        baseName + " (working tree)" + " (stash@{" + stash.index() + "})",
-                        stash.author(),
-                        stash.date()
+                            stash.id(),
+                            baseName + " (working tree)" + " (stash@{" + stash.index() + "})",
+                            stash.author(),
+                            stash.date()
                     ));
-                    
+
                     // Add each additional commit with appropriate suffix
                     for (var entry : additionalCommits.entrySet()) {
                         var type = entry.getKey();
                         var commit = entry.getValue();
-                        String suffix = switch(type) {
+                        String suffix = switch (type) {
                             case "index" -> " (staged changes)";
                             case "untracked" -> " (untracked files)";
                             default -> " (unknown)"; // Should not happen
                         };
 
                         stashCommits.add(new CommitInfo(
-                            commit.id(),
-                            baseName + suffix + " (stash@{" + stash.index() + "})",
-                            commit.author(),
-                            commit.date()
+                                commit.id(),
+                                baseName + suffix + " (stash@{" + stash.index() + "})",
+                                commit.author(),
+                                commit.date()
                         ));
                     }
                 } else {
                     // No additional commits, just add the main stash
                     stashCommits.add(new CommitInfo(
-                        stash.id(),
-                        baseName + " (stash@{" + stash.index() + "})",
-                        stash.author(),
-                        stash.date()
+                            stash.id(),
+                            baseName + " (stash@{" + stash.index() + "})",
+                            stash.author(),
+                            stash.date()
                     ));
                 }
             } catch (Exception e) {
                 logger.warn("Could not fetch additional stash commits for {}: {}",
-                           stashRef, e.getMessage());
-                
+                            stashRef, e.getMessage());
+
                 // Fallback: Just add the main stash commit
                 stashCommits.add(new CommitInfo(
-                    stash.id(),
-                    baseName + " (stash@{" + stash.index() + "})",
-                    stash.author(),
-                    stash.date()
+                        stash.id(),
+                        baseName + " (stash@{" + stash.index() + "})",
+                        stash.author(),
+                        stash.date()
                 ));
             }
         }
@@ -1534,12 +1571,11 @@ public class GitLogPanel extends JPanel {
         files.add(new RepoFile(contextManager.getRoot(), filePath));
         contextManager.editFiles(files);
     }
-    
+
     /**
      * Shows a diff for a single file in the changes tree (if exactly one commit is selected).
      */
-    private void viewDiffForChangesTree(TreePath path)
-    {
+    private void viewDiffForChangesTree(TreePath path) {
         var node = (DefaultMutableTreeNode) path.getLastPathComponent();
         if (node == changesRootNode || node.getParent() == changesRootNode) {
             return; // It's the root or a directory, not a file
@@ -1550,8 +1586,7 @@ public class GitLogPanel extends JPanel {
         var filePath = dirPath.isEmpty() ? fileName : dirPath + "/" + fileName;
 
         int[] selRows = commitsTable.getSelectedRows();
-        if (selRows.length == 1)
-        {
+        if (selRows.length == 1) {
             var commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
             showFileDiff(commitId, filePath);
         }
@@ -1585,7 +1620,7 @@ public class GitLogPanel extends JPanel {
             } catch (Exception e) {
                 logger.error("Error popping stash", e);
                 SwingUtilities.invokeLater(() ->
-                        chrome.toolErrorRaw("Error popping stash: " + e.getMessage()));
+                                                   chrome.toolErrorRaw("Error popping stash: " + e.getMessage()));
             }
         });
     }
@@ -1602,8 +1637,7 @@ public class GitLogPanel extends JPanel {
                 });
             } catch (Exception e) {
                 logger.error("Error applying stash", e);
-                SwingUtilities.invokeLater(() ->
-                        chrome.toolErrorRaw("Error applying stash: " + e.getMessage()));
+                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error applying stash: " + e.getMessage()));
             }
         });
     }
@@ -1632,7 +1666,7 @@ public class GitLogPanel extends JPanel {
             } catch (Exception e) {
                 logger.error("Error dropping stash", e);
                 SwingUtilities.invokeLater(() ->
-                        chrome.toolErrorRaw("Error dropping stash: " + e.getMessage()));
+                                                   chrome.toolErrorRaw("Error dropping stash: " + e.getMessage()));
             }
         });
     }
@@ -1643,14 +1677,14 @@ public class GitLogPanel extends JPanel {
     private void checkBranchContextMenuState(JPopupMenu menu) {
         int selectedRow = branchTable.getSelectedRow();
         boolean isLocal = (selectedRow != -1);
-        
+
         // Check if the selected branch is the current branch
         boolean isCurrentBranch = false;
         if (isLocal) {
             String checkmark = (String) branchTableModel.getValueAt(selectedRow, 0);
             isCurrentBranch = "✓".equals(checkmark);
         }
-        
+
         // rename = menu.getComponent(2), delete = menu.getComponent(3)
         // Adjust as needed if you change order
         menu.getComponent(2).setEnabled(isLocal);
@@ -1697,7 +1731,7 @@ public class GitLogPanel extends JPanel {
                 return;
             }
         }
-        
+
         // If not found in the current view, let the user know
         chrome.systemOutput("Commit " + commitId.substring(0, 7) + " not found in current branch view");
     }
