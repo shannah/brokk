@@ -6,6 +6,7 @@
 - Multiple projects may be open concurrently
 - Better prompting when copying to an external LLM
 - Incremental output parsing improves responsiveness of the UI with fewer flickers
+- Add default models for Google Gemini
 
 ## Fixes
 - Git push works with SSH remotes

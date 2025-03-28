@@ -8,10 +8,8 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
-import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiTokenizer;
@@ -49,7 +47,7 @@ public record Models(StreamingChatLanguageModel editModel,
                      SpeechToTextModel sttModel,
                      String sttModelName)
 {
-    public static String[] defaultKeyNames = { "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY" };
+    public static String[] defaultKeyNames = { "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY" };
 
     /**
      * Returns the name of the given model.
@@ -77,7 +75,7 @@ public record Models(StreamingChatLanguageModel editModel,
       key: OPENAI_API_KEY
       name: o3-mini
       maxTokens: 100000
-    
+
     search_model:
       provider: openai
       key: OPENAI_API_KEY
@@ -97,6 +95,32 @@ public record Models(StreamingChatLanguageModel editModel,
       key: OPENAI_API_KEY
       name: gpt-4o-mini
       maxTokens: 16384
+    """;
+    
+    private static final String GOOGLE_DEFAULTS = """
+    edit_model:
+      provider: google
+      key: GEMINI_API_KEY
+      name: gemini-2.5-pro-exp-03-25
+      maxTokens: 1000000
+
+    search_model:
+      provider: google
+      key: GEMINI_API_KEY
+      name: gemini-1.5-pro
+      maxTokens: 2000000
+
+    apply_model:
+      provider: google
+      key: GEMINI_API_KEY
+      name: gemini-2.0-flash
+      maxTokens: 1000000
+
+    quick_model:
+      provider: google
+      key: GEMINI_API_KEY
+      name: gemini-2.0-flash-lite
+      maxTokens: 1000000
     """;
 
     private static final String ANTHROPIC_DEFAULTS = """
@@ -221,6 +245,11 @@ public record Models(StreamingChatLanguageModel editModel,
         if (deepseekKey != null && !deepseekKey.isBlank()) {
             return buildModelsFromYaml(DEEPSEEK_DEFAULTS);
         }
+        
+        String googleKey = getKey("GEMINI_API_KEY");
+        if (googleKey != null && !googleKey.isBlank()) {
+            return buildModelsFromYaml(GOOGLE_DEFAULTS);
+        }
 
         // If no API keys are available, return disabled models
         return disabled();
@@ -335,6 +364,10 @@ public record Models(StreamingChatLanguageModel editModel,
         if (provider != null && provider.equalsIgnoreCase("deepseek")) {
             provider = null;
             url = "https://api.deepseek.com";
+        }
+        if (provider != null && provider.equalsIgnoreCase("google")) {
+            provider = null;
+            url = "https://generativelanguage.googleapis.com/v1beta/openai/";
         }
 
         if ((provider == null || provider.isBlank()) && url == null) {
