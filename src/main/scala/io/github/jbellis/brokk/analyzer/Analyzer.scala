@@ -308,32 +308,6 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     sb.toString
   }
 
-  override def getMembersInClass(className: String): java.util.List[CodeUnit] = {
-    import scala.jdk.CollectionConverters.*
-    val matches = cpg.typeDecl.fullNameExact(className)
-    if (matches.isEmpty) throw new IllegalArgumentException(s"Class '$className' not found")
-    val typeDecl = matches.head
-
-    // Get the class's file
-    val classFile = toFile(typeDecl).getOrElse(null)
-
-    // Get all method declarations
-    val methods = typeDecl.method
-      .filterNot(_.name.startsWith("<")) // skip ctors
-      .l
-      .map(m => CodeUnit.fn(classFile, chopColon(m.fullName)))
-
-    // Get all field declarations
-    val fields = typeDecl.member.l.map(mem => CodeUnit.field(classFile, s"$className.${mem.name}"))
-
-    // Get all nested types
-    val nestedPrefix = className + "\\$.*"
-    val nestedTypes = cpg.typeDecl.fullName(nestedPrefix).l.map(td => 
-      CodeUnit.cls(toFile(td).getOrElse(classFile), td.fullName))
-
-    (methods ++ fields ++ nestedTypes).asJava
-  }
-
   private def chopColon(full: String) = full.split(":").head
 
   /**
@@ -457,12 +431,13 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     if (methodMatches.nonEmpty) {
       // collect all callers
       val calls = methodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
-      return calls.map { methodName =>
-        // Find method to get file
-        val methods = cpg.method.fullName(s"$methodName:.*").l
-        val methodFile = if (methods.nonEmpty) toFile(methods.head.typeDecl.head).orNull else null
-        CodeUnit.fn(methodFile, methodName)
-      }.asJava
+      return calls.flatMap { methodName =>
+            // Find method to get file
+            val methods = cpg.method.fullName(s"$methodName:.*").l
+            if (methods.nonEmpty) {
+              toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
+            } else None
+          }.asJava
     }
 
     // (2) Possibly a field: com.foo.Bar.field
@@ -475,11 +450,12 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
         val maybeFieldDecl = clsDecls.head.member.nameExact(fieldPart).l
         if (maybeFieldDecl.nonEmpty) {
           val refs = referencesToField(classPart, fieldPart, excludeSelfRefs = false)
-          return refs.map { methodName =>
+          return refs.flatMap { methodName =>
             // Find method to get file
             val methods = cpg.method.fullName(s"$methodName:.*").l
-            val methodFile = if (methods.nonEmpty) toFile(methods.head.typeDecl.head).orNull else null
-            CodeUnit.fn(methodFile, methodName)
+            if (methods.nonEmpty) {
+              toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
+            } else None
           }.asJava
         }
       }
@@ -501,11 +477,12 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     // (3c) Type references
     val typeUses = referencesToClassAsType(symbol)
 
-    (methodUses ++ fieldRefUses).map { methodName =>
+    (methodUses ++ fieldRefUses).flatMap { methodName =>
       // Find method to get file
       val methods = cpg.method.fullName(s"$methodName:.*").l
-      val methodFile = if (methods.nonEmpty) toFile(methods.head.typeDecl.head).orNull else null
-      CodeUnit.fn(methodFile, methodName)
+      if (methods.nonEmpty) {
+        toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
+      } else None
     }.distinct
       .++(typeUses)
       .distinct
@@ -561,10 +538,12 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
             val callerName = resolveMethodName(chopColon(callerMethod.fullName))
 
             if (!visited.contains(callerName) && shouldIncludeMethod(callerName)) {
-              val callerFile = toFile(callerMethod.typeDecl.head).orNull
-              addCallSite(methodName, CallSite(CodeUnit.fn(callerFile, callerName), getSourceLine(call)))
-              visited += callerName
-              nextMethods += callerMethod
+              val callerFileOpt = toFile(callerMethod.typeDecl.head)
+              if (callerFileOpt.isDefined) {
+                addCallSite(methodName, CallSite(CodeUnit.fn(callerFileOpt.get, callerName), getSourceLine(call)))
+                visited += callerName
+                nextMethods += callerMethod
+              }
             }
           } else {
             // The callee is the next method
@@ -574,10 +553,14 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
             if (!visited.contains(calleeName) && shouldIncludeMethod(calleeName)) {
               val calleePattern = s"^${Regex.quote(calleeFullName)}.*"
               val calleeMethods = cpg.method.fullName(calleePattern).l
-              val calleeFile = if (calleeMethods.nonEmpty) toFile(calleeMethods.head.typeDecl.head).orNull else null
-              addCallSite(methodName, CallSite(CodeUnit.fn(calleeFile, calleeName), getSourceLine(call)))
-              visited += calleeName
-              if (calleeMethods.nonEmpty) nextMethods ++= calleeMethods
+              if (calleeMethods.nonEmpty) {
+                val calleeFileOpt = toFile(calleeMethods.head.typeDecl.head)
+                if (calleeFileOpt.isDefined) {
+                  addCallSite(methodName, CallSite(CodeUnit.fn(calleeFileOpt.get, calleeName), getSourceLine(call)))
+                  visited += calleeName
+                  nextMethods ++= calleeMethods
+                }
+              }
             }
           }
         }
@@ -608,10 +591,9 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       .name(ciPattern)
       .fullName
       .filter(isClassInProject)
-      .map { className =>
+      .flatMap { className =>
         val classTypeDecl = cpg.typeDecl.fullNameExact(className).headOption
-        val classFile = classTypeDecl.flatMap(toFile).orNull
-        CodeUnit.cls(classFile, className)
+        classTypeDecl.flatMap(toFile).map(file => CodeUnit.cls(file, className))
       }
       .l
 
@@ -623,9 +605,10 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
         val typeNameOpt = m.typeDecl.fullName.headOption
         typeNameOpt.exists(isClassInProject)
       }
-      .map { m =>
-        val methodFile = toFile(m.typeDecl.head).orNull
-        CodeUnit.fn(methodFile, resolveMethodName(chopColon(m.fullName)))
+      .flatMap { m =>
+        toFile(m.typeDecl.head).map(file => 
+          CodeUnit.fn(file, resolveMethodName(chopColon(m.fullName)))
+        )
       }
       .l
 
@@ -636,10 +619,11 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
         val typeNameOpt = f.typeDecl.fullName.headOption
         typeNameOpt.exists(tn => isClassInProject(tn.toString))
       }
-      .map { f =>
+      .flatMap { f =>
         val className = f.typeDecl.fullName.headOption.getOrElse("").toString
-        val fieldFile = toFile(f.typeDecl).orNull
-        CodeUnit.field(fieldFile, s"$className.${f.name}")
+        toFile(f.typeDecl).map(file => 
+          CodeUnit.field(file, s"$className.${f.name}")
+        )
       }
       .l
 

@@ -192,17 +192,6 @@ class AnalyzerTest {
   }
 
   @Test
-  def getMembersInClassTest(): Unit = {
-    val analyzer = getAnalyzer
-    val members = analyzer.getMembersInClass("D")
-    val file = analyzer.toFile("D.java").get
-    val expected = Set("D.field1", "D.field2").map(n => CodeUnit.field(file, n)) ++ 
-                   Set("D.methodD1", "D.methodD2").map(n => CodeUnit.fn(file, n)) ++ 
-                   Set("D$DSub", "D$DSubStatic").map(n => CodeUnit.cls(file, n))
-    assertEquals(expected, asScala(members).toSet)
-  }
-
-  @Test
   def getClassesInFilePythonTest(): Unit = {
     val analyzer = JavaAnalyzer(Path.of("src/test/resources/testcode"), Language.Python)
     val file = analyzer.toFile("A.py").get
