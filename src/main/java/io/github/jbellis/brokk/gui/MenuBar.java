@@ -14,6 +14,8 @@ public class MenuBar {
      * @param chrome
      */
     static JMenuBar buildMenuBar(Chrome chrome) {
+        // Check if project is available to enable/disable context-related items
+        boolean hasProject = chrome.getProject() != null;
         var menuBar = new JMenuBar();
 
         // File menu
@@ -40,6 +42,7 @@ public class MenuBar {
             chrome.contextManager.requestRebuild();
             chrome.systemOutput("Code intelligence will refresh in the background");
         });
+        refreshItem.setEnabled(hasProject);
         fileMenu.add(refreshItem);
 
         fileMenu.addSeparator();
@@ -84,6 +87,7 @@ public class MenuBar {
             chrome.disableContextActionButtons();
             chrome.currentUserTask = chrome.contextManager.undoContextAsync();
         });
+        undoItem.setEnabled(hasProject);
         editMenu.add(undoItem);
 
         var redoItem = new JMenuItem("Redo");
@@ -94,6 +98,7 @@ public class MenuBar {
             chrome.disableContextActionButtons();
             chrome.currentUserTask = chrome.contextManager.redoContextAsync();
         });
+        redoItem.setEnabled(hasProject);
         editMenu.add(redoItem);
 
         editMenu.addSeparator();
@@ -104,6 +109,7 @@ public class MenuBar {
             var selectedFragments = chrome.getSelectedFragments();
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
         });
+        copyMenuItem.setEnabled(hasProject);
         editMenu.add(copyMenuItem);
 
         var pasteMenuItem = new JMenuItem("Paste");
@@ -111,6 +117,7 @@ public class MenuBar {
         pasteMenuItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
         });
+        pasteMenuItem.setEnabled(hasProject);
         editMenu.add(pasteMenuItem);
 
         menuBar.add(editMenu);
@@ -124,6 +131,7 @@ public class MenuBar {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.EDIT, List.of());
         });
+        editFilesItem.setEnabled(hasProject && chrome.getProject().hasGit());
         contextMenu.add(editFilesItem);
 
         var readFilesItem = new JMenuItem("Read Files");
@@ -132,6 +140,7 @@ public class MenuBar {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.READ, List.of());
         });
+        readFilesItem.setEnabled(hasProject);
         contextMenu.add(readFilesItem);
 
         var summarizeFilesItem = new JMenuItem("Summarize Files");
@@ -140,6 +149,7 @@ public class MenuBar {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.SUMMARIZE, List.of());
         });
+        summarizeFilesItem.setEnabled(hasProject);
         contextMenu.add(summarizeFilesItem);
 
         var symbolUsageItem = new JMenuItem("Symbol Usage");
@@ -147,6 +157,7 @@ public class MenuBar {
         symbolUsageItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findSymbolUsageAsync();
         });
+        symbolUsageItem.setEnabled(hasProject);
         contextMenu.add(symbolUsageItem);
 
         var callersItem = new JMenuItem("Call graph to function");
@@ -154,6 +165,7 @@ public class MenuBar {
         callersItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findMethodCallersAsync();
         });
+        callersItem.setEnabled(hasProject);
         contextMenu.add(callersItem);
 
         var calleesItem = new JMenuItem("Call graph from function");
@@ -161,6 +173,7 @@ public class MenuBar {
         calleesItem.addActionListener(e -> {
             chrome.currentUserTask = chrome.contextManager.findMethodCalleesAsync();
         });
+        calleesItem.setEnabled(hasProject);
         contextMenu.add(calleesItem);
 
         var dropAllItem = new JMenuItem("Drop All");
@@ -170,6 +183,7 @@ public class MenuBar {
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.DROP, List.of());
         });
+        dropAllItem.setEnabled(hasProject);
         contextMenu.add(dropAllItem);
 
         menuBar.add(contextMenu);

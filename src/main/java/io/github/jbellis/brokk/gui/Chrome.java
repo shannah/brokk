@@ -119,9 +119,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 3) Main panel (top area + bottom area)
         frame.add(buildMainPanel(), BorderLayout.CENTER);
 
-        // 4) Build menu
-        frame.setJMenuBar(MenuBar.buildMenuBar(this));
-
         // 5) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
 
@@ -187,6 +184,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             bottomPanel.revalidate();
             bottomPanel.repaint();
         }
+
+        // 4) Build menu
+        frame.setJMenuBar(MenuBar.buildMenuBar(this));
 
         // show the window
         frame.setVisible(true);
