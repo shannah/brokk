@@ -439,85 +439,90 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     // (1) Method matches?
     // Expand method lookup to include overrides in subclasses.
     val baseMethodMatches = methodsFromName(symbol)
-    val expandedMethodMatches = if (symbol.contains(".")) {
-      val lastDot = symbol.lastIndexOf('.')
-      val classPart = symbol.substring(0, lastDot)
-      val methodPart = symbol.substring(lastDot + 1)
-      val subclasses = allSubclasses(classPart)
-      // Create a set of candidate fully-qualified method names: original and each subclass override.
-      val expandedSymbols = (Set(symbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
-      expandedSymbols.flatMap(mn => methodsFromName(mn))
-    } else {
-      baseMethodMatches
-    }
-    if (expandedMethodMatches.nonEmpty) {
-      // Collect all callers from all matched methods.
+    val expandedMethodMatches =
+      if (symbol.contains("."))
+        val lastDot = symbol.lastIndexOf('.')
+        val classPart = symbol.substring(0, lastDot)
+        val methodPart = symbol.substring(lastDot + 1)
+        val subclasses = allSubclasses(classPart)
+        // candidate fully-qualified method names: original and each subclass override
+        val expandedSymbols = (Set(symbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
+        expandedSymbols.flatMap(mn => methodsFromName(mn))
+      else
+        baseMethodMatches
+
+    if expandedMethodMatches.nonEmpty then
+      // Collect all callers from all matched methods
       val calls = expandedMethodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
       return calls.flatMap { methodName =>
         // Find method to get file
         val methods = cpg.method.fullName(s"$methodName:.*").l
-        if (methods.nonEmpty) {
+        if methods.nonEmpty then
           toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-        } else None
+        else None
       }.asJava
-    }
 
     // (2) Possibly a field: com.foo.Bar.field
     val lastDot = symbol.lastIndexOf('.')
-    if (lastDot > 0) {
+    if lastDot > 0 then
       val classPart = symbol.substring(0, lastDot)
       val fieldPart = symbol.substring(lastDot + 1)
       val clsDecls = cpg.typeDecl.fullNameExact(classPart).l
-      if (clsDecls.nonEmpty) {
+      if clsDecls.nonEmpty then
         val maybeFieldDecl = clsDecls.head.member.nameExact(fieldPart).l
-        if (maybeFieldDecl.nonEmpty) {
+        if maybeFieldDecl.nonEmpty then
           val refs = referencesToField(classPart, fieldPart, excludeSelfRefs = false)
           return refs.flatMap { methodName =>
-            // Find method to get file
             val methods = cpg.method.fullName(s"$methodName:.*").l
-            if (methods.nonEmpty) {
+            if methods.nonEmpty then
               toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-            } else None
+            else None
           }.asJava
-        }
-      }
-    }
 
     // (3) Otherwise treat as a class
     val classDecls = cpg.typeDecl.fullNameExact(symbol).l
-    if (classDecls.isEmpty)
-      throw new IllegalArgumentException(s"Symbol '$symbol' not found as a method, field, or class")
+    if classDecls.isEmpty then
+      throw IllegalArgumentException(s"Symbol '$symbol' not found as a method, field, or class")
 
-    // Include the original class plus all subclasses.
+    // Include the original class plus all subclasses
     val allClasses = (classDecls.map(_.fullName).toSet ++ allSubclasses(symbol)).toList
-
-    // (3a) Method references from the same class and its subclasses, but exclude self references.
     val methodUses = allClasses.flatMap { cn =>
-      cpg.typeDecl.fullNameExact(cn).l.flatMap { td =>
-        td.method.l.flatMap(m => callersOfMethodNode(m, true))
-      }
+      cpg.typeDecl.fullNameExact(cn).l.flatMap { td => td.method.l.flatMap(m => callersOfMethodNode(m, true)) }
     }
-
-    // (3b) Field references from the same class, exclude self references (unchanged).
     val fieldRefUses = classDecls.flatMap { td =>
       td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
     }
+    val typeUses = allClasses.flatMap { cn => referencesToClassAsType(cn) }
 
-    // (3c) Type references from the same class and its subclasses.
-    val typeUses = allClasses.flatMap { cn =>
-      referencesToClassAsType(cn)
+    // Convert methodUses and fieldRefUses to actual CodeUnits
+    val methodUseUnits = methodUses.distinct.flatMap { methodName =>
+      val methods = cpg.method.fullName(s"$methodName:.*").l
+      if methods.nonEmpty then
+        toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
+      else None
+    }
+    val fieldUseUnits = fieldRefUses.distinct.flatMap { methodName =>
+      val methods = cpg.method.fullName(s"$methodName:.*").l
+      if methods.nonEmpty then
+        toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
+      else None
     }
 
-    (methodUses.flatMap { methodName =>
-      // Find method to get file.
-      val methods = cpg.method.fullName(s"$methodName:.*").l
-      if (methods.nonEmpty) {
-        toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-      } else None
-    } ++ typeUses).distinct.asJava
+    // Debug log to confirm all sets
+//    println(
+//      s"""Class usage debug for symbol '$symbol':
+//         |  methodUses = $methodUses
+//         |  fieldRefUses = $fieldRefUses
+//         |  typeUses = ${typeUses.map(_.fqName())}
+//         |  final methodUseUnits = ${methodUseUnits.map(_.fqName())}
+//         |  final fieldUseUnits = ${fieldUseUnits.map(_.fqName())}
+//         |""".stripMargin
+//    )
+
+    (methodUseUnits ++ fieldUseUnits ++ typeUses).distinct.asJava
   }
 
-/**
+  /**
    * Builds either a forward or reverse call graph from a starting method up to a given depth.
    */
   private def buildCallGraph(
