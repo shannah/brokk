@@ -478,8 +478,9 @@ public class GitLogPanel extends JPanel {
                     boolean isSingleCommit = (selRows.length == 1);
 
                     addFileToContextItem.setEnabled(hasFileSelection);
-                    compareFileWithLocalItem.setEnabled(hasFileSelection && isSingleCommit);
-                    viewHistoryItem.setEnabled(hasFileSelection);
+                    viewDiffItem.setEnabled(paths.length == 1);
+                    compareFileWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
+                    viewHistoryItem.setEnabled(paths.length == 1);
                     editFileItem.setEnabled(hasFileSelection);
 
                     changesContextMenu.show(changesTree, e.getX(), e.getY());
