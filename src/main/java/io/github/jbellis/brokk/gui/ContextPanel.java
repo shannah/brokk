@@ -548,7 +548,7 @@ public class ContextPanel extends JPanel {
             // Build file references
             List<FileReferenceData> fileReferences = new ArrayList<>();
             if (!(frag instanceof ContextFragment.RepoPathFragment)) {
-                fileReferences = frag.files(contextManager.getProject().getRepo())
+                fileReferences = frag.files(contextManager.getProject())
                         .stream()
                         .map(file -> new FileReferenceData(file.getFileName(), file.toString(), file))
                         .distinct()

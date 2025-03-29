@@ -30,29 +30,29 @@ public interface ContextFragment extends Serializable {
     /**
      * code sources found in this fragment
      */
-    Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo);
+    Set<CodeUnit> sources(Project project);
 
     /**
      * Returns all repo files referenced by this fragment.
      * This is used when we *just* want to manipulate or show actual files,
      * rather than the code units themselves.
      */
-    Set<RepoFile> files(IGitRepo repo);
+    Set<RepoFile> files(Project project);
 
     /**
      * should classes found in this fragment be included in AutoContext?
      */
     boolean isEligibleForAutoContext();
 
-    static Set<RepoFile> parseRepoFiles(String text, IGitRepo repo) {
-        var exactMatches = repo.getTrackedFiles().stream().parallel()
+    static Set<RepoFile> parseRepoFiles(String text, Project project) {
+        var exactMatches = project.getFiles().stream().parallel()
                 .filter(f -> text.contains(f.toString()))
                 .collect(Collectors.toSet());
         if (!exactMatches.isEmpty()) {
             return exactMatches;
         }
 
-        return repo.getTrackedFiles().stream().parallel()
+        return project.getFiles().stream().parallel()
                 .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
     }
@@ -63,7 +63,7 @@ public interface ContextFragment extends Serializable {
         BrokkFile file();
 
         @Override
-        default Set<RepoFile> files(IGitRepo repo) {
+        default Set<RepoFile> files(Project project) {
             return Set.of();
         }
 
@@ -91,7 +91,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
+        public Set<RepoFile> files(Project project) {
             return Set.of(file);
         }
 
@@ -104,8 +104,8 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return analyzer.getClassesInFile(file);
+        public Set<CodeUnit> sources(Project project) {
+            return project.getAnalyzer().getClassesInFile(file);
         }
 
         @Override
@@ -133,7 +133,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
+        public Set<CodeUnit> sources(Project project) {
             return Set.of();
         }
 
@@ -170,14 +170,14 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
-            return parseRepoFiles(text(), repo);
+        public Set<RepoFile> files(Project project) {
+            return parseRepoFiles(text(), project);
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return files(repo).stream()
-                    .flatMap(f -> analyzer.getClassesInFile(f).stream())
+        public Set<CodeUnit> sources(Project project) {
+            return files(project).stream()
+                    .flatMap(f -> project.getAnalyzer().getClassesInFile(f).stream())
                     .collect(java.util.stream.Collectors.toSet());
         }
 
@@ -241,12 +241,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
+        public Set<CodeUnit> sources(Project project) {
             return sources;
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
+        public Set<RepoFile> files(Project project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -353,12 +353,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
+        public Set<CodeUnit> sources(Project project) {
             return sources;
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
+        public Set<RepoFile> files(Project project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -406,12 +406,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
+        public Set<CodeUnit> sources(Project project) {
             return classes;
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
+        public Set<RepoFile> files(Project project) {
             return classes.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -474,12 +474,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
+        public Set<CodeUnit> sources(Project project) {
             return nonDummy();
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
+        public Set<RepoFile> files(Project project) {
             return nonDummy().stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -537,12 +537,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
+        public Set<CodeUnit> sources(Project project) {
             return Set.of();
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
+        public Set<RepoFile> files(Project project) {
             return Set.of();
         }
 
@@ -595,13 +595,13 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IAnalyzer analyzer, IGitRepo repo) {
-            return fragment.sources(analyzer, repo);
+        public Set<CodeUnit> sources(Project project) {
+            return fragment.sources(project);
         }
 
         @Override
-        public Set<RepoFile> files(IGitRepo repo) {
-            return fragment.files(repo);
+        public Set<RepoFile> files(Project project) {
+            return fragment.files(project);
         }
 
         @Override

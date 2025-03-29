@@ -614,7 +614,7 @@ public class ContextManager implements IContextManager
         } else {
             var files = new HashSet<RepoFile>();
             for (var fragment : selectedFragments) {
-                files.addAll(fragment.files(project.getRepo()));
+                files.addAll(fragment.files(project));
             }
             editFiles(files);
         }
@@ -631,7 +631,7 @@ public class ContextManager implements IContextManager
         } else {
             var files = new HashSet<RepoFile>();
             for (var fragment : selectedFragments) {
-                files.addAll(fragment.files(project.getRepo()));
+                files.addAll(fragment.files(project));
             }
             addReadOnlyFiles(files);
         }
@@ -812,7 +812,7 @@ public class ContextManager implements IContextManager
         } else {
             // Extract sources from selected fragments
             for (var frag : selectedFragments) {
-                sources.addAll(frag.sources(project.getAnalyzer(), project.getRepo()));
+                sources.addAll(frag.sources(project));
             }
             sourceDescription = selectedFragments.size() + " fragments";
         }
