@@ -2,8 +2,9 @@ package io.github.jbellis.brokk;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
@@ -27,6 +28,8 @@ import static java.lang.Math.min;
  * Utility for extracting and applying before/after search-replace blocks in content.
  */
 public class EditBlock {
+    private static final Logger logger = LogManager.getLogger(EditBlock.class);
+
     /**
      * Helper that returns the first code block found between triple backticks.
      * Returns an empty string if none found.
@@ -198,8 +201,11 @@ public class EditBlock {
         // utility class
     }
 
+    /**
+     * Uses a fake GitRepo, only for testing
+     */
     static ParseResult findOriginalUpdateBlocks(String content,
-                                                       Set<ProjectFile> filesInContext)
+                                                Set<ProjectFile> filesInContext)
     {
         return findOriginalUpdateBlocks(content, filesInContext, Set::of);
     }
@@ -228,7 +234,7 @@ public class EditBlock {
             if (HEAD.matcher(trimmed).matches()) {
                 try {
                     // Attempt to find a filename in the preceding ~3 lines
-                    currentFilename = findFileNameNearby(lines, i, DEFAULT_FENCE, filesInContext, currentFilename, (GitRepo) repo);
+                    currentFilename = findFileNameNearby(lines, i, DEFAULT_FENCE, filesInContext, currentFilename, repo);
 
                     // gather "before" lines until divider
                     i++;
@@ -270,7 +276,8 @@ public class EditBlock {
                 } catch (Exception e) {
                     // Provide partial context in the error
                     String partial = String.join("\n", Arrays.copyOfRange(lines, 0, min(lines.length, i + 1)));
-                    return new ParseResult(null, partial + "\n^^^ " + e.getMessage());
+                    logger.error("Error parsing edit block", e);
+                    return new ParseResult(blocks, partial + "\n^^^ " + e.getMessage());
                 }
             }
 
@@ -672,7 +679,7 @@ public class EditBlock {
                                      String[] fence,
                                      Set<ProjectFile> validFiles,
                                      String currentPath, 
-                                     GitRepo repo) 
+                                     IGitRepo repo)
     {
         // Search up to 3 lines above headIndex
         int start = Math.max(0, headIndex - 3);
