@@ -139,7 +139,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         } else {
             // Load saved theme, window size, and position
             frame.setTitle("Brokk: " + getProject().getRoot());
-            initializeThemeManager();
             loadWindowSizeAndPosition();
 
             // Setup the context/git panels based on project type
@@ -179,6 +178,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
                 bottomPanel.add(contextPanel, BorderLayout.CENTER);
             }
+
+            initializeThemeManager();
 
             // Force layout update for the bottom panel
             bottomPanel.revalidate();
