@@ -12,7 +12,6 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.Closeable;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -25,7 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -41,7 +39,7 @@ public class AnalyzerWrapper implements AutoCloseable {
 
     private final AnalyzerListener listener; // can be null if no one is listening
     private final Path root;
-    private final TaskRunner runner;
+    private final ContextManager.TaskRunner runner;
     private final Project project;
 
     private volatile boolean running = true;
@@ -52,23 +50,10 @@ public class AnalyzerWrapper implements AutoCloseable {
     private volatile boolean externalRebuildRequested = false;
     private volatile boolean rebuildPending = false;
 
-    @FunctionalInterface
-    public interface TaskRunner {
-        /**
-         * Submits a background task with the given description.
-         *
-         * @param taskDescription a description of the task
-         * @param task the task to execute
-         * @param <T> the result type of the task
-         * @return a {@link Future} representing pending completion of the task
-         */
-        <T> Future<T> submit(String taskDescription, Callable<T> task);
-    }
-
     /**
      * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
      */
-    public AnalyzerWrapper(Project project, TaskRunner runner, AnalyzerListener listener) {
+    public AnalyzerWrapper(Project project, ContextManager.TaskRunner runner, AnalyzerListener listener) {
         this.project = project;
         this.root = project.getRoot();
         this.runner = runner;

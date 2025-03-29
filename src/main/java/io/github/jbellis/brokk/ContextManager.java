@@ -1485,6 +1485,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
     }
 
+    @FunctionalInterface
+    public interface TaskRunner {
+        /**
+         * Submits a background task with the given description.
+         *
+         * @param taskDescription a description of the task
+         * @param task the task to execute
+         * @param <T> the result type of the task
+         * @return a {@link Future} representing pending completion of the task
+         */
+        <T> Future<T> submit(String taskDescription, Callable<T> task);
+    }
+
     private record BuildCommand(String command, String message) {
         static BuildCommand success(String cmd) {
             return new BuildCommand(cmd, cmd);

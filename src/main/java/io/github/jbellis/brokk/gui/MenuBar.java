@@ -110,7 +110,7 @@ public class MenuBar {
                     var selectedFile = dialog.getSelectedFile();
                     Path jarPath = selectedFile.absPath();
                     assert Files.isRegularFile(jarPath) && jarPath.toString().toLowerCase().endsWith(".jar");
-                    Decompiler.decompileJar(chrome, jarPath);
+                    Decompiler.decompileJar(chrome, jarPath, cm::submitBackgroundTask);
                 }
             });
         });

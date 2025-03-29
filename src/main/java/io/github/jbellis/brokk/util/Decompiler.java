@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.util;
 
+import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.gui.Chrome;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,9 +28,11 @@ public class Decompiler {
     /**
      * Performs the decompilation of the selected JAR file.
      * This method assumes jarPath is a valid JAR file.
+     * @param io The Chrome instance for UI feedback
      * @param jarPath Path to the JAR file to decompile.
+     * @param runner TaskRunner to run the decompilation task on
      */
-    public static void decompileJar(Chrome io, Path jarPath) {
+    public static void decompileJar(Chrome io, Path jarPath, ContextManager.TaskRunner runner) {
         try {
             String jarName = jarPath.getFileName().toString();
             // Use the *original* project's root to determine the .brokk directory
@@ -82,105 +85,88 @@ public class Decompiler {
 
             io.systemOutput("Decompiling " + jarName + "...");
 
-            // Decompilation Worker
-            SwingWorker<Void, Void> worker = new SwingWorker<>() {
-                @Override
-                protected Void doInBackground() throws Exception { // Allow exceptions
-                    logger.debug("Starting decompilation in background thread for {}", jarPath);
-                    Path tempDir = null; // To store the path of the temporary directory
+            // Submit the decompilation task to the provided executor
+            runner.submit("Decompiling " + jarName, () -> {
+                logger.debug("Starting decompilation in background thread for {}", jarPath);
+                Path tempDir = null; // To store the path of the temporary directory
 
-                    try {
-                        // 1. Create a temporary directory
-                        tempDir = Files.createTempDirectory("fernflower-extracted-");
-                        logger.debug("Created temporary directory: {}", tempDir);
+                try {
+                    // 1. Create a temporary directory
+                    tempDir = Files.createTempDirectory("fernflower-extracted-");
+                    logger.debug("Created temporary directory: {}", tempDir);
 
-                        // 2. Extract the JAR contents to the temporary directory
-                        Decompiler.extractJarToTemp(jarPath, tempDir);
-                        logger.debug("Extracted JAR contents to temporary directory.");
+                    // 2. Extract the JAR contents to the temporary directory
+                    Decompiler.extractJarToTemp(jarPath, tempDir);
+                    logger.debug("Extracted JAR contents to temporary directory.");
 
-                        // 3. Set up Decompiler with the *final* output directory
-                        Map<String, Object> options = Map.of("hes", "1", // hide empty super
-                                                             "hdc", "1", // hide default constructor
-                                                             "dgs", "1", // decompile generic signature
-                                                             "ren", "1" /* rename ambiguous */);
-                        ConsoleDecompiler decompiler = new ConsoleDecompiler(
-                                outputDir.toFile(), // Use the final desired output directory here
-                                options,
-                                new org.jetbrains.java.decompiler.main.extern.IFernflowerLogger() {
-                                    @Override
-                                    public void writeMessage(String message, Severity severity) {
-                                        switch (severity) {
-                                            case ERROR -> logger.error("Fernflower: {}", message);
-                                            case WARN  -> logger.warn("Fernflower: {}", message);
-                                            case INFO  -> logger.info("Fernflower: {}", message);
-                                            case TRACE -> logger.trace("Fernflower: {}", message);
-                                            default    -> logger.debug("Fernflower: {}", message);
-                                        }
-                                    }
-
-                                    @Override
-                                    public void writeMessage(String message, Severity severity, Throwable t) {
-                                        switch (severity) {
-                                            case ERROR -> logger.error("Fernflower: {}", message, t);
-                                            case WARN  -> logger.warn("Fernflower: {}", message, t);
-                                            case INFO  -> logger.info("Fernflower: {}", message, t);
-                                            case TRACE -> logger.trace("Fernflower: {}", message, t);
-                                            default   -> logger.debug("Fernflower: {}", message, t);
-                                        }
+                    // 3. Set up Decompiler with the *final* output directory
+                    Map<String, Object> options = Map.of("hes", "1", // hide empty super
+                                                         "hdc", "1", // hide default constructor
+                                                         "dgs", "1", // decompile generic signature
+                                                         "ren", "1" /* rename ambiguous */);
+                    ConsoleDecompiler decompiler = new ConsoleDecompiler(
+                            outputDir.toFile(), // Use the final desired output directory here
+                            options,
+                            new org.jetbrains.java.decompiler.main.extern.IFernflowerLogger() {
+                                @Override
+                                public void writeMessage(String message, Severity severity) {
+                                    switch (severity) {
+                                        case ERROR -> logger.error("Fernflower: {}", message);
+                                        case WARN  -> logger.warn("Fernflower: {}", message);
+                                        case INFO  -> logger.info("Fernflower: {}", message);
+                                        case TRACE -> logger.trace("Fernflower: {}", message);
+                                        default    -> logger.debug("Fernflower: {}", message);
                                     }
                                 }
-                        );
 
-                        // 4. Add the *temporary directory* as the source
-                        decompiler.addSource(tempDir.toFile());
-
-                        // 5. Decompile
-                        logger.info("Starting decompilation process...");
-                        decompiler.decompileContext();
-                        logger.info("Decompilation process finished.");
-
-                        return null; // Indicate success
-                    } catch (Exception e) {
-                        // Log and rethrow to be caught by done()
-                        logger.error("Error during decompilation background task for {}", jarPath, e);
-                        throw e;
-                    } finally {
-                        // 6. Clean up the temporary directory
-                        if (tempDir != null) {
-                            try {
-                                logger.debug("Cleaning up temporary directory: {}", tempDir);
-                                Decompiler.deleteDirectoryRecursive(tempDir);
-                                logger.debug("Temporary directory deleted.");
-                            } catch (IOException e) {
-                                logger.error("Failed to delete temporary directory: {}", tempDir, e);
-                                // Don't prevent opening the project if temp dir cleanup fails
+                                @Override
+                                public void writeMessage(String message, Severity severity, Throwable t) {
+                                    switch (severity) {
+                                        case ERROR -> logger.error("Fernflower: {}", message, t);
+                                        case WARN  -> logger.warn("Fernflower: {}", message, t);
+                                        case INFO  -> logger.info("Fernflower: {}", message, t);
+                                        case TRACE -> logger.trace("Fernflower: {}", message, t);
+                                        default   -> logger.debug("Fernflower: {}", message, t);
+                                    }
+                                }
                             }
-                        }
-                    }
-                }
+                    );
 
-                @Override
-                protected void done() {
-                    try {
-                        get(); // Check for exceptions from doInBackground()
-                        io.systemOutput("Decompilation completed. Reopen project to incorporate the new source files.");
-                        // Log final directory structure for troubleshooting
-                        logger.debug("Final contents of {} after decompilation:", outputDir);
-                        try (var pathStream = Files.walk(outputDir, 1)) { // Walk only one level deep for brevity
-                            pathStream.forEach(path -> logger.debug("   {}", path.getFileName()));
+                    // 4. Add the *temporary directory* as the source
+                    decompiler.addSource(tempDir.toFile());
+
+                    // 5. Decompile
+                    logger.info("Starting decompilation process...");
+                    decompiler.decompileContext();
+                    logger.info("Decompilation process finished.");
+
+                    // Notify user of success
+                    io.systemOutput("Decompilation completed. Reopen project to incorporate the new source files.");
+                    // Log final directory structure for troubleshooting
+                    logger.debug("Final contents of {} after decompilation:", outputDir);
+                    try (var pathStream = Files.walk(outputDir, 1)) { // Walk only one level deep for brevity
+                        pathStream.forEach(path -> logger.debug("   {}", path.getFileName()));
+                    } catch (IOException e) {
+                        logger.warn("Error listing output directory contents", e);
+                    }
+                } catch (Exception e) {
+                    // Handle exceptions within the task
+                    io.toolErrorRaw("Error during decompilation process: " + e.getMessage());
+                    logger.error("Error during decompilation background task for {}", jarPath, e);
+                } finally {
+                    // 6. Clean up the temporary directory
+                    if (tempDir != null) {
+                        try {
+                            logger.debug("Cleaning up temporary directory: {}", tempDir);
+                            Decompiler.deleteDirectoryRecursive(tempDir);
+                            logger.debug("Temporary directory deleted.");
                         } catch (IOException e) {
-                            logger.warn("Error listing output directory contents", e);
+                            logger.error("Failed to delete temporary directory: {}", tempDir, e);
                         }
-                    } catch (Exception e) {
-                        // Handle exceptions from get() or other logic in done()
-                        Throwable cause = (e instanceof java.util.concurrent.ExecutionException) ? e.getCause() : e;
-                        io.toolErrorRaw("Error during decompilation process: " + cause.getMessage());
-                        logger.error("Error completing decompilation task for {}", jarPath, cause);
                     }
                 }
-            };
-
-            worker.execute(); // Start the background decompilation
+                return null;
+            });
         } catch (IOException e) {
             // Error *before* starting the worker (e.g., creating directories)
             io.toolErrorRaw("Error preparing decompilation: " + e.getMessage());
@@ -188,12 +174,10 @@ public class Decompiler {
         }
     }
 
-    // extractJarToTemp method (no changes needed)
     public static void extractJarToTemp(Path jarPath, Path targetDir) throws IOException {
         // Ensure target directory exists and is a directory
         if (!Files.isDirectory(targetDir)) {
             Files.createDirectories(targetDir); // Create if not exists
-            // throw new IOException("Target path is not a directory: " + targetDir);
         }
         // Use try-with-resources to ensure the ZipFile is closed
         try (ZipFile zipFile = new ZipFile(jarPath.toFile())) {
@@ -224,7 +208,6 @@ public class Decompiler {
         }
     }
 
-    // deleteDirectoryRecursive method (no changes needed)
     public static void deleteDirectoryRecursive(Path directory) throws IOException {
         if (!Files.exists(directory)) {
             return;
@@ -237,7 +220,6 @@ public class Decompiler {
                     Files.delete(file);
                 } catch (IOException e) {
                     logger.warn("Failed to delete file: {} ({})", file, e.getMessage());
-                    // Attempt to force delete on Windows? Or just log and continue.
                 }
                 return FileVisitResult.CONTINUE;
             }
@@ -252,8 +234,6 @@ public class Decompiler {
                     Files.delete(dir);
                 } catch (IOException e) {
                     logger.warn("Failed to delete directory: {} ({})", dir, e.getMessage());
-                    // If directory is not empty, this might fail.
-                    // Consider retries or more robust deletion if needed.
                 }
                 return FileVisitResult.CONTINUE;
             }
@@ -288,7 +268,6 @@ public class Decompiler {
                 homePath.resolve(".ivy2").resolve("cache"),
                 homePath.resolve(".cache").resolve("coursier").resolve("v1").resolve("https"), // Adjust based on actual Coursier structure if needed
                 homePath.resolve(".sbt") // SBT caches can be complex, start broad
-                // Add other potential locations if known
         );
 
         int maxDepth = 15; // Limit recursion depth to avoid excessive scanning time or cycles

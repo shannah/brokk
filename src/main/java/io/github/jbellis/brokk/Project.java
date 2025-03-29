@@ -47,7 +47,7 @@ public class Project implements IProject, AutoCloseable {
     private static final Path PROJECTS_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("projects.properties");
     private static final Path LLM_KEYS_PATH = BROKK_CONFIG_DIR.resolve("keys.properties");
 
-    public Project(Path root, AnalyzerWrapper.TaskRunner runner, AnalyzerListener analyzerListener) {
+    public Project(Path root, ContextManager.TaskRunner runner, AnalyzerListener analyzerListener) {
         this.repo = GitRepo.hasGitRepo(root) ? new GitRepo(root) : new LocalFileRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
