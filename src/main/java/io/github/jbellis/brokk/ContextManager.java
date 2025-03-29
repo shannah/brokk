@@ -75,8 +75,7 @@ import java.util.stream.Stream;
  *   - Directly call into Chrome’s UI methods from background tasks (via invokeLater),
  *   - Provide separate async methods for “Go”, “Ask”, “Search”, context additions, etc.
  */
-public class ContextManager implements IContextManager
-{
+public class ContextManager implements IContextManager, AutoCloseable {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
     private Chrome io; // for UI feedback
@@ -1257,10 +1256,11 @@ public class ContextManager implements IContextManager
     /**
      * Shutdown all executors
      */
-    public void shutdown() {
+    public void close() {
         userActionExecutor.shutdown();
         contextActionExecutor.shutdown();
         backgroundTasks.shutdown();
+        project.close();
     }
 
     public List<ChatMessage> getReadOnlyMessages()

@@ -990,7 +990,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void close() {
         logger.info("Closing Chrome UI");
         if (contextManager != null) {
-            contextManager.shutdown();
+            contextManager.close();
         }
         if (frame != null) {
             frame.dispose();

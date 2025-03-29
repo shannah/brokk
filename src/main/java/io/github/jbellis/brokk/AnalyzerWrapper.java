@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.Closeable;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -31,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-public class AnalyzerWrapper {
+public class AnalyzerWrapper implements AutoCloseable {
     private final Logger logger = LogManager.getLogger(AnalyzerWrapper.class);
 
     private static final long DEBOUNCE_DELAY_MS = 500;
@@ -454,6 +455,11 @@ public class AnalyzerWrapper {
                       }
                   });
         }
+    }
+
+    @Override
+    public void close() {
+        running = false;
     }
 
     public record CodeWithSource(String code, Set<CodeUnit> sources) {

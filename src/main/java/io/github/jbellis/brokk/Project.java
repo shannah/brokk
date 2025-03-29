@@ -24,7 +24,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class Project implements IProject {
+public class Project implements IProject, AutoCloseable {
     private final Path propertiesFile;
     private final Path workspacePropertiesFile;
     private final Path root;
@@ -833,5 +833,10 @@ public class Project implements IProject {
         }
 
         return result;
+    }
+
+    @Override
+    public void close() {
+        analyzerWrapper.close();
     }
 }
