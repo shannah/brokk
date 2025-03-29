@@ -1,12 +1,12 @@
 package io.github.jbellis.brokk.git;
 
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.eclipse.jgit.lib.ObjectId;
 
 import java.util.Set;
 
 public interface IGitRepo {
-    Set<RepoFile> getTrackedFiles();
+    Set<ProjectFile> getTrackedFiles();
 
     default String diff() {
         return "";

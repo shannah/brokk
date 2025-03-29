@@ -4,7 +4,7 @@ import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -238,7 +238,7 @@ public class FileSelectionDialog extends JDialog {
                     // Check if it's within the current project root
                     if (rootPath != null && potentialPath.startsWith(rootPath)) {
                         Path relPath = rootPath.relativize(potentialPath);
-                        resolvedFile = new RepoFile(rootPath, relPath);
+                        resolvedFile = new ProjectFile(rootPath, relPath);
                         logger.debug("Resolved absolute path as RepoFile: {}", resolvedFile);
                     } else if (allowExternalFiles) {
                         resolvedFile = new ExternalFile(potentialPath);
@@ -274,7 +274,7 @@ public class FileSelectionDialog extends JDialog {
                     // Check if it falls within the project root if project exists
                     if (rootPath != null && cwdRelativePath.startsWith(rootPath)) {
                         Path relPath = rootPath.relativize(cwdRelativePath);
-                        resolvedFile = new RepoFile(rootPath, relPath);
+                        resolvedFile = new ProjectFile(rootPath, relPath);
                     } else {
                         resolvedFile = new ExternalFile(cwdRelativePath);
                     }

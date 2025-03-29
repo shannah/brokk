@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk;
 
 import com.google.common.annotations.VisibleForTesting;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 
@@ -51,7 +51,7 @@ public class EditBlock {
         IO_ERROR
     }
 
-    public record EditResult(Map<RepoFile, String> originalContents, List<FailedBlock> failedBlocks) { }
+    public record EditResult(Map<ProjectFile, String> originalContents, List<FailedBlock> failedBlocks) { }
 
     public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
 
@@ -64,7 +64,7 @@ public class EditBlock {
         List<SearchReplaceBlock> succeeded = new ArrayList<>();
 
         // Track original file contents before any changes
-        Map<RepoFile, String> changedFiles = new HashMap<>();
+        Map<ProjectFile, String> changedFiles = new HashMap<>();
 
         for (SearchReplaceBlock block : blocks) {
             // Shell commands remain unchanged
@@ -74,7 +74,7 @@ public class EditBlock {
             }
 
             // Attempt to apply to the specified file
-            RepoFile file = block.filename() == null ? null : contextManager.toFile(block.filename());
+            ProjectFile file = block.filename() == null ? null : contextManager.toFile(block.filename());
             boolean isCreateNew = block.beforeText().trim().isEmpty();
 
             String finalUpdated = null;
@@ -89,7 +89,7 @@ public class EditBlock {
 
             // Fallback: if finalUpdated is still null and 'before' is not empty, try each known file
             if (finalUpdated == null && !isCreateNew) {
-                for (RepoFile altFile : contextManager.getEditableFiles()) {
+                for (ProjectFile altFile : contextManager.getEditableFiles()) {
                     try {
                         String updatedContent = doReplace(altFile.read(), block.beforeText(), block.afterText());
                         if (updatedContent != null) {
@@ -199,7 +199,7 @@ public class EditBlock {
     }
 
     static ParseResult findOriginalUpdateBlocks(String content,
-                                                       Set<RepoFile> filesInContext)
+                                                       Set<ProjectFile> filesInContext)
     {
         return findOriginalUpdateBlocks(content, filesInContext, Set::of);
     }
@@ -212,7 +212,7 @@ public class EditBlock {
      * parameter is only used to help find possible filename matches in poorly formed blocks.
      */
     public static ParseResult findOriginalUpdateBlocks(String content,
-                                                       Set<RepoFile> filesInContext,
+                                                       Set<ProjectFile> filesInContext,
                                                        IGitRepo repo) 
     {
         List<SearchReplaceBlock> blocks = new ArrayList<>();
@@ -284,7 +284,7 @@ public class EditBlock {
      * Attempt to locate beforeText in content and replace it with afterText.
      * If beforeText is empty, just append afterText. If no match found, return null.
      */
-    private static String doReplace(RepoFile file,
+    private static String doReplace(ProjectFile file,
                                     String content,
                                     String beforeText,
                                     String afterText,
@@ -312,7 +312,7 @@ public class EditBlock {
     /**
      * Called by Coder
      */
-    public static String doReplace(RepoFile file, String beforeText, String afterText) throws IOException {
+    public static String doReplace(ProjectFile file, String beforeText, String afterText) throws IOException {
         var content = file.exists() ? file.read() : "";
         return doReplace(file, content, beforeText, afterText, DEFAULT_FENCE);
     }
@@ -670,7 +670,7 @@ public class EditBlock {
     static String findFileNameNearby(String[] lines,
                                      int headIndex,
                                      String[] fence,
-                                     Set<RepoFile> validFiles,
+                                     Set<ProjectFile> validFiles,
                                      String currentPath, 
                                      GitRepo repo) 
     {
@@ -707,7 +707,7 @@ public class EditBlock {
                         .filter(f -> f.getFileName().toLowerCase().equals(cLower))
                         .findFirst()
                         .stream())
-                .map(RepoFile::toString)
+                .map(ProjectFile::toString)
                 .toList();
         if (!matches.isEmpty()) {
             return matches.getFirst();
@@ -719,7 +719,7 @@ public class EditBlock {
                         .filter(f -> f.toString().contains(c))
                         .findFirst()
                         .stream())
-                .map(RepoFile::toString)
+                .map(ProjectFile::toString)
                 .toList();
         if (!matches.isEmpty()) {
             return matches.getFirst();
@@ -869,7 +869,7 @@ public class EditBlock {
         Path testBlocksPath = Path.of("testblocks.txt");
         var content = new StringBuilder();
         Path cwd = Path.of("").toAbsolutePath();
-        Set<RepoFile> potentialFiles = new HashSet<>();
+        Set<ProjectFile> potentialFiles = new HashSet<>();
 
         // Collect lines while scanning for potential file paths
         try (var scanner = new Scanner(testBlocksPath)) {
@@ -879,7 +879,7 @@ public class EditBlock {
 
                 // Identify lines that look like file paths starting with src/
                 if (line.trim().startsWith("src/")) {
-                    potentialFiles.add(new RepoFile(cwd, line.trim()));
+                    potentialFiles.add(new ProjectFile(cwd, line.trim()));
                 }
             }
         } catch (IOException e) {
@@ -891,13 +891,13 @@ public class EditBlock {
         // Get the context manager from Environment if available, or create one with potential files
         IContextManager contextManager = new IContextManager() {
                 @Override
-                public Set<RepoFile> getEditableFiles() {
+                public Set<ProjectFile> getEditableFiles() {
                     return potentialFiles;
                 }
 
                 @Override
-                public RepoFile toFile(String path) {
-                    return new RepoFile(cwd, path);
+                public ProjectFile toFile(String path) {
+                    return new ProjectFile(cwd, path);
                 }
             };
 

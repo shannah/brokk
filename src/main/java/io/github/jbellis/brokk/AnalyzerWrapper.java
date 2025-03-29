@@ -8,7 +8,7 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.JavaAnalyzer;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.Language;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -152,7 +152,7 @@ public class AnalyzerWrapper {
 
         // 2) Check if any *tracked* files changed
         Set<Path> trackedPaths = project.getRepo().getTrackedFiles().stream()
-                .map(RepoFile::absPath)
+                .map(ProjectFile::absPath)
                 .collect(Collectors.toSet());
 
         boolean needsAnalyzerRefresh = batch.stream()
@@ -250,7 +250,7 @@ public class AnalyzerWrapper {
             throw new RuntimeException("Error reading analyzer file timestamp", e);
         }
         long maxTrackedMTime = 0L;
-        for (RepoFile rf : trackedFiles) {
+        for (ProjectFile rf : trackedFiles) {
             try {
                 long fileMTime = Files.getLastModifiedTime(rf.absPath()).toMillis();
                 maxTrackedMTime = Math.max(maxTrackedMTime, fileMTime);

@@ -4,7 +4,7 @@ import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;
@@ -51,7 +51,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
     private final JButton cancelButton;
     private final Project project;
     private final boolean allowExternalFiles;
-    private final Set<RepoFile> completableFiles;
+    private final Set<ProjectFile> completableFiles;
 
     // The selected files
     private List<BrokkFile> selectedFiles = new ArrayList<>();
@@ -68,7 +68,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
      * @param allowExternalFiles If true, shows the full file system and allows selecting files outside the project.
      * @param completableFiles
      */
-    public MultiFileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles, Set<RepoFile> completableFiles) {
+    public MultiFileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles, Set<ProjectFile> completableFiles) {
         super(parent, title, true); // modal dialog
         this.completableFiles = completableFiles;
         assert project != null;
@@ -266,7 +266,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                     if (Files.exists(potentialPath)) {
                         if (rootPath != null && potentialPath.startsWith(rootPath)) {
                             Path relPath = rootPath.relativize(potentialPath);
-                            uniqueFiles.put(potentialPath, new RepoFile(rootPath, relPath));
+                            uniqueFiles.put(potentialPath, new ProjectFile(rootPath, relPath));
                         } else {
                             uniqueFiles.put(potentialPath, new ExternalFile(potentialPath));
                         }
@@ -310,14 +310,14 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
      * Crucially, overrides getAlreadyEnteredText for multi-file input area.
      */
     public class FileCompletionProvider extends DefaultCompletionProvider {
-        private final Collection<RepoFile> repoFiles;
+        private final Collection<ProjectFile> projectFiles;
         private final Collection<Path> externalCandidates; // Kept in signature, but expected to be empty for MFSD
 
-        public FileCompletionProvider(Collection<RepoFile> repoFiles, Collection<Path> externalCandidates) {
+        public FileCompletionProvider(Collection<ProjectFile> projectFiles, Collection<Path> externalCandidates) {
             super();
-            assert repoFiles != null;
+            assert projectFiles != null;
             assert externalCandidates != null;
-            this.repoFiles = repoFiles;
+            this.projectFiles = projectFiles;
             this.externalCandidates = externalCandidates;
             // Assert externalCandidates is empty if this provider is strictly for MFSD use
             assert this.externalCandidates.isEmpty() : "MultiFileSelectionDialog should not have pre-filled external candidates";
@@ -380,21 +380,21 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
         public List<Completion> getCompletions(JTextComponent tc) {
             var input = getAlreadyEnteredText(tc);
             // No external candidates to check for MFSD based on current design
-            if (input.isEmpty() && repoFiles.isEmpty()) {
+            if (input.isEmpty() && projectFiles.isEmpty()) {
                 return Collections.emptyList();
             }
 
             List<ShorthandCompletion> completions = new ArrayList<>();
 
-            if (!repoFiles.isEmpty()) {
+            if (!projectFiles.isEmpty()) {
                 if (input.contains("*") || input.contains("?")) {
                     try {
                         // Completions.expandPath might be too slow/broad for interactive completion.
                         // Consider limiting depth or using a simpler glob matcher if performance is an issue.
                         // For now, stick with existing logic but limit results.
                         completions.addAll(Completions.expandPath(project, input).stream()
-                                                   .filter(bf -> bf instanceof RepoFile)
-                                                   .map(bf -> createRepoCompletion((RepoFile)bf))
+                                                   .filter(bf -> bf instanceof ProjectFile)
+                                                   .map(bf -> createRepoCompletion((ProjectFile)bf))
                                                    .limit(100) // Limit glob results
                                                    .toList());
                     } catch (Exception e) {
@@ -402,7 +402,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                     }
                 } else if (!input.isEmpty()) { // Only do prefix matching if there's non-glob input
                     // Simple prefix matching for repo files otherwise
-                    completions.addAll(Completions.getFileCompletions(input, repoFiles).stream()
+                    completions.addAll(Completions.getFileCompletions(input, projectFiles).stream()
                                                .map(this::createRepoCompletion)
                                                .limit(100) // Limit prefix results
                                                .toList());
@@ -427,7 +427,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
         }
 
         // Creates a completion item for a RepoFile.
-        private ShorthandCompletion createRepoCompletion(RepoFile file) {
+        private ShorthandCompletion createRepoCompletion(ProjectFile file) {
             String relativePath = file.toString();
             // Add trailing space, quote if needed. Replacement should replace the token + add space.
             String replacement = relativePath.contains(" ") ? "\"" + relativePath + "\" " : relativePath + " ";

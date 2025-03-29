@@ -2,7 +2,7 @@ package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.junit.jupiter.api.Test;
 import org.msgpack.core.annotations.VisibleForTesting;
 
@@ -23,7 +23,7 @@ public class CompleteUsageTest {
 
     // A simple inline "mock" analyzer: no mocking library used.
     private static class MockAnalyzer implements IAnalyzer {
-        private final RepoFile mockFile = new RepoFile(null, "MockFile.java");
+        private final ProjectFile mockFile = new ProjectFile(null, "MockFile.java");
         
         private final List<CodeUnit> allClasses = Stream.of(
                 "a.b.Do",

@@ -266,17 +266,17 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     targetMap.update(target, targetMap.getOrElse(target, 0) + count)
   }
 
-  override def getFileFor(fqcn: String): Option[RepoFile] = {
+  override def getFileFor(fqcn: String): Option[ProjectFile] = {
     cpg.typeDecl.fullNameExact(fqcn).headOption.flatMap(toFile)
   }
 
-  private def toFile(td: TypeDecl): Option[RepoFile] = {
+  private def toFile(td: TypeDecl): Option[ProjectFile] = {
     if (td.filename.isEmpty || td.filename == "<empty>" || td.filename == "<unknown>") None
     else toFile(td.filename)
   }
 
-  private[brokk] def toFile(relName: String): Option[RepoFile] =
-    Some(RepoFile(absolutePath, relName))
+  private[brokk] def toFile(relName: String): Option[ProjectFile] =
+    Some(ProjectFile(absolutePath, relName))
 
   // using cpg.all doesn't work because there are always-present nodes for files and the ANY typedecl
   override def isEmpty: Boolean = cpg.member.isEmpty
@@ -871,7 +871,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
   /**
    * Gets all classes in a given file.
    */
-  override def getClassesInFile(file: RepoFile): java.util.Set[CodeUnit] = {
+  override def getClassesInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     cpg.typeDecl.l
       .filter(td => toFile(td).contains(file))

@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 /**
  * Represents a named code element (class, function, or field).
  */
-public record CodeUnit(RepoFile source, CodeUnitType kind, String fqName)
+public record CodeUnit(ProjectFile source, CodeUnitType kind, String fqName)
         implements Comparable<CodeUnit>, Serializable
 {
     private static final long serialVersionUID = 2L;
@@ -103,7 +103,7 @@ public record CodeUnit(RepoFile source, CodeUnitType kind, String fqName)
     /**
      * Factory method to create a CodeUnit of type CLASS.
      */
-    public static CodeUnit cls(RepoFile source, String reference)
+    public static CodeUnit cls(ProjectFile source, String reference)
     {
         return new CodeUnit(source, CodeUnitType.CLASS, reference);
     }
@@ -111,7 +111,7 @@ public record CodeUnit(RepoFile source, CodeUnitType kind, String fqName)
     /**
      * Factory method to create a CodeUnit of type FUNCTION.
      */
-    public static CodeUnit fn(RepoFile source, String reference)
+    public static CodeUnit fn(ProjectFile source, String reference)
     {
         return new CodeUnit(source, CodeUnitType.FUNCTION, reference);
     }
@@ -119,7 +119,7 @@ public record CodeUnit(RepoFile source, CodeUnitType kind, String fqName)
     /**
      * Factory method to create a CodeUnit of type FIELD.
      */
-    public static CodeUnit field(RepoFile source, String reference)
+    public static CodeUnit field(ProjectFile source, String reference)
     {
         return new CodeUnit(source, CodeUnitType.FIELD, reference);
     }

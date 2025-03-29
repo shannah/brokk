@@ -16,7 +16,7 @@ class DisabledAnalyzer extends IAnalyzer {
   override def getMembersInClass(fqClass: String): util.List[CodeUnit] =
     Collections.emptyList()
 
-  override def getClassesInFile(file: RepoFile): util.Set[CodeUnit] =
+  override def getClassesInFile(file: ProjectFile): util.Set[CodeUnit] =
     Collections.emptySet()
 
   override def isClassInProject(className: String): Boolean =
@@ -31,7 +31,7 @@ class DisabledAnalyzer extends IAnalyzer {
   override def getSkeletonHeader(className: String): Option[String] =
     None
 
-  override def getFileFor(fqcn: String): Option[RepoFile] =
+  override def getFileFor(fqcn: String): Option[ProjectFile] =
     None
 
   override def getDefinitions(pattern: String): util.List[CodeUnit] =

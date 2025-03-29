@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Project;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -16,8 +16,6 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -128,7 +126,7 @@ public class FileTree extends JTree {
         List<Path> filesToAdd = new ArrayList<>();
 
         project.getFiles().stream()
-                .map(RepoFile::absPath)
+                .map(ProjectFile::absPath)
                 .forEach(filesToAdd::add);
         logger.debug("Found {} tracked files.", filesToAdd.size());
 

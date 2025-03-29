@@ -3,7 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.LLM;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
@@ -40,10 +40,10 @@ public class PreviewPanel extends JPanel
     private GuiTheme themeManager;
 
     // Nullable
-    private final RepoFile file;
+    private final ProjectFile file;
 
     public PreviewPanel(ContextManager contextManager,
-                        RepoFile file,
+                        ProjectFile file,
                         String content,
                         String syntaxStyle,
                         GuiTheme guiTheme)

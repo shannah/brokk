@@ -5,7 +5,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.BuildPrompts;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
@@ -30,7 +30,7 @@ public class LLM {
      */
     public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
         // Track original contents of files before any changes
-        var originalContents = new HashMap<RepoFile, String>();
+        var originalContents = new HashMap<ProjectFile, String>();
 
         // `messages` is everything we send to the LLM;
         // `pendingHistory` contains user instructions + llm response but omits the Context messages
@@ -203,7 +203,7 @@ public class LLM {
      */
     public static void runQuickSession(ContextManager cm,
                                        IConsoleIO io,
-                                       RepoFile file,
+                                       ProjectFile file,
                                        String oldText,
                                        String instructions)
     {
@@ -275,7 +275,7 @@ public class LLM {
         }
 
         // Record the original content so we can undo if necessary
-        var originalContents = Map.<RepoFile,String>of(file, fileContents);
+        var originalContents = Map.<ProjectFile,String>of(file, fileContents);
 
         // Save to context history
         var pendingHistory = List.of(

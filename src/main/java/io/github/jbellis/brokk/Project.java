@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.Language;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.git.LocalFileRepo;
@@ -33,7 +33,7 @@ public class Project implements IProject {
     private final Path styleGuidePath;
     private final AnalyzerWrapper analyzerWrapper;
     private final IGitRepo repo;
-    private final Set<RepoFile> dependencyFiles;
+    private final Set<ProjectFile> dependencyFiles;
 
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
     private static final int DEFAULT_WINDOW_WIDTH = 800;
@@ -99,9 +99,9 @@ public class Project implements IProject {
     }
 
     @Override
-    public Set<RepoFile> getFiles() {
+    public Set<ProjectFile> getFiles() {
         var trackedFiles = repo.getTrackedFiles();
-        var allFiles = new java.util.HashSet<RepoFile>(trackedFiles);
+        var allFiles = new java.util.HashSet<ProjectFile>(trackedFiles);
         allFiles.addAll(dependencyFiles);
         return allFiles;
     }
@@ -110,7 +110,7 @@ public class Project implements IProject {
      * Loads all files from the .brokk/dependencies directory
      * @return Set of RepoFile objects for all dependency files
      */
-    private Set<RepoFile> loadDependencyFiles() {
+    private Set<ProjectFile> loadDependencyFiles() {
         var dependenciesPath = root.resolve(".brokk").resolve("dependencies");
         if (!Files.exists(dependenciesPath) || !Files.isDirectory(dependenciesPath)) {
             return Set.of();
@@ -121,7 +121,7 @@ public class Project implements IProject {
                 .filter(Files::isRegularFile)
                 .map(path -> {
                     var relPath = root.relativize(path);
-                    return new RepoFile(root, relPath);
+                    return new ProjectFile(root, relPath);
                 })
                 .collect(Collectors.toSet());
         } catch (IOException e) {

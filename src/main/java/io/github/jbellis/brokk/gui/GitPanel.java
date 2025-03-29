@@ -3,7 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -257,7 +257,7 @@ public class GitPanel extends JPanel {
         suggestMessageButton.setEnabled(false);
         suggestMessageButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            List<RepoFile> selectedFiles = getSelectedFilesFromTable();
+            List<ProjectFile> selectedFiles = getSelectedFilesFromTable();
             contextManager.submitBackgroundTask("Suggesting commit message", () -> {
                 try {
                     var diff = selectedFiles.isEmpty()
@@ -300,7 +300,7 @@ public class GitPanel extends JPanel {
                     .filter(line -> !line.trim().startsWith("#"))
                     .collect(Collectors.joining("\n"))
                     .trim();
-            List<RepoFile> selectedFiles = getSelectedFilesFromTable();
+            List<ProjectFile> selectedFiles = getSelectedFilesFromTable();
 
             contextManager.submitUserTask("Stashing changes", () -> {
                 try {
@@ -343,7 +343,7 @@ public class GitPanel extends JPanel {
         commitButton.setEnabled(false);
         commitButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            List<RepoFile> selectedFiles = getSelectedFilesFromTable();
+            List<ProjectFile> selectedFiles = getSelectedFilesFromTable();
             String msg = commitMessageArea.getText().trim();
             if (msg.isEmpty()) {
                 chrome.enableUserActionButtons();
@@ -590,18 +590,18 @@ public class GitPanel extends JPanel {
     /**
      * Helper to get a list of selected files from the uncommittedFilesTable.
      */
-    private List<RepoFile> getSelectedFilesFromTable()
+    private List<ProjectFile> getSelectedFilesFromTable()
     {
         var model = (DefaultTableModel) uncommittedFilesTable.getModel();
         var selectedRows = uncommittedFilesTable.getSelectedRows();
-        var files = new ArrayList<RepoFile>();
+        var files = new ArrayList<ProjectFile>();
 
         for (var row : selectedRows) {
             var filename = (String) model.getValueAt(row, 0);
             var path     = (String) model.getValueAt(row, 1);
             // Combine them to get the relative path
             var combined = path.isEmpty() ? filename : path + "/" + filename;
-            files.add(new RepoFile(contextManager.getRoot(), combined));
+            files.add(new ProjectFile(contextManager.getRoot(), combined));
         }
         return files;
     }
@@ -616,7 +616,7 @@ public class GitPanel extends JPanel {
     /**
      * Creates a new tab showing the history of a specific file
      */
-    public void addFileHistoryTab(RepoFile file) {
+    public void addFileHistoryTab(ProjectFile file) {
         String filePath = file.toString();
         
         // If we already have a tab for this file, just select it
@@ -814,7 +814,7 @@ public class GitPanel extends JPanel {
         gitLogPanel.selectCommitById(commitId);
     }
     
-    private void loadFileHistory(RepoFile file, DefaultTableModel model, JTable table) {
+    private void loadFileHistory(ProjectFile file, DefaultTableModel model, JTable table) {
         contextManager.submitBackgroundTask("Loading file history: " + file, () -> {
             try {
                 var history = getRepo().getFileHistory(file);
@@ -857,7 +857,7 @@ public class GitPanel extends JPanel {
     {
         contextManager.submitContextTask("Adding file change to context", () -> {
             try {
-                var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
                 var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
 
                 if (diff.isEmpty()) {
@@ -882,7 +882,7 @@ public class GitPanel extends JPanel {
     private void compareFileWithLocal(String commitId, String filePath) {
         contextManager.submitUserTask("Comparing file with local", () -> {
             try {
-                var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
                 var diff = getRepo().showFileDiff("HEAD", commitId, repoFile);
 
                 if (diff.isEmpty()) {
@@ -905,7 +905,7 @@ public class GitPanel extends JPanel {
     }
     
     private void editFile(String filePath) {
-        List<RepoFile> files = new ArrayList<>();
+        List<ProjectFile> files = new ArrayList<>();
         files.add(contextManager.toFile(filePath));
         contextManager.editFiles(files);
     }
@@ -914,7 +914,7 @@ public class GitPanel extends JPanel {
      * Shows the diff for a file at a specific commit from file history.
      */
     private void showFileHistoryDiff(String commitId, String filePath) {
-        RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
+        ProjectFile file = new ProjectFile(contextManager.getRoot(), filePath);
         DiffPanel diffPanel = new DiffPanel(contextManager);
 
         String shortCommitId = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
@@ -928,7 +928,7 @@ public class GitPanel extends JPanel {
      * Captures the diff of selected uncommitted files and adds it to the context.
      */
     private void captureUncommittedDiff() {
-        List<RepoFile> selectedFiles = getSelectedFilesFromTable();
+        List<ProjectFile> selectedFiles = getSelectedFilesFromTable();
         if (selectedFiles.isEmpty()) {
             chrome.systemOutput("No files selected to capture diff");
             return;
@@ -942,7 +942,7 @@ public class GitPanel extends JPanel {
                     return;
                 }
 
-                String description = "Diff of %s".formatted(selectedFiles.stream().map(RepoFile::getFileName).collect(Collectors.joining(", ")));
+                String description = "Diff of %s".formatted(selectedFiles.stream().map(ProjectFile::getFileName).collect(Collectors.joining(", ")));
                 ContextFragment.StringFragment fragment = new ContextFragment.StringFragment(diff, description);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added uncommitted diff for " + selectedFiles.size() + " file(s) to context");
@@ -968,7 +968,7 @@ public class GitPanel extends JPanel {
      * Shows the diff for an uncommitted file by comparing HEAD to what's on disk.
      */
     private void showUncommittedFileDiff(String filePath) {
-        var file = new RepoFile(contextManager.getRoot(), filePath);
+        var file = new ProjectFile(contextManager.getRoot(), filePath);
         var diffPanel = new DiffPanel(contextManager);
 
         String dialogTitle = "Uncommitted Changes: " + file.getFileName();

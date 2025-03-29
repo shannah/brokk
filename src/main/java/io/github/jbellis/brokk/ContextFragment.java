@@ -4,9 +4,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.RepoFile;
-import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -37,14 +35,14 @@ public interface ContextFragment extends Serializable {
      * This is used when we *just* want to manipulate or show actual files,
      * rather than the code units themselves.
      */
-    Set<RepoFile> files(Project project);
+    Set<ProjectFile> files(Project project);
 
     /**
      * should classes found in this fragment be included in AutoContext?
      */
     boolean isEligibleForAutoContext();
 
-    static Set<RepoFile> parseRepoFiles(String text, Project project) {
+    static Set<ProjectFile> parseRepoFiles(String text, Project project) {
         var exactMatches = project.getFiles().stream().parallel()
                 .filter(f -> text.contains(f.toString()))
                 .collect(Collectors.toSet());
@@ -63,7 +61,7 @@ public interface ContextFragment extends Serializable {
         BrokkFile file();
 
         @Override
-        default Set<RepoFile> files(Project project) {
+        default Set<ProjectFile> files(Project project) {
             return Set.of();
         }
 
@@ -82,7 +80,7 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    record RepoPathFragment(RepoFile file) implements PathFragment {
+    record RepoPathFragment(ProjectFile file) implements PathFragment {
         private static final long serialVersionUID = 1L;
 
         @Override
@@ -91,7 +89,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return Set.of(file);
         }
 
@@ -144,7 +142,7 @@ public interface ContextFragment extends Serializable {
     }
 
     static PathFragment toPathFragment(BrokkFile bf) {
-        if (bf instanceof RepoFile repo) {
+        if (bf instanceof ProjectFile repo) {
             return new RepoPathFragment(repo);
         } else if (bf instanceof ExternalFile ext) {
             return new ExternalPathFragment(ext);
@@ -170,7 +168,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return parseRepoFiles(text(), project);
         }
 
@@ -246,7 +244,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -358,7 +356,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -411,7 +409,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return classes.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -479,7 +477,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return nonDummy().stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -542,7 +540,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return Set.of();
         }
 
@@ -577,7 +575,7 @@ public interface ContextFragment extends Serializable {
 
     record AutoContext(SkeletonFragment fragment) implements ContextFragment {
         private static final long serialVersionUID = 2L;
-        private static final RepoFile DUMMY = new RepoFile(Path.of("/dummy"), Path.of("dummy"));
+        private static final ProjectFile DUMMY = new ProjectFile(Path.of("/dummy"), Path.of("dummy"));
         public static final AutoContext EMPTY =
                 new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Enabled, but no references found"), "")));
         public static final AutoContext DISABLED =
@@ -600,7 +598,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<RepoFile> files(Project project) {
+        public Set<ProjectFile> files(Project project) {
             return fragment.files(project);
         }
 

@@ -12,7 +12,7 @@ trait IAnalyzer {
   def getMembersInClass(fqClass: String): util.List[CodeUnit] = 
     throw new UnsupportedOperationException()
     
-  def getClassesInFile(file: RepoFile): util.Set[CodeUnit] = 
+  def getClassesInFile(file: ProjectFile): util.Set[CodeUnit] =
     throw new UnsupportedOperationException()
     
   def isClassInProject(className: String): Boolean = 
@@ -27,7 +27,7 @@ trait IAnalyzer {
   def getSkeletonHeader(className: String): Option[String] = 
     throw new UnsupportedOperationException()
     
-  def getFileFor(fqcn: String): Option[RepoFile] =
+  def getFileFor(fqcn: String): Option[ProjectFile] =
     throw new UnsupportedOperationException()
     
   def getDefinitions(pattern: String): util.List[CodeUnit] =

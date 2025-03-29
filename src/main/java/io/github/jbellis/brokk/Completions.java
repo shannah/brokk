@@ -4,7 +4,7 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -122,22 +122,22 @@ public class Completions {
     public static BrokkFile maybeExternalFile(Path root, String pathStr) {
         Path p = Path.of(pathStr);
         if (!p.isAbsolute()) {
-            return new RepoFile(root, p);
+            return new ProjectFile(root, p);
         }
         if (!p.startsWith(root)) {
             return new ExternalFile(p);
         }
         // we have an absolute path that's part of the project
-        return new RepoFile(root, root.relativize(p));
+        return new ProjectFile(root, root.relativize(p));
     }
 
     @NotNull
-    public static List<RepoFile> getFileCompletions(String input, Collection<RepoFile> repoFiles) {
+    public static List<ProjectFile> getFileCompletions(String input, Collection<ProjectFile> projectFiles) {
         String partialLower = input.toLowerCase();
-        Map<String, RepoFile> baseToFullPath = new HashMap<>();
-        var uniqueCompletions = new HashSet<RepoFile>();
+        Map<String, ProjectFile> baseToFullPath = new HashMap<>();
+        var uniqueCompletions = new HashSet<ProjectFile>();
 
-        for (RepoFile p : repoFiles) {
+        for (ProjectFile p : projectFiles) {
             baseToFullPath.put(p.getFileName(), p);
         }
 
@@ -157,7 +157,7 @@ public class Completions {
         });
 
         // Matching full paths (priority 3)
-        for (RepoFile file : repoFiles) {
+        for (ProjectFile file : projectFiles) {
             if (file.toString().toLowerCase().startsWith(partialLower)) {
                 uniqueCompletions.add(file);
             }

@@ -6,7 +6,7 @@ import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -48,7 +48,7 @@ public class Context implements Serializable {
     transient final List<ChatMessage> historyMessages;
 
     /** backup of original contents for /undo, does not carry forward to Context children */
-    transient final Map<RepoFile, String> originalContents;
+    transient final Map<ProjectFile, String> originalContents;
 
     /** LLM output or other parsed content, with optional fragment. May be null */
     transient final ParsedOutput parsedOutput;
@@ -93,7 +93,7 @@ public class Context implements Serializable {
             AutoContext autoContext,
             int autoContextFileCount,
             List<ChatMessage> historyMessages,
-            Map<RepoFile, String> originalContents,
+            Map<ProjectFile, String> originalContents,
             ParsedOutput parsedOutput,
             Future<String> action
     ) {
@@ -477,7 +477,7 @@ public class Context implements Serializable {
      * Otherwise popping context off with /undo
      * would clear out the most recent conversation round trip which is not what we want.
      */
-    public Context addHistory(List<ChatMessage> newMessages, Map<RepoFile, String> originalContents, ParsedOutput parsed, Future<String> action) {
+    public Context addHistory(List<ChatMessage> newMessages, Map<ProjectFile, String> originalContents, ParsedOutput parsed, Future<String> action) {
         var newHistory = new ArrayList<>(historyMessages);
         newHistory.addAll(newMessages);
         return new Context(
@@ -512,7 +512,7 @@ public class Context implements Serializable {
         );
     }
 
-    public Context withOriginalContents(Map<RepoFile, String> fileContents) {
+    public Context withOriginalContents(Map<ProjectFile, String> fileContents) {
         return new Context(
                 contextManager,
                 editableFiles,

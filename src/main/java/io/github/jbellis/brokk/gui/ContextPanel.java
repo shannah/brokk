@@ -3,7 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.Models;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.*;
 import java.util.stream.Collectors;
 
 public class ContextPanel extends JPanel {
@@ -242,7 +241,7 @@ public class ContextPanel extends JPanel {
                                     int selectedRow = contextTable.getSelectedRow();
                                     if (selectedRow >= 0) {
                                         var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
-                                        if (selectedFragment instanceof ContextFragment.RepoPathFragment(RepoFile f)) {
+                                        if (selectedFragment instanceof ContextFragment.RepoPathFragment(ProjectFile f)) {
                                             chrome.getGitPanel().addFileHistoryTab(f);
                                         }
                                     }

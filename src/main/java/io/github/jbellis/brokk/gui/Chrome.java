@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Future;
 
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
@@ -252,7 +252,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     systemOutput("Updated .gitignore with .brokk entries");
                     
                     // Add .gitignore to git if it's not already in the index
-                    gitRepo.add(List.of(new RepoFile(root, ".gitignore")));
+                    gitRepo.add(List.of(new ProjectFile(root, ".gitignore")));
                 }
                 
                 // Create .brokk directory if it doesn't exist
@@ -272,9 +272,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 }
                 
                 // Add files to git
-                var filesToAdd = new ArrayList<RepoFile>();
-                filesToAdd.add(new RepoFile(root, ".brokk/style.md"));
-                filesToAdd.add(new RepoFile(root, ".brokk/project.properties"));
+                var filesToAdd = new ArrayList<ProjectFile>();
+                filesToAdd.add(new ProjectFile(root, ".brokk/style.md"));
+                filesToAdd.add(new ProjectFile(root, ".brokk/project.properties"));
                 
                 gitRepo.add(filesToAdd);
                 systemOutput("Added .brokk project files to git");
@@ -1017,7 +1017,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         var frame = new JFrame("Preview: " + fragment.shortDescription());
         // Pass the theme manager to properly style the preview
         var previewPanel = new PreviewPanel(contextManager,
-                                            fragment instanceof ContextFragment.RepoPathFragment(RepoFile file) ? file : null,
+                                            fragment instanceof ContextFragment.RepoPathFragment(ProjectFile file) ? file : null,
                                             content,
                                             syntaxType,
                                             themeManager);

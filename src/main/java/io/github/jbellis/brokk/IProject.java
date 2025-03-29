@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
 
 import java.nio.file.Path;
@@ -14,5 +14,5 @@ public interface IProject {
 
     Path getRoot();
 
-    Set<RepoFile> getFiles();
+    Set<ProjectFile> getFiles();
 }

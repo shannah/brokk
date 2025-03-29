@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.git;
 
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.Git;
@@ -37,7 +37,7 @@ public class GitRepo implements Closeable, IGitRepo {
     private final Path root;
     private final Repository repository;
     private final Git git;
-    private Set<RepoFile> trackedFilesCache = null;
+    private Set<ProjectFile> trackedFilesCache = null;
 
     /**
      * Returns true if the directory has a .git folder.
@@ -79,7 +79,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Adds files to staging.
      */
-    public synchronized void add(List<RepoFile> files) throws IOException
+    public synchronized void add(List<ProjectFile> files) throws IOException
     {
         try {
             var addCommand = git.add();
@@ -103,7 +103,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * (changed, modified, added, removed) from the working directory.
      */
     @Override
-    public synchronized Set<RepoFile> getTrackedFiles() {
+    public synchronized Set<ProjectFile> getTrackedFiles() {
         if (trackedFilesCache != null) {
             return trackedFilesCache;
         }
@@ -132,7 +132,7 @@ public class GitRepo implements Closeable, IGitRepo {
             throw new UncheckedIOException(new IOException(e));
         }
         trackedFilesCache = trackedPaths.stream()
-                .map(path -> new RepoFile(root, path))
+                .map(path -> new ProjectFile(root, path))
                 .collect(Collectors.toSet());
         return trackedFilesCache;
     }
@@ -156,7 +156,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * Produces a combined diff of staged + unstaged changes
      * but only for the given list of RepoFiles.
      */
-    public synchronized String diffFiles(List<RepoFile> files)
+    public synchronized String diffFiles(List<ProjectFile> files)
     {
         try (var out = new ByteArrayOutputStream()) {
             var filters = files.stream()
@@ -245,7 +245,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Returns a list of uncommitted RepoFiles.
      */
-    public List<RepoFile> getModifiedFiles() {
+    public List<ProjectFile> getModifiedFiles() {
         try {
             var status = git.status().call();
             var filePaths = new HashSet<String>();
@@ -255,7 +255,7 @@ public class GitRepo implements Closeable, IGitRepo {
             filePaths.addAll(status.getRemoved());
             filePaths.addAll(status.getMissing());
             return filePaths.stream()
-                    .map(path -> new RepoFile(root, path))
+                    .map(path -> new ProjectFile(root, path))
                     .collect(Collectors.toList());
         } catch (GitAPIException e) {
             throw new UncheckedIOException(new IOException(e));
@@ -270,7 +270,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * Commit a specific list of RepoFiles.
      * @return The commit ID of the new commit
      */
-    public String commitFiles(List<RepoFile> files, String message) throws IOException
+    public String commitFiles(List<ProjectFile> files, String message) throws IOException
     {
         try {
             add(files);
@@ -672,7 +672,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * List changed RepoFiles in a commit range.
      * Compares the tree of firstCommitId against the tree of the commit preceding lastCommitId.
      */
-    public List<RepoFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId) {
+    public List<ProjectFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId) {
         try {
             var firstCommitObj = repository.resolve(firstCommitId);
             var lastCommitObj = repository.resolve(lastCommitId + "^");
@@ -692,7 +692,7 @@ public class GitRepo implements Closeable, IGitRepo {
                         }
                     }
                     return fileSet.stream()
-                                  .map(path -> new RepoFile(root, path))
+                                  .map(path -> new ProjectFile(root, path))
                                   .collect(Collectors.toList());
                 }
             }
@@ -757,7 +757,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * @return the file's text contents at that commit, or "" if not found
      * @throws IOException if there's an error reading from Git
      */
-    public String getFileContent(String commitId, RepoFile file)
+    public String getFileContent(String commitId, ProjectFile file)
             throws IOException
     {
         if (commitId == null || commitId.isBlank()) {
@@ -802,7 +802,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Show diff for a specific file between two commits.
      */
-    public String showFileDiff(String commitIdA, String commitIdB, RepoFile file)
+    public String showFileDiff(String commitIdA, String commitIdB, ProjectFile file)
     {
         try (var out = new ByteArrayOutputStream()) {
             var pathFilter = PathFilter.create(file.toString());
@@ -888,7 +888,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * @param filesToStash The specific files to include in the stash
      * @throws IOException If there's an error during the stash process
      */
-    public void createPartialStash(String message, List<RepoFile> filesToStash) throws IOException {
+    public void createPartialStash(String message, List<ProjectFile> filesToStash) throws IOException {
         assert message != null && !message.isEmpty();
         assert filesToStash != null && !filesToStash.isEmpty();
 
@@ -904,7 +904,7 @@ public class GitRepo implements Closeable, IGitRepo {
             
             // Create a set of files to stash for faster lookups
             Set<String> filesToStashPaths = filesToStash.stream()
-                                              .map(RepoFile::toString)
+                                              .map(ProjectFile::toString)
                                               .collect(Collectors.toSet());
             
             // Filter to get the complement - files NOT to stash (i.e., to temporarily commit)
@@ -1152,7 +1152,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * Get the commit history for a specific file
      * @return List of commits that modified the file
      */
-    public List<CommitInfo> getFileHistory(RepoFile file)
+    public List<CommitInfo> getFileHistory(ProjectFile file)
     {
         try {
             var commits = new ArrayList<CommitInfo>();

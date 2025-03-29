@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.git;
 
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,13 +22,13 @@ public class LocalFileRepo implements IGitRepo {
     }
 
     @Override
-    public Set<RepoFile> getTrackedFiles() {
+    public Set<ProjectFile> getTrackedFiles() {
         try (var pathStream = Files.walk(root)) {
             return pathStream
                 .filter(Files::isRegularFile)
                 .map(path -> {
                     var relPath = root.relativize(path);
-                    return new RepoFile(root, relPath);
+                    return new ProjectFile(root, relPath);
                 })
                 .collect(Collectors.toSet());
         } catch (IOException e) {

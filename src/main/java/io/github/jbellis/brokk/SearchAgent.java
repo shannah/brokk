@@ -14,7 +14,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import scala.Option;
@@ -1230,7 +1230,7 @@ public class SearchAgent {
                         }
                     })
                     .filter(Objects::nonNull) // Filter out nulls (files with errors or no matches)
-                    .map(RepoFile::toString)
+                    .map(ProjectFile::toString)
                     .collect(Collectors.toSet()); // Collect to a set to eliminate duplicates
 
             if (matchingFilenames.isEmpty()) {
@@ -1280,7 +1280,7 @@ public class SearchAgent {
 
             // Get all tracked files and filter by filename
             var matchingFiles = contextManager.getProject().getFiles().stream()
-                    .map(RepoFile::toString)
+                    .map(ProjectFile::toString)
                     .filter(filePath -> {
                         for (Pattern compiledPattern : compiledPatterns) {
                             if (compiledPattern.matcher(filePath).find()) {

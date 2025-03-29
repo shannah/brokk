@@ -14,7 +14,7 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
@@ -226,9 +226,9 @@ public class ContextManager implements IContextManager
     }
 
     @Override
-    public RepoFile toFile(String relName)
+    public ProjectFile toFile(String relName)
     {
-        return new RepoFile(root, relName);
+        return new ProjectFile(root, relName);
     }
 
     /**
@@ -474,7 +474,7 @@ public class ContextManager implements IContextManager
     /**
      * Show the custom file selection dialog
      */
-    private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles, Set<RepoFile> completions)
+    private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles, Set<ProjectFile> completions)
     {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
@@ -498,9 +498,9 @@ public class ContextManager implements IContextManager
     /**
      * Cast BrokkFile to RepoFile. Will throw if ExternalFiles are present.
      */
-    private List<RepoFile> toRepoFiles(List<BrokkFile> files) {
+    private List<ProjectFile> toRepoFiles(List<BrokkFile> files) {
         return files.stream()
-                .map(f -> (RepoFile) f)
+                .map(f -> (ProjectFile) f)
                 .collect(Collectors.toList());
     }
 
@@ -612,7 +612,7 @@ public class ContextManager implements IContextManager
                 io.systemOutput("No files selected.");
             }
         } else {
-            var files = new HashSet<RepoFile>();
+            var files = new HashSet<ProjectFile>();
             for (var fragment : selectedFragments) {
                 files.addAll(fragment.files(project));
             }
@@ -629,7 +629,7 @@ public class ContextManager implements IContextManager
                 io.systemOutput("No files selected.");
             }
         } else {
-            var files = new HashSet<RepoFile>();
+            var files = new HashSet<ProjectFile>();
             for (var fragment : selectedFragments) {
                 files.addAll(fragment.files(project));
             }
@@ -838,7 +838,7 @@ public class ContextManager implements IContextManager
 
     /** Add the given files to editable. */
     @Override
-    public void editFiles(Collection<RepoFile> files)
+    public void editFiles(Collection<ProjectFile> files)
     {
         var fragments = files.stream().map(ContextFragment.RepoPathFragment::new).toList();
         pushContext(ctx -> ctx.removeReadonlyFiles(fragments).addEditableFiles(fragments));
@@ -1325,7 +1325,7 @@ public class ContextManager implements IContextManager
                 .collect(Collectors.joining(", "));
     }
 
-    public Set<RepoFile> getEditableFiles()
+    public Set<ProjectFile> getEditableFiles()
     {
         return selectedContext().editableFiles()
                 .map(ContextFragment.RepoPathFragment::file)
@@ -1451,11 +1451,11 @@ public class ContextManager implements IContextManager
             // do background inference
             var tracked = project.getRepo().getTrackedFiles();
             var filenames = tracked.stream()
-                    .map(RepoFile::toString)
+                    .map(ProjectFile::toString)
                     .filter(s -> !s.contains(File.separator))
                     .collect(Collectors.toList());
             if (filenames.isEmpty()) {
-                filenames = tracked.stream().map(RepoFile::toString).toList();
+                filenames = tracked.stream().map(ProjectFile::toString).toList();
             }
 
             var messages = List.of(
@@ -1564,12 +1564,12 @@ public class ContextManager implements IContextManager
      * Add to the user/AI message history. Called by both Ask and Code.
      */
     @Override
-    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action)
+    public void addToHistory(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String action)
     {
         addToHistory(messages, originalContents, action, io.getLlmOutputText());
     }
 
-    public void addToHistory(List<ChatMessage> messages, Map<RepoFile, String> originalContents, String action, String llmOutputText)
+    public void addToHistory(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String action, String llmOutputText)
     {
         var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
         logger.debug("Adding to history with {} changed files", originalContents.size());

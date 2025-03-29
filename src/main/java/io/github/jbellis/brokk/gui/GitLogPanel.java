@@ -4,7 +4,7 @@ import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitRepo.CommitInfo;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
@@ -81,7 +81,7 @@ public class GitLogPanel extends JPanel {
         contextManager.submitUserTask("Comparing previous version with local", () -> {
             try {
                 for (String path : filePaths) {
-                    var repoFile = new RepoFile(contextManager.getRoot(), path);
+                    var repoFile = new ProjectFile(contextManager.getRoot(), path);
 
                     SwingUtilities.invokeLater(() -> {
                         DiffPanel diffPanel = new DiffPanel(contextManager);
@@ -970,7 +970,7 @@ public class GitLogPanel extends JPanel {
     private void updateChangesForCommits(int[] selectedRows) {
         contextManager.submitBackgroundTask("Fetching changes for commits", () -> {
             try {
-                var allChangedFiles = new HashSet<RepoFile>();
+                var allChangedFiles = new HashSet<ProjectFile>();
                 for (var row : selectedRows) {
                     if (row >= 0 && row < commitsTableModel.getRowCount()) {
                         var commitId = (String) commitsTableModel.getValueAt(row, 3);
@@ -1053,7 +1053,7 @@ public class GitLogPanel extends JPanel {
 
                 List<String> fileNames = getRepo().listChangedFilesInCommitRange(firstCommitId, lastCommitId)
                         .stream()
-                        .map(RepoFile::getFileName)
+                        .map(ProjectFile::getFileName)
                         .collect(Collectors.toList());
                 String filesTxt = String.join(", ", fileNames);
                 String firstShortHash = firstCommitId.substring(0, 7);
@@ -1096,7 +1096,7 @@ public class GitLogPanel extends JPanel {
                 String lastCommitId = (String) commitsTableModel.getValueAt(sortedRows[sortedRows.length - 1], 3);
 
                 var repoFiles = filePaths.stream()
-                        .map(path -> new RepoFile(contextManager.getRoot(), path))
+                        .map(path -> new ProjectFile(contextManager.getRoot(), path))
                         .toList();
 
                 String diffs = repoFiles.stream()
@@ -1141,7 +1141,7 @@ public class GitLogPanel extends JPanel {
             try {
                 // For each file selected, show a diff in its own DiffPanel
                 for (String path : filePaths) {
-                    var repoFile = new RepoFile(contextManager.getRoot(), path);
+                    var repoFile = new ProjectFile(contextManager.getRoot(), path);
 
                     SwingUtilities.invokeLater(() -> {
                         DiffPanel diffPanel = new DiffPanel(contextManager);
@@ -1611,7 +1611,7 @@ public class GitLogPanel extends JPanel {
 
         GitPanel gitPanel = chrome.getGitPanel();
         if (gitPanel != null) {
-            var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+            var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
             gitPanel.addFileHistoryTab(repoFile);
         }
     }
@@ -1620,8 +1620,8 @@ public class GitLogPanel extends JPanel {
      * Edit the given file inside your IDE or editor plugin.
      */
     private void editFile(String filePath) {
-        List<RepoFile> files = new ArrayList<>();
-        files.add(new RepoFile(contextManager.getRoot(), filePath));
+        List<ProjectFile> files = new ArrayList<>();
+        files.add(new ProjectFile(contextManager.getRoot(), filePath));
         contextManager.editFiles(files);
     }
 
@@ -1651,7 +1651,7 @@ public class GitLogPanel extends JPanel {
     private void viewFileAtRevision(String commitId, String filePath) {
         contextManager.submitUserTask("Viewing file at revision", () -> {
             try {
-                var repoFile = new RepoFile(contextManager.getRoot(), filePath);
+                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
                 var content = getRepo().getFileContent(commitId, repoFile);
                 
                 if (content.isEmpty()) {
@@ -1677,7 +1677,7 @@ public class GitLogPanel extends JPanel {
      * Shows the diff for a file in a commit.
      */
     private void showFileDiff(String commitId, String filePath) {
-        RepoFile file = new RepoFile(contextManager.getRoot(), filePath);
+        ProjectFile file = new ProjectFile(contextManager.getRoot(), filePath);
         DiffPanel diffPanel = new DiffPanel(contextManager);
 
         String shortCommitId = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;

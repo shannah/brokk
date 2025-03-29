@@ -2,7 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.analyzer.RepoFile;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -25,7 +25,7 @@ public class DiffPanel extends JPanel {
     private final ContextManager contextManager;
     private String currentDiff;
     private String commitId;
-    private RepoFile repoFile;
+    private ProjectFile projectFile;
     
     /**
      * Creates a new DiffPanel for displaying file diffs.
@@ -70,9 +70,9 @@ public class DiffPanel extends JPanel {
      * @param commitId The commit ID to show the diff for (e.g. "HEAD", "abc123", etc.)
      * @param file The file to show the diff for
      */
-    public void showFileDiff(String commitId, RepoFile file) {
+    public void showFileDiff(String commitId, ProjectFile file) {
         this.commitId = commitId;
-        this.repoFile = file;
+        this.projectFile = file;
 
         // Set syntax style based on file extension
         setSyntaxStyleForFile(file.getFileName());
@@ -204,12 +204,12 @@ public class DiffPanel extends JPanel {
      * Builds a description for the current diff to use when adding to context.
      */
     private String buildDescription() {
-        if (commitId == null || repoFile == null) {
+        if (commitId == null || projectFile == null) {
             return "Git diff";
         }
 
         var shortCommitId = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
-        return "git " + shortCommitId + ": " + repoFile.getFileName();
+        return "git " + shortCommitId + ": " + projectFile.getFileName();
     }
 
     /**
@@ -220,10 +220,10 @@ public class DiffPanel extends JPanel {
      * @param file The file to compare
      * @param useParent If true, we attempt to compare commitId^; if commitId has no parent, old content is empty
      */
-    public void showCompareWithLocal(String commitId, RepoFile file, boolean useParent)
+    public void showCompareWithLocal(String commitId, ProjectFile file, boolean useParent)
     {
         this.commitId = commitId;
-        this.repoFile = file;
+        this.projectFile = file;
         setSyntaxStyleForFile(file.getFileName());
 
         contextManager.submitBackgroundTask("Loading compare-with-local for " + file.getFileName(), () -> {
