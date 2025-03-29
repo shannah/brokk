@@ -1212,7 +1212,7 @@ public class ContextManager implements IContextManager
      */
     private String buildWelcomeMessage(Models models) {
         String welcomeMarkdown;
-        var mdPath = project.isDependency() ? "/DEPENDENCY.md" : "/WELCOME.md";
+        var mdPath = "/WELCOME.md";
         try (var welcomeStream = Brokk.class.getResourceAsStream(mdPath)) {
             if (welcomeStream != null) {
                 welcomeMarkdown = new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8);

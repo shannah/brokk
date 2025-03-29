@@ -1,7 +1,7 @@
 0.7.0
 
 ## Features
-- "Open dependency" automatically decompiles a jar and opens it as a Brokk project
+- "Decompile Dependency" allows you to easily add the source code of a dependency to Code Intelligence
 - Basic context management and Search works better in the absence of Code Intelligence
 - Multiple projects may be open concurrently
 - Better prompting when copying to an external LLM

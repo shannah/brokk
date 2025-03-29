@@ -6,7 +6,9 @@ import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowEvent;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 
@@ -14,6 +16,7 @@ public class Brokk {
     private static final Logger logger = LogManager.getLogger(Brokk.class);
     
     private static final ConcurrentHashMap<Path, Chrome> openProjectWindows = new ConcurrentHashMap<>();
+    private static final Set<Path> reOpeningProjects = ConcurrentHashMap.newKeySet();
     private static final Path EMPTY_PROJECT = Path.of(":EMPTY:");
 
     public static final String ICON_RESOURCE = "/brokk-icon.png";
@@ -89,17 +92,16 @@ public class Brokk {
      * Opens the given project folder in Brokk, or brings existing window to front.
      * The folder must contain a .git subdirectory or else we will show an error.
      */
-    public static void openProject(Path path) {
-        // Normalize the path to handle potential inconsistencies (e.g., trailing slashes)
+    public static void openProject(Path path)
+    {
         final Path projectPath = path.toAbsolutePath().normalize();
 
-        // Check if this project is already open
         var existingWindow = openProjectWindows.get(projectPath);
         if (existingWindow != null) {
             logger.info("Project already open: {}. Bringing window to front.", projectPath);
             SwingUtilities.invokeLater(() -> {
                 var frame = existingWindow.getFrame();
-                frame.setState(Frame.NORMAL); // Restore if minimized
+                frame.setState(Frame.NORMAL);
                 frame.toFront();
                 frame.requestFocus();
                 existingWindow.focusInput();
@@ -107,7 +109,6 @@ public class Brokk {
             return;
         }
 
-        // Save to recent projects and mark as open
         Project.updateRecentProject(projectPath);
 
         var contextManager = new ContextManager(projectPath);
@@ -120,13 +121,9 @@ public class Brokk {
             models = Models.disabled();
         }
 
-        // Create a new Chrome instance with the fresh ContextManager
         var io = new Chrome(contextManager);
-
-        // Create the Coder with the new IO
         var coder = new Coder(models, io, projectPath, contextManager);
 
-        // Resolve circular references
         contextManager.resolveCircularReferences(io, coder);
         io.onComplete();
         io.systemOutput("Opened project at " + projectPath);
@@ -136,26 +133,54 @@ public class Brokk {
             io.toolError("AI will not be available this session");
         }
         io.focusInput();
-        
-        // Add to open projects map
+
         openProjectWindows.put(projectPath, io);
-        
-        // Add window listener to remove from map when closed
-        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
+
+        // Window listener that removes from maps; only exit if not in re-opening and zero windows remain
+        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter()
+        {
             @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
+            public void windowClosed(java.awt.event.WindowEvent e)
+            {
                 openProjectWindows.remove(projectPath).close();
-                if (openProjectWindows.isEmpty()) {
+
+                // Only exit if we now have no windows open and we are NOT re-opening a project
+                if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
                     System.exit(0);
                 }
+
                 Project.removeFromOpenProjects(projectPath);
                 logger.debug("Removed project from open windows map: {}", projectPath);
+
+                if (reOpeningProjects.contains(projectPath)) {
+                    reOpeningProjects.remove(projectPath);
+                    openProject(projectPath);
+                }
             }
         });
 
         // remove placeholder frame if present
         if (openProjectWindows.get(EMPTY_PROJECT) != null) {
             openProjectWindows.remove(EMPTY_PROJECT).close();
+        }
+    }
+
+    /**
+     * Closes the project if it's already open, then opens it again fresh.
+     * Useful for reloading after external changes or config updates.
+     */
+    public static void reOpenProject(Path path)
+    {
+        assert SwingUtilities.isEventDispatchThread();
+
+        final Path projectPath = path.toAbsolutePath().normalize();
+        var existingWindow = openProjectWindows.get(projectPath);
+        if (existingWindow != null) {
+            // Mark as re-opening, the windowClosed listener will do the rest
+            reOpeningProjects.add(projectPath);
+            // Programatically close the window
+            var frame = openProjectWindows.get(projectPath).getFrame();
+            frame.dispatchEvent(new WindowEvent(frame, WindowEvent.WINDOW_CLOSING));
         }
     }
 }

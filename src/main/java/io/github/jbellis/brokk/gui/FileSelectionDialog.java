@@ -99,7 +99,6 @@ public class FileSelectionDialog extends JDialog {
         autoCompletion.install(fileInput); // Install on JTextField
 
         // Instantiate FileTree
-        assert !project.isDependency();
         fileTree = new FileTree(project, allowExternalFiles, fileFilter);
 
         JPanel inputPanel = new JPanel(new BorderLayout());

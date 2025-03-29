@@ -834,9 +834,4 @@ public class Project implements IProject {
 
         return result;
     }
-
-    public boolean isDependency() {
-        var dPath = Path.of(".brokk", "dependencies");
-        return root.toString().contains(dPath.toString());
-    }
 }

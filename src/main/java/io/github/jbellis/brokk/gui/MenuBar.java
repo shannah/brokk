@@ -67,13 +67,23 @@ public class MenuBar {
         });
         fileMenu.add(openProjectItem);
 
+        var reopenProjectItem = new JMenuItem("Reopen Project");
+        reopenProjectItem.setEnabled(hasProject);
+        reopenProjectItem.addActionListener(e -> {
+            if (chrome.contextManager != null) {
+                var currentPath = chrome.contextManager.getProject().getRoot();
+                Brokk.reOpenProject(currentPath);
+            }
+        });
+        fileMenu.add(reopenProjectItem);
+
         var recentProjectsMenu = new JMenu("Recent Projects");
         fileMenu.add(recentProjectsMenu);
         rebuildRecentProjectsMenu(recentProjectsMenu);
 
         fileMenu.addSeparator();
 
-        var openDependencyItem = new JMenuItem("Open Dependency...");
+        var openDependencyItem = new JMenuItem("Decompile Dependency...");
         openDependencyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         openDependencyItem.addActionListener(e -> {
             // Fixme ensure the menu item is disabled if no project is open
