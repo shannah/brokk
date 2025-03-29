@@ -5,6 +5,24 @@ is the first code assistant that understands code semantically, not just
 as chunks of text.  Brokk is designed to allow LLMs to work effectively
 on large codebases that cannot be jammed entirely into working context.
 
+# Getting started
+
+Run using jbang:
+
+1. Install jbang: `curl -fsSL https://get.jbang.dev | bash` or others from https://www.jbang.dev/download/
+2. Run `jbang install brokk@jbellis/brokk`
+3. Run `brokk`
+
+Usage:
+
+1. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
+2. Go to `File -> Open Project` to open your project.
+
+Brokk will attempt to infer a build command and style guide for your project. You can edit these
+in `.brokk/project.properties` and `.brokk/style.md`, respectively.
+
+There is a [Brokk Discord](https://discord.gg/QjhQDK8kAj) for questions and suggestions.
+
 # What Brokk can do
 
 1. Ridiculously good agentic search / code retrieval. Better than Claude Code, better than Sourcegraph,
@@ -129,34 +147,10 @@ Other languages will follow.
 
 ### Known issues
 
-- "Stop" button does not work during search.  This is caused by https://github.com/langchain4j/langchain4j/issues/2658
+- "Stop" button does not work reliably during search.  This is caused by https://github.com/langchain4j/langchain4j/issues/2658
 - Joern (the code intelligence engine) needs to run delombok before it can analyze anything.
   Delombok is extremely slow for anything but trivial projects, making Brokk a poor fit for
   large Lombok-using codebases.
-
-# Getting started
-
-Run using jbang:
-
-1. Install jbang: `curl -fsSL https://get.jbang.dev | bash` or others from https://www.jbang.dev/download/
-2. Run `jbang install brokk@jbellis/brokk`
-3. Run `brokk`
-
-Manual install:
-
-1. Install Java 21+.  If you don't already have a preferred way of doing this, [sdkman](https://sdkman.io/) is a good choice.
-2. Download the latest Brokk jar from the [releases page](https://github.com/jbellis/brokk/releases).
-3. Run Brokk by doubleclicking on the jar or with `java -jar path/to/brokk/brokk-0.X.Y.jar`.
-
-Usage: 
-
-1. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
-2. Go to `File -> Open Project` to open your project.
-
-Brokk will attempt to infer a build command and style guide for your project. You can edit these 
-in `.brokk/project.properties` and `.brokk/style.md`, respectively.
-
-There is a [Brokk Discord](https://discord.gg/QjhQDK8kAj) for questions and suggestions.
 
 ## Finer points on some commands
 
