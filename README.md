@@ -7,7 +7,19 @@ on large codebases that cannot be jammed entirely into working context.
 
 # Getting started
 
-Usage:
+### Installation
+
+Run using jbang (recommended):
+
+1. Install jbang
+   - Linux / Mac: `curl -Ls https://sh.jbang.dev | bash -s - app setup`
+   - Windows (Powershell): `iex "& { $(iwr https://ps.jbang.dev) } app setup"` 
+   - Others: seehttps://www.jbang.dev/download/
+2. Run: `jbang run brokk@jbellis/brokk`
+
+You can also download the JAR from Releases and run it manually.
+
+### Usage
 
 1. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
 2. Go to `File -> Open Project` to open your project.
