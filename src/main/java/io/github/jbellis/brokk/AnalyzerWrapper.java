@@ -23,7 +23,6 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -243,7 +242,7 @@ public class AnalyzerWrapper {
             return null;
         }
 
-        var trackedFiles = project.getTrackedFiles();
+        var trackedFiles = project.getFiles();
         long cpgMTime;
         try {
             cpgMTime = Files.getLastModifiedTime(analyzerPath).toMillis();

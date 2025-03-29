@@ -97,7 +97,7 @@ public class Project implements IProject {
     }
 
     @Override
-    public Set<RepoFile> getTrackedFiles() {
+    public Set<RepoFile> getFiles() {
         return repo.getTrackedFiles();
     }
 

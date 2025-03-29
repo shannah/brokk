@@ -14,5 +14,5 @@ public interface IProject {
 
     Path getRoot();
 
-    Set<RepoFile> getTrackedFiles();
+    Set<RepoFile> getFiles();
 }
