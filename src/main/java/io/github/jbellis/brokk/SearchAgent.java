@@ -1210,7 +1210,7 @@ public class SearchAgent {
             }
 
             // Get all tracked files from GitRepo and process them functionally
-            var matchingFilenames = contextManager.getProject().getRepo().getTrackedFiles().parallelStream().map(file -> {
+            var matchingFilenames = contextManager.getProject().getFiles().parallelStream().map(file -> {
                         try {
                             if (!file.isText()) {
                                 return null;
@@ -1279,7 +1279,7 @@ public class SearchAgent {
             }
 
             // Get all tracked files and filter by filename
-            var matchingFiles = contextManager.getProject().getRepo().getTrackedFiles().stream()
+            var matchingFiles = contextManager.getProject().getFiles().stream()
                     .map(RepoFile::toString)
                     .filter(filePath -> {
                         for (Pattern compiledPattern : compiledPatterns) {

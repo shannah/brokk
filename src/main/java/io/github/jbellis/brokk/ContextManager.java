@@ -474,11 +474,11 @@ public class ContextManager implements IContextManager
     /**
      * Show the custom file selection dialog
      */
-    private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles)
+    private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles, Set<RepoFile> completions)
     {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new MultiFileSelectionDialog(io.getFrame(), project, title, allowExternalFiles);
+            var dialog = new MultiFileSelectionDialog(io.getFrame(), project, title, allowExternalFiles, completions);
             dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
@@ -605,7 +605,7 @@ public class ContextManager implements IContextManager
 
     private void doEditAction(List<ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
-            var files = toRepoFiles(showFileSelectionDialog("Add Context", false));
+            var files = toRepoFiles(showFileSelectionDialog("Add Context", false, project.getRepo().getTrackedFiles()));
             if (!files.isEmpty()) {
                 editFiles(files);
             } else {
@@ -622,7 +622,7 @@ public class ContextManager implements IContextManager
 
     private void doReadAction(List<ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
-            var files = showFileSelectionDialog("Read Context", true);
+            var files = showFileSelectionDialog("Read Context", true, project.getFiles());
             if (!files.isEmpty()) {
                 addReadOnlyFiles(files);
             } else {
@@ -798,8 +798,10 @@ public class ContextManager implements IContextManager
 
         if (selectedFragments.isEmpty()) {
             // Show file selection dialog when nothing is selected
-            // Only repo files can be summarized since external files aren't in the analyzer
-            var files = toRepoFiles(showFileSelectionDialog("Summarize Files", false));
+            var completions = project.getFiles().stream()
+                    .filter(f -> !getAnalyzer().getClassesInFile(f).isEmpty())
+                    .collect(Collectors.toSet());
+            var files = toRepoFiles(showFileSelectionDialog("Summarize Files", false, completions));
             if (files.isEmpty()) {
                 io.systemOutput("No files selected for summarization");
                 return;
@@ -1230,7 +1232,6 @@ public class ContextManager implements IContextManager
         }
 
         var version = props.getProperty("version");
-        var trackedFiles = project.getRepo().getTrackedFiles();
 
         return """
             %s
@@ -1240,16 +1241,16 @@ public class ContextManager implements IContextManager
             - Editor model: %s
             - Apply model: %s
             - Quick model: %s
-            - %s at %s with %d files
+            - Project at %s with %d native files and %d total files including dependencies
             - Analyzer language: %s
             """.formatted(welcomeMarkdown,
                           version,
                           models.editModelName(),
                           models.applyModelName(),
                           models.quickModelName(),
-                          getRepo() instanceof GitRepo ? "Git repo" : "Project",
                           project.getRoot(),
-                          trackedFiles.size(),
+                          project.getRepo().getTrackedFiles().size(),
+                          project.getFiles().size(),
                           project.getAnalyzerLanguage());
     }
 

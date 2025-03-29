@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.RepoFile;
-import io.github.jbellis.brokk.git.IGitRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -38,7 +37,7 @@ import java.util.function.Predicate;
 public class FileTree extends JTree {
     private static final Logger logger = LogManager.getLogger(FileTree.class);
 
-    private final Path projectPath; // Store for potential use (like expansion)
+    private final Project project;
 
     /**
      * Constructs a FileTree based on a Project.
@@ -48,36 +47,14 @@ public class FileTree extends JTree {
      * @param fileFilter         Optional predicate to filter files shown in the tree (external mode only).
      */
     public FileTree(Project project, boolean allowExternalFiles, Predicate<File> fileFilter) {
-        this(project.getRoot().toAbsolutePath(), project.getRepo(), allowExternalFiles, fileFilter);
-    }
-
-    /**
-     * Constructs a FileTree with explicit parameters.
-     *
-     * @param projectPath        Absolute path to the project root. Used as root in repo mode, and for initial expansion target in external mode. Can be null if allowExternalFiles is true and no specific path needs expansion.
-     * @param repo               The Git repository (used if allowExternalFiles is false and repo is not null).
-     * @param allowExternalFiles If true, shows the full file system; otherwise, shows project files (from repo or filesystem walk).
-     * @param fileFilter         Optional predicate to filter files shown in the tree (external mode only).
-     */
-    public FileTree(Path projectPath, IGitRepo repo, boolean allowExternalFiles, Predicate<File> fileFilter) {
-        this.projectPath = projectPath;
-
-        if (!allowExternalFiles && projectPath == null) {
-            logger.error("Project root path cannot be null when showing project files only");
-            throw new IllegalArgumentException("Project root path must be provided if allowExternalFiles is false");
-        }
+        this.project = project;
 
         if (allowExternalFiles) {
             setupExternalFileSystem(fileFilter);
-            // Attempt initial expansion to project path after setup
-            if (projectPath != null && Files.exists(projectPath)) {
-                logger.debug("Attempting initial expansion to project root: {}", projectPath);
-                expandTreeToPath(projectPath);
-            } else if (projectPath != null) {
-                logger.warn("Project root path does not exist, cannot expand: {}", projectPath);
-            }
+            logger.debug("Attempting initial expansion to project root: {}", project.getRoot());
+            expandTreeToPath(project.getRoot());
         } else {
-            setupProjectFileSystem(projectPath, repo);
+            setupProjectFileSystem();
         }
 
         setRootVisible(true);
@@ -139,34 +116,21 @@ public class FileTree extends JTree {
     /**
      * Sets up the tree to display the project's file hierarchy (from Git or file system walk).
      */
-    private void setupProjectFileSystem(Path projectRootPath, IGitRepo repo) {
-        logger.debug("Setting up project file system view for: {}", projectRootPath);
-        String rootDisplayName = projectRootPath.getFileName() != null ? projectRootPath.getFileName().toString() : projectRootPath.toString();
+    private void setupProjectFileSystem() {
+        var root = project.getRoot();
+        logger.debug("Setting up project file system view for: {}", root);
+        String rootDisplayName = root.getFileName() != null ? root.getFileName().toString() : root.toString();
         DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode(rootDisplayName);
         // Use a map to efficiently find parent nodes during construction
         Map<Path, DefaultMutableTreeNode> dirNodes = new HashMap<>();
-        dirNodes.put(projectRootPath, rootNode); // Map absolute path to node
+        dirNodes.put(root, rootNode); // Map absolute path to node
 
         List<Path> filesToAdd = new ArrayList<>();
 
-        if (repo != null) {
-            logger.debug("Using Git tracked files.");
-            repo.getTrackedFiles().stream()
-                    .map(RepoFile::absPath)
-                    .forEach(filesToAdd::add);
-            logger.debug("Found {} tracked files.", filesToAdd.size());
-        } else {
-            logger.debug("Walking file system from project root (no Git repo provided).");
-            try {
-                Files.walk(projectRootPath)
-                        .filter(Files::isRegularFile) // Only process files directly
-                        .forEach(filesToAdd::add);
-                logger.debug("Found {} files by walking.", filesToAdd.size());
-            } catch (IOException e) {
-                logger.error("Error walking file system from root {}", projectRootPath, e);
-                rootNode.add(new DefaultMutableTreeNode("Error reading directory"));
-            }
-        }
+        project.getFiles().stream()
+                .map(RepoFile::absPath)
+                .forEach(filesToAdd::add);
+        logger.debug("Found {} tracked files.", filesToAdd.size());
 
         // Sort paths for consistent tree order
         filesToAdd.sort(Path::compareTo);
@@ -177,7 +141,7 @@ public class FileTree extends JTree {
             if (parentPath == null) continue; // Should not happen within project
 
             // Ensure parent directories exist in the tree
-            DefaultMutableTreeNode parentNode = findOrCreateParentNode(projectRootPath, parentPath, rootNode, dirNodes);
+            DefaultMutableTreeNode parentNode = findOrCreateParentNode(root, parentPath, rootNode, dirNodes);
 
             // Add the file node
             String filename = absFilePath.getFileName().toString();
@@ -267,8 +231,7 @@ public class FileTree extends JTree {
         }
 
         @Override
-        protected TreePath doInBackground() throws Exception
-        {
+        protected TreePath doInBackground() {
             logger.debug("[ExpansionWorker] Starting expansion for {}", targetPath);
             var rootNode = (DefaultMutableTreeNode) model.getRoot();
 
@@ -517,7 +480,7 @@ public class FileTree extends JTree {
 
             SwingWorker<List<DefaultMutableTreeNode>, Void> worker = new SwingWorker<>() {
                 @Override
-                protected List<DefaultMutableTreeNode> doInBackground() throws Exception {
+                protected List<DefaultMutableTreeNode> doInBackground() {
                     return performLoadChildren(fileNode);
                 }
 

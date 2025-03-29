@@ -33,6 +33,7 @@ public class Project implements IProject {
     private final Path styleGuidePath;
     private final AnalyzerWrapper analyzerWrapper;
     private final IGitRepo repo;
+    private final Set<RepoFile> dependencyFiles;
 
     private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
     private static final int DEFAULT_WINDOW_WIDTH = 800;
@@ -54,6 +55,7 @@ public class Project implements IProject {
         this.styleGuidePath = root.resolve(".brokk").resolve("style.md");
         this.projectProps = new Properties();
         this.workspaceProps = new Properties();
+        this.dependencyFiles = loadDependencyFiles();
 
         // Load project properties
         if (Files.exists(propertiesFile)) {
@@ -98,7 +100,34 @@ public class Project implements IProject {
 
     @Override
     public Set<RepoFile> getFiles() {
-        return repo.getTrackedFiles();
+        var trackedFiles = repo.getTrackedFiles();
+        var allFiles = new java.util.HashSet<RepoFile>(trackedFiles);
+        allFiles.addAll(dependencyFiles);
+        return allFiles;
+    }
+    
+    /**
+     * Loads all files from the .brokk/dependencies directory
+     * @return Set of RepoFile objects for all dependency files
+     */
+    private Set<RepoFile> loadDependencyFiles() {
+        var dependenciesPath = root.resolve(".brokk").resolve("dependencies");
+        if (!Files.exists(dependenciesPath) || !Files.isDirectory(dependenciesPath)) {
+            return Set.of();
+        }
+        
+        try (var pathStream = Files.walk(dependenciesPath)) {
+            return pathStream
+                .filter(Files::isRegularFile)
+                .map(path -> {
+                    var relPath = root.relativize(path);
+                    return new RepoFile(root, relPath);
+                })
+                .collect(Collectors.toSet());
+        } catch (IOException e) {
+            logger.error("Error loading dependency files", e);
+            return Set.of();
+        }
     }
 
     @Override

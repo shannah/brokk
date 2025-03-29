@@ -1,26 +1,22 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.Completions;
-import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.RepoFile;
-import io.github.jbellis.brokk.git.IGitRepo;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;
-import org.fife.ui.autocomplete.ShorthandCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionProvider;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
+import org.fife.ui.autocomplete.ShorthandCompletion;
 
 import javax.swing.*;
 import javax.swing.text.JTextComponent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
-
 import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
@@ -37,7 +33,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -53,9 +49,9 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
     private final AutoCompletion autoCompletion;
     private final JButton okButton;
     private final JButton cancelButton;
-    private final IGitRepo repo;
     private final Project project;
     private final boolean allowExternalFiles;
+    private final Set<RepoFile> completableFiles;
 
     // The selected files
     private List<BrokkFile> selectedFiles = new ArrayList<>();
@@ -70,12 +66,13 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
      * @param project            The current project (can be null if allowExternalFiles is true and no repo context needed).
      * @param title              Dialog title.
      * @param allowExternalFiles If true, shows the full file system and allows selecting files outside the project.
+     * @param completableFiles
      */
-    public MultiFileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles) {
+    public MultiFileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles, Set<RepoFile> completableFiles) {
         super(parent, title, true); // modal dialog
+        this.completableFiles = completableFiles;
         assert project != null;
         this.rootPath = project.getRoot();
-        this.repo = project.getRepo();
         this.project = project;
         this.allowExternalFiles = allowExternalFiles;
 
@@ -86,7 +83,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
         fileInput = new JTextArea(3, 30); // Keep JTextArea
         fileInput.setLineWrap(true);
         fileInput.setWrapStyleWord(true);
-        var provider = createFileCompletionProvider();
+        var provider = (CompletionProvider) new FileCompletionProvider(this.completableFiles, List.of());
         autoCompletion = new AutoCompletion(provider);
         // Trigger with Ctrl+Space
         autoCompletion.setAutoActivationEnabled(false);
@@ -94,11 +91,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                                                             InputEvent.CTRL_DOWN_MASK));
         autoCompletion.install(fileInput);
 
-        if (project.isDependency()) {
-            fileTree = new FileTree(project.getRoot().toAbsolutePath(), null, allowExternalFiles, f -> true);
-        } else {
-            fileTree = new FileTree(project, allowExternalFiles, f -> true);
-        }
+        fileTree = new FileTree(project, allowExternalFiles, f -> true);
 
         JPanel inputPanel = new JPanel(new BorderLayout());
         inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
@@ -233,17 +226,6 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
     }
 
     /**
-     * Create the file completion provider.
-     * externalCandidates is always empty for MultiFileSelectionDialog.
-     */
-    private CompletionProvider createFileCompletionProvider()
-    {
-        Collection<RepoFile> tracked = (repo != null) ? repo.getTrackedFiles() : Collections.emptyList();
-        return new FileCompletionProvider(tracked, Collections.emptyList()); // Pass empty list
-    }
-
-
-    /**
      * When OK is pressed, parse the text input to get multiple selected files.
      * This logic remains largely the same as the original FileSelectionDialog.
      */
@@ -291,7 +273,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                     } else {
                         logger.warn("Absolute path provided does not exist: {}", filename);
                     }
-                } else if (repo != null) {
+                } else {
                     // Assume relative path or glob within repo
                     try {
                         var expanded = Completions.expandPath(project, filename);
@@ -300,24 +282,6 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                         }
                     } catch (Exception e) {
                         logger.error("Error expanding path/glob: {}", filename, e);
-                    }
-                } else {
-                    // If not an absolute path and no repo, handle potential CWD relative paths
-                    if (allowExternalFiles) {
-                        Path cwdRelativePath = Path.of(System.getProperty("user.dir")).resolve(filename).normalize();
-                        if (Files.exists(cwdRelativePath)) {
-                            logger.debug("Assuming relative path from CWD: {} -> {}", filename, cwdRelativePath);
-                            if (rootPath != null && cwdRelativePath.startsWith(rootPath)) {
-                                Path relPath = rootPath.relativize(cwdRelativePath);
-                                uniqueFiles.put(cwdRelativePath, new RepoFile(rootPath, relPath));
-                            } else {
-                                uniqueFiles.put(cwdRelativePath, new ExternalFile(cwdRelativePath));
-                            }
-                        } else {
-                            logger.warn("Cannot resolve relative path, and CWD relative path does not exist: {}", filename);
-                        }
-                    } else {
-                        logger.warn("Cannot resolve relative path without a project/repo: {}", filename);
                     }
                 }
             }
@@ -351,8 +315,10 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
 
         public FileCompletionProvider(Collection<RepoFile> repoFiles, Collection<Path> externalCandidates) {
             super();
-            this.repoFiles = Objects.requireNonNullElse(repoFiles, Collections.emptyList());
-            this.externalCandidates = Objects.requireNonNullElse(externalCandidates, Collections.emptyList());
+            assert repoFiles != null;
+            assert externalCandidates != null;
+            this.repoFiles = repoFiles;
+            this.externalCandidates = externalCandidates;
             // Assert externalCandidates is empty if this provider is strictly for MFSD use
             assert this.externalCandidates.isEmpty() : "MultiFileSelectionDialog should not have pre-filled external candidates";
         }
@@ -417,11 +383,10 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
             if (input.isEmpty() && repoFiles.isEmpty()) {
                 return Collections.emptyList();
             }
-            String lowerInput = input.toLowerCase();
 
             List<ShorthandCompletion> completions = new ArrayList<>();
 
-            if (repo != null && !repoFiles.isEmpty()) {
+            if (!repoFiles.isEmpty()) {
                 if (input.contains("*") || input.contains("?")) {
                     try {
                         // Completions.expandPath might be too slow/broad for interactive completion.
