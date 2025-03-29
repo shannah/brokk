@@ -254,11 +254,10 @@ public class Decompiler {
      */
     public static List<Path> findCommonDependencyJars() {
         long startTime = System.currentTimeMillis();
-        List<Path> jarFiles = new ArrayList<>();
         String userHome = System.getProperty("user.home");
         if (userHome == null) {
             logger.warn("Could not determine user home directory.");
-            return jarFiles;
+            return List.of();
         }
         Path homePath = Path.of(userHome);
 
@@ -270,27 +269,26 @@ public class Decompiler {
                 homePath.resolve(".sbt") // SBT caches can be complex, start broad
         );
 
-        int maxDepth = 15; // Limit recursion depth to avoid excessive scanning time or cycles
-
-        for (Path root : rootsToScan) {
-            if (Files.isDirectory(root)) {
-                logger.debug("Scanning for JARs under: {}", root);
-                try (Stream<Path> stream = Files.walk(root, maxDepth, FileVisitOption.FOLLOW_LINKS)) {
-                    stream.filter(Files::isRegularFile)
-                            .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar"))
-                            // Additional filter: exclude source and javadoc jars
-                            .filter(path -> !path.getFileName().toString().toLowerCase().endsWith("-sources.jar"))
-                            .filter(path -> !path.getFileName().toString().toLowerCase().endsWith("-javadoc.jar"))
-                            .forEach(jarFiles::add);
-                } catch (IOException e) {
-                    logger.warn("Error walking directory {}: {}", root, e.getMessage());
-                } catch (SecurityException e) {
-                    logger.warn("Permission denied accessing directory {}: {}", root, e.getMessage());
-                }
-            } else {
-                logger.debug("Dependency cache directory not found or not a directory: {}", root);
-            }
-        }
+        var jarFiles = rootsToScan.parallelStream()
+                .filter(Files::isDirectory)
+                .peek(root -> logger.debug("Scanning for JARs under: {}", root))
+                .flatMap(root -> {
+                    try {
+                        return Files.walk(root, FileVisitOption.FOLLOW_LINKS);
+                    } catch (IOException e) {
+                        logger.warn("Error walking directory {}: {}", root, e.getMessage());
+                        return Stream.empty();
+                    } catch (SecurityException e) {
+                        logger.warn("Permission denied accessing directory {}: {}", root, e.getMessage());
+                        return Stream.empty();
+                    }
+                })
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar"))
+                // Additional filter: exclude source and javadoc jars
+                .filter(path -> !path.getFileName().toString().toLowerCase().endsWith("-sources.jar"))
+                .filter(path -> !path.getFileName().toString().toLowerCase().endsWith("-javadoc.jar"))
+                .toList();
 
         long duration = System.currentTimeMillis() - startTime;
         logger.info("Found {} JAR files in common dependency locations in {} ms", jarFiles.size(), duration);
