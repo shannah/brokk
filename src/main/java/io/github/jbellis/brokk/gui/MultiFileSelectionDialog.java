@@ -54,6 +54,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
     private final JButton okButton;
     private final JButton cancelButton;
     private final IGitRepo repo;
+    private final Project project;
     private final boolean allowExternalFiles;
 
     // The selected files
@@ -75,6 +76,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
         assert project != null;
         this.rootPath = project.getRoot();
         this.repo = project.getRepo();
+        this.project = project;
         this.allowExternalFiles = allowExternalFiles;
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
@@ -292,7 +294,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                 } else if (repo != null) {
                     // Assume relative path or glob within repo
                     try {
-                        var expanded = Completions.expandPath(repo, filename);
+                        var expanded = Completions.expandPath(project, filename);
                         for (BrokkFile file : expanded) {
                             uniqueFiles.put(file.absPath(), file);
                         }
@@ -425,7 +427,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
                         // Completions.expandPath might be too slow/broad for interactive completion.
                         // Consider limiting depth or using a simpler glob matcher if performance is an issue.
                         // For now, stick with existing logic but limit results.
-                        completions.addAll(Completions.expandPath(repo, input).stream()
+                        completions.addAll(Completions.expandPath(project, input).stream()
                                                    .filter(bf -> bf instanceof RepoFile)
                                                    .map(bf -> createRepoCompletion((RepoFile)bf))
                                                    .limit(100) // Limit glob results

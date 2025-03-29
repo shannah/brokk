@@ -37,7 +37,7 @@ public class GitRepo implements Closeable, IGitRepo {
     private final Path root;
     private final Repository repository;
     private final Git git;
-    private List<RepoFile> trackedFilesCache = null;
+    private Set<RepoFile> trackedFilesCache = null;
 
     /**
      * Returns true if the directory has a .git folder.
@@ -69,10 +69,6 @@ public class GitRepo implements Closeable, IGitRepo {
         }
     }
 
-    @Override
-    public Path getRoot() {
-        return root;
-    }
 
     @Override
     public synchronized void refresh() {
@@ -107,7 +103,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * (changed, modified, added, removed) from the working directory.
      */
     @Override
-    public synchronized List<RepoFile> getTrackedFiles() {
+    public synchronized Set<RepoFile> getTrackedFiles() {
         if (trackedFilesCache != null) {
             return trackedFilesCache;
         }
@@ -137,7 +133,7 @@ public class GitRepo implements Closeable, IGitRepo {
         }
         trackedFilesCache = trackedPaths.stream()
                 .map(path -> new RepoFile(root, path))
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
         return trackedFilesCache;
     }
 

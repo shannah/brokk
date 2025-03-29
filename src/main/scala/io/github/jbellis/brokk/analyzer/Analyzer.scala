@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.analyzer
 
 import flatgraph.storage.Serialization
 import io.github.jbellis.brokk.*
+import org.slf4j.LoggerFactory
 import io.joern.dataflowengineoss.layers.dataflows.OssDataFlow
 import io.joern.javasrc2cpg.{Config, JavaSrc2Cpg}
 import io.joern.joerncli.CpgBasedTool
@@ -30,6 +31,9 @@ import scala.util.matching.Regex
  */
 abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val cpg: Cpg)
   extends IAnalyzer with Closeable {
+
+  // Logger instance for this class
+  private val logger = LoggerFactory.getLogger(getClass)
 
   // Convert to absolute filename immediately and verify it's a directory
   protected val absolutePath: Path = {
@@ -435,91 +439,162 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
 
   override def getUses(symbol: String): java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
+    
+    logger.debug(s"Getting uses for symbol: '$symbol'")
 
     // (1) Method matches?
     // Expand method lookup to include overrides in subclasses.
     val baseMethodMatches = methodsFromName(symbol)
+    logger.debug(s"Found ${baseMethodMatches.size} base method matches for '$symbol'")
+    
     val expandedMethodMatches =
-      if (symbol.contains("."))
+      if (symbol.contains(".")) {
         val lastDot = symbol.lastIndexOf('.')
         val classPart = symbol.substring(0, lastDot)
         val methodPart = symbol.substring(lastDot + 1)
+        logger.debug(s"Symbol contains dot: classPart='$classPart', methodPart='$methodPart'")
+        
         val subclasses = allSubclasses(classPart)
+        logger.debug(s"Found ${subclasses.size} subclasses of '$classPart'")
+        
         // candidate fully-qualified method names: original and each subclass override
         val expandedSymbols = (Set(symbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
-        expandedSymbols.flatMap(mn => methodsFromName(mn))
-      else
+        logger.debug(s"Expanded to ${expandedSymbols.size} symbol candidates: ${expandedSymbols.take(5).mkString(", ")}${if (expandedSymbols.size > 5) "..." else ""}")
+        
+        val expanded = expandedSymbols.flatMap(mn => methodsFromName(mn))
+        logger.debug(s"After expanding, found ${expanded.size} method matches")
+        expanded
+      } else {
+        logger.debug("Symbol doesn't contain a dot, using base matches only")
         baseMethodMatches
+      }
 
-    if expandedMethodMatches.nonEmpty then
+    if expandedMethodMatches.nonEmpty then {
+      logger.debug(s"Processing ${expandedMethodMatches.size} matched methods")
       // Collect all callers from all matched methods
       val calls = expandedMethodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
-      return calls.flatMap { methodName =>
+      logger.debug(s"Call sites: ${calls.take(5).mkString(", ")}${if (calls.size > 5) "..." else ""}")
+      
+      val result = calls.flatMap { methodName =>
         // Find method to get file
         val methods = cpg.method.fullName(s"$methodName:.*").l
-        if methods.nonEmpty then
-          toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-        else None
-      }.asJava
+        if methods.nonEmpty then {
+          val fileOpt = toFile(methods.head.typeDecl.head)
+          if (fileOpt.isEmpty) {
+            logger.debug(s"No file found for method: $methodName")
+          }
+          fileOpt.map(file => CodeUnit.fn(file, methodName))
+        } else {
+          logger.debug(s"No method node found for: $methodName")
+          None
+        }
+      }
+      logger.debug(s"Calling methods: ${result.take(5).mkString(", ")}${if (result.size > 5) "..." else ""}")
+      return result.asJava
+    }
 
     // (2) Possibly a field: com.foo.Bar.field
     val lastDot = symbol.lastIndexOf('.')
-    if lastDot > 0 then
+    if lastDot > 0 then {
+      logger.debug("Trying to interpret as field reference")
       val classPart = symbol.substring(0, lastDot)
       val fieldPart = symbol.substring(lastDot + 1)
+      logger.debug(s"Parsed as potential field: class='$classPart', field='$fieldPart'")
+      
       val clsDecls = cpg.typeDecl.fullNameExact(classPart).l
-      if clsDecls.nonEmpty then
+      if clsDecls.nonEmpty then {
+        logger.debug(s"Found class declaration for: $classPart")
         val maybeFieldDecl = clsDecls.head.member.nameExact(fieldPart).l
-        if maybeFieldDecl.nonEmpty then
+        if maybeFieldDecl.nonEmpty then {
+          logger.debug(s"Found field declaration: $fieldPart")
           val refs = referencesToField(classPart, fieldPart, excludeSelfRefs = false)
-          return refs.flatMap { methodName =>
+          logger.debug(s"Found ${refs.size} references to field '$fieldPart'")
+          
+          val result = refs.flatMap { methodName =>
             val methods = cpg.method.fullName(s"$methodName:.*").l
-            if methods.nonEmpty then
+            if methods.nonEmpty then {
               toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-            else None
-          }.asJava
+            } else {
+              logger.debug(s"No method node found for field reference: $methodName")
+              None
+            }
+          }
+          logger.debug(s"Returning ${result.size} field references")
+          return result.asJava
+        } else {
+          logger.debug(s"No field named '$fieldPart' found in class '$classPart'")
+        }
+      } else {
+        logger.debug(s"No class declaration found for: $classPart")
+      }
+    }
 
     // (3) Otherwise treat as a class
+    logger.debug("Treating symbol as a class")
     val classDecls = cpg.typeDecl.fullNameExact(symbol).l
-    if classDecls.isEmpty then
+    if classDecls.isEmpty then {
+      logger.warn(s"Symbol '$symbol' not found as a method, field, or class")
       throw IllegalArgumentException(s"Symbol '$symbol' not found as a method, field, or class")
+    }
 
+    logger.debug(s"Found ${classDecls.size} class declarations for '$symbol'")
+    
     // Include the original class plus all subclasses
-    val allClasses = (classDecls.map(_.fullName).toSet ++ allSubclasses(symbol)).toList
+    val subclasses = allSubclasses(symbol)
+    logger.debug(s"Found ${subclasses.size} subclasses of '$symbol'")
+    
+    val allClasses = (classDecls.map(_.fullName).toSet ++ subclasses).toList
+    logger.debug(s"Processing ${allClasses.size} classes in total")
+    
     val methodUses = allClasses.flatMap { cn =>
-      cpg.typeDecl.fullNameExact(cn).l.flatMap { td => td.method.l.flatMap(m => callersOfMethodNode(m, true)) }
+      val uses = cpg.typeDecl.fullNameExact(cn).l.flatMap { td => 
+        td.method.l.flatMap(m => callersOfMethodNode(m, true)) 
+      }
+      logger.debug(s"Found ${uses.size} method uses for class: $cn")
+      uses
     }
+    logger.debug(s"Total method uses across all classes: ${methodUses.size}")
+    
     val fieldRefUses = classDecls.flatMap { td =>
-      td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
+      val uses = td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
+      logger.debug(s"Found ${uses.size} field reference uses for class: ${td.fullName}")
+      uses
     }
-    val typeUses = allClasses.flatMap { cn => referencesToClassAsType(cn) }
+    logger.debug(s"Total field reference uses: ${fieldRefUses.size}")
+    
+    val typeUses = allClasses.flatMap { cn => 
+      val uses = referencesToClassAsType(cn)
+      logger.debug(s"Found ${uses.size} type uses for class: $cn")
+      uses
+    }
+    logger.debug(s"Total type uses: ${typeUses.size}")
 
     // Convert methodUses and fieldRefUses to actual CodeUnits
     val methodUseUnits = methodUses.distinct.flatMap { methodName =>
       val methods = cpg.method.fullName(s"$methodName:.*").l
-      if methods.nonEmpty then
+      if methods.nonEmpty then {
         toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-      else None
+      } else {
+        logger.debug(s"No method node found for: $methodName")
+        None
+      }
     }
+    logger.debug(s"Converted to ${methodUseUnits.size} method use code units")
+    
     val fieldUseUnits = fieldRefUses.distinct.flatMap { methodName =>
       val methods = cpg.method.fullName(s"$methodName:.*").l
-      if methods.nonEmpty then
+      if methods.nonEmpty then {
         toFile(methods.head.typeDecl.head).map(file => CodeUnit.fn(file, methodName))
-      else None
+      } else {
+        logger.debug(s"No method node found for field reference: $methodName")
+        None
+      }
     }
+    logger.debug(s"Converted to ${fieldUseUnits.size} field use code units")
 
-    // Debug log to confirm all sets
-//    println(
-//      s"""Class usage debug for symbol '$symbol':
-//         |  methodUses = $methodUses
-//         |  fieldRefUses = $fieldRefUses
-//         |  typeUses = ${typeUses.map(_.fqName())}
-//         |  final methodUseUnits = ${methodUseUnits.map(_.fqName())}
-//         |  final fieldUseUnits = ${fieldUseUnits.map(_.fqName())}
-//         |""".stripMargin
-//    )
-
-    (methodUseUnits ++ fieldUseUnits ++ typeUses).distinct.asJava
+    val results = (methodUseUnits ++ fieldUseUnits ++ typeUses).distinct
+    logger.debug(s"Final results: ${results.size} distinct usage references for '$symbol'")
+    results.asJava
   }
 
   /**

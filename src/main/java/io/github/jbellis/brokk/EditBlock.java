@@ -201,17 +201,7 @@ public class EditBlock {
     static ParseResult findOriginalUpdateBlocks(String content,
                                                        Set<RepoFile> filesInContext)
     {
-        return findOriginalUpdateBlocks(content, filesInContext, new IGitRepo() {
-            @Override
-            public Path getRoot() {
-                return Path.of("");
-            }
-
-            @Override
-            public List<RepoFile> getTrackedFiles() {
-                return List.of();
-            }
-        });
+        return findOriginalUpdateBlocks(content, filesInContext, Set::of);
     }
     
     /**

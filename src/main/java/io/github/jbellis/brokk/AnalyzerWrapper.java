@@ -243,7 +243,7 @@ public class AnalyzerWrapper {
             return null;
         }
 
-        List<RepoFile> trackedFiles = project.getRepo().getTrackedFiles();
+        var trackedFiles = project.getTrackedFiles();
         long cpgMTime;
         try {
             cpgMTime = Files.getLastModifiedTime(analyzerPath).toMillis();

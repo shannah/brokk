@@ -3,13 +3,10 @@ package io.github.jbellis.brokk.git;
 import io.github.jbellis.brokk.analyzer.RepoFile;
 import org.eclipse.jgit.lib.ObjectId;
 
-import java.nio.file.Path;
-import java.util.List;
+import java.util.Set;
 
 public interface IGitRepo {
-    Path getRoot();
-
-    List<RepoFile> getTrackedFiles();
+    Set<RepoFile> getTrackedFiles();
 
     default String diff() {
         return "";

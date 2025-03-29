@@ -51,17 +51,7 @@ public class ContextSerializationTest {
 
             @Override
             public IGitRepo getRepo() {
-                return new IGitRepo() {
-                    @Override
-                    public Path getRoot() {
-                        return Path.of(tempDir.toString());
-                    }
-
-                    @Override
-                    public List<RepoFile> getTrackedFiles() {
-                        return List.of();
-                    }
-                };
+                return Set::of;
             }
         };
     }

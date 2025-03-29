@@ -7,7 +7,8 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class LocalFileRepo implements IGitRepo {
     private static final Logger logger = LogManager.getLogger(LocalFileRepo.class);
@@ -21,12 +22,7 @@ public class LocalFileRepo implements IGitRepo {
     }
 
     @Override
-    public Path getRoot() {
-        return root;
-    }
-
-    @Override
-    public List<RepoFile> getTrackedFiles() {
+    public Set<RepoFile> getTrackedFiles() {
         try (var pathStream = Files.walk(root)) {
             return pathStream
                 .filter(Files::isRegularFile)
@@ -34,10 +30,10 @@ public class LocalFileRepo implements IGitRepo {
                     var relPath = root.relativize(path);
                     return new RepoFile(root, relPath);
                 })
-                .toList();
+                .collect(Collectors.toSet());
         } catch (IOException e) {
             logger.error("Error walking directory tree", e);
-            return List.of();
+            return Set.of();
         }
     }
 }

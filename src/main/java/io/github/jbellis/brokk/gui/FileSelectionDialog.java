@@ -49,6 +49,7 @@ public class FileSelectionDialog extends JDialog {
     private final JButton okButton;
     private final JButton cancelButton;
     private final IGitRepo repo;
+    private final Project project;
     private final boolean allowExternalFiles;
     private final Future<List<Path>> autocompletePaths; // For pre-filled options
 
@@ -75,6 +76,7 @@ public class FileSelectionDialog extends JDialog {
         assert autocompleteCandidates != null;
         this.rootPath = (project != null) ? project.getRoot() : null;
         this.repo = (project != null) ? project.getRepo() : null;
+        this.project = project;
         this.allowExternalFiles = allowExternalFiles;
         this.autocompletePaths = autocompleteCandidates;
 
@@ -251,7 +253,7 @@ public class FileSelectionDialog extends JDialog {
                 // Assume relative path within the repo. Use expandPath which handles this.
                 try {
                     // Expand should ideally return one file for a non-glob relative path
-                    var expanded = Completions.expandPath(repo, filename);
+                    var expanded = Completions.expandPath(project, filename);
                     if (!expanded.isEmpty()) {
                         if (expanded.size() > 1) {
                             logger.warn("Relative path '{}' expanded to multiple files, using first: {}", filename, expanded.getFirst());
