@@ -33,27 +33,7 @@ public class ContextSerializationTest {
     @BeforeEach
     void setup() {
         // Setup mock context manager
-        mockContextManager = new IContextManager() {
-            @Override
-            public IAnalyzer getAnalyzer() {
-                return new IAnalyzer() {
-                    @Override
-                    public Set<CodeUnit> getClassesInFile(ProjectFile file) {
-                        return Set.of();
-                    }
-
-                    @Override
-                    public List<Tuple2<CodeUnit, Double>> getPagerank(Map<String, Double> seedClassWeights, int k, boolean reversed) {
-                        return List.of();
-                    }
-                };
-            }
-
-            @Override
-            public IGitRepo getRepo() {
-                return Set::of;
-            }
-        };
+        mockContextManager = new IContextManager() {};
     }
     
     @Test
@@ -90,11 +70,11 @@ public class ContextSerializationTest {
         Path repoRoot = tempDir.resolve("repo");
         Files.createDirectories(repoRoot);
         
-        ProjectFile projectFile = new ProjectFile(repoRoot, "src/main/java/Test.java");
+        var projectFile = new ProjectFile(repoRoot, "src/main/java/Test.java");
         Files.createDirectories(projectFile.absPath().getParent());
         Files.writeString(projectFile.absPath(), "public class Test {}");
         
-        ExternalFile externalFile = new ExternalFile(tempDir.resolve("external.txt").toAbsolutePath());
+        var externalFile = new ExternalFile(tempDir.resolve("external.txt").toAbsolutePath());
         Files.writeString(externalFile.absPath(), "This is external content");
         
         // Create context with fragments

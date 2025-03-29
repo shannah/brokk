@@ -28,21 +28,21 @@ public interface ContextFragment extends Serializable {
     /**
      * code sources found in this fragment
      */
-    Set<CodeUnit> sources(Project project);
+    Set<CodeUnit> sources(IProject project);
 
     /**
      * Returns all repo files referenced by this fragment.
      * This is used when we *just* want to manipulate or show actual files,
      * rather than the code units themselves.
      */
-    Set<ProjectFile> files(Project project);
+    Set<ProjectFile> files(IProject project);
 
     /**
      * should classes found in this fragment be included in AutoContext?
      */
     boolean isEligibleForAutoContext();
 
-    static Set<ProjectFile> parseRepoFiles(String text, Project project) {
+    static Set<ProjectFile> parseRepoFiles(String text, IProject project) {
         var exactMatches = project.getFiles().stream().parallel()
                 .filter(f -> text.contains(f.toString()))
                 .collect(Collectors.toSet());
@@ -61,7 +61,7 @@ public interface ContextFragment extends Serializable {
         BrokkFile file();
 
         @Override
-        default Set<ProjectFile> files(Project project) {
+        default Set<ProjectFile> files(IProject project) {
             return Set.of();
         }
 
@@ -89,7 +89,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return Set.of(file);
         }
 
@@ -102,7 +102,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return project.getAnalyzer().getClassesInFile(file);
         }
 
@@ -131,7 +131,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return Set.of();
         }
 
@@ -168,12 +168,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return parseRepoFiles(text(), project);
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return files(project).stream()
                     .flatMap(f -> project.getAnalyzer().getClassesInFile(f).stream())
                     .collect(java.util.stream.Collectors.toSet());
@@ -239,12 +239,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return sources;
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -351,12 +351,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return sources;
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -404,12 +404,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return classes;
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return classes.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -472,12 +472,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return nonDummy();
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return nonDummy().stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
 
@@ -535,12 +535,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return Set.of();
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return Set.of();
         }
 
@@ -593,12 +593,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(Project project) {
+        public Set<CodeUnit> sources(IProject project) {
             return fragment.sources(project);
         }
 
         @Override
-        public Set<ProjectFile> files(Project project) {
+        public Set<ProjectFile> files(IProject project) {
             return fragment.files(project);
         }
 

@@ -135,6 +135,7 @@ public class Project implements IProject, AutoCloseable {
         return repo;
     }
 
+    @Override
     public String getBuildCommand() {
         return projectProps.getProperty("buildCommand");
     }

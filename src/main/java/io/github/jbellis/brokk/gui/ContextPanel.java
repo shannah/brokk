@@ -527,7 +527,6 @@ public class ContextPanel extends JPanel {
             return;
         }
 
-        var analyzer = contextManager.getAnalyzerNonBlocking();
         var allFragments = ctx.getAllFragmentsInDisplayOrder();
         int totalLines = 0;
         StringBuilder fullText = new StringBuilder();

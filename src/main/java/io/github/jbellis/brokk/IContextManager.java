@@ -45,10 +45,6 @@ public interface IContextManager {
         return getProject().getAnalyzer();
     }
 
-    default IAnalyzer getAnalyzerNonBlocking() {
-        return getProject().getAnalyzerNonBlocking();
-    }
-
     default IGitRepo getRepo() {
         return getProject().getRepo();
     }
@@ -57,8 +53,8 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default Project getProject() {
-        return null;
+    default IProject getProject() {
+        return new IProject() {};
     }
 
     default void addToGit(String string) throws IOException {}
