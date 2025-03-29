@@ -7,12 +7,6 @@ on large codebases that cannot be jammed entirely into working context.
 
 # Getting started
 
-Run using jbang:
-
-1. Install jbang: `curl -fsSL https://get.jbang.dev | bash` or others from https://www.jbang.dev/download/
-2. Run `jbang install brokk@jbellis/brokk`
-3. Run `brokk`
-
 Usage:
 
 1. Go to `File -> Edit Secret Keys` to configure your preferred LLM.
