@@ -1388,7 +1388,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     disableUserActionButtons();
                 } else {
                     logger.info("Populating dropdown with {} models.", modelLocationMap.size());
-                    modelLocationMap.keySet().stream().sorted().forEach(modelDropdown::addItem);
+                    modelLocationMap.keySet().stream()
+                            .filter(k -> !k.contains("-lite"))
+                            .sorted()
+                            .forEach(modelDropdown::addItem);
                     modelDropdown.setEnabled(true);
 
                     // TODO save and restore most-recently-selected model
