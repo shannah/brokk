@@ -190,6 +190,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
         ensureBuildCommand();
     }
 
+    @Override
+    public void replaceContext(Context context, Context replacement) {
+        contextHistory.replaceContext(context, replacement);
+        io.updateContextHistoryTable();
+        io.updateContextTable();
+    }
+
     public Project getProject() {
         return project;
     }
@@ -1433,30 +1440,31 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
         assert taskDescription != null;
         assert !taskDescription.isBlank();
-
-        // Wrap the original callable to manage descriptions
-        Callable<T> wrappedTask = () -> {
-            taskDescriptions.put(task, taskDescription); // Use original task as key
+        Future<T> future = backgroundTasks.submit(() -> {
             try {
-                SwingUtilities.invokeLater(() -> io.backgroundOutput(taskDescription));
+                io.backgroundOutput(taskDescription);
                 return task.call();
             } finally {
-                taskDescriptions.remove(task); // Use original task as key
+                // Remove this task from the map
+                taskDescriptions.remove(task);
                 int remaining = taskDescriptions.size();
                 SwingUtilities.invokeLater(() -> {
                      if (remaining <= 0) {
                          io.backgroundOutput("");
                      } else if (remaining == 1) {
-                         var lastTaskDesc = taskDescriptions.values().stream().findFirst().orElse("");
-                         io.backgroundOutput(lastTaskDesc);
+                        // Find the last remaining task description. If there's a race just end the spin
+                        var lastTaskDescription = taskDescriptions.values().stream().findFirst().orElse("");
+                        io.backgroundOutput(lastTaskDescription);
                      } else {
                          io.backgroundOutput("Tasks running: " + remaining);
                     }
                  });
             }
-        };
+        });
 
-        return backgroundTasks.submit(wrappedTask);
+        // Track the future with its description
+        taskDescriptions.put(task, taskDescription);
+        return future;
     }
 
     /**

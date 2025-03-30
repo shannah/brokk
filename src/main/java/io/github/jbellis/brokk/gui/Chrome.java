@@ -630,7 +630,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // Get selected model
-        StreamingChatLanguageModel selectedModel = getSelectedModel();
+        var selectedModel = getSelectedModel();
         if (selectedModel == null) {
             toolError("Please select a valid model from the dropdown.");
             return;
@@ -640,14 +640,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         getProject().addToTextHistory(input, 20);
         updateHistoryDropdown(); // Refresh history dropdown
 
-        historyOutputPane.setLlmOutput("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
-        commandInputField.setText("");
-
-        // Add to text history
-        getProject().addToTextHistory(input, 20);
-        updateHistoryDropdown(); // Refresh history dropdown
-
-        historyOutputPane.setLlmOutput("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
+        historyOutputPane.setLlmOutput("# Code\n" + input + "\n\n# Response\n");
         commandInputField.setText("");
 
         disableUserActionButtons();
