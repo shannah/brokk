@@ -229,7 +229,7 @@ public class Coder {
         Throwable error = null;
         int attempt = 0;
         while (attempt++ < maxAttempts) {
-            logger.debug("Sending request to LLM attempt {} [only last message shown]: {}", attempt, messages.getLast());
+            logger.debug("Sending request to {} attempt {} [only last message shown]: {}", Models.nameOf(model), attempt, messages.getLast());
             var response = doSingleSendMessage(model, messages, tools, echo);
             if (response.cancelled) {
                 writeToHistory("Cancelled", "LLM request cancelled by user");
@@ -296,7 +296,7 @@ public class Coder {
     private StreamingResult doSingleSendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, boolean echo) {
         writeRequestToHistory(messages, tools);
         var builder = ChatRequest.builder().messages(messages);
-        var modelName = Models.nameOf(model); // Use static method
+        var modelName = Models.nameOf(model);
 
         if (!tools.isEmpty()) {
             // Check if this is a DeepSeek model that needs function calling emulation

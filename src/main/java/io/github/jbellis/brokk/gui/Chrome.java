@@ -59,7 +59,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Command input panel components:
     private JComboBox<String> modelDropdown; // Dropdown for model selection
-    private Map<String, String> modelLocationMap = new TreeMap<>(); // display name -> location
     private JButton codeButton;  // renamed from goButton
     private JButton askButton;
     private JButton searchButton;
@@ -677,21 +676,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private StreamingChatLanguageModel getSelectedModel() {
         String selectedName = (String) modelDropdown.getSelectedItem();
+        logger.debug("User selected model name from dropdown: {}", selectedName);
+
         if (selectedName == null || selectedName.startsWith("No Models") || selectedName.startsWith("Error")) {
             logger.warn("No valid model selected in dropdown.");
             return null;
         }
-        String location = modelLocationMap.get(selectedName);
-        if (location == null) {
-             logger.error("Selected model name '{}' not found in location map.", selectedName);
-             return null; // Should not happen if map is synced with dropdown
-        }
+
         try {
-            // Use Models.get() which handles caching/creation
-            return Models.get(selectedName, location);
+            return Models.get(selectedName);
         } catch (Exception e) {
-            logger.error("Failed to get model instance for location '{}'", location, e);
-            toolError("Error activating model: " + location);
+            logger.error("Failed to get model instance for {}", selectedName, e);
             return null;
         }
     }
@@ -1361,41 +1356,43 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private void initializeModelDropdown() {
         logger.info("Initializing model dropdown...");
+
+        // Runs on a background thread
         contextManager.submitBackgroundTask("Fetching available models", () -> {
-            // This runs in the background
-            modelLocationMap = Models.getAvailableModels();
+            var modelLocationMap = Models.getAvailableModels();
 
             // Update UI on EDT
             SwingUtilities.invokeLater(() -> {
                 modelDropdown.removeAllItems();
+
+                // Extra debug logging
+                modelLocationMap.forEach((k, v) ->
+                                                 logger.debug("Available modelName={} => location={}", k, v)
+                );
+
                 if (modelLocationMap.isEmpty()) {
-                    logger.warn("No models discovered from LiteLLM.");
+                    logger.error("No models discovered from LiteLLM.");
                     modelDropdown.addItem("No Models Available");
                     modelDropdown.setEnabled(false);
-                    disableUserActionButtons(); // Disable code/ask/search if no models
+                    disableUserActionButtons();
                 } else {
                     logger.info("Populating dropdown with {} models.", modelLocationMap.size());
-                    // Sort display names alphabetically for the dropdown
                     modelLocationMap.keySet().stream().sorted().forEach(modelDropdown::addItem);
                     modelDropdown.setEnabled(true);
 
-                    // Try to select the quick model's display name if available
-                    String quickModelLocation = Models.nameOf(Models.quickModel());
-                    modelLocationMap.entrySet().stream()
-                            .filter(entry -> entry.getValue().equals(quickModelLocation))
-                            .map(Map.Entry::getKey)
-                            .findFirst()
-                            .ifPresent(quickModelDisplayName -> modelDropdown.setSelectedItem(quickModelDisplayName));
+                    // TODO save and restore most-recently-selected model
+                    // modelDropdown.setSelectedItem(TODO);
 
-                    enableUserActionButtons(); // Enable buttons now that models are loaded
+                    enableUserActionButtons();
                 }
-                 // Adjust dropdown width based on the longest item
-                 adjustComboBoxWidth(modelDropdown); // Call local helper method
-             });
-             return null; // Indicate task completion
+
+                // For clarity, we keep the same approach for resizing the combo box
+                adjustComboBoxWidth(modelDropdown);
+            });
+
+            return null;
         });
     }
-
 
     /**
      * Be very careful to run any UI updates on the EDT
@@ -1408,9 +1405,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void focusInput() {
-        SwingUtilities.invokeLater(() -> {
-            this.commandInputField.requestFocus();
-        });
+        SwingUtilities.invokeLater(() -> this.commandInputField.requestFocus());
     }
 
     /**
@@ -1528,7 +1523,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * @param comboBox The JComboBox to adjust.
      */
     private void adjustComboBoxWidth(JComboBox<?> comboBox) {
-        Object prototypeValue = null;
         int maxWidth = 0;
         ComboBoxModel<?> model = comboBox.getModel();
         @SuppressWarnings("unchecked") // Cast is safe here for rendering purposes
@@ -1544,7 +1538,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 int width = preferredSize.width;
                 if (width > maxWidth) {
                     maxWidth = width;
-                    prototypeValue = value; // Store the widest item
                 }
             }
         }

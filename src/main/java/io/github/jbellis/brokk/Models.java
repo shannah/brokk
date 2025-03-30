@@ -41,34 +41,33 @@ public final class Models {
             .build();
     public static final String LITELLM_BASE_URL = "http://localhost:4000"; // Default LiteLLM endpoint
 
-    // Static maps to hold loaded models and their names
-    private static final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>(); // displayName -> model
-    private static final ConcurrentHashMap<StreamingChatLanguageModel, String> modelNames = new ConcurrentHashMap<>(); // model -> location
-    private static final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>(); // displayName -> location
+    // name -> model instance
+    private static final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
 
-    // Static quick model reference
-    private static volatile StreamingChatLanguageModel quickModel = null; // Initialized in init()
-    private static volatile SpeechToTextModel sttModel = null; // Initialized in init()
+    // name -> location
+    private static final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>();
 
-    // langchain4j only supports openai tokenization, this is not very accurate for other providers
-    // but doing loc-based estimation based on information in the responses was worse
-    private static final OpenAiTokenizer tokenizer = new OpenAiTokenizer("gpt-4o"); // Use a common recent tokenizer
+    // "quick" default model instance, set in init()
+    private static volatile StreamingChatLanguageModel quickModel = null;
+
+    // STT model
+    private static volatile SpeechToTextModel sttModel = null;
+
+    // Simple OpenAI tokenizer for approximate counting
+    private static final OpenAiTokenizer tokenizer = new OpenAiTokenizer("gpt-4o");
 
     static final String UNAVAILABLE = "AI is unavailable";
 
-    // Initialize models on class loading
+    // Initialize at class load time
     static {
         init();
     }
 
     /**
-     * Returns the location string (e.g., "openai/gpt-4o") for a given model instance.
-     *
-     * @param model The model instance.
-     * @return The location string, or "unknown" if the model is not recognized.
+     * Returns the display name for a given model instance
      */
     public static String nameOf(StreamingChatLanguageModel model) {
-        return modelNames.getOrDefault(model, "unknown");
+        return loadedModels.entrySet().stream().filter(e -> e.getValue().equals(model)).findFirst().orElseThrow().getKey();
     }
 
     /**
@@ -84,10 +83,9 @@ public final class Models {
 
             try (okhttp3.Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
-                     String errorBody = response.body() != null ? response.body().string() : "(no body)";
-                     throw new IOException("Failed to fetch model info: " + response.code() + " " + response.message() + " - " + errorBody);
+                    String errorBody = response.body() != null ? response.body().string() : "(no body)";
+                    throw new IOException("Failed to fetch model info: " + response.code() + " " + response.message() + " - " + errorBody);
                 }
-                // Ensure body is not null before reading
                 ResponseBody responseBodyObj = response.body();
                 if (responseBodyObj == null) {
                     throw new IOException("Received empty response body");
@@ -98,38 +96,62 @@ public final class Models {
 
                 if (dataNode.isArray()) {
                     modelLocations.clear(); // Clear previous entries
+
+                    // For each element, parse:
+                    //   top-level "model_name" => modelName
+                    //   "litellm_params"."model" => modelLocation
                     for (JsonNode modelInfo : dataNode) {
-                        String location = modelInfo.path("model_name").asText(); // e.g., "openai/gpt-4o"
-                        if (location != null && !location.isBlank()) {
-                            String displayName = location.substring(location.lastIndexOf('/') + 1); // e.g., "gpt-4o"
-                            modelLocations.put(displayName, location);
-                            logger.debug("Discovered model: {} -> {}", displayName, location);
+                        String modelName = modelInfo.path("model_name").asText();
+                        String modelLocation = modelInfo
+                                .path("litellm_params")
+                                .path("model")
+                                .asText();
+
+                        logger.debug("Parsed from info: modelName={}, modelLocation={}", modelName, modelLocation);
+
+                        if (modelName != null && !modelName.isBlank() &&
+                                modelLocation != null && !modelLocation.isBlank())
+                        {
+                            modelLocations.put(modelName, modelLocation);
+                            logger.debug("Discovered model: {} -> {}", modelName, modelLocation);
                         }
                     }
+
                     logger.info("Discovered {} models", modelLocations.size());
                 } else {
                     logger.error("/model/info did not return a data array. No models discovered.");
                 }
             }
         } catch (IOException e) {
-            logger.error("Failed to connect to Brokk at {} or parse response: {}. AI models will be unavailable.", LITELLM_BASE_URL, e.getMessage());
-            // Ensure maps are clear if connection fails
+            logger.error("Failed to connect to Brokk at {} or parse response: {}. AI models will be unavailable.",
+                         LITELLM_BASE_URL, e.getMessage());
             modelLocations.clear();
         }
 
-        // Initialize quickModel - attempt to get preferred model, fallback if needed
+        // Attempt to find a "preferred" quick model
         String preferredQuickModelLocation = "gemini/gemini-2.0-flash-lite";
-        String fallbackQuickModelLocation = modelLocations.values().stream().findFirst().orElseThrow();
 
+        // If we see "gemini/gemini-2.0-flash-lite" in the discovered values, use that
         if (modelLocations.containsValue(preferredQuickModelLocation)) {
-            quickModel = get(preferredQuickModelLocation, preferredQuickModelLocation);
-            logger.info("Initialized quickModel with {}", preferredQuickModelLocation);
+            var matchingEntry = modelLocations.entrySet().stream()
+                    .filter(e -> e.getValue().equals(preferredQuickModelLocation))
+                    .findFirst()
+                    .orElse(null);
+
+            if (matchingEntry == null) {
+                logger.warn("No model name found for location {}", preferredQuickModelLocation);
+            } else {
+                quickModel = get(matchingEntry.getKey());
+                logger.info("Initialized quickModel with {} => {}", matchingEntry.getKey(), preferredQuickModelLocation);
+            }
         } else {
             logger.warn("Quick model unavailable!? Using first available");
-            quickModel = get(fallbackQuickModelLocation, fallbackQuickModelLocation);
+            var firstEntry = modelLocations.entrySet().iterator().next();
+            quickModel = get(firstEntry.getKey());
+            logger.info("Using first available model: {} => {}", firstEntry.getKey(), firstEntry.getValue());
         }
 
-        // Initialize sttModel
+        // Initialize STT model
         String openaiKey = getKey("OPENAI_API_KEY");
         if (openaiKey != null && !openaiKey.isBlank()) {
             sttModel = new OpenAiWhisperSTT(openaiKey);
@@ -141,37 +163,58 @@ public final class Models {
     }
 
     /**
-     * Gets a map of available model display names to their full location strings.
-     * @return A map where keys are short names (e.g., "gpt-4o") and values are locations (e.g., "openai/gpt-4o").
+     * Retrieves an API key by checking project properties and then environment variables.
+     */
+    private static String getKey(String keyName) {
+        try {
+            Path keysPath = Project.getLlmKeysPath();
+            if (Files.exists(keysPath)) {
+                var properties = new Properties();
+                try (var reader = Files.newBufferedReader(keysPath)) {
+                    properties.load(reader);
+                }
+                String propValue = properties.getProperty(keyName);
+                if (propValue != null && !propValue.isBlank()) {
+                    return propValue.trim();
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error reading LLM keys: " + e.getMessage());
+        }
+
+        String envValue = System.getenv(keyName);
+        if (envValue != null && !envValue.isBlank()) {
+            return envValue.trim();
+        }
+        return null;
+    }
+
+    /**
+     * Gets a map of available model *names* to their full location strings.
+     * e.g. "deepseek-v3" -> "deepseek/deepseek-chat"
      */
     public static Map<String, String> getAvailableModels() {
-        // Return an immutable copy
         return Map.copyOf(modelLocations);
     }
 
-
     /**
-     * Retrieves or creates a StreamingChatLanguageModel instance for the given name/location.
-     * All models are configured to use the LiteLLM proxy.
-     *
-     * @param displayName The user-facing name (used for caching, can be same as location).
-     * @param location    The model identifier used by LiteLLM (e.g., "openai/gpt-4o", "deepseek/deepseek-chat").
-     * @return The StreamingChatLanguageModel instance.
+     * Retrieves or creates a StreamingChatLanguageModel for the given modelName.
+     * The actual location string is looked up internally.
      */
-    public static StreamingChatLanguageModel get(String displayName, String location) {
-        return loadedModels.computeIfAbsent(displayName, key -> {
-            logger.info("Creating new model instance for '{}' at location '{}' via LiteLLM", displayName, location);
-            // Use OpenAI client type to connect to LiteLLM proxy
-            // API key "litellm" is often used as a placeholder when LiteLLM manages keys
-            var model = OpenAiStreamingChatModel.builder()
+    public static StreamingChatLanguageModel get(String modelName) {
+        return loadedModels.computeIfAbsent(modelName, key -> {
+            String location = modelLocations.get(modelName);
+            logger.info("Creating new model instance for '{}' at location '{}' via LiteLLM", modelName, location);
+
+            // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
+            // placeholder, LiteLLM manages actual keys
+            return OpenAiStreamingChatModel.builder()
                     .baseUrl(LITELLM_BASE_URL)
-                    .apiKey("litellm") // Placeholder key for LiteLLM
-                    .modelName(location) // Pass the full location string to LiteLLM
-                    .logRequests(true) // Enable logging for debugging
+                    .apiKey("litellm") // placeholder, LiteLLM manages actual keys
+                    .modelName(location)
+                    .logRequests(true)
                     .logResponses(true)
                     .build();
-            modelNames.put(model, location); // Store model -> location mapping
-            return model;
         });
     }
 
@@ -193,7 +236,6 @@ public final class Models {
 
     /**
      * Returns the statically configured quick model instance.
-     * This might be an UnavailableStreamingModel if initialization failed.
      */
     public static StreamingChatLanguageModel quickModel() {
         assert quickModel != null;
@@ -202,58 +244,19 @@ public final class Models {
 
     /**
      * Returns the statically configured SpeechToTextModel instance.
-     * This might be an UnavailableSTT if initialization failed or no key was found.
      */
     public static SpeechToTextModel sttModel() {
         if (sttModel == null) {
-            // Should have been initialized in static block, but as a safeguard
             logger.warn("sttModel accessed before initialization, returning UnavailableSTT.");
             return new UnavailableSTT();
         }
-       return sttModel;
-    }
-
-    /**
-     * Retrieves an API key by checking project properties and then environment variables.
-     *
-     * @param keyName The name of the key (e.g., "OPENAI_API_KEY").
-     * @return The key value, or null if not found.
-     */
-     private static String getKey(String keyName) {
-        // First try properties file
-        try {
-            Path keysPath = Project.getLlmKeysPath();
-            if (Files.exists(keysPath)) {
-                var properties = new Properties();
-                try (var reader = Files.newBufferedReader(keysPath)) {
-                    properties.load(reader);
-                }
-                String propValue = properties.getProperty(keyName);
-                if (propValue != null && !propValue.isBlank()) {
-                    return propValue.trim();
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Error reading LLM keys: " + e.getMessage());
-        }
-
-        // Next try system environment variables
-        String envValue = System.getenv(keyName);
-        if (envValue != null && !envValue.isBlank()) {
-            return envValue.trim();
-        }
-
-        // Nothing found
-        return null;
+        return sttModel;
     }
 
     /**
      * Simple interface for speech-to-text operations.
      */
     public interface SpeechToTextModel {
-        /**
-         * Transcribes the given audio file to text, returning the transcript.
-         */
         String transcribe(Path audioFile) throws IOException;
     }
 
@@ -269,8 +272,7 @@ public final class Models {
     }
 
     /**
-     * Real STT using OpenAI Whisper v1. Uses OkHttp for multipart/form-data upload.
-     * We block until the transcription is done. This requires an OpenAI API key.
+     * Real STT using OpenAI Whisper v1.
      */
     public static class OpenAiWhisperSTT implements SpeechToTextModel {
         private static final Logger logger = LogManager.getLogger(OpenAiWhisperSTT.class);
@@ -288,11 +290,6 @@ public final class Models {
                     .build();
         }
 
-        /**
-         * Determines the MediaType based on file extension.
-         * @param fileName Name of the file
-         * @return MediaType for the HTTP request
-         */
         private MediaType getMediaTypeFromFileName(String fileName) {
             var extension = fileName.toLowerCase();
             int dotIndex = extension.lastIndexOf('.');
@@ -305,21 +302,15 @@ public final class Models {
                 case "mp4", "m4a" -> MediaType.parse("audio/mp4");
                 case "wav" -> MediaType.parse("audio/wav");
                 case "webm" -> MediaType.parse("audio/webm");
-                default -> MediaType.parse("audio/mpeg"); // fallback
+                default -> MediaType.parse("audio/mpeg");
             };
         }
 
-        /**
-         * Transcribes the given audio file to text, returning the transcript.
-         * Uses OkHttp for multipart/form-data with file, model, and response_format fields.
-         */
         @Override
         public String transcribe(Path audioFile) throws IOException {
             logger.info("Beginning transcription for file: {}", audioFile);
             File file = audioFile.toFile();
 
-            // Use getMediaTypeFromFileName if you want to differentiate .wav vs .mp3, etc.
-            // For a simpler approach, you could always use MediaType.get("audio/mpeg") or "audio/wav"
             MediaType mediaType = getMediaTypeFromFileName(file.getName());
             RequestBody fileBody = RequestBody.create(file, mediaType);
 
@@ -342,7 +333,6 @@ public final class Models {
 
             try (okhttp3.Response response = httpClient.newCall(request).execute()) {
                 String bodyStr = response.body() != null ? response.body().string() : "";
-
                 logger.debug("Received response, status = {}", response.code());
 
                 if (!response.isSuccessful()) {
@@ -351,7 +341,6 @@ public final class Models {
                                                   + response.code() + ": " + bodyStr);
                 }
 
-                // Parse JSON response
                 try {
                     ObjectMapper mapper = new ObjectMapper();
                     JsonNode node = mapper.readTree(bodyStr);
