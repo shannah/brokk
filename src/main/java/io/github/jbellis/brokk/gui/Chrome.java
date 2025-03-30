@@ -467,20 +467,20 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         wrapper.add(historyPanel, gbc);
         gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
 
-        // --- Row 1: Mic Button, Model Dropdown, Command Input ---
+        // --- Row 1 & 2: Mic Button, Command Input, Model Dropdown, Buttons ---
 
-        // Mic button (Col 0, Row 1)
+        // Mic button (Col 0, Row 1 & 2)
         gbc.gridx = 0;
         gbc.gridy = 1;
         gbc.gridwidth = 1;
-        gbc.gridheight = 2; // Span 2 rows (input + buttons)
+        gbc.gridheight = 2; // Span 2 rows (input + buttons/dropdown)
         gbc.weightx = 0;
         gbc.weighty = 1.0; // Allow mic button to take vertical space
         gbc.fill = GridBagConstraints.VERTICAL; // Fill vertically
         gbc.anchor = GridBagConstraints.CENTER;
-        gbc.insets = new Insets(2, 2, 2, 8);
+        gbc.insets = new Insets(2, 2, 2, 8); // Right margin
         micButton = new VoiceInputButton(
-                commandInputField,
+                commandInputField, // Still needs the instance, even if created later
                 contextManager,
                 () -> actionOutput("Recording"),
                 this::toolError
@@ -491,26 +491,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.weighty = 0; // Reset weighty
         gbc.fill = GridBagConstraints.NONE; // Reset fill
 
-        // Model dropdown (Col 1, Row 1)
-        gbc.gridx = 1;
-        gbc.gridy = 1;
-        gbc.gridwidth = 1;
-        gbc.weightx = 0; // Don't allow dropdown to expand horizontally excessively
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.insets = new Insets(0, 0, 0, 5); // Add right margin
-        modelDropdown = new JComboBox<>();
-        modelDropdown.setToolTipText("Select the AI model to use");
-        // Add listener to adjust width dynamically when items change (handled in initialize)
-        // Add listener to potentially save selection or update default button?
-        wrapper.add(modelDropdown, gbc);
-        gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
 
-        // Command input field (Col 2, Row 1)
-        gbc.gridx = 2; // Move to column 2
+        // Command input field (Col 1+2, Row 1)
+        gbc.gridx = 1; // Start at column 1
         gbc.gridy = 1;
-        gbc.weightx = 1.0; // Allow input field to take remaining horizontal space
+        gbc.gridwidth = 2; // Span 2 columns (above dropdown and buttons)
+        gbc.weightx = 1.0; // Allow input field to take horizontal space
+        gbc.weighty = 1.0; // Allow input field to take vertical space in its row
         gbc.fill = GridBagConstraints.BOTH;
+        gbc.insets = new Insets(0, 0, 5, 0); // Bottom margin before next row
         commandInputField = new RSyntaxTextArea(3, 40);
         commandInputField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         commandInputField.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
@@ -529,14 +518,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Add Ctrl+Enter shortcut to trigger the default button
         var ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK);
         commandInputField.getInputMap().put(ctrlEnter, "submitDefault");
-        commandInputField.getActionMap().put("submitDefault", new AbstractAction() 
+        commandInputField.getActionMap().put("submitDefault", new AbstractAction()
         {
             @Override
-            public void actionPerformed(ActionEvent e) 
+            public void actionPerformed(ActionEvent e)
             {
                 // If there's a default button, "click" it
                 var rootPane = SwingUtilities.getRootPane(commandInputField);
-                if (rootPane != null && rootPane.getDefaultButton() != null) 
+                if (rootPane != null && rootPane.getDefaultButton() != null)
                 {
                     rootPane.getDefaultButton().doClick();
                 }
@@ -549,18 +538,37 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandScrollPane.setPreferredSize(new Dimension(600, 80));
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
         wrapper.add(commandScrollPane, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
 
 
-        // --- Row 2: Buttons ---
-        // Buttons holder panel (Col 1 + 2, Row 2)
-        gbc.gridx = 1; // Start from column 1 (left of input field)
+        // --- Row 2: Model Dropdown, Buttons ---
+
+        // Model dropdown (Col 1, Row 2)
+        gbc.gridx = 1;
         gbc.gridy = 2;
-        gbc.gridwidth = 2; // Span across model and input field columns
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        var buttonsHolder = new JPanel(new BorderLayout());
+        gbc.gridwidth = 1;
+        gbc.weightx = 0; // Don't allow dropdown to expand horizontally excessively
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Fill horizontally within its cell
+        gbc.anchor = GridBagConstraints.WEST; // Align left
+        gbc.insets = new Insets(0, 0, 0, 5); // Right margin
+        modelDropdown = new JComboBox<>();
+        modelDropdown.setToolTipText("Select the AI model to use");
+        wrapper.add(modelDropdown, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
 
-        var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+
+        // Buttons holder panel (Col 2, Row 2)
+        gbc.gridx = 2; // Column 2
+        gbc.gridy = 2; // Row 2
+        gbc.gridwidth = 1; // Only one column wide
+        gbc.weightx = 1.0; // Allow buttons panel to take remaining horizontal space
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Fill horizontally
+        gbc.anchor = GridBagConstraints.EAST; // Align buttons to the right
+        var buttonsHolder = new JPanel(new BorderLayout()); // Use BorderLayout to manage inner panels
+
+        // Panel for action buttons (aligned left within their space)
+        var leftButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0)); // Use FlowLayout for buttons
+        leftButtonsPanel.setBorder(BorderFactory.createEmptyBorder()); // Remove default FlowLayout gaps if needed
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
         codeButton.setToolTipText("Tell the LLM to write code to solve this problem using the current context");
@@ -586,14 +594,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         leftButtonsPanel.add(searchButton);
         leftButtonsPanel.add(runButton);
 
-        var rightButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        // Panel for stop button (aligned right within its space)
+        var rightButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0)); // Use FlowLayout, align right
+        rightButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
         stopButton = new JButton("Stop");
         stopButton.setToolTipText("Cancel the current operation");
         stopButton.addActionListener(e -> stopCurrentUserTask());
         rightButtonsPanel.add(stopButton);
 
-        buttonsHolder.add(leftButtonsPanel, BorderLayout.WEST);
-        buttonsHolder.add(rightButtonsPanel, BorderLayout.EAST);
+        // Add button panels to the holder
+        buttonsHolder.add(leftButtonsPanel, BorderLayout.WEST); // Action buttons on the left
+        buttonsHolder.add(rightButtonsPanel, BorderLayout.EAST); // Stop button on the right
 
         wrapper.add(buttonsHolder, gbc);
 
@@ -1385,9 +1396,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
                     enableUserActionButtons();
                 }
-
-                // For clarity, we keep the same approach for resizing the combo box
-                adjustComboBoxWidth(modelDropdown);
             });
 
             return null;
@@ -1515,43 +1523,4 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         dialog.setLocationRelativeTo(getFrame());
          dialog.setVisible(true);
      }
-
-    /**
-     * Adjusts the preferred width of a JComboBox to fit its widest item.
-     * Includes space for the dropdown arrow.
-     *
-     * @param comboBox The JComboBox to adjust.
-     */
-    private void adjustComboBoxWidth(JComboBox<?> comboBox) {
-        int maxWidth = 0;
-        ComboBoxModel<?> model = comboBox.getModel();
-        @SuppressWarnings("unchecked") // Cast is safe here for rendering purposes
-        ListCellRenderer<Object> renderer = (ListCellRenderer<Object>) comboBox.getRenderer();
-        FontMetrics fm = comboBox.getFontMetrics(comboBox.getFont());
-
-        // Calculate widest item based on renderer's preferred size
-        for (int i = 0; i < model.getSize(); i++) {
-            Object value = model.getElementAt(i);
-            if (value != null) { // Check for null items
-                Component comp = renderer.getListCellRendererComponent(new JList<>(), value, i, false, false); // Use dummy JList
-                Dimension preferredSize = comp.getPreferredSize();
-                int width = preferredSize.width;
-                if (width > maxWidth) {
-                    maxWidth = width;
-                }
-            }
-        }
-
-        // Revalidate the component to apply size changes
-        comboBox.revalidate();
-
-        // Using setPrototypeDisplayValue is another common technique, but calculating manually
-        // can sometimes be more reliable, especially with custom renderers.
-        // If the above calculation isn't perfect, you could try this as an alternative:
-        // if (prototypeValue != null) {
-        //     comboBox.setPrototypeDisplayValue(prototypeValue);
-        // } else if (model.getSize() > 0) {
-        //     comboBox.setPrototypeDisplayValue(model.getElementAt(0));
-        // }
-    }
 }
