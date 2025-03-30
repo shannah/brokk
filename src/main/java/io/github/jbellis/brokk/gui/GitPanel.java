@@ -2,13 +2,13 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-
+import io.github.jbellis.brokk.git.GitRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants; // Add this import back
+import org.fife.ui.rtextarea.RTextScrollPane;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import io.github.jbellis.brokk.gui.GuiTheme; // Import needed for PreviewPanel constructor
 
 /**
  * Panel for showing Git-related information and actions, excluding the "Log" tab
@@ -43,8 +44,8 @@ public class GitPanel extends JPanel {
     private JTabbedPane tabbedPane;
     private final Map<String, JTable> fileHistoryTables = new HashMap<>();
     private Map<String, String> fileStatusMap = new HashMap<>();
-    
-    
+
+
 
     // Reference to the extracted Log tab
     private GitLogPanel gitLogPanel;  // The separate class
@@ -102,9 +103,7 @@ public class GitPanel extends JPanel {
      * Updates repository data in the UI
      */
     public void updateRepo() {
-        SwingUtilities.invokeLater(() -> {
-            gitLogPanel.update();
-        });
+        SwingUtilities.invokeLater(() -> gitLogPanel.update());
     }
 
     /**
@@ -122,8 +121,8 @@ public class GitPanel extends JPanel {
         uncommittedFilesTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
             @Override
             public java.awt.Component getTableCellRendererComponent(javax.swing.JTable table, Object value,
-                                                                   boolean isSelected, boolean hasFocus,
-                                                                   int row, int column) {
+                                                                    boolean isSelected, boolean hasFocus,
+                                                                    int row, int column) {
                 var cell = (javax.swing.table.DefaultTableCellRenderer) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
                 String filename = (String) table.getModel().getValueAt(row, 0);
                 String path = (String) table.getModel().getValueAt(row, 1);
@@ -225,7 +224,7 @@ public class GitPanel extends JPanel {
                 editFile(filePath);
             }
         });
-        
+
         // Update context menu item states based on selection
         uncommittedFilesTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -310,8 +309,8 @@ public class GitPanel extends JPanel {
                     } else {
                         // Create a partial stash with only the selected files
                         getRepo().createPartialStash(
-                            stashDescription.isEmpty() ? "Partial stash created by Brokk" : stashDescription, 
-                            selectedFiles);
+                                stashDescription.isEmpty() ? "Partial stash created by Brokk" : stashDescription,
+                                selectedFiles);
                     }
                     SwingUtilities.invokeLater(() -> {
                         if (selectedFiles.isEmpty()) {
@@ -372,8 +371,8 @@ public class GitPanel extends JPanel {
                         updateCommitPanel();
                         // The GitLogPanel can refresh branches/commits:
                         gitLogPanel.update();
-                    // Select the newly checked out branch in the log panel
-                    gitLogPanel.selectCurrentBranch();
+                        // Select the newly checked out branch in the log panel
+                        gitLogPanel.selectCurrentBranch();
                         chrome.enableUserActionButtons();
                     });
                 } catch (Exception ex) {
@@ -465,7 +464,7 @@ public class GitPanel extends JPanel {
                             fileStatusMap.put(fullPath, "modified");
                         }
                     }
-                    
+
                     var model = (DefaultTableModel) uncommittedFilesTable.getModel();
                     model.setRowCount(0);
 
@@ -486,7 +485,7 @@ public class GitPanel extends JPanel {
 
                             // Check if this file was previously selected
                             String fullPath = file.getParent().isEmpty() ?
-                                file.getFileName() : file.getParent() + "/" + file.getFileName();
+                                    file.getFileName() : file.getParent() + "/" + file.getFileName();
                             if (selectedFiles.contains(fullPath)) {
                                 rowsToSelect.add(i);
                             }
@@ -504,8 +503,8 @@ public class GitPanel extends JPanel {
 
                         var text = commitMessageArea.getText().trim();
                         var hasNonCommentText = Arrays.stream(text.split("\n"))
-                                                  .anyMatch(line -> !line.trim().isEmpty()
-                                                                    && !line.trim().startsWith("#"));
+                                .anyMatch(line -> !line.trim().isEmpty()
+                                        && !line.trim().startsWith("#"));
                         commitButton.setEnabled(hasNonCommentText);
                         stashButton.setEnabled(hasNonCommentText);
                     }
@@ -540,7 +539,7 @@ public class GitPanel extends JPanel {
             stashButton.setToolTipText("Save all your changes to the stash");
         }
     }
-    
+
     /**
      * Updates the enabled state of context menu items for the uncommitted files table
      * based on the current selection.
@@ -574,8 +573,8 @@ public class GitPanel extends JPanel {
 
             editFileItem.setEnabled(!alreadyEditable);
             editFileItem.setToolTipText(alreadyEditable ?
-                    "File is already in editable context" :
-                    "Edit this file");
+                                                "File is already in editable context" :
+                                                "Edit this file");
         } else {
             // More than one file selected
             captureDiffItem.setEnabled(true);
@@ -618,7 +617,7 @@ public class GitPanel extends JPanel {
      */
     public void addFileHistoryTab(ProjectFile file) {
         String filePath = file.toString();
-        
+
         // If we already have a tab for this file, just select it
         if (fileHistoryTables.containsKey(filePath)) {
             for (int i = 0; i < tabbedPane.getTabCount(); i++) {
@@ -634,7 +633,7 @@ public class GitPanel extends JPanel {
 
         // Create a history table similar to the commits table but with different column proportions
         DefaultTableModel fileHistoryModel = new DefaultTableModel(
-            new Object[]{"Message", "Author", "Date", "ID"}, 0
+                new Object[]{"Message", "Author", "Date", "ID"}, 0
         ) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
@@ -664,15 +663,21 @@ public class GitPanel extends JPanel {
                 }
             });
         }
-        JMenuItem addToContextItem = new JMenuItem("Add Changes to Context");
+        JMenuItem addToContextItem = new JMenuItem("Capture Diff");
         JMenuItem compareWithLocalItem = new JMenuItem("Compare with Local");
+        JMenuItem viewFileAtRevisionItem = new JMenuItem("View File at Revision"); // New item
+        JMenuItem viewDiffItem = new JMenuItem("View Diff");
         JMenuItem viewInLogItem = new JMenuItem("View in Log");
         JMenuItem editFileItem = new JMenuItem("Edit File");
 
         historyContextMenu.add(addToContextItem);
-        historyContextMenu.add(compareWithLocalItem);
-        historyContextMenu.add(viewInLogItem);
         historyContextMenu.add(editFileItem);
+        historyContextMenu.addSeparator();
+        historyContextMenu.add(viewInLogItem);
+        historyContextMenu.addSeparator();
+        historyContextMenu.add(viewFileAtRevisionItem);
+        historyContextMenu.add(viewDiffItem);
+        historyContextMenu.add(compareWithLocalItem);
 
         // Make sure right-clicking selects row under cursor first
         historyContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
@@ -692,7 +697,29 @@ public class GitPanel extends JPanel {
         });
 
         fileHistoryTable.setComponentPopupMenu(historyContextMenu);
-        
+
+        // Add selection listener to enable/disable context menu items
+        fileHistoryTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int selectedRowCount = fileHistoryTable.getSelectedRowCount();
+                boolean singleSelected = selectedRowCount == 1;
+
+                addToContextItem.setEnabled(singleSelected);
+                compareWithLocalItem.setEnabled(singleSelected);
+                viewFileAtRevisionItem.setEnabled(singleSelected); // Enable/disable View File at Revision
+                viewDiffItem.setEnabled(singleSelected);
+                viewInLogItem.setEnabled(singleSelected);
+
+                // Enable Edit File only if single row is selected and file isn't already editable
+                if (singleSelected) {
+                    var selectedFile = contextManager.toFile(filePath);
+                    editFileItem.setEnabled(!contextManager.getEditableFiles().contains(selectedFile));
+                } else {
+                    editFileItem.setEnabled(false);
+                }
+            }
+        });
+
         // Add double-click listener to show diff
         fileHistoryTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -714,6 +741,24 @@ public class GitPanel extends JPanel {
             if (row >= 0) {
                 String commitId = (String) fileHistoryModel.getValueAt(row, 3);
                 addFileChangeToContext(commitId, filePath);
+            }
+        });
+
+        // Hook up "View File at Revision" action
+        viewFileAtRevisionItem.addActionListener(e -> {
+            int row = fileHistoryTable.getSelectedRow();
+            if (row >= 0) {
+                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
+                viewFileAtRevision(commitId, filePath);
+            }
+        });
+
+        // Hook up "View Diff" action
+        viewDiffItem.addActionListener(e -> {
+            int row = fileHistoryTable.getSelectedRow();
+            if (row >= 0) {
+                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
+                showFileHistoryDiff(commitId, filePath);
             }
         });
 
@@ -792,12 +837,12 @@ public class GitPanel extends JPanel {
         // Load the file history
         loadFileHistory(file, fileHistoryModel, fileHistoryTable);
     }
-    
+
     private String getFileTabName(String filePath) {
         int lastSlash = filePath.lastIndexOf('/');
         return lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
     }
-    
+
     /**
      * Switches to the Log tab and highlights the specified commit.
      */
@@ -809,11 +854,11 @@ public class GitPanel extends JPanel {
                 break;
             }
         }
-        
+
         // Find and select the commit in gitLogPanel
         gitLogPanel.selectCommitById(commitId);
     }
-    
+
     private void loadFileHistory(ProjectFile file, DefaultTableModel model, JTable table) {
         contextManager.submitBackgroundTask("Loading file history: " + file, () -> {
             try {
@@ -829,13 +874,13 @@ public class GitPanel extends JPanel {
                     for (var commit : history) {
                         var formattedDate = formatCommitDate(commit.date(), today);
                         model.addRow(new Object[]{
-                            commit.message(),
-                            commit.author(),
-                            formattedDate,
-                            commit.id()
+                                commit.message(),
+                                commit.author(),
+                                formattedDate,
+                                commit.id()
                         });
                     }
-                    
+
                     // Now that data is loaded, adjust column widths
                     TableUtils.fitColumnWidth(table, 1); // author column
                     TableUtils.fitColumnWidth(table, 2); // date column
@@ -845,14 +890,14 @@ public class GitPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     model.setRowCount(0);
                     model.addRow(new Object[]{
-                        "Error loading history: " + e.getMessage(), "", "", ""
+                            "Error loading history: " + e.getMessage(), "", "", ""
                     });
                 });
             }
             return null;
         });
     }
-    
+
     private void addFileChangeToContext(String commitId, String filePath)
     {
         contextManager.submitContextTask("Adding file change to context", () -> {
@@ -878,7 +923,7 @@ public class GitPanel extends JPanel {
             }
         });
     }
-    
+
     private void compareFileWithLocal(String commitId, String filePath) {
         contextManager.submitUserTask("Comparing file with local", () -> {
             try {
@@ -903,13 +948,13 @@ public class GitPanel extends JPanel {
             }
         });
     }
-    
+
     private void editFile(String filePath) {
         List<ProjectFile> files = new ArrayList<>();
         files.add(contextManager.toFile(filePath));
         contextManager.editFiles(files);
     }
-    
+
     /**
      * Shows the diff for a file at a specific commit from file history.
      */
@@ -923,6 +968,35 @@ public class GitPanel extends JPanel {
         diffPanel.showFileDiff(commitId, file);
         diffPanel.showInDialog(this, dialogTitle);
     }
+
+    /**
+     * Shows the content of a file at a specific revision.
+     */
+    private void viewFileAtRevision(String commitId, String filePath) {
+        contextManager.submitUserTask("Viewing file at revision", () -> {
+            try {
+                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
+                var content = getRepo().getFileContent(commitId, repoFile);
+
+                if (content.isEmpty()) {
+                    chrome.systemOutput("File not found in this revision or is empty.");
+                    return;
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    String shortHash = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
+                    String title = String.format("%s at %s", repoFile.getFileName(), shortHash);
+
+                    var fragment = new ContextFragment.StringFragment(content, title);
+                    chrome.openFragmentPreview(fragment, SyntaxConstants.SYNTAX_STYLE_JAVA);
+                });
+            } catch (Exception ex) {
+                logger.error("Error viewing file at revision", ex);
+                chrome.toolErrorRaw("Error viewing file at revision: " + ex.getMessage());
+            }
+        });
+    }
+
 
     /**
      * Captures the diff of selected uncommitted files and adds it to the context.
@@ -977,7 +1051,6 @@ public class GitPanel extends JPanel {
         diffPanel.showCompareWithLocal("HEAD", file, /*useParent=*/ false);
         diffPanel.showInDialog(this, dialogTitle);
     }
-    
 
     protected String formatCommitDate(Date date, java.time.LocalDate today) {
         try {

@@ -477,16 +477,17 @@ public class GitLogPanel extends JPanel {
         JMenuItem addFileToContextItem = new JMenuItem("Capture Diff");
         JMenuItem compareFileWithLocalItem = new JMenuItem("Compare with Local");
         JMenuItem viewDiffItem = new JMenuItem("View Diff");
-        JMenuItem viewFileAtRevisionItem = new JMenuItem("View File at Revision");
         JMenuItem viewHistoryItem = new JMenuItem("View History");
         JMenuItem editFileItem = new JMenuItem("Edit File(s)");
         JMenuItem comparePrevWithLocalItem = new JMenuItem("Compare Previous with Local");
+
         changesContextMenu.add(addFileToContextItem);
         changesContextMenu.add(editFileItem);
         changesContextMenu.addSeparator();
-        changesContextMenu.add(viewDiffItem);
         changesContextMenu.add(viewHistoryItem);
-        changesContextMenu.add(viewFileAtRevisionItem);
+        changesContextMenu.addSeparator();
+        changesContextMenu.add(viewDiffItem);
+        // viewFileAtRevisionItem removed
         changesContextMenu.add(compareFileWithLocalItem);
         changesContextMenu.add(comparePrevWithLocalItem);
 
@@ -516,13 +517,15 @@ public class GitLogPanel extends JPanel {
                     int[] selRows = commitsTable.getSelectedRows();
                     boolean isSingleCommit = (selRows.length == 1);
 
-                    addFileToContextItem.setEnabled(hasFileSelection);
-                    viewDiffItem.setEnabled(paths.length == 1);
-                    viewFileAtRevisionItem.setEnabled(paths.length == 1 && isSingleCommit);
-                    compareFileWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
-                    comparePrevWithLocalItem.setEnabled(paths.length == 1 && isSingleCommit);
-                    viewHistoryItem.setEnabled(paths.length == 1);
-                    editFileItem.setEnabled(hasFileSelection);
+                    boolean isSingleFileSelected = paths != null && paths.length == 1 && hasFileNodesSelected(paths);
+
+                    viewHistoryItem.setEnabled(isSingleFileSelected); // History enabled for single file selection
+                    addFileToContextItem.setEnabled(hasFileSelection); // Capture diff enabled for any file selection
+                    editFileItem.setEnabled(hasFileSelection); // Edit enabled for any file selection
+                    viewDiffItem.setEnabled(isSingleFileSelected && isSingleCommit); // View diff enabled for single file/single commit
+                    compareFileWithLocalItem.setEnabled(isSingleFileSelected && isSingleCommit); // Compare local enabled for single file/single commit
+                    comparePrevWithLocalItem.setEnabled(isSingleFileSelected && isSingleCommit); // Compare prev enabled for single file/single commit
+                    // viewFileAtRevisionItem removed
 
                     changesContextMenu.show(changesTree, e.getX(), e.getY());
                 }
@@ -584,22 +587,7 @@ public class GitLogPanel extends JPanel {
             }
         });
 
-        viewFileAtRevisionItem.addActionListener(e -> {
-            TreePath[] paths = changesTree.getSelectionPaths();
-            if (paths != null && paths.length == 1) {
-                List<String> selectedFiles = getSelectedFilePaths(paths);
-                if (selectedFiles.size() == 1) {
-                    int[] selRows = commitsTable.getSelectedRows();
-                    if (selRows.length == 1) {
-                        String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
-                        String filePath = selectedFiles.get(0);
-                        viewFileAtRevision(commitId, filePath);
-                    }
-                }
-            }
-        });
-
-        // We only show a single-file diff if there is exactly one commit selected
+        // We only show a single-file diff if there is exactly one commit selected and one file selected
         viewDiffItem.addActionListener(e -> {
             TreePath[] paths = changesTree.getSelectionPaths();
             if (paths != null && paths.length == 1) {
@@ -1643,34 +1631,6 @@ public class GitLogPanel extends JPanel {
             var commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
             showFileDiff(commitId, filePath);
         }
-    }
-
-    /**
-     * Shows the contents of a file at a specific revision.
-     */
-    private void viewFileAtRevision(String commitId, String filePath) {
-        contextManager.submitUserTask("Viewing file at revision", () -> {
-            try {
-                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
-                var content = getRepo().getFileContent(commitId, repoFile);
-                
-                if (content.isEmpty()) {
-                    chrome.systemOutput("File not found in this revision or is empty.");
-                    return;
-                }
-                
-                SwingUtilities.invokeLater(() -> {
-                    String shortHash = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
-                    String title = String.format("%s at %s", repoFile.getFileName(), shortHash);
-                    
-                    var fragment = new ContextFragment.StringFragment(content, title);
-                    chrome.openFragmentPreview(fragment, SyntaxConstants.SYNTAX_STYLE_JAVA);
-                });
-            } catch (Exception ex) {
-                logger.error("Error viewing file at revision", ex);
-                chrome.toolErrorRaw("Error viewing file at revision: " + ex.getMessage());
-            }
-        });
     }
 
     /**
