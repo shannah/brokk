@@ -11,6 +11,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
@@ -43,7 +44,7 @@ import static java.lang.Math.min;
  * It uses multiple steps of searching and reasoning to find code elements relevant to a query.
  */
 public class SearchAgent {
-    private final Logger logger = LogManager.getLogger(SearchAgent.class);
+    private static final Logger logger = LogManager.getLogger(SearchAgent.class);
     // 64K context window for models like R1
     private static final int TOKEN_BUDGET = 64000;
     // Summarize tool responses longer than this (about 120 loc)
@@ -53,6 +54,7 @@ public class SearchAgent {
     private final ContextManager contextManager;
     private final Coder coder;
     private final IConsoleIO io;
+    private final StreamingChatLanguageModel model;
 
     // Budget and action control state
     private boolean allowSearch;
@@ -72,12 +74,13 @@ public class SearchAgent {
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
 
-    public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io) {
+    public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io, StreamingChatLanguageModel model) {
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
         this.coder = coder;
         this.io = io;
+        this.model = model;
         allowSearch = true;
         allowInspect = true;
         allowPagerank = true;
@@ -161,9 +164,13 @@ public class SearchAgent {
                     step.result
             )));
 
-            // Use the quick model for summarization
-            var response = coder.sendMessage(coder.models.searchModel(), messages).chatResponse();
-            return response.aiMessage().text();
+            // TODO can we use a different model for summarization?
+            var result = coder.sendMessage(model, messages);
+            if (result.error() != null) {
+                 logger.warn("Summarization failed or was cancelled.");
+                 return step.result; // Return raw result on failure
+            }
+            return result.chatResponse().aiMessage().text();
         });
     }
 
@@ -200,14 +207,19 @@ public class SearchAgent {
             Make sure to include the fully qualified source (class, method, etc) as well as the code.
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var result = coder.sendMessage(coder.models.searchModel(), messages);
+            var result = coder.sendMessage(model, messages); // Use searchModel
             if (result.cancelled()) {
-                io.systemOutput("Cancelled; stopping search");
-                return null;
+                io.systemOutput("Cancelled context evaluation; stopping search");
+                return null; // Propagate cancellation
             }
             if (result.error() != null) {
-                io.systemOutput("LLM error evaluating context; stopping search");
+                io.systemOutput("LLM error evaluating context: " + result.error().getMessage() + "; stopping search");
+                 // Propagate cancellation or error
                 return null;
+            }
+            if (result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+                 io.systemOutput("LLM returned empty response evaluating context; stopping search");
+                 return null;
             }
             knowledge.add(new Tuple2<>("Initial context", result.chatResponse().aiMessage().text()));
         }
@@ -611,7 +623,7 @@ public class SearchAgent {
 
         // Ask LLM for next action with tools
         var tools = createToolSpecifications();
-        var result = coder.sendMessage(coder.models.searchModel(), messages, tools);
+        var result = coder.sendMessage(model, messages, tools);
         if (result.cancelled()) {
             Thread.currentThread().interrupt();
             return List.of();

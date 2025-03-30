@@ -27,6 +27,12 @@ public class LLM {
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
+     * Uses the provided model for the initial request and potentially switches for fixes.
+     *
+     * @param coder The Coder instance.
+     * @param io Console IO handler.
+     * @param model The model selected by the user for the main task.
+     * @param userInput The user's goal/instructions.
      */
     public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
         // Track original contents of files before any changes
@@ -56,10 +62,12 @@ public class LLM {
             }
 
             // refresh with updated file contents
-            var contextMessages = DefaultPrompts.instance.collectMessages((ContextManager) coder.contextManager);
+            var contextManager = (ContextManager) coder.contextManager;
+            var contextMessages = DefaultPrompts.instance.collectMessages(contextManager);
             // Actually send the message to the LLM and get the response
             var allMessages = new ArrayList<>(contextMessages);
-            allMessages.addAll(requestMessages);
+            allMessages.addAll(requestMessages); // Add ongoing conversation history
+            logger.debug("Sending request to model: {}", Models.nameOf(model));
             var streamingResult = coder.sendStreaming(model, allMessages, true);
 
             // 1) If user cancelled
@@ -157,10 +165,9 @@ public class LLM {
             } else {
                 parseErrorAttempts = 0;
             }
-            blocks.clear(); // don't re-apply the same ones on the next loop
+            blocks.clear(); // Don't re-apply the same successful ones on the next loop
             if (!parseReflection.isEmpty()) {
-                io.systemOutput("Attempting to fix parse/match errors...");
-                model = parseErrorAttempts > 0 ? coder.models.editModel() : coder.models.applyModel();
+                io.systemOutput("Attempting to fix apply/match errors...");
                 requestMessages.add(new UserMessage(parseReflection));
                 continue;
             }
@@ -184,8 +191,6 @@ public class LLM {
             }
 
             io.systemOutput("Attempting to fix build errors...");
-            // Use EDIT model (smarter) for build fixes
-            model = coder.models.editModel();
             requestMessages.add(new UserMessage(buildReflection));
         }
 
@@ -235,11 +240,15 @@ public class LLM {
         var instructionsMsg = QuickEditPrompts.instance.formatInstructions(oldText, instructions);
         messages.add(new UserMessage(instructionsMsg));
 
-        // No echo for Quick Edit
-        var result = coder.sendStreaming(coder.models.applyModel(), messages, false);
+        // No echo for Quick Edit, use static quickModel
+        var result = coder.sendStreaming(Models.quickModel(), messages, false);
+        if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+            io.systemOutput("Quick edit failed or was cancelled.");
+            return;
+        }
         var responseText = result.chatResponse().aiMessage().text();
-        if (responseText.isBlank()) {
-            io.systemOutput("No response from LLM for quick edit.");
+        if (responseText == null || responseText.isBlank()) {
+            io.systemOutput("LLM returned empty response for quick edit.");
             return;
         }
 
@@ -275,7 +284,7 @@ public class LLM {
         }
 
         // Record the original content so we can undo if necessary
-        var originalContents = Map.<ProjectFile,String>of(file, fileContents);
+        var originalContents = Map.of(file, fileContents);
 
         // Save to context history
         var pendingHistory = List.of(
@@ -405,7 +414,7 @@ public class LLM {
                     ## Failed to match in file: `%s`
                     ```
                     <<<<<<< SEARCH
-                    %s
+            %s
                     =======
                     %s
                     >>>>>>> REPLACE

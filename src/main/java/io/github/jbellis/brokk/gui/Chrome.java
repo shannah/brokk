@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
@@ -7,6 +8,7 @@ import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,9 +25,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.Future;
-
-import io.github.jbellis.brokk.analyzer.ProjectFile;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
@@ -45,7 +47,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private RSyntaxTextArea commandInputField;
     private JLabel backgroundStatusLabel;
     private Dimension backgroundLabelPreferredSize;
-
+    private JPanel bottomPanel;
 
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
@@ -55,7 +57,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private ContextPanel contextPanel;
     private GitPanel gitPanel; // Will be null for dependency projects
 
-    // Buttons for the command input panel:
+    // Command input panel components:
+    private JComboBox<String> modelDropdown; // Dropdown for model selection
+    private Map<String, String> modelLocationMap = new TreeMap<>(); // display name -> location
     private JButton codeButton;  // renamed from goButton
     private JButton askButton;
     private JButton searchButton;
@@ -128,54 +132,37 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
-    public void onComplete() {
-        // Configure STT availability for mic button
-        boolean sttEnabled = contextManager != null
-                && !(contextManager.getCoder().models.sttModel() instanceof Models.UnavailableSTT);
-        micButton.configure(sttEnabled);
+    public void onComplete()
+    {
+        // Populate model dropdown after other components are ready
+        initializeModelDropdown();
 
         if (contextManager == null) {
             frame.setTitle("Brokk (no project)");
+            disableUserActionButtons(); // Ensure buttons disabled if no project/context
         } else {
             // Load saved theme, window size, and position
             frame.setTitle("Brokk: " + getProject().getRoot());
             loadWindowSizeAndPosition();
 
-            // Setup the context/git panels based on project type
-            // Get the existing bottom panel (which already contains NORTH and SOUTH components)
-            var bottomPanel = (JPanel) verticalSplitPane.getBottomComponent();
-
-            // DO NOT removeAll() here. Instead, add the correct component to the CENTER.
-
+            // If the project uses Git, put the context panel and the Git panel in a split pane
             if (getProject().hasGit()) {
-                // For main projects, create a split pane with both panels for the center
-                this.contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-                // Ensure contextPanel is created if buildMainPanel didn't already
-                if (contextPanel == null) {
-                    contextPanel = new ContextPanel(this, contextManager);
-                }
+                contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+                contextGitSplitPane.setResizeWeight(0.7); // 70% for context panel
+
+                contextPanel = new ContextPanel(this, contextManager);
                 contextGitSplitPane.setTopComponent(contextPanel);
 
-                // Create and add git panel
                 gitPanel = new GitPanel(this, contextManager);
                 contextGitSplitPane.setBottomComponent(gitPanel);
 
-                // Set resize weight so context panel gets extra space
-                contextGitSplitPane.setResizeWeight(0.7); // 70% to context, 30% to git
-
-                // Add the split pane to the center of the bottom panel
                 bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
-
-                // Update git panel state
                 updateCommitPanel();
                 gitPanel.updateRepo();
             } else {
-                // For dependency projects, just add the context panel directly to the center
+                // No Git => only a context panel in the center
                 gitPanel = null;
-                // Ensure contextPanel is created if buildMainPanel didn't already
-                if (contextPanel == null) {
-                    contextPanel = new ContextPanel(this, contextManager);
-                }
+                contextPanel = new ContextPanel(this, contextManager);
                 bottomPanel.add(contextPanel, BorderLayout.CENTER);
             }
 
@@ -186,19 +173,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             bottomPanel.repaint();
         }
 
-        // 4) Build menu
+        // Build menu (now that everything else is ready)
         frame.setJMenuBar(MenuBar.buildMenuBar(this));
 
-        // show the window
+        // Show the window
         frame.setVisible(true);
-        // this gets it to respect the minimum size on buttons panel, fuck it
         frame.validate();
         frame.repaint();
 
         // Set focus to command input field on startup
         commandInputField.requestFocusInWindow();
 
-        // Check if .gitignore is set and prompt user to update if needed
+        // Possibly check if .gitignore is set
         if (getProject() != null && getProject().hasGit()) {
             contextManager.submitBackgroundTask("Checking .gitignore", () -> {
                 if (!getProject().isGitIgnoreSet()) {
@@ -210,7 +196,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                                 JOptionPane.YES_NO_OPTION,
                                 JOptionPane.QUESTION_MESSAGE
                         );
-
                         if (result == JOptionPane.YES_OPTION) {
                             setupGitIgnore();
                         }
@@ -314,10 +299,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * - the LLM stream (top)
      * - the command result label
      * - the command input
-     * - the context panel
-     * - the background status label at bottom
+     * - the bottom area (context/git panel + status label)
      */
-    private JPanel buildMainPanel() {
+    private JPanel buildMainPanel()
+    {
         var panel = new JPanel(new BorderLayout());
 
         var contentPanel = new JPanel(new GridBagLayout());
@@ -330,19 +315,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Create history output pane (combines history panel and output panel)
         historyOutputPane = new HistoryOutputPane(this, contextManager);
 
-        // Create a split pane with output+history in top and command+context+status in bottom
+        // Create a split pane: top = historyOutputPane, bottom = bottomPanel (to be populated later)
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        // Set resize weight to prevent top component from collapsing on initial load
-        verticalSplitPane.setResizeWeight(0.4); // Give 40% of space to top component
+        verticalSplitPane.setResizeWeight(0.4);
         verticalSplitPane.setTopComponent(historyOutputPane);
 
-        // Create a panel for everything below the output area, using BorderLayout
-        // North: Command input/results
-        // Center: Context/Git (added in onComplete)
-        // South: Status label
-        var bottomPanel = new JPanel(new BorderLayout());
+        // Create the bottom panel
+        bottomPanel = new JPanel(new BorderLayout());
 
-        // Create and add the top controls (result label + command input panel)
+        // Build the top controls: result label + command input panel
         var topControlsPanel = new JPanel(new BorderLayout(0, 2));
         var resultLabel = buildCommandResultLabel();
         topControlsPanel.add(resultLabel, BorderLayout.NORTH);
@@ -350,17 +331,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         topControlsPanel.add(commandPanel, BorderLayout.SOUTH);
         bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
 
-        // Create the context panel (will be added to bottomPanel.CENTER later)
-        contextPanel = new ContextPanel(this, contextManager);
-
-        // Create and add the background status label at the very bottom
+        // Status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
         bottomPanel.add(statusLabel, BorderLayout.SOUTH);
 
-        // Set the fully constructed bottomPanel (minus the center component)
+        // For now, the center of bottomPanel is empty (we populate it in onComplete).
         verticalSplitPane.setBottomComponent(bottomPanel);
 
-        // Add the vertical split pane to the main content panel
         gbc.weighty = 1.0;
         gbc.gridy = 0;
         contentPanel.add(verticalSplitPane, gbc);
@@ -474,21 +451,66 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         ));
 
         var gbc = new GridBagConstraints();
-        gbc.gridx = 1;
+
+        // instantiate this early
+        commandInputField = new RSyntaxTextArea(3, 40);
+        // --- Row 0: History Dropdown ---
+        gbc.gridx = 1; // Span across model and input area columns
         gbc.gridy = 0;
-        gbc.gridwidth = 1;
+        gbc.gridwidth = 2; // Span 2 columns
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
         // 1) History dropdown at the top
         JPanel historyPanel = buildHistoryDropdown();
+        gbc.anchor = GridBagConstraints.WEST; // Align left
+        gbc.insets = new Insets(0, 0, 5, 0); // Add bottom margin
+        //JPanel historyPanel = buildHistoryDropdown(); // Remove duplicate declaration
         wrapper.add(historyPanel, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
 
-        // 3) The command input field (scrollpane) in the middle column, row=1
+        // --- Row 1: Mic Button, Model Dropdown, Command Input ---
+
+        // Mic button (Col 0, Row 1)
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        gbc.gridheight = 2; // Span 2 rows (input + buttons)
+        gbc.weightx = 0;
+        gbc.weighty = 1.0; // Allow mic button to take vertical space
+        gbc.fill = GridBagConstraints.VERTICAL; // Fill vertically
+        gbc.anchor = GridBagConstraints.CENTER;
+        gbc.insets = new Insets(2, 2, 2, 8);
+        micButton = new VoiceInputButton(
+                commandInputField,
+                contextManager,
+                () -> actionOutput("Recording"),
+                this::toolError
+        );
+        wrapper.add(micButton, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
+        gbc.gridheight = 1; // Reset row span
+        gbc.weighty = 0; // Reset weighty
+        gbc.fill = GridBagConstraints.NONE; // Reset fill
+
+        // Model dropdown (Col 1, Row 1)
         gbc.gridx = 1;
         gbc.gridy = 1;
         gbc.gridwidth = 1;
-        gbc.gridheight = 1;
-        gbc.weightx = 1.0;
+        gbc.weightx = 0; // Don't allow dropdown to expand horizontally excessively
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.insets = new Insets(0, 0, 0, 5); // Add right margin
+        modelDropdown = new JComboBox<>();
+        modelDropdown.setToolTipText("Select the AI model to use");
+        // Add listener to adjust width dynamically when items change (handled in initialize)
+        // Add listener to potentially save selection or update default button?
+        wrapper.add(modelDropdown, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0); // Reset insets
+
+        // Command input field (Col 2, Row 1)
+        gbc.gridx = 2; // Move to column 2
+        gbc.gridy = 1;
+        gbc.weightx = 1.0; // Allow input field to take remaining horizontal space
         gbc.fill = GridBagConstraints.BOTH;
         commandInputField = new RSyntaxTextArea(3, 40);
         commandInputField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -529,27 +551,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
         wrapper.add(commandScrollPane, gbc);
 
-        // 2) Mic button on the left
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        gbc.gridwidth = 1;
-        gbc.gridheight = 1;
-        gbc.weightx = 0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.insets = new Insets(2, 2, 2, 8);
-        micButton = new VoiceInputButton(
-                commandInputField instanceof JTextArea ? (JTextArea)commandInputField : null,
-                contextManager,
-                () -> actionOutput("Recording"),
-                this::toolError
-        );
-        wrapper.add(micButton, gbc);
 
-        // 4) The row of left buttons (Code/Ask/Search/Run) and right button (Stop) in row=2, col=1
-        gbc.gridx = 1;
+        // --- Row 2: Buttons ---
+        // Buttons holder panel (Col 1 + 2, Row 2)
+        gbc.gridx = 1; // Start from column 1 (left of input field)
         gbc.gridy = 2;
-        gbc.gridwidth = 1;
-        gbc.gridheight = 1;
+        gbc.gridwidth = 2; // Span across model and input field columns
         gbc.weightx = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         var buttonsHolder = new JPanel(new BorderLayout());
@@ -591,8 +598,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         wrapper.add(buttonsHolder, gbc);
 
-        // set "Code" as default button
-        frame.getRootPane().setDefaultButton(codeButton);
+        // Set "Code" as default button
+        // Defer setting default button until frame is realized? Seems okay here.
+        SwingUtilities.invokeLater(() -> { // Deferring just in case
+            if (frame != null && frame.getRootPane() != null) {
+                frame.getRootPane().setDefaultButton(codeButton);
+            }
+        });
 
         return wrapper;
     }
@@ -607,21 +619,30 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
-        // Check if LLM is available
-        if (!contextManager.getCoder().isLlmAvailable()) {
-            toolError("No LLM available (missing API keys)");
+        // Get selected model
+        StreamingChatLanguageModel selectedModel = getSelectedModel();
+        if (selectedModel == null) {
+            toolError("Please select a valid model from the dropdown.");
             return;
         }
 
         // Add to text history
         getProject().addToTextHistory(input, 20);
+        updateHistoryDropdown(); // Refresh history dropdown
+
+        historyOutputPane.setLlmOutput("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
+        commandInputField.setText("");
+
+        // Add to text history
+        getProject().addToTextHistory(input, 20);
+        updateHistoryDropdown(); // Refresh history dropdown
 
         historyOutputPane.setLlmOutput("# Code\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
 
         disableUserActionButtons();
-        // schedule in ContextManager
-        currentUserTask = contextManager.runCodeCommandAsync(input);
+        // Schedule in ContextManager, passing the selected model
+        currentUserTask = contextManager.runCodeCommandAsync(selectedModel, input);
     }
 
     /**
@@ -647,6 +668,34 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return SwingUtil.runOnEDT(() -> commandInputField.getText(), "");
     }
 
+
+    /**
+     * Retrieves the StreamingChatLanguageModel instance corresponding to the
+     * currently selected item in the model dropdown.
+     *
+     * @return The selected model instance, or null if no valid model is selected or available.
+     */
+    private StreamingChatLanguageModel getSelectedModel() {
+        String selectedName = (String) modelDropdown.getSelectedItem();
+        if (selectedName == null || selectedName.startsWith("No Models") || selectedName.startsWith("Error")) {
+            logger.warn("No valid model selected in dropdown.");
+            return null;
+        }
+        String location = modelLocationMap.get(selectedName);
+        if (location == null) {
+             logger.error("Selected model name '{}' not found in location map.", selectedName);
+             return null; // Should not happen if map is synced with dropdown
+        }
+        try {
+            // Use Models.get() which handles caching/creation
+            return Models.get(selectedName, location);
+        } catch (Exception e) {
+            logger.error("Failed to get model instance for location '{}'", location, e);
+            toolError("Error activating model: " + location);
+            return null;
+        }
+    }
+
     /**
      * Invoked on "Ask" button
      */
@@ -657,20 +706,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
-        // Check if LLM is available
-        if (!contextManager.getCoder().isLlmAvailable()) {
-            toolError("No LLM available (missing API keys)");
+        // Get selected model
+        StreamingChatLanguageModel selectedModel = getSelectedModel();
+        if (selectedModel == null) {
+            toolError("Please select a valid model from the dropdown.");
             return;
         }
 
         // Add to text history
         getProject().addToTextHistory(input, 20);
+        updateHistoryDropdown(); // Refresh history dropdown
 
         historyOutputPane.setLlmOutput("# Ask\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
 
         disableUserActionButtons();
-        currentUserTask = contextManager.runAskAsync(input);
+        currentUserTask = contextManager.runAskAsync(selectedModel, input);
     }
 
     /**
@@ -683,21 +734,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
-        // Check if LLM is available
-        if (!contextManager.getCoder().isLlmAvailable()) {
-            toolError("No LLM available (missing API keys)");
+        // Get selected model
+        StreamingChatLanguageModel selectedModel = getSelectedModel();
+        if (selectedModel == null) {
+            toolError("Please select a valid model from the dropdown.");
             return;
         }
 
         // Add to text history
         getProject().addToTextHistory(input, 20);
+        updateHistoryDropdown(); // Refresh history dropdown
 
         historyOutputPane.setLlmOutput("# Search\n" + commandInputField.getText() + "\n\n");
         historyOutputPane.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         commandInputField.setText("");
 
         disableUserActionButtons();
-        currentUserTask = contextManager.runSearchAsync(input);
+        currentUserTask = contextManager.runSearchAsync(selectedModel, input);
     }
 
     public void clear() {
@@ -712,10 +765,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     void disableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
             codeButton.setEnabled(false);
+            modelDropdown.setEnabled(false); // Disable model selection during task
+            codeButton.setEnabled(false);
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
-            stopButton.setEnabled(true);
+            stopButton.setEnabled(true); // Enable stop button
         });
     }
 
@@ -725,11 +780,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void enableUserActionButtons() {
         SwingUtilities.invokeLater(() -> {
             codeButton.setEnabled(true);
-            askButton.setEnabled(true);
-            searchButton.setEnabled(true);
-            runButton.setEnabled(true);
-            stopButton.setEnabled(false);
-            updateCommitPanel();
+            // Only enable if models are actually available
+            boolean modelsAvailable = modelDropdown.getItemCount() > 0 && !modelDropdown.getItemAt(0).toString().startsWith("No Model");
+            modelDropdown.setEnabled(modelsAvailable);
+            codeButton.setEnabled(modelsAvailable);
+            askButton.setEnabled(modelsAvailable);
+            searchButton.setEnabled(modelsAvailable);
+            runButton.setEnabled(true); // Run button doesn't strictly need LLM
+            stopButton.setEnabled(false); // Disable stop button
+            updateCommitPanel(); // Update git panel state too
         });
     }
 
@@ -1214,72 +1273,128 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         historyButton.setToolTipText("Select a previous instruction from history");
         historyPanel.add(historyButton);
 
-        // Show popup when button is clicked
-        historyButton.addActionListener(e -> {
-            logger.debug("History button clicked, creating menu");
-
-            // Create a fresh popup menu each time
-            JPopupMenu historyMenu = new JPopupMenu();
-
-            // Get history items from project
-            var project = getProject();
-            if (project == null) {
-                logger.warn("Cannot show history menu: project is null");
-                return;
-            }
-
-            List<String> historyItems = project.loadTextHistory();
-            logger.debug("History items loaded: {}", historyItems.size());
-
-            if (historyItems.isEmpty()) {
-                JMenuItem emptyItem = new JMenuItem("(No history items)");
-                emptyItem.setEnabled(false);
-                historyMenu.add(emptyItem);
-            } else {
-                // Iterate in reverse order so newest items appear at the bottom of the dropdown
-                // This creates a more natural flow when the dropdown appears above the button
-                for (int i = historyItems.size() - 1; i >= 0; i--) {
-                    String item = historyItems.get(i);
-                    // Use static truncation length
-                    String displayText = item.length() > TRUNCATION_LENGTH ?
-                            item.substring(0, TRUNCATION_LENGTH - 3) + "..." : item;
-
-                    JMenuItem menuItem = new JMenuItem(displayText);
-                    menuItem.setToolTipText(item); // Show full text on hover
-
-                    menuItem.addActionListener(event -> {
-                        commandInputField.setText(item);
-                    });
-                    historyMenu.add(menuItem);
-                    logger.debug("Added menu item: {}", displayText);
-                }
-            }
-
-            // Apply theme to the menu
-            if (themeManager != null) {
-                themeManager.registerPopupMenu(historyMenu);
-            }
-
-            // Use fixed width for menu
-            historyMenu.setMinimumSize(new Dimension(DROPDOWN_MENU_WIDTH, 0));
-            historyMenu.setPreferredSize(new Dimension(DROPDOWN_MENU_WIDTH, historyMenu.getPreferredSize().height));
-
-            // Pack and show
-            historyMenu.pack();
-
-            logger.debug("Menu width set to fixed value: {}", DROPDOWN_MENU_WIDTH);
-
-            // Show above the button instead of below
-            historyMenu.show(historyButton, 0, -historyMenu.getPreferredSize().height);
-
-            logger.debug("Menu shown with dimensions: {}x{}",
-                         historyMenu.getWidth(), historyMenu.getHeight());
-        });
+        // Add listener to show the popup menu on button click
+        historyButton.addActionListener(e -> showHistoryMenu(historyButton));
 
         return historyPanel;
     }
 
-    // This method is no longer needed as we use fixed width
+    /**
+      * Refreshes the history dropdown button text, potentially needed if history changes often.
+      * Currently not strictly necessary as the button text is static, but could be useful later.
+      */
+     public void updateHistoryDropdown() {
+         // This method might be needed if the history button itself needs updating,
+         // but currently, the menu is built dynamically on click.
+         // Could potentially update tooltip or icon if desired.
+     }
+
+
+    /**
+     * Creates and shows the history popup menu.
+     * @param invoker The component (historyButton) that invoked the menu.
+     */
+    private void showHistoryMenu(Component invoker) {
+         logger.debug("Showing history menu");
+         JPopupMenu historyMenu = new JPopupMenu();
+
+         // Get history items from project
+         var project = getProject();
+         if (project == null) {
+             logger.warn("Cannot show history menu: project is null");
+             JMenuItem errorItem = new JMenuItem("Project not loaded");
+             errorItem.setEnabled(false);
+             historyMenu.add(errorItem);
+         } else {
+             List<String> historyItems = project.loadTextHistory();
+             logger.debug("History items loaded: {}", historyItems.size());
+
+             if (historyItems.isEmpty()) {
+                 JMenuItem emptyItem = new JMenuItem("(No history items)");
+                 emptyItem.setEnabled(false);
+                 historyMenu.add(emptyItem);
+             } else {
+                 // Newest items first (top of menu)
+                 for (int i = historyItems.size() - 1; i >= 0; i--) {
+                     String item = historyItems.get(i);
+                     // Truncate for display
+                     String itemWithoutNewlines = item.replace('\n', ' ');
+                     String displayText = itemWithoutNewlines.length() > TRUNCATION_LENGTH
+                         ? itemWithoutNewlines.substring(0, TRUNCATION_LENGTH) + "..."
+                         : itemWithoutNewlines;
+
+                     // Basic HTML escaping for tooltip
+                     String escapedItem = item.replace("&", "&amp;")
+                                              .replace("<", "&lt;")
+                                              .replace(">", "&gt;")
+                                              .replace("\"", "&quot;");
+
+                     JMenuItem menuItem = new JMenuItem(displayText);
+                     menuItem.setToolTipText("<html><pre>" + escapedItem + "</pre></html>"); // Show full text on hover, preserve format
+
+                     menuItem.addActionListener(event -> {
+                         commandInputField.setText(item);
+                         commandInputField.requestFocusInWindow(); // Focus input after selecting
+                     });
+                     historyMenu.add(menuItem);
+                 }
+             }
+         }
+
+         // Apply theme to the menu
+         if (themeManager != null) {
+             themeManager.registerPopupMenu(historyMenu);
+         }
+
+         // Use fixed width for menu
+         historyMenu.setMinimumSize(new Dimension(DROPDOWN_MENU_WIDTH, 0));
+         historyMenu.setPreferredSize(new Dimension(DROPDOWN_MENU_WIDTH, historyMenu.getPreferredSize().height));
+         historyMenu.pack(); // Pack after setting preferred size
+
+         logger.debug("Showing history menu with preferred width: {}", DROPDOWN_MENU_WIDTH);
+         // Show below the button
+         historyMenu.show(invoker, 0, invoker.getHeight());
+    }
+
+    /**
+     * Initializes the model dropdown by fetching available models from LiteLLM.
+     */
+    private void initializeModelDropdown() {
+        logger.info("Initializing model dropdown...");
+        contextManager.submitBackgroundTask("Fetching available models", () -> {
+            // This runs in the background
+            modelLocationMap = Models.getAvailableModels();
+
+            // Update UI on EDT
+            SwingUtilities.invokeLater(() -> {
+                modelDropdown.removeAllItems();
+                if (modelLocationMap.isEmpty()) {
+                    logger.warn("No models discovered from LiteLLM.");
+                    modelDropdown.addItem("No Models Available");
+                    modelDropdown.setEnabled(false);
+                    disableUserActionButtons(); // Disable code/ask/search if no models
+                } else {
+                    logger.info("Populating dropdown with {} models.", modelLocationMap.size());
+                    // Sort display names alphabetically for the dropdown
+                    modelLocationMap.keySet().stream().sorted().forEach(modelDropdown::addItem);
+                    modelDropdown.setEnabled(true);
+
+                    // Try to select the quick model's display name if available
+                    String quickModelLocation = Models.nameOf(Models.quickModel());
+                    modelLocationMap.entrySet().stream()
+                            .filter(entry -> entry.getValue().equals(quickModelLocation))
+                            .map(Map.Entry::getKey)
+                            .findFirst()
+                            .ifPresent(quickModelDisplayName -> modelDropdown.setSelectedItem(quickModelDisplayName));
+
+                    enableUserActionButtons(); // Enable buttons now that models are loaded
+                }
+                 // Adjust dropdown width based on the longest item
+                 adjustComboBoxWidth(modelDropdown); // Call local helper method
+             });
+             return null; // Indicate task completion
+        });
+    }
 
 
     /**
@@ -1355,7 +1470,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     GitPanel getGitPanel() {
-        return gitPanel; // May be null for dependency projects
+        return gitPanel; // May be null for git-free
     }
 
     /**
@@ -1403,6 +1518,47 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         dialog.add(panel);
         dialog.pack();
         dialog.setLocationRelativeTo(getFrame());
-        dialog.setVisible(true);
+         dialog.setVisible(true);
+     }
+
+    /**
+     * Adjusts the preferred width of a JComboBox to fit its widest item.
+     * Includes space for the dropdown arrow.
+     *
+     * @param comboBox The JComboBox to adjust.
+     */
+    private void adjustComboBoxWidth(JComboBox<?> comboBox) {
+        Object prototypeValue = null;
+        int maxWidth = 0;
+        ComboBoxModel<?> model = comboBox.getModel();
+        @SuppressWarnings("unchecked") // Cast is safe here for rendering purposes
+        ListCellRenderer<Object> renderer = (ListCellRenderer<Object>) comboBox.getRenderer();
+        FontMetrics fm = comboBox.getFontMetrics(comboBox.getFont());
+
+        // Calculate widest item based on renderer's preferred size
+        for (int i = 0; i < model.getSize(); i++) {
+            Object value = model.getElementAt(i);
+            if (value != null) { // Check for null items
+                Component comp = renderer.getListCellRendererComponent(new JList<>(), value, i, false, false); // Use dummy JList
+                Dimension preferredSize = comp.getPreferredSize();
+                int width = preferredSize.width;
+                if (width > maxWidth) {
+                    maxWidth = width;
+                    prototypeValue = value; // Store the widest item
+                }
+            }
+        }
+
+        // Revalidate the component to apply size changes
+        comboBox.revalidate();
+
+        // Using setPrototypeDisplayValue is another common technique, but calculating manually
+        // can sometimes be more reliable, especially with custom renderers.
+        // If the above calculation isn't perfect, you could try this as an alternative:
+        // if (prototypeValue != null) {
+        //     comboBox.setPrototypeDisplayValue(prototypeValue);
+        // } else if (model.getSize() > 0) {
+        //     comboBox.setPrototypeDisplayValue(model.getElementAt(0));
+        // }
     }
 }

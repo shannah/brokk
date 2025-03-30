@@ -8,8 +8,6 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.anthropic.AnthropicChatModel;
-import dev.langchain4j.model.anthropic.AnthropicTokenUsage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
@@ -22,38 +20,33 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.concurrent.CountDownLatch;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.Objects; // Add this import
 
 public class Coder {
-    private final Logger logger = LogManager.getLogger(Coder.class);
+    private static final Logger logger = LogManager.getLogger(Coder.class);
 
     private final IConsoleIO io;
     private final Path historyFile;
     private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    public final Models models;
     final IContextManager contextManager;
-    private int MAX_ATTEMPTS = 8;
+    private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
 
-    public Coder(Models models, IConsoleIO io, Path sourceRoot, IContextManager contextManager) {
-        this.models = models;
+    public Coder(IConsoleIO io, Path sourceRoot, IContextManager contextManager) {
         this.io = io;
         this.contextManager = contextManager;
         this.historyFile = sourceRoot.resolve(".brokk").resolve("llm.log");
-    }
-
-    public boolean isLlmAvailable() {
-        return !(models.editModel() instanceof Models.UnavailableStreamingModel);
     }
 
     /**
@@ -70,16 +63,13 @@ public class Coder {
     }
 
     /**
-     * Transcribes an audio file using the STT model (OpenAI Whisper if available).
+     * Transcribes an audio file using the configured STT model (OpenAI Whisper if available).
      * Returns the transcribed text or an error message on failure.
      */
     public String transcribeAudio(Path audioFile) {
-        if (models.sttModel() instanceof Models.UnavailableSTT) {
-            io.toolError("STT is unavailable. OpenAI API key is required.");
-            return "STT unavailable";
-        }
+        var sttModel = Models.sttModel();
         try {
-            String transcript = models.sttModel().transcribe(audioFile);
+            String transcript = sttModel.transcribe(audioFile);
             return transcript;
         } catch (Exception e) {
             logger.error("Failed to transcribe audio: {}", e.getMessage(), e);
@@ -173,20 +163,26 @@ public class Coder {
     }
 
     /**
-     * Send a message to the default quick model
+     * Send a message to the default quick model without tools.
      *
      * @param messages The messages to send
-     * @return The LLM response as a string
+     * @return The LLM response text, trimmed. Returns an empty string on error/cancellation.
      */
     public String sendMessage(List<ChatMessage> messages) {
-        var R = sendMessage(models.quickModel(), messages, List.of());
-        return R.chatResponse.aiMessage().text().trim();
+        var result = sendMessage(Models.quickModel(), messages, List.of());
+        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+            throw new IllegalStateException();
+        }
+        return result.chatResponse().aiMessage().text().trim();
     }
 
+    /**
+     * Send a message to a specific model without tools.
+     */
     public StreamingResult sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages) {
         return sendMessage(model, messages, List.of());
     }
-    
+
 
     /**
      * Send a message to a specific model with tool support
@@ -215,11 +211,7 @@ public class Coder {
             }
 
             result = sendMessageWithRetry(model, extraMessages, tools, false, MAX_ATTEMPTS);
-        }
-
-        if (model instanceof AnthropicChatModel) {
-            var tu = (AnthropicTokenUsage) cr.tokenUsage();
-            writeToHistory("Cache usage", "%s, %s".formatted(tu.cacheCreationInputTokens(), tu.cacheReadInputTokens()));
+            cr = result.chatResponse();
         }
 
         return result;
@@ -304,10 +296,11 @@ public class Coder {
     private StreamingResult doSingleSendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, boolean echo) {
         writeRequestToHistory(messages, tools);
         var builder = ChatRequest.builder().messages(messages);
+        var modelName = Models.nameOf(model); // Use static method
 
         if (!tools.isEmpty()) {
             // Check if this is a DeepSeek model that needs function calling emulation
-            if (models.nameOf(model).toLowerCase().contains("deepseek")) {
+            if (modelName.toLowerCase().contains("deepseek")) {
                 return emulateToolsUsingStructuredOutput(model, messages, tools);
             }
 
@@ -351,25 +344,37 @@ public class Coder {
                                 .map(entry -> {
                                     try {
                                         var node = mapper.valueToTree(entry.getValue());
-                                        var description = node.has("description") ? ": " + node.get("description").asText() : "";
-                                        return "    - %s%s".formatted(entry.getKey(), description);
+                                        // Safely get description
+                                        var descriptionNode = node.get("description");
+                                        String description = (descriptionNode != null && descriptionNode.isTextual())
+                                                ? ": " + descriptionNode.asText()
+                                                : "";
+                                        return "    - %s (type: %s)%s".formatted(
+                                                entry.getKey(),
+                                                node.path("type").asText("unknown"), // Include type if available
+                                                description);
                                     } catch (Exception e) {
+                                        logger.warn("Error processing parameter {} for tool {}", entry.getKey(), tool.name(), e);
                                         return "    - %s".formatted(entry.getKey());
                                     }
                                 })
                                 .collect(Collectors.joining("\n"));
+
+                        String requiredParams = "";
+                        if (tool.parameters().required() != null && !tool.parameters().required().isEmpty()) {
+                            requiredParams = "\n    Required: " + String.join(", ", tool.parameters().required());
+                        }
     
                         return """
                                - %s: %s
-                                 Parameters:
+                                 Parameters:%s
                                %s
-                               """.formatted(tool.name(), tool.description(), parametersInfo);
+                               """.formatted(tool.name(), tool.description(), requiredParams, parametersInfo.isEmpty() ? "    (No parameters)" : "\n" + parametersInfo);
                     })
-                    .reduce((a, b) -> a + "\n" + b)
-                    .orElse("");
+                    .collect(Collectors.joining("\n")); // Use collect instead of reduce for safer empty handling
 
             var jsonPrompt = """
-                You must respond in JSON format with one or more tool calls.
+                You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
                 Available tools:
                 %s
 
@@ -429,15 +434,16 @@ public class Coder {
                             argumentsJson = arguments.toString();
                         } else {
                             // Handle case where arguments might be a string instead of object
-                            try {
-                                JsonNode parsedArgs = mapper.readTree(arguments.asText());
-                                argumentsJson = parsedArgs.toString();
-                            } catch (Exception e) {
-                                // If parsing fails, use as-is
-                                argumentsJson = arguments.toString();
-                            }
+                             try {
+                                 JsonNode parsedArgs = mapper.readTree(arguments.asText());
+                                 argumentsJson = parsedArgs.toString();
+                             } catch (Exception e) {
+                                 // If parsing fails, use as-is or log warning
+                                 logger.warn("Argument is not valid JSON object for tool '{}', treating as string: {}", toolName, arguments.asText(), e);
+                                argumentsJson = arguments.toString(); // Keep original if parsing fails
+                             }
                         }
-                        
+
                         var toolExecutionRequest = ToolExecutionRequest.builder()
                                 .id(String.valueOf(i))
                                 .name(toolName)

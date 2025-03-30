@@ -18,14 +18,10 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.LoggingExecutorService;
-import io.github.jbellis.brokk.gui.MultiFileSelectionDialog;
-import io.github.jbellis.brokk.gui.SwingUtil;
-import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
-import io.github.jbellis.brokk.prompts.CommitPrompts;
-import io.github.jbellis.brokk.prompts.SummarizerPrompts;
+import io.github.jbellis.brokk.gui.*;
+import io.github.jbellis.brokk.prompts.*;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import io.github.jbellis.brokk.util.StackTrace;
@@ -78,8 +74,8 @@ import java.util.stream.Stream;
 public class ContextManager implements IContextManager, AutoCloseable {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
-    private Chrome io; // for UI feedback
-    private Coder coder;
+    private Chrome io; // for UI feedback - Initialized in resolveCircularReferences
+    private Coder coder; // Initialized in resolveCircularReferences
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
@@ -115,16 +111,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                    new LinkedBlockingQueue<>(), // Unbounded queue to prevent rejection
                                    Executors.defaultThreadFactory()));
 
-    private Project project;
+    private Project project; // Initialized in resolveCircularReferences
     private final Path root;
-
-    private Mode mode = Mode.EDIT;
-
-    public Coder getCoder() {
-        return coder;
-    }
-
-    public enum Mode { EDIT}
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
@@ -144,10 +132,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * Called from Brokk to finish wiring up references to Chrome and Coder
      */
-    public void resolveCircularReferences(Chrome chrome, Coder coder)
-    {
+    public void resolveCircularReferences(Chrome chrome, Coder coder) {
         this.io = chrome;
         this.coder = coder;
+
         // Set up the listener for analyzer events
         var analyzerListener = new AnalyzerListener() {
             @Override
@@ -186,42 +174,28 @@ public class ContextManager implements IContextManager, AutoCloseable {
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
 
-        // Context's analyzer reference is retained for the whole chain so wait until we have that ready
-        // before adding the Context sentinel to history
-        // Load saved context or create a new one if none exists
-        var welcomeMessage = buildWelcomeMessage(coder.models);
+        // Load saved context or create a new one
+        var welcomeMessage = buildWelcomeMessage();
         var initialContext = project.loadContext(this, welcomeMessage);
         if (initialContext == null) {
-            initialContext = new Context(this, 10, welcomeMessage);
+            initialContext = new Context(this, 10, welcomeMessage); // Default autocontext size
         } else {
             // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization
             initialContext = initialContext.refresh();
         }
         contextHistory.setInitialContext(initialContext);
-        chrome.updateContextHistoryTable(initialContext);
+        chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
 
         ensureStyleGuide();
-        ensureBuildCommand(coder);
+        ensureBuildCommand();
     }
 
-    @Override
-    public void replaceContext(Context context, Context replacement) {
-        contextHistory.replaceContext(context, replacement);
-        io.updateContextHistoryTable();
-        io.updateContextTable();
-    }
-
-    /**
-     * Return the streaming chat model used for the current mode
-     */
-    public StreamingChatLanguageModel getCurrentModel(Models models)
-    {
-        return (mode == Mode.EDIT) ? models.editModel() : models.applyModel();
-    }
-
-    public Project getProject()
-    {
+    public Project getProject() {
         return project;
+    }
+
+    public Coder getCoder() {
+        return coder;
     }
 
     @Override
@@ -307,26 +281,30 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
-    public Future<?> runCodeCommandAsync(String input)
+    /**
+     * Asynchronous "Code" command.
+     *
+     * @param model The specific model instance to use for this session.
+     * @param input The user's instructions.
+     */
+    public Future<?> runCodeCommandAsync(StreamingChatLanguageModel model, String input)
     {
         assert io != null;
-        return userActionExecutor.submit(() -> {
-            try {
-                LLM.runSession(coder, io, getCurrentModel(coder.models), input);
-            } finally {
-                io.enableUserActionButtons();
-            }
+        return submitUserTask("Running Code Command", () -> {
+            LLM.runSession(coder, io, model, input);
         });
     }
 
     /**
-     * Asynchronous “Ask” command
+     * Asynchronous “Ask” command.
+     *
+     * @param model The specific model instance to use for this query.
+     * @param question The user's question.
      */
-    public Future<?> runAskAsync(String question)
+    public Future<?> runAskAsync(StreamingChatLanguageModel model, String question)
     {
         return submitUserTask("Asking the LLM", () -> {
             try {
-                if (io == null) return;
                 if (question.isBlank()) {
                     io.toolErrorRaw("Please provide a question");
                     return;
@@ -335,50 +313,67 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 var messages = new LinkedList<>(AskPrompts.instance.collectMessages(this));
                 messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
-                // stream from coder
-                var response = coder.sendStreaming(getCurrentModel(coder.models), messages, true);
+                // stream from coder using the provided model
+                var response = coder.sendStreaming(model, messages, true);
                 if (response.cancelled()) {
-                    io.systemOutput("Cancelled!");
-                } else if (response.chatResponse() != null) {
-                    addToHistory(List.of(messages.getLast(), response.chatResponse().aiMessage()), Map.of(), question);
+                    io.systemOutput("Ask command cancelled!");
+                } else if (response.error() != null) {
+                     io.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
+                 } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
+                    var aiResponse = response.chatResponse().aiMessage();
+                    // Check if the response is valid before adding to history
+                    if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
+                        addToHistory(List.of(messages.getLast(), aiResponse), Map.of(), question);
+                    } else {
+                        io.systemOutput("Ask command completed with an empty response.");
+                    }
+                } else {
+                    io.systemOutput("Ask command completed with no response data.");
                 }
             } catch (CancellationException cex) {
-                io.systemOutput("Ask command canceled.");
-            } catch (Exception e) {
-                logger.error("Error in ask command", e);
-                io.toolErrorRaw("Error in ask command: " + e.getMessage());
-            }
+                 io.systemOutput("Ask command cancelled.");
+             } catch (Exception e) {
+                 logger.error("Error during 'Ask' execution", e);
+                 io.toolErrorRaw("Internal error during ask command: " + e.getMessage());
+             }
         });
     }
 
     /**
-     * Asynchronous “Search” command
+     * Asynchronous “Search” command.
+     *
+     * @param model The specific model instance to use for search reasoning.
+     * @param query The user's search query.
      */
-    public Future<?> runSearchAsync(String query)
+    public Future<?> runSearchAsync(StreamingChatLanguageModel model, String query)
     {
         assert io != null;
-        return userActionExecutor.submit(() -> {
-            try {
-                if (query.isBlank()) {
-                    io.toolErrorRaw("Please provide a search query");
-                    return;
-                }
-                // run a search agent
-                var agent = new SearchAgent(query, this, coder, io);
-                var result = agent.execute();
-                if (result == null) {
-                    io.systemOutput("Search was interrupted");
-                } else {
-                    io.clear();
-                    io.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, result.text()));
-                    // The search agent already creates the right fragment type
-                    addSearchFragment(result);
-                }
-            } catch (CancellationException cex) {
-                io.systemOutput("Search command canceled.");
-            } finally {
-                io.enableUserActionButtons();
-            }
+         return submitUserTask("Running Search Command", () -> {
+             if (query.isBlank()) {
+                 io.toolErrorRaw("Please provide a search query");
+                 return;
+             }
+             try {
+                 // run a search agent, passing the specific model
+                 var agent = new SearchAgent(query, this, coder, io, model);
+                 var result = agent.execute();
+                 if (result == null) {
+                     // Agent execution was likely cancelled or errored, agent should log details
+                     io.systemOutput("Search did not complete successfully.");
+                 } else {
+                     io.clear();
+                     // SearchFragment.text() doesn't actually throw IOException
+                     String textResult = result.text();
+                     io.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, textResult));
+                     // The search agent already creates the right fragment type
+                     addSearchFragment(result);
+                 }
+             } catch (CancellationException cex) {
+                 io.systemOutput("Search command cancelled.");
+             } catch (Exception e) {
+                 logger.error("Error during 'Search' execution", e);
+                 io.toolErrorRaw("Internal error during search command: " + e.getMessage());
+             }
         });
     }
 
@@ -583,13 +578,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return submitBackgroundTask("Inferring commit message", () -> {
             var messages = CommitPrompts.instance.collectMessages(diffText);
             if (messages.isEmpty()) {
-                io.systemOutput("Nothing to commit");
+                SwingUtilities.invokeLater(() -> io.systemOutput("Nothing to commit"));
                 return null;
             }
 
-            String commitMsg = coder.sendMessage(messages);
-            if (commitMsg.isEmpty()) {
-                io.systemOutput("LLM did not provide a commit message");
+            // Use the quick model for commit message generation
+            String commitMsg = coder.sendMessage(messages); // sendMessage uses quickModel by default
+            if (commitMsg == null || commitMsg.isEmpty() || commitMsg.equals(Models.UNAVAILABLE)) {
+                SwingUtilities.invokeLater(() -> io.systemOutput("LLM did not provide a commit message or is unavailable."));
                 return null;
             }
 
@@ -1207,9 +1203,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Build a welcome message with environment information
+     * Build a welcome message with environment information.
+     * Uses statically available model info.
      */
-    private String buildWelcomeMessage(Models models) {
+    private String buildWelcomeMessage() {
         String welcomeMarkdown;
         var mdPath = "/WELCOME.md";
         try (var welcomeStream = Brokk.class.getResourceAsStream(mdPath)) {
@@ -1230,27 +1227,36 @@ public class ContextManager implements IContextManager, AutoCloseable {
             throw new RuntimeException(e);
         }
 
-        var version = props.getProperty("version");
+        var version = props.getProperty("version", "unknown");
+
+        // Get available models for display
+        var availableModels = Models.getAvailableModels();
+        String modelsList = availableModels.isEmpty()
+                ? "  - No models loaded (Check network connection)"
+                : availableModels.entrySet().stream()
+                    .map(e -> "  - %s (%s)".formatted(e.getKey(), e.getValue()))
+                    .sorted()
+                    .collect(Collectors.joining("\n"));
+        String quickModelName = Models.nameOf(Models.quickModel());
 
         return """
             %s
 
             ## Environment
-            - Brokk %s
-            - Editor model: %s
-            - Apply model: %s
+            - Brokk version: %s
             - Quick model: %s
-            - Project at %s with %d native files and %d total files including dependencies
+            - Project: %s (%d native files, %d total including dependencies)
             - Analyzer language: %s
+            - Available models):
+            %s
             """.formatted(welcomeMarkdown,
                           version,
-                          models.editModelName(),
-                          models.applyModelName(),
-                          models.quickModelName(),
-                          project.getRoot(),
+                          quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName,
+                          project.getRoot().getFileName(), // Show just the folder name
                           project.getRepo().getTrackedFiles().size(),
                           project.getFiles().size(),
-                          project.getAnalyzerLanguage());
+                          project.getAnalyzerLanguage(),
+                          modelsList);
     }
 
     /**
@@ -1374,9 +1380,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
-            protected String doInBackground() {
+            protected String doInBackground() throws Exception {
                 var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
-                return coder.sendMessage(msgs);
+                // Use quickModel for summarization
+                var result = coder.sendMessage(Models.quickModel(), msgs);
+                 if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                    logger.warn("Summarization failed or was cancelled.");
+                    return "Summarization failed.";
+                 }
+                 return result.chatResponse().aiMessage().text();
             }
 
             @Override
@@ -1393,9 +1405,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
-            protected String doInBackground() {
+            protected String doInBackground() throws Exception {
                 var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
-                return coder.sendMessage(msgs);
+                 // Use quickModel for summarization
+                var result = coder.sendMessage(Models.quickModel(), msgs);
+                 if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                     logger.warn("Summarization failed or was cancelled.");
+                     return "Summarization failed.";
+                 }
+                 return result.chatResponse().aiMessage().text();
             }
 
             @Override
@@ -1415,43 +1433,44 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
         assert taskDescription != null;
         assert !taskDescription.isBlank();
-        Future<T> future = backgroundTasks.submit(() -> {
+
+        // Wrap the original callable to manage descriptions
+        Callable<T> wrappedTask = () -> {
+            taskDescriptions.put(task, taskDescription); // Use original task as key
             try {
-                io.backgroundOutput(taskDescription);
+                SwingUtilities.invokeLater(() -> io.backgroundOutput(taskDescription));
                 return task.call();
             } finally {
-                // Remove this task from the map
-                taskDescriptions.remove(task);
+                taskDescriptions.remove(task); // Use original task as key
                 int remaining = taskDescriptions.size();
                 SwingUtilities.invokeLater(() -> {
-                    if (remaining <= 0) {
-                        io.backgroundOutput("");
-                    } else if (remaining == 1) {
-                        // Find the last remaining task description. If there's a race just end the spin
-                        var lastTaskDescription = taskDescriptions.values().stream().findFirst().orElse("");
-                        io.backgroundOutput(lastTaskDescription);
-                    } else {
-                        io.backgroundOutput("Tasks running: " + remaining);
+                     if (remaining <= 0) {
+                         io.backgroundOutput("");
+                     } else if (remaining == 1) {
+                         var lastTaskDesc = taskDescriptions.values().stream().findFirst().orElse("");
+                         io.backgroundOutput(lastTaskDesc);
+                     } else {
+                         io.backgroundOutput("Tasks running: " + remaining);
                     }
-                });
+                 });
             }
-        });
+        };
 
-        // Track the future with its description
-        taskDescriptions.put(task, taskDescription);
-        return future;
+        return backgroundTasks.submit(wrappedTask);
     }
 
-    private void ensureBuildCommand(Coder coder) {
+    /**
+     * Ensures a build command is set, inferring one if necessary using the quick model.
+     */
+    private void ensureBuildCommand() {
         var loadedCommand = project.getBuildCommand();
-        // Possibly store an inferred buildCommand
-        if (loadedCommand != null) {
+        if (loadedCommand != null && !loadedCommand.isBlank()) {
             io.systemOutput("Using saved build command `%s`".formatted(loadedCommand));
         } else {
             // do background inference
             var tracked = project.getRepo().getTrackedFiles();
             var filenames = tracked.stream()
-                    .map(ProjectFile::toString)
+                .map(ProjectFile::toString)
                     .filter(s -> !s.contains(File.separator))
                     .collect(Collectors.toList());
             if (filenames.isEmpty()) {
@@ -1459,25 +1478,44 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
 
             var messages = List.of(
-                    new SystemMessage("You are a build assistant that suggests a single command to do a quick compile check."),
-                    new UserMessage(
-                            "We have these files:\n\n" + filenames
-                                    + "\n\nSuggest a minimal single-line shell command to compile them incrementally, not a full build. "
-                                    + "Respond with JUST the command, no commentary and no markup."
-                    )
+                    new SystemMessage("You are a build assistant. Suggest a single, minimal command for an incremental compile check based on the project files. Respond with ONLY the shell command, no explanation or markup."),
+                    new UserMessage("Project Files:\n" + String.join("\n", filenames.subList(0, Math.min(filenames.size(), 50)))) // Limit filenames sent
             );
 
             submitBackgroundTask("Inferring build command", () -> {
-                String response;
+                String responseText;
                 try {
-                    response = coder.sendMessage(coder.models.searchModel(), messages).chatResponse().aiMessage().text().trim();
+                    // Use quickModel for inference
+                    var result = coder.sendMessage(Models.quickModel(), messages);
+                     if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+                         logger.warn("Failed to infer build command: {}", result.error() != null ? result.error().getMessage() : "No response");
+                         return BuildCommand.failure("LLM failed to respond.");
+                     }
+                    responseText = result.chatResponse().aiMessage().text();
+                     if (responseText == null || responseText.isBlank()) {
+                          logger.warn("LLM returned empty build command.");
+                         return BuildCommand.failure("LLM returned empty command.");
+                     }
+                    responseText = responseText.trim();
+                    // Basic sanity check
+                    if (responseText.lines().count() > 1 || responseText.contains("```")) {
+                         logger.warn("LLM returned multi-line or formatted build command: {}", responseText);
+                         // Try to extract if possible, otherwise fail
+                         var lines = responseText.lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
+                         if (lines.size() == 1 && !lines.getFirst().contains(" ")) { // Simple command likely ok
+                             responseText = lines.getFirst();
+                         } else {
+                             return BuildCommand.failure("LLM response format incorrect.");
+                         }
+                     }
                 } catch (Throwable th) {
+                    logger.error("Error inferring build command", th);
                     return BuildCommand.failure(th.getMessage());
                 }
-                if (response.equals(Models.UNAVAILABLE)) {
+                if (responseText.equals(Models.UNAVAILABLE)) {
                     return BuildCommand.failure(Models.UNAVAILABLE);
                 }
-                var inferred = response.trim();
+                var inferred = responseText;
                 project.setBuildCommand(inferred);
                 io.systemOutput("Inferred build command: " + inferred);
                 return BuildCommand.success(inferred);
@@ -1519,28 +1557,46 @@ public class ContextManager implements IContextManager, AutoCloseable {
             try {
                 io.systemOutput("Generating project style guide...");
                 var analyzer = project.getAnalyzer();
-                var topClassUnits = AnalyzerUtil.combinedPagerankFor(analyzer, Map.of());
-                var topClasses = topClassUnits.stream().map(CodeUnit::fqName).toList();
+                 // Use a reasonable limit for style guide generation context
+                 var topClasses = AnalyzerUtil.combinedPagerankFor(analyzer, Map.of()).stream().limit(10).toList();
+
+                 if (topClasses.isEmpty()) {
+                     io.systemOutput("No classes found via PageRank for style guide generation.");
+                     project.saveStyleGuide("# Style Guide\n\n(Could not be generated automatically - no relevant classes found)\n");
+                     return null;
+                 }
 
                 var codeForLLM = new StringBuilder();
                 var tokens = 0;
-                for (var fqcn : topClasses) {
-                    var fileOption = analyzer.getFileFor(fqcn);
+                int MAX_STYLE_TOKENS = 30000; // Limit context size for style guide
+                for (var fqcnUnit : topClasses) {
+                    var fileOption = analyzer.getFileFor(fqcnUnit.fqName()); // Use fqName() here
                     if (fileOption.isEmpty()) continue;
                     var file = fileOption.get();
-                    String chunk;
+                    String chunk; // Declare chunk once outside the try-catch
+                    // Use project root for relative path display if possible
+                    var relativePath = project.getRoot().relativize(file.absPath()).toString();
                     try {
-                        chunk = "<file path=%s>\n%s\n</file>\n".formatted(file, file.read());
+                        chunk = "<file path=\"%s\">\n%s\n</file>\n".formatted(relativePath, file.read());
+                        // Calculate tokens and check limits *inside* the try block, only if read succeeds
+                        var chunkTokens = Models.getApproximateTokens(chunk);
+                        if (tokens > 0 && tokens + chunkTokens > MAX_STYLE_TOKENS) { // Check if adding exceeds limit
+                            logger.debug("Style guide context limit ({}) reached after {} tokens.", MAX_STYLE_TOKENS, tokens);
+                            break; // Exit the loop if limit reached
+                        }
+                        if (chunkTokens > MAX_STYLE_TOKENS) { // Skip single large files
+                            logger.debug("Skipping large file {} ({} tokens) for style guide context.", relativePath, chunkTokens);
+                            continue; // Skip to next file
+                        }
+                        // Append chunk if within limits
+                        codeForLLM.append(chunk);
+                        tokens += chunkTokens;
+                        logger.trace("Added {} ({} tokens, total {}) to style guide context", relativePath, chunkTokens, tokens);
                     } catch (IOException e) {
-                        logger.error("Failed to read {}: {}", file, e.getMessage());
-                        continue;
+                        logger.error("Failed to read {}: {}", relativePath, e.getMessage());
+                        // Skip this file on error
+                        continue; // Ensure we continue to the next file even on error
                     }
-                    var chunkTokens = Models.getApproximateTokens(chunk);
-                    if (tokens + chunkTokens > 50000) {
-                        if (tokens > 0) break;
-                    }
-                    codeForLLM.append(chunk);
-                    tokens += chunkTokens;
                 }
 
                 if (codeForLLM.isEmpty()) {
@@ -1559,10 +1615,18 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                var styleGuide = coder.sendMessage(messages);
-                if (styleGuide.equals(Models.UNAVAILABLE)) {
-                    io.systemOutput("Failed to generate style guide: LLM unavailable");
-                    return null;
+                // Use quickModel for style guide generation
+                var result = coder.sendMessage(Models.quickModel(), messages);
+                 if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                     io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
+                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
+                     return null;
+                 }
+                var styleGuide = result.chatResponse().aiMessage().text();
+                 if (styleGuide == null || styleGuide.isBlank()) {
+                     io.systemOutput("LLM returned empty style guide.");
+                     project.saveStyleGuide("# Style Guide\n\n(LLM returned empty result)\n");
+                     return null;
                 }
                 project.saveStyleGuide(styleGuide);
                 io.systemOutput("Style guide generated and saved to .brokk/style.md");
