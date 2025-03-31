@@ -1,3 +1,12 @@
+0.7.1
+
+## Features
+- Improved git single-file history table
+
+## Fixes
+- Theme is now saved globally, fixing the bug where it would NPE if set before Project opened
+
+
 0.7.0
 
 ## Features
