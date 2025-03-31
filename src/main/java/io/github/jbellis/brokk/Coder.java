@@ -245,6 +245,10 @@ public class Coder {
                     return response;
                 }
             }
+            if (error != null && error.getMessage().contains("BadRequestError")) {
+                // don't retry on bad request errors
+                break;
+            }
 
             // wait between retries
             logger.debug("LLM error / empty message in {}", response);
