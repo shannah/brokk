@@ -1,3 +1,10 @@
+0.7.2
+
+## Fixes
+- Allow search to answer the question without any tool calls if initial context is sufficient
+- Multiple fixes for Windows
+
+
 0.7.1
 
 ## Features
