@@ -19,8 +19,7 @@ public class GuiTheme {
     
     public static final String THEME_DARK = "dark";
     public static final String THEME_LIGHT = "light";
-    
-    private final Project project;
+
     private final JFrame frame;
     private final JScrollPane mainScrollPane;
     private final Chrome chrome;
@@ -30,14 +29,12 @@ public class GuiTheme {
     
     /**
      * Creates a new theme manager
-     * 
-     * @param project The current project (for persistence)
+     *
      * @param frame The main application frame
      * @param mainScrollPane The main scroll pane for LLM output
      * @param chrome The Chrome instance for UI feedback
      */
-    public GuiTheme(Project project, JFrame frame, JScrollPane mainScrollPane, Chrome chrome) {
-        this.project = project;
+    public GuiTheme(JFrame frame, JScrollPane mainScrollPane, Chrome chrome) {
         this.frame = frame;
         this.mainScrollPane = mainScrollPane;
         this.chrome = chrome;
@@ -53,9 +50,7 @@ public class GuiTheme {
 
         try {
             // Save preference first so we know the value is stored
-            if (project != null) {
-                project.setTheme(themeName);
-            }
+            Project.setTheme(themeName);
 
             // Apply the theme to the Look and Feel
             if (isDark) {
@@ -138,21 +133,13 @@ public class GuiTheme {
             }
         }
     }
-    
-    /**
-     * Gets the current theme name
-     * @return The current theme name ("dark" or "light")
-     */
-    public String getCurrentTheme() {
-        return project != null ? project.getTheme() : THEME_LIGHT;
-    }
-    
+
     /**
      * Checks if dark theme is currently active
      * @return true if dark theme is active
      */
     public boolean isDarkTheme() {
-        return THEME_DARK.equalsIgnoreCase(getCurrentTheme());
+        return THEME_DARK.equalsIgnoreCase(Project.getTheme());
     }
     
     /**
@@ -174,7 +161,7 @@ public class GuiTheme {
      */
     public void applyCurrentThemeToComponent(RSyntaxTextArea textArea) {
         try {
-            String currentTheme = getCurrentTheme();
+            String currentTheme = Project.getTheme();
             String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/" +
                                   (currentTheme.equals(THEME_DARK) ? "dark.xml" : "default.xml");
 

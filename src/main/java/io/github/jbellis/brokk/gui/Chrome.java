@@ -298,10 +298,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         logger.debug("Initializing theme manager");
         // Initialize theme manager now that all components are created
         // and conmtextManager should be properly set
-        themeManager = new GuiTheme(getProject(), frame, historyOutputPane.getLlmScrollPane(), this);
+        themeManager = new GuiTheme(frame, historyOutputPane.getLlmScrollPane(), this);
 
         // Apply current theme based on project settings
-        String currentTheme = getProject().getTheme();
+        String currentTheme = Project.getTheme();
         logger.debug("Applying theme from project settings: {}", currentTheme);
         // Apply the theme from project settings now
         boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
