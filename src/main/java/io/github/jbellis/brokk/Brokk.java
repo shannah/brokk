@@ -17,7 +17,8 @@ public class Brokk {
     
     private static final ConcurrentHashMap<Path, Chrome> openProjectWindows = new ConcurrentHashMap<>();
     private static final Set<Path> reOpeningProjects = ConcurrentHashMap.newKeySet();
-    private static final Path EMPTY_PROJECT = Path.of(":EMPTY:");
+    // key for empty project in the openProjectWindows map, should not be used as a path on disk
+    private static final Path EMPTY_PROJECT = Path.of("∅");
 
     public static final String ICON_RESOURCE = "/brokk-icon.png";
 
