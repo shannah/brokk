@@ -575,7 +575,7 @@ public interface ContextFragment extends Serializable {
 
     record AutoContext(SkeletonFragment fragment) implements ContextFragment {
         private static final long serialVersionUID = 2L;
-        private static final ProjectFile DUMMY = new ProjectFile(Path.of("/dummy"), Path.of("dummy"));
+        private static final ProjectFile DUMMY = new ProjectFile(Path.of("//dummy"), Path.of("dummy"));
         public static final AutoContext EMPTY =
                 new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Enabled, but no references found"), "")));
         public static final AutoContext DISABLED =
