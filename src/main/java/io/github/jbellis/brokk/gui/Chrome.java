@@ -1450,7 +1450,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
     
     public void updateContextTable() {
-        contextPanel.updateContextTable();
+        // don't remove null check, need it in case of race on startup
+        if (contextPanel != null) {
+            contextPanel.updateContextTable();
+        }
     }
 
     /**
