@@ -134,8 +134,11 @@ public class Coder {
                         errorRef.set(new HttpException(400, "BadRequestError"));
                     } else {
                         writeToHistory("Response", response.toString());
-                        assert response.tokenUsage() != null;
-                        outputTokenCountRef.set(response.tokenUsage().outputTokenCount());
+                        if (response.tokenUsage() == null) {
+                            logger.warn("Null token usage !? in {}", response);
+                        } else {
+                            outputTokenCountRef.set(response.tokenUsage().outputTokenCount());
+                        }
                     }
                     latch.countDown();
                 });

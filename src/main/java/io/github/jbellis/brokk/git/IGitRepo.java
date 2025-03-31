@@ -21,6 +21,26 @@ public interface IGitRepo {
         throw new UnsupportedOperationException();
     }
 
+    default String diffFiles(List<ProjectFile> selectedFiles) {
+        throw new UnsupportedOperationException();
+    }
+
+    default String showFileDiff(String head, String commitId, ProjectFile file) {
+        throw new UnsupportedOperationException();
+    }
+
+    default String getFileContent(String commitId, ProjectFile file) throws IOException {
+        throw new UnsupportedOperationException();
+    }
+
+    default String showDiff(String firstCommitId, String s) {
+        throw new UnsupportedOperationException();
+    }
+
+    default List<ProjectFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId) {
+        throw new UnsupportedOperationException();
+    }
+
     default void add(List<ProjectFile> files) throws IOException {
         throw new UnsupportedOperationException();
     }

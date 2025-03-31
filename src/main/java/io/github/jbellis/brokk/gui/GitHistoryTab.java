@@ -1,19 +1,15 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.DiffPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * A panel representing a single tab showing the Git history for a specific file.
@@ -43,15 +39,13 @@ public class GitHistoryTab extends JPanel {
         return file.toString();
     }
 
-    private void buildHistoryTabUI() {
-        // Create a history table similar to the commits table but with different column proportions
+    private void buildHistoryTabUI()
+    {
         fileHistoryModel = new DefaultTableModel(
                 new Object[]{"Message", "Author", "Date", "ID"}, 0
         ) {
-            @Override
-            public boolean isCellEditable(int row, int column) { return false; }
-            @Override
-            public Class<?> getColumnClass(int columnIndex) { return String.class; }
+            @Override public boolean isCellEditable(int row, int column) { return false; }
+            @Override public Class<?> getColumnClass(int columnIndex) { return String.class; }
         };
 
         fileHistoryTable = new JTable(fileHistoryModel);
@@ -59,29 +53,29 @@ public class GitHistoryTab extends JPanel {
         fileHistoryTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         fileHistoryTable.setRowHeight(18);
 
-        // Hide ID column
+        // Hide the ID column
         fileHistoryTable.getColumnModel().getColumn(3).setMinWidth(0);
         fileHistoryTable.getColumnModel().getColumn(3).setMaxWidth(0);
         fileHistoryTable.getColumnModel().getColumn(3).setWidth(0);
 
-        // Add a context menu with same options as Changes tree
+        // Context menu
         JPopupMenu historyContextMenu = new JPopupMenu();
         if (chrome.themeManager != null) {
             chrome.themeManager.registerPopupMenu(historyContextMenu);
         } else {
-            // Register this popup menu later when the theme manager is available
             SwingUtilities.invokeLater(() -> {
                 if (chrome.themeManager != null) {
                     chrome.themeManager.registerPopupMenu(historyContextMenu);
                 }
             });
         }
-        JMenuItem addToContextItem = new JMenuItem("Capture Diff");
-        JMenuItem compareWithLocalItem = new JMenuItem("Compare with Local");
-        JMenuItem viewFileAtRevisionItem = new JMenuItem("View File at Revision"); // New item
-        JMenuItem viewDiffItem = new JMenuItem("View Diff");
-        JMenuItem viewInLogItem = new JMenuItem("View in Log");
-        JMenuItem editFileItem = new JMenuItem("Edit File");
+
+        JMenuItem addToContextItem       = new JMenuItem("Capture Diff");
+        JMenuItem compareWithLocalItem   = new JMenuItem("Compare with Local");
+        JMenuItem viewFileAtRevisionItem = new JMenuItem("View File at Revision");
+        JMenuItem viewDiffItem           = new JMenuItem("View Diff");
+        JMenuItem viewInLogItem          = new JMenuItem("View in Log");
+        JMenuItem editFileItem           = new JMenuItem("Edit File");
 
         historyContextMenu.add(addToContextItem);
         historyContextMenu.add(editFileItem);
@@ -92,7 +86,7 @@ public class GitHistoryTab extends JPanel {
         historyContextMenu.add(viewDiffItem);
         historyContextMenu.add(compareWithLocalItem);
 
-        // Make sure right-clicking selects row under cursor first
+        // Right-click => select row
         historyContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
             @Override
             public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
@@ -111,7 +105,7 @@ public class GitHistoryTab extends JPanel {
 
         fileHistoryTable.setComponentPopupMenu(historyContextMenu);
 
-        // Add selection listener to enable/disable context menu items
+        // Enable/disable items based on selection
         fileHistoryTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int selectedRowCount = fileHistoryTable.getSelectedRowCount();
@@ -119,11 +113,11 @@ public class GitHistoryTab extends JPanel {
 
                 addToContextItem.setEnabled(singleSelected);
                 compareWithLocalItem.setEnabled(singleSelected);
-                viewFileAtRevisionItem.setEnabled(singleSelected); // Enable/disable View File at Revision
+                viewFileAtRevisionItem.setEnabled(singleSelected);
                 viewDiffItem.setEnabled(singleSelected);
                 viewInLogItem.setEnabled(singleSelected);
 
-                // Enable Edit File only if single row is selected and file isn't already editable
+                // Edit File => only if not already in context
                 if (singleSelected) {
                     var selectedFile = contextManager.toFile(getFilePath());
                     editFileItem.setEnabled(!contextManager.getEditableFiles().contains(selectedFile));
@@ -133,7 +127,7 @@ public class GitHistoryTab extends JPanel {
             }
         });
 
-        // Add double-click listener to show diff
+        // Double-click => show diff
         fileHistoryTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
@@ -142,56 +136,59 @@ public class GitHistoryTab extends JPanel {
                     if (row >= 0) {
                         fileHistoryTable.setRowSelectionInterval(row, row);
                         String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                        showFileHistoryDiff(commitId, getFilePath());
+                        // Replaced local code with GitUIUtils:
+                        GitUiUtil.showFileHistoryDiff(contextManager, chrome, GitHistoryTab.this, commitId, file);
                     }
                 }
             }
         });
 
-        // Add listeners to context menu items
+        // Menu actions:
         addToContextItem.addActionListener(e -> {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
                 String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                addFileChangeToContext(commitId, getFilePath());
+                GitUiUtil.addFileChangeToContext(contextManager, chrome, commitId, getFilePath());
             }
         });
 
-        // Hook up "View File at Revision" action
         viewFileAtRevisionItem.addActionListener(e -> {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
-                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                viewFileAtRevision(commitId, getFilePath());
+                String commitId = (String) fileHistoryTable.getValueAt(row, 3);
+                GitUiUtil.viewFileAtRevision(contextManager, chrome, commitId, getFilePath());
             }
         });
 
-        // Hook up "View Diff" action
         viewDiffItem.addActionListener(e -> {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
-                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                showFileHistoryDiff(commitId, getFilePath());
+                String commitId = (String) fileHistoryTable.getValueAt(row, 3);
+                GitUiUtil.showFileHistoryDiff(contextManager, chrome, GitHistoryTab.this, commitId, file);
             }
         });
 
         compareWithLocalItem.addActionListener(e -> {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
-                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                compareFileWithLocal(commitId, getFilePath());
+                String commitId = (String) fileHistoryTable.getValueAt(row, 3);
+                // Compare commit -> local
+                GitUiUtil.compareFileWithLocal(contextManager, chrome, GitHistoryTab.this,
+                                               commitId, getFilePath(), /*useParent=*/ false);
             }
         });
 
         viewInLogItem.addActionListener(e -> {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
-                String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                showCommitInLogTab(commitId);
+                String commitId = (String) fileHistoryTable.getValueAt(row, 3);
+                gitPanel.showCommitInLogTab(commitId);
             }
         });
 
-        editFileItem.addActionListener(e -> editFile(getFilePath()));
+        editFileItem.addActionListener(e ->
+                                               GitUiUtil.editFile(contextManager, getFilePath())
+        );
 
         add(new JScrollPane(fileHistoryTable), BorderLayout.CENTER);
     }
@@ -242,133 +239,6 @@ public class GitHistoryTab extends JPanel {
             }
             return null;
         });
-    }
-
-    private void addFileChangeToContext(String commitId, String filePath)
-    {
-        var repo = getRepo();
-        if (repo == null) {
-            chrome.toolError("Git repository not available.");
-            return;
-        }
-        contextManager.submitContextTask("Adding file change to context", () -> {
-            try {
-                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
-                var diff = repo.showFileDiff("HEAD", commitId, repoFile);
-
-                if (diff.isEmpty()) {
-                    chrome.systemOutput("No changes found for " + filePath);
-                    return;
-                }
-
-                var shortHash  = commitId.substring(0, 7);
-                var fileName   = gitPanel.getFileTabName(filePath);
-                var description= "git %s (single file)".formatted(shortHash);
-
-                var fragment = new ContextFragment.StringFragment(diff, description);
-                contextManager.addVirtualFragment(fragment);
-                chrome.systemOutput("Added changes for " + fileName + " to context");
-            } catch (Exception e) {
-                logger.error("Error adding file change to context", e);
-                chrome.toolErrorRaw("Error adding file change to context: " + e.getMessage());
-            }
-        });
-    }
-
-    private void compareFileWithLocal(String commitId, String filePath) {
-        var repo = getRepo();
-        if (repo == null) {
-            chrome.toolError("Git repository not available.");
-            return;
-        }
-        contextManager.submitUserTask("Comparing file with local", () -> {
-            try {
-                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
-                var diff = repo.showFileDiff("HEAD", commitId, repoFile);
-
-                if (diff.isEmpty()) {
-                    chrome.systemOutput("No differences found between " + filePath + " and local working copy");
-                    return;
-                }
-
-                var shortHash = commitId.substring(0, 7);
-                var fileName = gitPanel.getFileTabName(filePath);
-                var description = "git local vs " + shortHash + " [" + fileName + "]";
-
-                var fragment = new ContextFragment.StringFragment(diff, description);
-                contextManager.addVirtualFragment(fragment);
-                chrome.systemOutput("Added comparison with local for " + fileName + " to context");
-            } catch (Exception e) {
-                logger.error("Error comparing file with local", e);
-                chrome.toolErrorRaw("Error comparing file with local: " + e.getMessage());
-            }
-        });
-    }
-
-    private void editFile(String filePath) {
-        List<ProjectFile> files = new ArrayList<>();
-        files.add(contextManager.toFile(filePath));
-        contextManager.editFiles(files);
-    }
-
-    /**
-     * Shows the diff for a file at a specific commit from file history.
-     */
-    private void showFileHistoryDiff(String commitId, String filePath) {
-        var repo = getRepo();
-        if (repo == null) {
-            chrome.toolError("Git repository not available.");
-            return;
-        }
-        ProjectFile repoFile = new ProjectFile(contextManager.getRoot(), filePath);
-        DiffPanel diffPanel = new DiffPanel(contextManager);
-
-        String shortCommitId = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
-        String dialogTitle = "Diff: " + repoFile.getFileName() + " (" + shortCommitId + ")";
-
-        diffPanel.showFileDiff(commitId, repoFile);
-        diffPanel.showInDialog(this, dialogTitle);
-    }
-
-    /**
-     * Shows the content of a file at a specific revision.
-     */
-    private void viewFileAtRevision(String commitId, String filePath) {
-        var repo = getRepo();
-        if (repo == null) {
-            chrome.toolError("Git repository not available.");
-            return;
-        }
-        contextManager.submitUserTask("Viewing file at revision", () -> {
-            try {
-                var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
-                var content = repo.getFileContent(commitId, repoFile);
-
-                if (content.isEmpty()) {
-                    chrome.systemOutput("File not found in this revision or is empty.");
-                    return;
-                }
-
-                SwingUtilities.invokeLater(() -> {
-                    String shortHash = commitId.length() > 7 ? commitId.substring(0, 7) : commitId;
-                    String title = String.format("%s at %s", repoFile.getFileName(), shortHash);
-
-                    var fragment = new ContextFragment.StringFragment(content, title);
-                    // Assuming we want Java syntax highlighting as before, adjust if needed
-                    chrome.openFragmentPreview(fragment, SyntaxConstants.SYNTAX_STYLE_JAVA);
-                });
-            } catch (Exception ex) {
-                logger.error("Error viewing file at revision", ex);
-                chrome.toolErrorRaw("Error viewing file at revision: " + ex.getMessage());
-            }
-        });
-    }
-
-    /**
-     * Switches to the Log tab and highlights the specified commit.
-     */
-    private void showCommitInLogTab(String commitId) {
-        gitPanel.showCommitInLogTab(commitId);
     }
 
     /**

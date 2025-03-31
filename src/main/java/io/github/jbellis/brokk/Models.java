@@ -57,6 +57,8 @@ public final class Models {
     private static volatile SpeechToTextModel sttModel = null;
 
     // Simple OpenAI tokenizer for approximate counting
+    // langchain4j only supports openai tokenization, this is not very accurate for other providers
+    // but doing loc-based estimation based on information in the responses was worse
     private static final OpenAiTokenizer tokenizer = new OpenAiTokenizer("gpt-4o");
 
     static final String UNAVAILABLE = "AI is unavailable";
