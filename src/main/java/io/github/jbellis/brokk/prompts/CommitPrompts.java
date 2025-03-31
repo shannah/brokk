@@ -7,16 +7,11 @@ import io.github.jbellis.brokk.ContextManager;
 
 import java.util.List;
 
-public class CommitPrompts extends DefaultPrompts {
+public class CommitPrompts {
     public static final CommitPrompts instance = new CommitPrompts() {};
     
     private CommitPrompts() {}
 
-    @Override
-    public List<ChatMessage> collectMessages(ContextManager cm) {
-        return collectMessages(cm.getProject().getRepo().diff());
-    }
-    
     public List<ChatMessage> collectMessages(String diffTxt) {
         if (diffTxt.isEmpty()) {
             return List.of();
@@ -37,7 +32,6 @@ public class CommitPrompts extends DefaultPrompts {
                        new UserMessage(context + "\n\n" + instructions));
     }
 
-    @Override
     public String systemIntro() {
         return """
                You are an expert software engineer that generates concise,

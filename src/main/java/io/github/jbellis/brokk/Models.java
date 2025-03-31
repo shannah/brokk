@@ -217,6 +217,10 @@ public final class Models {
         return sttModel;
     }
 
+    public static boolean isLazy(StreamingChatLanguageModel model) {
+        return nameOf(model).contains("3-7-sonnet") || nameOf(model).contains("gemini-2.5-pro");
+    }
+
     /**
      * Simple interface for speech-to-text operations.
      */

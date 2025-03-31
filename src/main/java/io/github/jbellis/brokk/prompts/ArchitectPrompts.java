@@ -11,6 +11,10 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
 
     @Override
+    public List<ChatMessage> collectMessages(ContextManager cm, String reminder) {
+        throw new UnsupportedOperationException();
+    }
+
     public List<ChatMessage> collectMessages(ContextManager cm) {
         // like the default, but omits the edit instructions and examples
         var messages = new ArrayList<ChatMessage>();

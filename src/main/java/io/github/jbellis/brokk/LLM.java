@@ -63,7 +63,8 @@ public class LLM {
 
             // refresh with updated file contents
             var contextManager = (ContextManager) coder.contextManager;
-            var contextMessages = DefaultPrompts.instance.collectMessages(contextManager);
+            var reminder = Models.isLazy(model) ? DefaultPrompts.LAZY_REMINDER : DefaultPrompts.OVEREAGER_REMINDER;
+            var contextMessages = DefaultPrompts.instance.collectMessages(contextManager, reminder);
             // Actually send the message to the LLM and get the response
             var allMessages = new ArrayList<>(contextMessages);
             allMessages.addAll(requestMessages); // Add ongoing conversation history
