@@ -176,6 +176,7 @@ public class VoiceInputButton extends JButton {
 
                     // call coder
                     var transcript = contextManager.getCoder().transcribeAudio(tempFile);
+                    logger.debug("Successfully transcribed audio: {}", transcript);
 
                     // put it in the target text area
                     SwingUtilities.invokeLater(() -> {

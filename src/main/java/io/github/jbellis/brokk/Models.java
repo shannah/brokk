@@ -10,20 +10,19 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiTokenizer;
 import okhttp3.MediaType;
-import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -151,42 +150,7 @@ public final class Models {
             logger.info("Using first available model: {} => {}", firstEntry.getKey(), firstEntry.getValue());
         }
 
-        // Initialize STT model
-        String openaiKey = getKey("OPENAI_API_KEY");
-        if (openaiKey != null && !openaiKey.isBlank()) {
-            sttModel = new OpenAiWhisperSTT(openaiKey);
-            logger.info("Initialized OpenAI Whisper STT model.");
-        } else {
-            sttModel = new UnavailableSTT();
-            logger.warn("OpenAI API key not found. STT model is unavailable.");
-        }
-    }
-
-    /**
-     * Retrieves an API key by checking project properties and then environment variables.
-     */
-    private static String getKey(String keyName) {
-        try {
-            Path keysPath = Project.getLlmKeysPath();
-            if (Files.exists(keysPath)) {
-                var properties = new Properties();
-                try (var reader = Files.newBufferedReader(keysPath)) {
-                    properties.load(reader);
-                }
-                String propValue = properties.getProperty(keyName);
-                if (propValue != null && !propValue.isBlank()) {
-                    return propValue.trim();
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Error reading LLM keys: " + e.getMessage());
-        }
-
-        String envValue = System.getenv(keyName);
-        if (envValue != null && !envValue.isBlank()) {
-            return envValue.trim();
-        }
-        return null;
+        sttModel = new GeminiSTT("gemini/gemini-2.0-flash", httpClient);
     }
 
     /**
@@ -272,90 +236,99 @@ public final class Models {
     }
 
     /**
-     * Real STT using OpenAI Whisper v1.
+     * STT implementation using Gemini via LiteLLM's OpenAI compatible endpoint.
      */
-    public static class OpenAiWhisperSTT implements SpeechToTextModel {
-        private static final Logger logger = LogManager.getLogger(OpenAiWhisperSTT.class);
+    public static class GeminiSTT implements SpeechToTextModel {
+        private static final Logger logger = LogManager.getLogger(GeminiSTT.class);
+        private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-        private final String apiKey;
-        private static final String WHISPER_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
+        private final String modelLocation; // e.g., "gemini/gemini-2.0-flash-lite"
         private final OkHttpClient httpClient;
 
-        public OpenAiWhisperSTT(String apiKey) {
-            this.apiKey = apiKey;
-            this.httpClient = new OkHttpClient.Builder()
-                    .connectTimeout(10, TimeUnit.SECONDS)
-                    .readTimeout(0, TimeUnit.SECONDS)
-                    .writeTimeout(0, TimeUnit.SECONDS)
-                    .build();
+        public GeminiSTT(String modelLocation, OkHttpClient httpClient) {
+            this.modelLocation = modelLocation;
+            // Reuse the shared client configured in Models
+            this.httpClient = httpClient;
         }
 
-        private MediaType getMediaTypeFromFileName(String fileName) {
-            var extension = fileName.toLowerCase();
-            int dotIndex = extension.lastIndexOf('.');
-            if (dotIndex > 0) {
-                extension = extension.substring(dotIndex + 1);
+        private String getAudioFormat(String fileName) {
+            var lowerCaseFileName = fileName.toLowerCase();
+            int dotIndex = lowerCaseFileName.lastIndexOf('.');
+            if (dotIndex > 0 && dotIndex < lowerCaseFileName.length() - 1) {
+                return lowerCaseFileName.substring(dotIndex + 1);
             }
-
-            return switch (extension) {
-                case "mp3", "mpga", "mpeg" -> MediaType.parse("audio/mpeg");
-                case "mp4", "m4a" -> MediaType.parse("audio/mp4");
-                case "wav" -> MediaType.parse("audio/wav");
-                case "webm" -> MediaType.parse("audio/webm");
-                default -> MediaType.parse("audio/mpeg");
-            };
+            // Default or throw error? LiteLLM example used "wav"
+            logger.warn("Could not determine audio format for {}, defaulting to 'wav'", fileName);
+            return "wav";
         }
 
         @Override
         public String transcribe(Path audioFile) throws IOException {
-            logger.info("Beginning transcription for file: {}", audioFile);
-            File file = audioFile.toFile();
+            logger.info("Beginning transcription for file: {} using model {}", audioFile, modelLocation);
 
-            MediaType mediaType = getMediaTypeFromFileName(file.getName());
-            RequestBody fileBody = RequestBody.create(file, mediaType);
+            byte[] audioBytes = Files.readAllBytes(audioFile);
+            String encodedString = Base64.getEncoder().encodeToString(audioBytes);
+            String audioFormat = getAudioFormat(audioFile.getFileName().toString());
 
-            RequestBody requestBody = new MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("file", file.getName(), fileBody)
-                    .addFormDataPart("model", "whisper-1")
-                    .addFormDataPart("language", "en")
-                    .addFormDataPart("response_format", "json")
-                    .build();
+            // Construct the JSON body based on LiteLLM's multi-modal input format
+            String jsonBody = """
+                {
+                  "model": "%s",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": [
+                        {"type": "text", "text": "Transcribe this audio."},
+                        {"type": "input_audio", "input_audio": {"data": "%s", "format": "%s"}}
+                      ]
+                    }
+                  ],
+                  "modalities": ["text", "audio"],
+                  "stream": false
+                }
+                """.formatted(modelLocation, encodedString, audioFormat).stripIndent();
 
+            RequestBody body = RequestBody.create(jsonBody, JSON);
             Request request = new Request.Builder()
-                    .url(WHISPER_ENDPOINT)
-                    .header("Authorization", "Bearer " + apiKey)
-                    .addHeader("Content-Type", "multipart/form-data")
-                    .post(requestBody)
+                    .url(LITELLM_BASE_URL + "/chat/completions")
+                    // LiteLLM requires a dummy API key here for the OpenAI compatible endpoint
+                    .header("Authorization", "Bearer dummy-key")
+                    .post(body)
                     .build();
 
-            logger.debug("Sending Whisper STT request to {}", WHISPER_ENDPOINT);
+            logger.debug("Sending Gemini STT request to LiteLLM endpoint /chat/completions for model {}", modelLocation);
 
-            try (okhttp3.Response response = httpClient.newCall(request).execute()) {
-                String bodyStr = response.body() != null ? response.body().string() : "";
+            try (Response response = httpClient.newCall(request).execute()) {
+                ResponseBody responseBodyObj = response.body();
+                String bodyStr = responseBodyObj != null ? responseBodyObj.string() : "";
                 logger.debug("Received response, status = {}", response.code());
 
                 if (!response.isSuccessful()) {
-                    logger.error("Whisper STT call failed with status {}: {}", response.code(), bodyStr);
-                    throw new IOException("Whisper STT call failed with status "
+                    logger.error("LiteLLM STT call failed with status {}: {}", response.code(), bodyStr);
+                    throw new IOException("LiteLLM STT call failed with status "
                                                   + response.code() + ": " + bodyStr);
                 }
 
                 try {
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode node = mapper.readTree(bodyStr);
-                    if (node.has("text")) {
-                        String transcript = node.get("text").asText().trim();
-                        logger.info("Transcription successful, text length={} chars", transcript.length());
+                    JsonNode rootNode = objectMapper.readTree(bodyStr);
+                    // Response structure: { choices: [ { message: { content: "...", role: "..." } } ] }
+                    JsonNode contentNode = rootNode.path("choices").path(0).path("message").path("content");
+
+                    if (contentNode.isTextual()) {
+                        String transcript = contentNode.asText().trim();
+                        logger.info("Transcription successful: {}", transcript);
                         return transcript;
                     } else {
-                        logger.warn("No 'text' field found in Whisper response.");
+                        logger.error("No text content found in LiteLLM response. Response body: {}", bodyStr);
                         return "No transcription found in response.";
                     }
                 } catch (Exception e) {
-                    logger.error("Error parsing Whisper JSON response: {}", e.getMessage());
-                    throw new IOException("Error parsing Whisper JSON response: " + e.getMessage(), e);
+                    logger.error("Error parsing LiteLLM JSON response: {} Body: {}", e.getMessage(), bodyStr, e);
+                    throw new IOException("Error parsing LiteLLM JSON response: " + e.getMessage(), e);
                 }
+            } catch (IOException e) {
+                 logger.error("IOException during LiteLLM STT request: {}", e.getMessage(), e);
+                 throw e; // Re-throw IOExceptions
             }
         }
     }

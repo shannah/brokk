@@ -69,8 +69,7 @@ public class Coder {
     public String transcribeAudio(Path audioFile) {
         var sttModel = Models.sttModel();
         try {
-            String transcript = sttModel.transcribe(audioFile);
-            return transcript;
+            return sttModel.transcribe(audioFile);
         } catch (Exception e) {
             logger.error("Failed to transcribe audio: {}", e.getMessage(), e);
             io.toolError("Error transcribing audio: " + e.getMessage());
