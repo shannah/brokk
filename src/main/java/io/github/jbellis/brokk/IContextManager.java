@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
+import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
@@ -23,6 +24,10 @@ public interface IContextManager {
     }
 
     default Set<ProjectFile> getEditableFiles() {
+        throw new UnsupportedOperationException();
+    }
+
+    default Set<BrokkFile> getReadonlyFiles() {
         throw new UnsupportedOperationException();
     }
 

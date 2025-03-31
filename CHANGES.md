@@ -1,3 +1,19 @@
+0.7.2
+
+## Fixes
+- Allow search to answer the question without any tool calls if initial context is sufficient
+- Multiple fixes for Windows
+
+
+0.7.1
+
+## Features
+- Improved git single-file history table
+
+## Fixes
+- Theme is now saved globally, fixing the bug where it would NPE if set before Project opened
+
+
 0.7.0
 
 ## Features

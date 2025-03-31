@@ -25,13 +25,13 @@ public class ProjectFile implements BrokkFile {
         // We can't rely on these being set until after deserialization
         if (root != null && relPath != null) {
             if (!root.isAbsolute()) {
-                throw new IllegalArgumentException("Root must be absolute");
+                throw new IllegalArgumentException("Root must be absolute, got " + root);
             }
             if (!root.equals(root.normalize())) {
-                throw new IllegalArgumentException("Root must be normalized");
+                throw new IllegalArgumentException("Root must be normalized, got " + root);
             }
             if (relPath.isAbsolute()) {
-                throw new IllegalArgumentException("RelPath must be relative");
+                throw new IllegalArgumentException("RelPath must be relative, got " + relPath);
             }
             relPath = relPath.normalize();
         }

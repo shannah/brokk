@@ -12,10 +12,15 @@ public class Environment {
     }
     
     /**
-     * Runs a shell command using /bin/sh, returning {stdout, stderr}.
+     * Runs a shell command using the appropriate shell for the current OS, returning {stdout, stderr}.
      */
     public ProcessResultInternal runShellCommand(String command) throws IOException {
-        Process process = createProcessBuilder("/bin/sh", "-c", command).start();
+        Process process;
+        if (isWindows()) {
+            process = createProcessBuilder("cmd.exe", "/c", command).start();
+        } else {
+            process = createProcessBuilder("/bin/sh", "-c", command).start();
+        }
 
         var out = new StringBuilder();
         var err = new StringBuilder();
@@ -49,8 +54,13 @@ public class Environment {
     }
 
     private static ProcessBuilder createProcessBuilder(String... command) {
-        // Redirect input to /dev/null so interactive prompts fail fast
-        var pb = new ProcessBuilder(command).redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+        var pb = new ProcessBuilder(command);
+        // Redirect input from /dev/null (or NUL on Windows) so interactive prompts fail fast
+        if (isWindows()) {
+            pb.redirectInput(ProcessBuilder.Redirect.from(new File("NUL")));
+        } else {
+            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+        }
         // Remove environment variables that might interfere with non-interactive operation
         pb.environment().remove("EDITOR");
         pb.environment().remove("VISUAL");
@@ -100,4 +110,11 @@ public class Environment {
     }
 
     public record ProcessResultInternal(int status, String stdout, String stderr) {}
+    
+    /**
+     * Determines if the current operating system is Windows.
+     */
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().contains("win");
+    }
 }

@@ -87,7 +87,8 @@ public class GitRepo implements Closeable, IGitRepo {
             // Add each file pattern to the command
             for (var file : files) {
                 // Use toString() on RepoFile to get its relative path
-                addCommand.addFilepattern(file.toString());
+                // Use normalized Git paths
+                addCommand.addFilepattern(toGitPath(file.toString()));
             }
 
             // Execute the command once for all files
@@ -276,15 +277,16 @@ public class GitRepo implements Closeable, IGitRepo {
             add(files);
             var commitCommand = git.commit()
                               .setMessage(message);
-            
+
             // When a specific list of files is provided, only commit those
             if (!files.isEmpty()) {
                 // First need to add each file to the commit command
                 for (var file : files) {
-                    commitCommand.setOnly(file.toString());
+                    // Use normalized Git paths
+                commitCommand.setOnly(toGitPath(file.toString()));
                 }
             }
-            
+
             var commitResult = commitCommand.call();
             var commitId = commitResult.getId().getName();
 
@@ -778,7 +780,7 @@ public class GitRepo implements Closeable, IGitRepo {
                 treeWalk.addTree(tree);
                 treeWalk.setRecursive(true);
                 while (treeWalk.next()) {
-                    if (treeWalk.getPathString().equals(file.toString())) {
+                    if (treeWalk.getPathString().equals(toGitPath(file.toString()))) {
                         var blobId = treeWalk.getObjectId(0);
                         var loader = repository.open(blobId);
                         return new String(loader.getBytes(), StandardCharsets.UTF_8);
@@ -805,7 +807,7 @@ public class GitRepo implements Closeable, IGitRepo {
     public String showFileDiff(String commitIdA, String commitIdB, ProjectFile file)
     {
         try (var out = new ByteArrayOutputStream()) {
-            var pathFilter = PathFilter.create(file.toString());
+            var pathFilter = PathFilter.create(toGitPath(file.toString()));
 
             if ("HEAD".equals(commitIdA)) {
                 git.diff()
@@ -1156,8 +1158,8 @@ public class GitRepo implements Closeable, IGitRepo {
     {
         try {
             var commits = new ArrayList<CommitInfo>();
-            // Use addPath(...) with the relative path
-            for (var commit : git.log().addPath(file.toString()).call()) {
+            // Use addPath(...) with the relative path - Git always uses forward slashes
+            for (var commit : git.log().addPath(toGitPath(file.toString())).call()) {
                 var id     = commit.getName();
                 var message= commit.getShortMessage();
                 var author = commit.getAuthorIdent().getName();
@@ -1221,6 +1223,14 @@ public class GitRepo implements Closeable, IGitRepo {
         } catch (GitAPIException e) {
             throw new UncheckedIOException(new IOException("Failed to search commits", e));
         }
+    }
+
+    /**
+     * Normalizes a file path to use forward slashes as Git expects
+     * regardless of the operating system
+     */
+    private String toGitPath(String path) {
+        return path.replace('\\', '/');
     }
 
     @Override

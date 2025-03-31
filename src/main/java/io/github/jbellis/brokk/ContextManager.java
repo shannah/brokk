@@ -1345,6 +1345,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .collect(Collectors.toSet());
     }
 
+    @Override
+    public Set<BrokkFile> getReadonlyFiles() {
+        return selectedContext().readonlyFiles()
+                .map(ContextFragment.PathFragment::file)
+                .collect(Collectors.toSet());
+    }
+
     /**
      * push context changes with a function that modifies the current context
      */

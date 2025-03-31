@@ -46,6 +46,7 @@ public class Project implements IProject, AutoCloseable {
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
     private static final Path PROJECTS_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("projects.properties");
     private static final Path LLM_KEYS_PATH = BROKK_CONFIG_DIR.resolve("keys.properties");
+    private static final Path GLOBAL_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("brokk.properties");
 
     public Project(Path root, ContextManager.TaskRunner runner, AnalyzerListener analyzerListener) {
         this.repo = GitRepo.hasGitRepo(root) ? new GitRepo(root) : new LocalFileRepo(root);
@@ -95,8 +96,57 @@ public class Project implements IProject, AutoCloseable {
             } catch (Exception e) {
                 logger.error("Error creating default window settings: {}", e.getMessage());
             }
+            // Don't set default theme here anymore, it's global
         }
     }
+
+    // --- Static methods for global properties ---
+
+    /**
+     * Reads the global properties file (~/.config/brokk/brokk.properties).
+     * Returns an empty Properties object if the file doesn't exist or can't be read.
+     */
+    private static Properties loadGlobalProperties() {
+        var props = new Properties();
+        if (Files.exists(GLOBAL_PROPERTIES_PATH)) {
+            try (var reader = Files.newBufferedReader(GLOBAL_PROPERTIES_PATH)) {
+                props.load(reader);
+            } catch (IOException e) {
+                logger.warn("Unable to read global properties file: {}", e.getMessage());
+            }
+        }
+        return props;
+    }
+
+    /**
+     * Atomically saves the given Properties object to ~/.config/brokk/brokk.properties.
+     * Only writes if the properties have actually changed.
+     */
+    private static void saveGlobalProperties(Properties props) {
+        try {
+            // Check if properties file exists and compare
+            if (Files.exists(GLOBAL_PROPERTIES_PATH)) {
+                Properties existingProps = new Properties();
+                try (var reader = Files.newBufferedReader(GLOBAL_PROPERTIES_PATH)) {
+                    existingProps.load(reader);
+                } catch (IOException e) {
+                    // Ignore read error, proceed to save anyway
+                }
+
+                // Compare properties - only save if different
+                if (propsEqual(existingProps, props)) {
+                    return; // Skip saving if properties are identical
+                }
+            }
+
+            // Use atomic save method
+            AtomicWrites.atomicSaveProperties(GLOBAL_PROPERTIES_PATH, props, "Brokk global configuration");
+        } catch (IOException e) {
+            logger.error("Error saving global properties: {}", e.getMessage());
+        }
+    }
+
+    // --- Instance methods ---
 
     @Override
     public Set<ProjectFile> getFiles() {
@@ -201,8 +251,8 @@ public class Project implements IProject, AutoCloseable {
      * Compares two Properties objects to see if they have the same key-value pairs
      * @return true if properties are equal
      */
-    private boolean propsEqual(Properties p1, Properties p2) {
-        if (p1.size() != p2.size()) {
+    private static boolean propsEqual(Properties p1, Properties p2) {
+        if (p1 == null || p2 == null || p1.size() != p2.size()) {
             return false;
         }
 
@@ -614,20 +664,22 @@ public class Project implements IProject, AutoCloseable {
     }
 
     /**
-     * Gets the current UI theme (dark or light)
-     * @return "dark" or "light" (defaults to "dark" if not set)
+     * Gets the current global UI theme (dark or light)
+     * @return "dark" or "light" (defaults to "light" if not set)
      */
-    public String getTheme() {
-        return workspaceProps.getProperty("theme", "light");
+    public static String getTheme() {
+        var props = loadGlobalProperties();
+        return props.getProperty("theme", "light"); // Default to light
     }
 
     /**
-     * Sets the UI theme
+     * Sets the global UI theme
      * @param theme "dark" or "light"
      */
-    public void setTheme(String theme) {
-        workspaceProps.setProperty("theme", theme);
-        saveWorkspaceProperties();
+    public static void setTheme(String theme) {
+        var props = loadGlobalProperties();
+        props.setProperty("theme", theme);
+        saveGlobalProperties(props);
     }
 
     public void saveLlmKeys(Map<String, String> keys) {

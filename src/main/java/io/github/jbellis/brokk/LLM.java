@@ -147,6 +147,13 @@ public class LLM {
                     .toList();
             logger.debug("Auto-adding as editable: {}", filesToAdd);
             if (!filesToAdd.isEmpty()) {
+                var readOnlyFilesToAdd = filesToAdd.stream()
+                        .filter(file -> coder.contextManager.getReadonlyFiles().contains(file))
+                        .toList();
+                if (!readOnlyFilesToAdd.isEmpty()) {
+                    io.systemOutput("LLM attempted to edit read-only file(s): %s. \nNo edits applied. Mark the files editable or clarify to the LLM how to approach the problem another way.".formatted(readOnlyFilesToAdd));
+                    break;
+                }
                 io.systemOutput("Editing additional files " + filesToAdd);
                 coder.contextManager.editFiles(filesToAdd);
             }
