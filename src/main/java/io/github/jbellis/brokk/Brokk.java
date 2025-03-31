@@ -80,7 +80,7 @@ public class Brokk {
                     openProjectWindows.put(EMPTY_PROJECT, io);
                 } else {
                     // Open all previously open projects
-                    logger.info("Opening {} previously open projects", openProjects.size());
+                    logger.info("Opening previously open projects {}", openProjects);
                     for (var projectPath : openProjects) {
                         openProject(projectPath);
                     }
