@@ -272,8 +272,9 @@ public class GitPanel extends JPanel {
                     // Trigger LLM-based commit message generation
                     contextManager.inferCommitMessageAsync(diff);
                     SwingUtilities.invokeLater(chrome::enableUserActionButtons);
-                } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> {
+                 } catch (Exception ex) {
+                     logger.error("Error suggesting commit message:", ex);
+                     SwingUtilities.invokeLater(() -> {
                         chrome.actionOutput("Error suggesting commit message: " + ex.getMessage());
                         chrome.enableUserActionButtons();
                     });
@@ -325,9 +326,10 @@ public class GitPanel extends JPanel {
                         updateCommitPanel();
                         gitLogPanel.update(); // Update to show new stash in the virtual "stashes" branch
                         chrome.enableUserActionButtons();
-                    });
-                } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> {
+                     });
+                 } catch (Exception ex) {
+                     logger.error("Error stashing changes:", ex);
+                     SwingUtilities.invokeLater(() -> {
                         chrome.actionOutput("Error stashing changes: " + ex.getMessage());
                         chrome.enableUserActionButtons();
                     });
@@ -376,6 +378,7 @@ public class GitPanel extends JPanel {
                         chrome.enableUserActionButtons();
                     });
                 } catch (Exception ex) {
+                    logger.error("Error committing files:", ex);
                     SwingUtilities.invokeLater(() -> {
                         chrome.actionOutput("Error committing files: " + ex.getMessage());
                         chrome.enableUserActionButtons();
@@ -511,7 +514,7 @@ public class GitPanel extends JPanel {
                     updateCommitButtonText();
                 });
             } catch (Exception e) {
-                logger.error("Error fetching uncommitted files", e);
+                logger.error("Error fetching uncommitted files:", e);
                 SwingUtilities.invokeLater(() -> {
                     logger.debug("Disabling commit buttons due to error");
                     suggestMessageButton.setEnabled(false);
