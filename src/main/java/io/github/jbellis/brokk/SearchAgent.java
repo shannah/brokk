@@ -69,6 +69,7 @@ public class SearchAgent {
     private final List<Tuple2<String, String>> knowledge = new ArrayList<>();
     private final Set<String> toolCallSignatures = new HashSet<>();
     private final Set<String> trackedClassNames = new HashSet<>();
+    private CompletableFuture<String> initialContextSummary = null;
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
 
@@ -209,10 +210,32 @@ public class SearchAgent {
                 io.systemOutput("LLM error evaluating context; stopping search");
                 return null;
             }
-            knowledge.add(new Tuple2<>("Initial context", result.chatResponse().aiMessage().text()));
+            var contextText = result.chatResponse().aiMessage().text();
+            knowledge.add(new Tuple2<>("Initial context", contextText));
+            // Start summarizing the initial context evaluation asynchronously
+            initialContextSummary = summarizeInitialContextAsync(query, contextText);
         }
 
         while (true) {
+            // Wait for initial context summary if it's pending (before the second LLM call)
+            if (initialContextSummary != null) {
+                try {
+                    String summary = initialContextSummary.get();
+                    logger.debug("Initial context summary complete.");
+                    // Find the initial context entry in knowledge (assuming it's the first one)
+                    assert !knowledge.isEmpty() && knowledge.getFirst()._1.equals("Initial context");
+                    knowledge.set(0, new Tuple2<>("Initial context summary", summary));
+                } catch (ExecutionException e) {
+                    logger.error("Error waiting for initial context summary", e);
+                    // Keep the full context in knowledge if summary fails
+                } catch (InterruptedException e) {
+                    logger.error("Interrupted while waiting for initial context summary", e);
+                    Thread.currentThread().interrupt();
+                } finally {
+                    initialContextSummary = null; // Ensure this only runs once
+                }
+            }
+
             // If thread interrupted, bail out
             if (Thread.interrupted()) {
                 io.systemOutput("Interrupted; stopping search");
@@ -327,8 +350,36 @@ public class SearchAgent {
                                                   Set.of());
     }
 
+    /**
+    * Asynchronously summarizes the initial context evaluation result using the quick model.
+    */
+    private CompletableFuture<String> summarizeInitialContextAsync(String query, String initialContextResult) {
+        return CompletableFuture.supplyAsync(() -> {
+            logger.debug("Summarizing initial context relevance...");
+            ArrayList<ChatMessage> messages = new ArrayList<>();
+            messages.add(new SystemMessage("""
+            You are a code expert that extracts ALL information from the input that is relevant to the given query.
+            The input is an evaluation of existing code context against the query. Your summary will represent
+            the relevant parts of the existing context for future reasoning steps.
+            Be particularly sure to include ALL relevant source code chunks so they can be referenced later,
+            but DO NOT speculate or guess: your answer must ONLY include information present in the input!
+            """.stripIndent()));
+            messages.add(new UserMessage("""
+            <query>
+            %s
+            </query>
+            <information>
+            %s
+            </information>
+            """.stripIndent().formatted(query, initialContextResult)));
+
+            var response = coder.sendMessage(coder.models.searchModel(), messages).chatResponse();
+            return response.aiMessage().text();
+        });
+    }
+
     private int actionHistorySize() {
-        var toIndex = min(0, actionHistory.size() - 1);
+        var toIndex = min(actionHistory.size() - 1, 0);
         var historyString = IntStream.range(0, toIndex)
                 .mapToObj(actionHistory::get)
                 .map(h -> formatHistory(h, -1))
@@ -340,8 +391,8 @@ public class SearchAgent {
      * Update action controls based on current search context.
      */
     private void updateActionControlsBasedOnContext() {
-        // If we just started, don't allow answer yet
-        allowAnswer = !actionHistory.isEmpty();
+        // Allow answer if we have either previous actions OR initial knowledge
+        allowAnswer = !actionHistory.isEmpty() || !knowledge.isEmpty();
 
         allowSearch = true;
         allowInspect = true;
