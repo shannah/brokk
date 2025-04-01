@@ -34,6 +34,8 @@ public class KeyValueRowPanel extends JPanel {
             if (!found) {
                 keyNameCombo.setSelectedItem(initialKey);
             }
+        } else {
+            keyNameCombo.setSelectedIndex(-1);
         }
 
         keyValueField = new JTextField(initialValue);
