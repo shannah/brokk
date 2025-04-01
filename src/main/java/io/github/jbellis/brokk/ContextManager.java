@@ -297,6 +297,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> runCodeCommandAsync(StreamingChatLanguageModel model, String input)
     {
         assert io != null;
+        var modelName = Models.nameOf(model);
+        project.setLastUsedModel(modelName); // Save before starting task
         return submitUserTask("Running Code Command", () -> {
             LLM.runSession(coder, io, model, input);
         });
@@ -310,6 +312,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public Future<?> runAskAsync(StreamingChatLanguageModel model, String question)
     {
+        var modelName = Models.nameOf(model);
+        project.setLastUsedModel(modelName); // Save before starting task
         return submitUserTask("Asking the LLM", () -> {
             try {
                 if (question.isBlank()) {
@@ -355,6 +359,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> runSearchAsync(StreamingChatLanguageModel model, String query)
     {
         assert io != null;
+        var modelName = Models.nameOf(model);
+        project.setLastUsedModel(modelName); // Save before starting task
          return submitUserTask("Running Search Command", () -> {
              if (query.isBlank()) {
                  io.toolErrorRaw("Please provide a search query");

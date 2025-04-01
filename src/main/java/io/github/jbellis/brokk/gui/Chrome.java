@@ -1359,7 +1359,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Initializes the model dropdown by fetching available models from LiteLLM.
      */
     private void initializeModelDropdown() {
-        logger.info("Initializing model dropdown...");
+        logger.debug("Initializing model dropdown...");
 
         // Runs on a background thread
         contextManager.submitBackgroundTask("Fetching available models", () -> {
@@ -1370,9 +1370,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 modelDropdown.removeAllItems();
 
                 // Extra debug logging
-                modelLocationMap.forEach((k, v) ->
-                                                 logger.debug("Available modelName={} => location={}", k, v)
-                );
+                modelLocationMap.forEach((k, v) -> logger.debug("Available modelName={} => location={}", k, v));
 
                 if (modelLocationMap.isEmpty()) {
                     logger.error("No models discovered from LiteLLM.");
@@ -1380,15 +1378,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                     modelDropdown.setEnabled(false);
                     disableUserActionButtons();
                 } else {
-                    logger.info("Populating dropdown with {} models.", modelLocationMap.size());
+                    logger.debug("Populating dropdown with {} models.", modelLocationMap.size());
                     modelLocationMap.keySet().stream()
                             .filter(k -> !k.contains("-lite"))
                             .sorted()
                             .forEach(modelDropdown::addItem);
                     modelDropdown.setEnabled(true);
 
-                    // TODO save and restore most-recently-selected model
-                    // modelDropdown.setSelectedItem(TODO);
+                    // Restore the last used model if available
+                    var lastUsedModel = getProject().getLastUsedModel();
+                    if (lastUsedModel != null) {
+                        // Check if the saved model is actually in the list of available models
+                        boolean found = false;
+                        for (int i = 0; i < modelDropdown.getItemCount(); i++) {
+                            if (modelDropdown.getItemAt(i).equals(lastUsedModel)) {
+                                modelDropdown.setSelectedItem(lastUsedModel);
+                                found = true;
+                                logger.debug("Restored last used model: {}", lastUsedModel);
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            logger.warn("Last used model '{}' not found in available models.", lastUsedModel);
+                        }
+                    } else {
+                         logger.debug("No last used model saved for this project.");
+                    }
 
                     enableUserActionButtons();
                 }

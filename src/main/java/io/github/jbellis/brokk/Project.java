@@ -208,6 +208,25 @@ public class Project implements IProject, AutoCloseable {
     }
 
     /**
+     * Gets the name of the last used LLM model for this project.
+     * @return Model name, or null if not set.
+     */
+    public String getLastUsedModel() {
+        return workspaceProps.getProperty("lastUsedModel");
+    }
+
+    /**
+     * Sets the name of the last used LLM model for this project.
+     * @param modelName The name of the model.
+     */
+    public void setLastUsedModel(String modelName) {
+        if (modelName != null && !modelName.isBlank()) {
+            workspaceProps.setProperty("lastUsedModel", modelName);
+            saveWorkspaceProperties();
+        }
+    }
+
+    /**
      * Saves project-specific properties (buildCommand, code_intelligence_refresh)
      */
     public void saveProjectProperties() {
