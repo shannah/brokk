@@ -172,13 +172,19 @@ public final class Models {
 
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
-            return OpenAiStreamingChatModel.builder()
+            var builder = OpenAiStreamingChatModel.builder()
                     .baseUrl(LITELLM_BASE_URL)
                     .apiKey("litellm") // placeholder, LiteLLM manages actual keys
-                    .modelName(location)
-                    .logRequests(true)
-                    .logResponses(true)
-                    .build();
+                    .modelName(location);
+
+            if (modelName.contains("sonnet")) {
+                // "Claude 3.7 Sonnet may be less likely to make make parallel tool calls in a response,
+                // even when you have not set disable_parallel_tool_use. To work around this, we recommend
+                // enabling token-efficient tool use, which helps encourage Claude to use parallel tools."
+                builder = builder.customHeaders(Map.of("anthropic-beta", "token-efficient-tools-2025-02-19"));
+            }
+
+            return builder.build();
         });
     }
 
@@ -187,6 +193,7 @@ public final class Models {
             case SystemMessage sm -> sm.text();
             case AiMessage am -> am.text();
             case UserMessage um -> um.singleText();
+            // let ToolExecutionResultMessage throw, almost certainly shouldn't be calling getText on it
             default -> throw new UnsupportedOperationException(message.getClass().toString());
         };
     }

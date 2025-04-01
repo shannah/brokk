@@ -1,24 +1,15 @@
 package io.github.jbellis.brokk;
 
-import com.google.common.annotations.VisibleForTesting;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.git.IGitRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Scanner;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,293 +38,38 @@ public class EditBlock {
         return "";
     }
 
-    public enum EditBlockFailureReason {
-        FILE_NOT_FOUND,
-        NO_MATCH,
-        NO_FILENAME,
-        IO_ERROR
-    }
-
-    public record EditResult(Map<ProjectFile, String> originalContents, List<FailedBlock> failedBlocks) { }
-
-    public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
-
-    /**
-     * Parse the LLM response for SEARCH/REPLACE blocks (or shell blocks, etc.) and apply them.
-     */
-    public static EditResult applyEditBlocks(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks) {
-        // Track which blocks succeed or fail during application
-        List<FailedBlock> failed = new ArrayList<>();
-        List<SearchReplaceBlock> succeeded = new ArrayList<>();
-
-        // Track original file contents before any changes
-        Map<ProjectFile, String> changedFiles = new HashMap<>();
-
-        for (SearchReplaceBlock block : blocks) {
-            // Shell commands remain unchanged
-            if (block.shellCommand() != null) {
-                io.systemOutput("Shell command from LLM:\n" + block.shellCommand());
-                continue;
-            }
-
-            // Attempt to apply to the specified file
-            ProjectFile file = block.filename() == null ? null : contextManager.toFile(block.filename());
-            boolean isCreateNew = block.beforeText().trim().isEmpty();
-
-            String finalUpdated = null;
-            if (file != null) {
-                // if the user gave a valid file name, try to apply it there first
-                try {
-                    finalUpdated = doReplace(file, block.beforeText(), block.afterText());
-                } catch (IOException e) {
-                    io.toolError("Failed reading/writing " + file + ": " + e.getMessage());
-                }
-            }
-
-            // Fallback: if finalUpdated is still null and 'before' is not empty, try each known file
-            if (finalUpdated == null && !isCreateNew) {
-                for (ProjectFile altFile : contextManager.getEditableFiles()) {
-                    try {
-                        String updatedContent = doReplace(altFile.read(), block.beforeText(), block.afterText());
-                        if (updatedContent != null) {
-                            file = altFile; // Found a match
-                            finalUpdated = updatedContent;
-                            break;
-                        }
-                    } catch (IOException ignored) {
-                        // keep trying
-                    }
-                }
-            }
-
-            // if we still haven't found a matching file, we have to give up
-            if (file == null) {
-                failed.add(new FailedBlock(block, EditBlockFailureReason.NO_MATCH));
-                continue;
-            }
-
-            if (finalUpdated == null) {
-                var failedBlock = new FailedBlock(block, EditBlockFailureReason.NO_MATCH);
-                failed.add(failedBlock);
-            } else {
-                // Save original content before first change
-                if (!changedFiles.containsKey(file)) {
-                    try {
-                        changedFiles.put(file, file.exists() ? file.read() : "");
-                    } catch (IOException e) {
-                        io.toolError("Failed reading " + file + ": " + e.getMessage());
-                    }
-                }
-
-                // Actually write the file if it changed
-                var error = false;
-                try {
-                    file.write(finalUpdated);
-                } catch (IOException e) {
-                    io.toolError("Failed writing " + file + ": " + e.getMessage());
-                    failed.add(new FailedBlock(block, EditBlockFailureReason.IO_ERROR));
-                    error = true;
-                }
-                if (!error) {
-                    succeeded.add(block);
-                    if (isCreateNew) {
-                        try {
-                            contextManager.addToGit(file.toString());
-                            io.systemOutput("Added to git " + file);
-                        } catch (IOException e) {
-                            io.systemOutput("Failed to git add " + file + ": " + e.getMessage());
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!succeeded.isEmpty()) {
-            io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.");
-        }
-        return new EditResult(changedFiles, failed);
-    }
-
-    /**
-     * Simple record storing the parts of a search-replace block.
-     * If {@code filename} is non-null, then this block corresponds to a filename’s
-     * search/replace. If {@code shellCommand} is non-null, then this block
-     * corresponds to shell code that should be executed, not applied to a filename.
-     */
-    public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) {
-        @Override
-        public String toString() {
-            if (shellCommand != null) {
-                return "```shell\n" + shellCommand + "\n```";
-            }
-            
-            StringBuilder sb = new StringBuilder();
-            sb.append("```");
-            if (filename != null) {
-                sb.append("\n").append(filename);
-            }
-            sb.append("\n<<<<<<< SEARCH\n");
-            sb.append(beforeText);
-            if (!beforeText.endsWith("\n")) {
-                sb.append("\n");
-            }
-            sb.append("=======\n");
-            sb.append(afterText);
-            if (!afterText.endsWith("\n")) {
-                sb.append("\n");
-            }
-            sb.append(">>>>>>> REPLACE\n```");
-            
-            return sb.toString();
-        }
-    }
-
-    public record ParseResult(List<SearchReplaceBlock> blocks, String parseError) { }
-
-    private static final Pattern HEAD = Pattern.compile("^<{5,9} SEARCH\\W*$", Pattern.MULTILINE);
-    private static final Pattern DIVIDER = Pattern.compile("^={5,9}\\s*$", Pattern.MULTILINE);
-    private static final Pattern UPDATED = Pattern.compile("^>{5,9} REPLACE\\W*$", Pattern.MULTILINE);
-
-    // Default fence to match triple-backtick usage, e.g. ``` ... ```
-    static final String[] DEFAULT_FENCE = {"```", "```"};
-
     private EditBlock() {
         // utility class
     }
 
     /**
-     * Uses a fake GitRepo, only for testing
+     * Replace the first occurrence of `beforeText` lines with `afterText` lines in the given file.
+     * Throws NoMatchException if `beforeText` is not found in the file content.
      */
-    static ParseResult findOriginalUpdateBlocks(String content,
-                                                Set<ProjectFile> filesInContext)
+    public static void replaceInFile(ProjectFile file, String beforeText, String afterText)
+            throws IOException, NoMatchException
     {
-        return findOriginalUpdateBlocks(content, filesInContext, Set::of);
-    }
-    
-    /**
-     * Parses the given content and yields either (filename, before, after, null)
-     * or (null, null, null, shellCommand).
-     *
-     * Important! This does not *restrict* the blocks to `filesInContext`; this
-     * parameter is only used to help find possible filename matches in poorly formed blocks.
-     */
-    public static ParseResult findOriginalUpdateBlocks(String content,
-                                                       Set<ProjectFile> filesInContext,
-                                                       IGitRepo repo) 
-    {
-        List<SearchReplaceBlock> blocks = new ArrayList<>();
-        String[] lines = content.split("\n", -1);
-        int i = 0;
-
-        String currentFilename = null;
-
-        while (i < lines.length) {
-            String trimmed = lines[i].trim();
-
-            // Check if it's a <<<<<<< SEARCH block
-            if (HEAD.matcher(trimmed).matches()) {
-                try {
-                    // Attempt to find a filename in the preceding ~3 lines
-                    currentFilename = findFileNameNearby(lines, i, DEFAULT_FENCE, filesInContext, currentFilename, repo);
-
-                    // gather "before" lines until divider
-                    i++;
-                    List<String> beforeLines = new ArrayList<>();
-                    while (i < lines.length && !DIVIDER.matcher(lines[i].trim()).matches()) {
-                        beforeLines.add(lines[i]);
-                        i++;
-                    }
-                    if (i >= lines.length) {
-                        return new ParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
-                    }
-
-                    // gather "after" lines until >>>>>>> REPLACE or another divider
-                    i++; // skip the =======
-                    List<String> afterLines = new ArrayList<>();
-                    while (i < lines.length
-                            && !UPDATED.matcher(lines[i].trim()).matches()
-                            && !DIVIDER.matcher(lines[i].trim()).matches()) {
-                        afterLines.add(lines[i]);
-                        i++;
-                    }
-                    if (i >= lines.length) {
-                        return new ParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
-                    }
-
-                    var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines), currentFilename, DEFAULT_FENCE);
-                    var afterJoined = stripQuotedWrapping(String.join("\n", afterLines), currentFilename, DEFAULT_FENCE);
-
-                    // Append trailing newline if not present
-                    if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
-                        beforeJoined += "\n";
-                    }
-                    if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
-                        afterJoined += "\n";
-                    }
-
-                    blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
-
-                } catch (Exception e) {
-                    // Provide partial context in the error
-                    String partial = String.join("\n", Arrays.copyOfRange(lines, 0, min(lines.length, i + 1)));
-                    logger.error("Error parsing edit block", e);
-                    return new ParseResult(blocks, partial + "\n^^^ " + e.getMessage());
-                }
-            }
-
-            i++;
-        }
-
-        return new ParseResult(blocks, null);
-    }
-    
-    /**
-     * Attempt to locate beforeText in content and replace it with afterText.
-     * If beforeText is empty, just append afterText. If no match found, return null.
-     */
-    private static String doReplace(ProjectFile file,
-                                    String content,
-                                    String beforeText,
-                                    String afterText,
-                                    String[] fence) {
-        if (file != null && !file.exists() && beforeText.trim().isEmpty()) {
-            // Treat as a brand-new filename with empty original content
-            content = "";
-        }
-
-        assert content != null;
-
-        // Strip any surrounding triple-backticks, optional filename line, etc.
-        beforeText = stripQuotedWrapping(beforeText, file == null ? null : file.toString(), fence);
-        afterText = stripQuotedWrapping(afterText, file == null ? null : file.toString(), fence);
-
-        // If there's no "before" text, just append the after-text
-        if (beforeText.trim().isEmpty()) {
-            return content + afterText;
-        }
-
+        String original = file.exists() ? file.read() : "";
         // Attempt the chunk replacement
-        return replaceMostSimilarChunk(content, beforeText, afterText);
+        String updated = replaceMostSimilarChunk(original, beforeText, afterText);
+        if (updated == null) {
+            throw new NoMatchException("No matching location found");
+        }
+        file.write(updated);
     }
 
     /**
-     * Called by Coder
+     * Custom exception thrown when no matching location is found in the file.
      */
-    public static String doReplace(ProjectFile file, String beforeText, String afterText) throws IOException {
-        var content = file.exists() ? file.read() : "";
-        return doReplace(file, content, beforeText, afterText, DEFAULT_FENCE);
-    }
-
-    /**
-     * RepoFile-free overload for testing simplicity
-     */
-    public static String doReplace(String original, String beforeText, String afterText) {
-        return doReplace(null, original, beforeText, afterText, DEFAULT_FENCE);
+    public static class NoMatchException extends Exception {
+        public NoMatchException(String msg) {
+            super(msg);
+        }
     }
 
     /**
      * Attempts perfect/whitespace replacements, then tries "...", then fuzzy.
-     * Returns null if no match found.
+     * Returns the post-replacement content, or null if no match found.
      */
     static String replaceMostSimilarChunk(String content, String target, String replace) {
         // 1) prep for line-based matching
@@ -443,7 +179,7 @@ public class EditBlock {
     }
 
     /**
-     * Tries exact line-by-line match.
+     * Tries exact line-by-line match. Returns the post-replacement lines on success; null on failure.
      */
     public static String perfectReplace(String[] originalLines,
                                         String[] targetLines,
@@ -598,166 +334,6 @@ public class EditBlock {
         return replacePrefix.substring(0, -delta) + line;
     }
 
-    /**
-     * Uses LCS approximation for ratio.
-     */
-    private static double sequenceMatcherRatio(String a, String b) {
-        if (a.isEmpty() && b.isEmpty()) {
-            return 1.0;
-        }
-        int lcs = longestCommonSubsequence(a, b);
-        double denom = a.length() + b.length();
-        return (2.0 * lcs) / denom;
-    }
-
-    /**
-     * Optimized LCS with rolling 1D array instead of a 2D matrix
-     */
-    private static int longestCommonSubsequence(String s1, String s2) {
-        int n1 = s1.length();
-        int n2 = s2.length();
-        if (n1 == 0 || n2 == 0) {
-            return 0;
-        }
-        int[] prev = new int[n2 + 1];
-        int[] curr = new int[n2 + 1];
-
-        for (int i = 1; i <= n1; i++) {
-            // reset row
-            curr[0] = 0;
-            for (int j = 1; j <= n2; j++) {
-                if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
-                    curr[j] = prev[j - 1] + 1;
-                } else {
-                    curr[j] = Math.max(prev[j], curr[j - 1]);
-                }
-            }
-            // swap references
-            int[] temp = prev;
-            prev = curr;
-            curr = temp;
-        }
-        return prev[n2];
-    }
-
-    /**
-     * Removes any extra lines containing the filename or triple-backticks fences.
-     */
-    public static String stripQuotedWrapping(String block, String fname, String[] fence) {
-        if (block == null || block.isEmpty()) {
-            return block;
-        }
-        String[] lines = block.split("\n", -1);
-
-        // If first line ends with the filename’s filename
-        if (fname != null && lines.length > 0) {
-            String fn = new File(fname).getName();
-            if (lines[0].trim().endsWith(fn)) {
-                lines = Arrays.copyOfRange(lines, 1, lines.length);
-            }
-        }
-        // If triple-backtick block
-        if (lines.length >= 2
-                && lines[0].startsWith(fence[0])
-                && lines[lines.length - 1].startsWith(fence[1])) {
-            lines = Arrays.copyOfRange(lines, 1, lines.length - 1);
-        }
-        String result = String.join("\n", lines);
-        if (!result.isEmpty() && !result.endsWith("\n")) {
-            result += "\n";
-        }
-        return result;
-    }
-
-    /**
-     * Scanning for a filename up to 3 lines above the HEAD block index. If none found, fallback to
-     * currentFilename if it's not null.
-     */
-    @VisibleForTesting
-    static String findFileNameNearby(String[] lines,
-                                     int headIndex,
-                                     String[] fence,
-                                     Set<ProjectFile> validFiles,
-                                     String currentPath, 
-                                     IGitRepo repo)
-    {
-        // Search up to 3 lines above headIndex
-        int start = Math.max(0, headIndex - 3);
-        var candidates = new ArrayList<String>();
-        for (int i = headIndex - 1; i >= start; i--) {
-            String s = lines[i].trim();
-            String possible = stripFilename(s, fence);
-            if (possible != null && !possible.isBlank()) {
-                candidates.add(possible);
-            }
-            // If not a fence line, break.
-            if (!s.startsWith("```")) {
-                break;
-            }
-        }
-
-        if (candidates.isEmpty()) {
-            return currentPath;
-        }
-
-        // 1) Exact match in validFilenames
-        for (var c : candidates) {
-            if (validFiles.stream().anyMatch(f -> f.toString().equals(c))) {
-                return c;
-            }
-        }
-
-        // 2) Case-insensitive match by basename against validFiles
-        var matches = candidates.stream()
-                .map(c -> Path.of(c).getFileName().toString().toLowerCase())
-                .flatMap(cLower -> validFiles.stream()
-                        .filter(f -> f.getFileName().toLowerCase().equals(cLower))
-                        .findFirst()
-                        .stream())
-                .map(ProjectFile::toString)
-                .toList();
-        if (!matches.isEmpty()) {
-            return matches.getFirst();
-        }
-        
-        // 3) substring match vs repo
-        matches = candidates.stream()
-                .flatMap(c -> repo.getTrackedFiles().stream()
-                        .filter(f -> f.toString().contains(c))
-                        .findFirst()
-                        .stream())
-                .map(ProjectFile::toString)
-                .toList();
-        if (!matches.isEmpty()) {
-            return matches.getFirst();
-        }
-        
-        // 4) If the candidate has an extension and no better match found, just return that.
-        for (var c : candidates) {
-            if (c.contains(".")) {
-                return c;
-            }
-        }
-
-        // 5) Fallback to the first raw candidate
-        return candidates.getFirst();
-    }
-
-    /**
-     * Ignores lines that are just ``` or ...
-     */
-    private static String stripFilename(String line, String[] fence) {
-        String s = line.trim();
-        if (s.equals("...") || s.equals(fence[0])) {
-            return null;
-        }
-        // remove trailing colons, leading #, etc.
-        s = s.replaceAll(":$", "").replaceFirst("^#", "").trim();
-        s = s.replaceAll("^`+|`+$", "");
-        s = s.replaceAll("^\\*+|\\*+$", "");
-        return s.isBlank() ? null : s;
-    }
-
     private static ContentLines prep(String content) {
         assert content != null;
         // ensure it ends with newline
@@ -773,173 +349,4 @@ public class EditBlock {
     }
 
     private record ContentLines(String original, String[] lines) { }
-
-    /**
-     * Return a snippet of the content that best matches the search block, or "" if none.
-     */
-    public static String findSimilarLines(String search, String content, double threshold) {
-        String[] searchLines = search.split("\n", -1);
-        String[] contentLines = content.split("\n", -1);
-
-        double bestRatio = 0.0;
-        int bestIdx = -1;
-
-        int searchLen = searchLines.length;
-        for (int i = 0; i <= contentLines.length - searchLen; i++) {
-            String[] chunk = Arrays.copyOfRange(contentLines, i, i + searchLen);
-            double ratio = sequenceMatcherRatio(String.join("\n", chunk), search);
-            if (ratio > bestRatio) {
-                bestRatio = ratio;
-                bestIdx = i;
-            }
-        }
-        if (bestRatio < threshold || bestIdx < 0) {
-            return "";
-        }
-
-        // return the chunk plus a bit of surrounding context
-        int start = Math.max(0, bestIdx - 3);
-        int end = min(contentLines.length, bestIdx + searchLen + 3);
-        String[] snippet = Arrays.copyOfRange(contentLines, start, end);
-        return String.join("\n", snippet);
-    }
-
-    /**
-     * Collects suggestions for failed blocks by examining file contents
-     */
-    public static Map<FailedBlock, String> collectSuggestions(List<FailedBlock> failedBlocks, IContextManager cm) {
-        Map<FailedBlock, String> suggestions = new HashMap<>();
-
-        for (var failedBlock : failedBlocks) {
-            if (failedBlock.block().filename() == null) continue;
-
-            try {
-                String fileContent = cm.toFile(failedBlock.block().filename()).read();
-                String snippet = findSimilarLines(failedBlock.block().beforeText(), fileContent, 0.6);
-                String suggestion = "";
-                if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    suggestion = """
-                    Note: The replacement text is already present in the file. If we no longer need to apply
-                    this block, omit it from your reply.
-                    """.stripIndent();
-                } else if (!snippet.isEmpty()) {
-                    suggestion = """
-                    Did you mean:
-                    ```
-                    %s
-                    ```
-                    """.stripIndent().formatted(snippet);
-                }
-                if (!suggestion.isEmpty()) {
-                    suggestions.put(failedBlock, suggestion);
-                }
-            } catch (IOException ignored) {
-                // Skip suggestions if we can't read the file
-            }
-        }
-        return suggestions;
-    }
-
-    /**
-     * Parses blocks and attempts to apply them, reporting errors to stdout.
-     */
-    public static void main2(String[] args) throws IOException {
-        // Create a simple console IO for output
-        var io = new IConsoleIO() {
-            @Override
-            public void systemOutput(String message) {
-                System.out.println(message);
-            }
-
-            @Override
-            public void llmOutput(String message) {
-                System.out.println(message);
-            }
-
-            @Override
-            public void actionOutput(String message) {
-                System.out.println(message);
-            }
-
-            @Override
-            public void toolError(String message) {
-                System.err.println("ERROR: " + message);
-            }
-
-            @Override
-            public void toolErrorRaw(String message) {
-                System.err.println(message);
-            }
-        };
-
-        // Read input from testblocks.txt
-        Path testBlocksPath = Path.of("testblocks.txt");
-        var content = new StringBuilder();
-        Path cwd = Path.of("").toAbsolutePath();
-        Set<ProjectFile> potentialFiles = new HashSet<>();
-
-        // Collect lines while scanning for potential file paths
-        try (var scanner = new Scanner(testBlocksPath)) {
-            while (scanner.hasNextLine()) {
-                String line = scanner.nextLine();
-                content.append(line).append("\n");
-
-                // Identify lines that look like file paths starting with src/
-                if (line.trim().startsWith("src/")) {
-                    potentialFiles.add(new ProjectFile(cwd, line.trim()));
-                }
-            }
-        } catch (IOException e) {
-            io.toolError("Failed to read testblocks.txt: " + e.getMessage());
-            System.exit(1);
-        }
-        System.out.println("Potential files are " + potentialFiles);
-
-        // Get the context manager from Environment if available, or create one with potential files
-        IContextManager contextManager = new IContextManager() {
-                @Override
-                public Set<ProjectFile> getEditableFiles() {
-                    return potentialFiles;
-                }
-
-                @Override
-                public ProjectFile toFile(String path) {
-                    return new ProjectFile(cwd, path);
-                }
-            };
-
-        // Parse the input for SEARCH/REPLACE blocks
-        var parseResult = findOriginalUpdateBlocks(content.toString(), contextManager.getEditableFiles());
-        if (parseResult.parseError() != null) {
-            io.toolErrorRaw(parseResult.parseError());
-            System.exit(1);
-        }
-
-        var blocks = parseResult.blocks();
-        if (blocks.isEmpty()) {
-            io.systemOutput("No SEARCH/REPLACE blocks found in input");
-            System.exit(0);
-        }
-
-        io.systemOutput("Found " + blocks.size() + " SEARCH/REPLACE blocks");
-
-        // Apply the edit blocks
-        var editResult = applyEditBlocks(contextManager, io, blocks);
-
-        // Report any failures
-        if (!editResult.failedBlocks().isEmpty()) {
-            io.systemOutput(editResult.failedBlocks().size() + " blocks failed to apply:");
-            var suggestions = collectSuggestions(editResult.failedBlocks(), contextManager);
-
-            for (var failed : editResult.failedBlocks()) {
-                io.systemOutput("Failed to apply block for file: " +
-                                     (failed.block().filename() == null ? "(none)" : failed.block().filename()) +
-                                     " Reason: " + failed.reason());
-
-                if (suggestions.containsKey(failed)) {
-                    io.systemOutput(suggestions.get(failed));
-                }
-            }
-        }
-    }
 }
