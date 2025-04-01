@@ -4,13 +4,14 @@ import io.github.jbellis.brokk.Project;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.Properties;
 
 public class SettingsDialog extends JDialog {
 
     private final Chrome chrome;
     private final JTabbedPane tabbedPane;
     private final JPanel projectPanel; // Keep a reference to enable/disable
+    private JTextField buildCommandField; // Field for build command
+    private JComboBox<Project.CpgRefresh> cpgRefreshComboBox; // ComboBox for CPG refresh
 
     public SettingsDialog(Frame owner, Chrome chrome) {
         super(owner, "Settings", true); // Modal dialog
@@ -101,18 +102,53 @@ public class SettingsDialog extends JDialog {
         gbc.anchor = GridBagConstraints.WEST;
         gbc.insets = new Insets(2, 2, 2, 2);
 
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Allow horizontal expansion
+
         var project = chrome.getProject();
         if (project != null) {
-            // TODO: Load properties from project.getProperties()
-            // TODO: Create JTextFields for each editable property
-            // For now, just add a placeholder
-            panel.add(new JLabel("Project settings will be loaded here."), gbc);
+            // Build Command
+            var buildCommandLabel = new JLabel("Build Command:");
+            gbc.gridx = 0;
+            gbc.gridy = 0;
+            gbc.weightx = 0.0; // Label doesn't expand
+            panel.add(buildCommandLabel, gbc);
+
+            buildCommandField = new JTextField(project.getBuildCommand(), 20);
+            gbc.gridx = 1;
+            gbc.gridy = 0;
+            gbc.weightx = 1.0; // Text field expands
+            panel.add(buildCommandField, gbc);
+
+            // Code Intelligence Refresh
+            var cpgRefreshLabel = new JLabel("Code Intelligence Refresh:");
+            gbc.gridx = 0;
+            gbc.gridy = 1;
+            gbc.weightx = 0.0;
+            panel.add(cpgRefreshLabel, gbc);
+
+            // Filter out UNSET from the dropdown
+            cpgRefreshComboBox = new JComboBox<>(new Project.CpgRefresh[]{
+                Project.CpgRefresh.AUTO, Project.CpgRefresh.MANUAL
+            });
+            var currentRefresh = project.getCpgRefresh();
+            // If current setting is UNSET, default to AUTO
+            cpgRefreshComboBox.setSelectedItem(currentRefresh == Project.CpgRefresh.UNSET ? 
+                Project.CpgRefresh.AUTO : currentRefresh);
+            gbc.gridx = 1;
+            gbc.gridy = 1;
+            gbc.weightx = 1.0;
+            panel.add(cpgRefreshComboBox, gbc);
+
         } else {
+            gbc.gridx = 0;
+            gbc.gridy = 0;
+            gbc.gridwidth = 2; // Span across two columns
             panel.add(new JLabel("No project is open."), gbc);
+            gbc.gridwidth = 1; // Reset gridwidth
         }
 
         // Add a glue component to push everything to the top-left
-        gbc.gridy++;
+        gbc.gridy = 2; // Adjust gridy based on added components
         gbc.weightx = 1.0;
         gbc.weighty = 1.0;
         panel.add(Box.createGlue(), gbc);
@@ -133,11 +169,19 @@ public class SettingsDialog extends JDialog {
         }
 
         // Apply Project Settings (if project is open and tab is enabled)
-        if (chrome.getProject() != null && tabbedPane.isEnabledAt(1)) {
-            // TODO: Retrieve values from JTextFields in projectPanel
-            // TODO: Create a Properties object with the new values
-            // TODO: Call a method like chrome.getProject().saveProperties(newProperties)
-            System.out.println("Applying project settings (not implemented yet)");
+        var project = chrome.getProject();
+        if (project != null && tabbedPane.isEnabledAt(1)) {
+            // Apply Build Command
+            var newBuildCommand = buildCommandField.getText();
+            if (!newBuildCommand.equals(project.getBuildCommand())) {
+                project.setBuildCommand(newBuildCommand);
+            }
+
+            // Apply CPG Refresh Setting
+            var selectedRefresh = (Project.CpgRefresh) cpgRefreshComboBox.getSelectedItem();
+            if (selectedRefresh != project.getCpgRefresh()) {
+                project.setCpgRefresh(selectedRefresh);
+            }
         }
     }
 }

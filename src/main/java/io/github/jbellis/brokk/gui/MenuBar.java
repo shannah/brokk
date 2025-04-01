@@ -69,8 +69,7 @@ public class MenuBar {
 
         var settingsItem = new JMenuItem("Settings...");
         settingsItem.addActionListener(e -> {
-            var dialog = new SettingsDialog(chrome.frame, chrome);
-            dialog.setVisible(true);
+            openSettingsDialog(chrome);
         });
         fileMenu.add(settingsItem);
 
@@ -237,6 +236,15 @@ public class MenuBar {
         menuBar.add(helpMenu);
 
         return menuBar;
+    }
+
+    /**
+     * Opens the settings dialog
+     * @param chrome the Chrome instance
+     */
+    static void openSettingsDialog(Chrome chrome) {
+        var dialog = new SettingsDialog(chrome.frame, chrome);
+        dialog.setVisible(true);
     }
 
     /**
