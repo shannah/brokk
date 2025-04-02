@@ -669,7 +669,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public static String getTheme() {
         var props = loadGlobalProperties();
-        return props.getProperty("theme", "light"); // Default to light
+        return props.getProperty("theme", "dark"); // Default to light
     }
 
     /**
