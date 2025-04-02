@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
@@ -193,7 +194,7 @@ public final class Models {
             case SystemMessage sm -> sm.text();
             case AiMessage am -> am.text();
             case UserMessage um -> um.singleText();
-            // let ToolExecutionResultMessage throw, almost certainly shouldn't be calling getText on it
+            case ToolExecutionResultMessage tr -> "%s: %s".formatted(tr.toolName(), tr.text());
             default -> throw new UnsupportedOperationException(message.getClass().toString());
         };
     }

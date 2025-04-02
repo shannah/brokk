@@ -115,8 +115,8 @@ class LLMToolsTest {
         assertNull(validated.error(), "Expected no parse error for replaceLines request");
 
         var result = tools.executeTool(validated);
-        assertTrue(result.text().startsWith("Failed to apply: "), "Expected failure result for unknown text");
-        assertTrue(result.text().contains("No matching location"), result.text());
+        assertTrue(result.text().startsWith("Failed: "), "Expected failure result for unknown text");
+        assertTrue(result.text().contains("No matching"), result.text());
     }
 
     @Test
@@ -171,7 +171,7 @@ class LLMToolsTest {
     }
 
     @Test
-    void testApplyEditsCreatesNewFile(@TempDir Path tempDir) throws IOException, EditBlock.NoMatchException {
+    void testApplyEditsCreatesNewFile(@TempDir Path tempDir) throws IOException, EditBlock.NoMatchException, EditBlock.AmbiguousMatchException {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
         var tools = new LLMTools(ctx);
 

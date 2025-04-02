@@ -7,20 +7,20 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.exception.HttpException;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.chat.request.ResponseFormatType;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -79,10 +79,10 @@ public class Coder {
             return "";
         }
     }
-    
+
     private StreamingResult doSingleStreamingCall(StreamingChatLanguageModel model,
-                                                 ChatRequest request,
-                                                 boolean echo)
+                                                  ChatRequest request,
+                                                  boolean echo)
     {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
@@ -101,7 +101,8 @@ public class Coder {
         });
 
         // Write request with tools to history
-        writeRequestToHistory(request.messages(), request.parameters().toolSpecifications());
+        var tools = request.parameters().toolSpecifications();
+        writeRequestToHistory(request.messages(), tools);
 
         AtomicReference<ChatResponse> atomicResponse = new AtomicReference<>();
 
@@ -110,7 +111,11 @@ public class Coder {
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
-                        io.llmOutput(token);
+                        if (LLMTools.requiresEmulatedTools(model) && emulatedToolInstructionsPresent(request.messages())) {
+                            io.llmOutput(".");
+                        } else {
+                            io.llmOutput(token);
+                        }
                     }
                 });
             }
@@ -122,7 +127,13 @@ public class Coder {
                         io.llmOutput("\n");
                     }
                     atomicResponse.set(response);
-                    writeToHistory("Response", response.toString());
+                    if (response == null) {
+                        // I think this isn't supposed to happen, but seeing it when litellm throws back a 400.
+                        // Fake an exception so the caller can treat it like other errors
+                        errorRef.set(new HttpException(400, "BadRequestError"));
+                    } else {
+                        writeToHistory("Response", response.toString());
+                    }
                     latch.countDown();
                 });
             }
@@ -224,11 +235,11 @@ public class Coder {
      * Wrapper for chat calls with retry logic and exponential backoff
      */
     private StreamingResult sendMessageWithRetry(StreamingChatLanguageModel model,
-                                              List<ChatMessage> messages,
-                                              List<ToolSpecification> tools,
-                                              ToolChoice toolChoice,
-                                              boolean echo,
-                                              int maxAttempts)
+                                                 List<ChatMessage> messages,
+                                                 List<ToolSpecification> tools,
+                                                 ToolChoice toolChoice,
+                                                 boolean echo,
+                                                 int maxAttempts)
     {
         Throwable error = null;
         int attempt = 0;
@@ -267,7 +278,7 @@ public class Coder {
             backoffSeconds = Math.min(backoffSeconds, 16);
 
             io.systemOutput(String.format("LLM issue on attempt %d of %d (will retry in %.1f seconds).",
-                                  attempt, maxAttempts, (double) backoffSeconds));
+                                          attempt, maxAttempts, (double) backoffSeconds));
 
             // Busywait with countdown
             long startTime = System.currentTimeMillis();
@@ -307,11 +318,12 @@ public class Coder {
 
         if (!tools.isEmpty()) {
             // Check if this is a DeepSeek model that needs function calling emulation
-            if (requiresEmulatedTools(model)) {
+            if (LLMTools.requiresEmulatedTools(model)) {
                 return emulateToolsUsingStructuredOutput(model, messages, tools, toolChoice, echo);
             }
 
             // For models with native function calling
+            logger.debug("Performing native tool calls");
             var params = OpenAiChatRequestParameters.builder()
                     .toolSpecifications(tools)
                     .parallelToolCalls(true)
@@ -326,11 +338,6 @@ public class Coder {
         return response;
     }
 
-    public boolean requiresEmulatedTools(StreamingChatLanguageModel model) {
-        var modelName = Models.nameOf(model);
-        return modelName.toLowerCase().contains("deepseek") || modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
-    }
-
     /**
      * Emulates function calling for models that support structured output but not native function calling
      * Used primarily for DeepSeek models
@@ -342,16 +349,12 @@ public class Coder {
             assert tool.parameters().properties() != null;
         }
 
+        var instructionsPresent = emulatedToolInstructionsPresent(messages);
+        logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
         ObjectMapper mapper = new ObjectMapper();
-
-        var instructionsPresent = messages.stream().anyMatch(m -> {
-            var t = Models.getText(m);
-            return t.contains("tool_calls") && t.contains("Available tools:") && t.contains("Response format:");
-        });
-        logger.debug("sending {} messages with {}", messages.size(), instructionsPresent);
         if (!instructionsPresent) {
             // Inject instructions for the model re how to format function calls
-            var instructions = getInstructions(tools, mapper);
+            var instructions = getInstructions(tools);
             var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
             messages = new ArrayList<>(messages); // so we can modify it
             messages.set(messages.size() - 1, modified);
@@ -374,44 +377,45 @@ public class Coder {
                     .messages(currentMessages)
                     .parameters(requestParams)
                     .build();
-            var response = doSingleStreamingCall(model, request, echo);
+            var result = doSingleStreamingCall(model, request, echo);
 
             // If cancelled or no chat response, return immediately
-            if (response.cancelled) {
-                return response;
+            if (result.cancelled) {
+                return result;
             }
 
-            if (response.chatResponse == null || response.chatResponse.aiMessage() == null) {
+            if (result.chatResponse == null || result.chatResponse.aiMessage() == null) {
                 logger.debug("No chat response or AI message in response on attempt {}", attempt);
                 continue;
             }
 
             // Try to parse the JSON response
             try {
-                StreamingResult parsedResponse = parseJsonToTools(response, mapper);
+                StreamingResult parsedResponse = parseJsonToTools(result, mapper);
                 if (parsedResponse.chatResponse.aiMessage().hasToolExecutionRequests()) {
                     // Successfully parsed tool calls, return the result
                     logger.debug("Successfully parsed tool calls on attempt {}", attempt);
                     return parsedResponse;
                 }
                 // If we get here, the response was valid JSON but didn't contain tool calls
-                throw new IllegalArgumentException("Response contained valid JSON but no tool_calls");
-            } catch (IllegalArgumentException e) {
                 if (toolChoice == ToolChoice.AUTO) {
                     // If tools are optional, return the original response
-                    logger.debug("Tools are optional, returning original response on attempt {}: {}", attempt, e.getMessage());
-                    return response;
+                    logger.debug("Tools are optional, returning original response on attempt {}", attempt);
+                    return result;
                 }
-
+                // else throw so catch retries
+                throw new IllegalArgumentException("Response contained valid JSON but no tool_calls");
+            } catch (IllegalArgumentException e) {
                 // If this is the last attempt, throw the exception
                 if (attempt == maxRetries) {
-                    logger.error("Failed to get valid tool calls after {} attempts: {}", maxRetries, e.getMessage());
-                    return response; // Return the original response with the error
+                    var msg = "Failed to get valid tool calls after %d attempts: %s".formatted(maxRetries, e.getMessage());
+                    logger.error(msg);
+                    return new StreamingResult(result.chatResponse, false, new RuntimeException(msg));
                 }
 
                 // Add the invalid response to the messages
-                String invalidResponse = response.chatResponse.aiMessage().text();
-                logger.debug("Invalid JSON response on attempt {}: {}", attempt, invalidResponse);
+                String invalidResponse = result.chatResponse.aiMessage().text();
+                logger.debug("Invalid JSON response on attempt {}: {}", attempt, e);
                 io.systemOutput("Retry " + attempt + "/" + maxRetries + ": Invalid JSON response, requesting proper format.");
 
                 // Add the invalid response as an assistant message
@@ -419,20 +423,24 @@ public class Coder {
 
                 // Add a clearer instruction for the next attempt
                 String retryMessage = """
-                Your previous response was not valid. You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array as follows:
+                Your previous response was not valid: %s
+                You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
+                Include all the tool calls necessary to satisfy the request in a single array!
+                REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
+                Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
                 {
                   "tool_calls": [
                     {
-                      "name": "tool_name",
+                      "name": "$tool_name",
                       "arguments": {
-                        "arg1": "value1",
-                        "arg2": "value2"
+                        "$arg1": "$value1",
+                        "$arg2": "$value2",
+                        ...
                       }
                     }
                   ]
                 }
-                Do not include any explanation or other text outside the JSON object.
-                """.stripIndent();
+                """.formatted(e.getMessage()).stripIndent();
 
                 currentMessages.add(new UserMessage(retryMessage));
                 writeToHistory("Retry Attempt " + attempt, "Invalid JSON: " + invalidResponse + "\n\nRetry with: " + retryMessage);
@@ -441,122 +449,123 @@ public class Coder {
 
         // If we reach here, all retries failed
         logger.error("All {} attempts to get valid JSON tool calls failed", maxRetries);
-        return new StreamingResult(
-                ChatResponse.builder().aiMessage(new AiMessage("Failed to generate valid tool calls after " + maxRetries + " attempts")).build(),
-                false,
-                new IllegalArgumentException("Failed to generate valid tool calls after " + maxRetries + " attempts")
+        var msg = new AiMessage("Failed to generate valid tool calls after " + maxRetries + " attempts");
+        return new StreamingResult(ChatResponse.builder().aiMessage(msg).build(),
+                                   false,
+                                   new IllegalArgumentException("Failed to generate valid tool calls after " + maxRetries + " attempts")
         );
     }
 
-    private static StreamingResult parseJsonToTools(StreamingResult response, ObjectMapper mapper) {
-        String jsonResponse = response.chatResponse.aiMessage().text();
+    private static boolean emulatedToolInstructionsPresent(List<ChatMessage> messages) {
+        return messages.stream().anyMatch(m -> {
+            var t = Models.getText(m);
+            return t.contains("tool_calls")
+                    && t.matches("(?s).*\\d+ available tools:.*")
+                    && t.contains("Response format:");
+        });
+    }
+
+    private static StreamingResult parseJsonToTools(StreamingResult result, ObjectMapper mapper) {
+        String jsonResponse = result.chatResponse.aiMessage().text();
         logger.debug("Raw JSON response from model: {}", jsonResponse);
         JsonNode root;
-        root = tryParseJson(mapper, jsonResponse);
-        if (root == null) {
-            // Try to extract JSON from noise
-            root = tryParseJson(mapper, jsonResponse.substring(jsonResponse.indexOf('{'), jsonResponse.lastIndexOf('}') + 1));
-        }
-        if (root == null) {
-            // Try to wrap JSON in an object
-            root = tryParseJson(mapper, "{" + jsonResponse + "}");
-        }
-        if (root == null) {
-            throw new IllegalArgumentException("Unable to parse JSON response");
+        try {
+            root = mapper.readTree(jsonResponse);
+        } catch (JsonProcessingException e) {
+            logger.debug("Invalid JSON", e);
+            throw new IllegalArgumentException("Invalid JSON: " + e.getMessage());
         }
 
+        JsonNode toolCalls;
         // Check for tool_calls array format
         if (root.has("tool_calls") && root.get("tool_calls").isArray()) {
-            JsonNode toolCalls = root.get("tool_calls");
+            // happy path, this is what we asked for
+            toolCalls = root.get("tool_calls");
+        } else if (root.isArray()) {
+            // gemini 2.5 REALLY likes to give a top-level array instead
+            toolCalls = root;
+        } else {
+            throw new IllegalArgumentException("Response does not contain a 'tool_calls' array");
+        }
 
-            // Create list of tool execution requests
-            var toolExecutionRequests = new ArrayList<ToolExecutionRequest>();
+        // Transform json into list of tool execution requests
+        var toolExecutionRequests = new ArrayList<ToolExecutionRequest>();
+        for (int i = 0; i < toolCalls.size(); i++) {
+            JsonNode toolCall = toolCalls.get(i);
+            if (!toolCall.has("name") || !toolCall.has("arguments")) {
+                throw new IllegalArgumentException("Tool call object is missing 'name' or 'arguments' field");
+            }
 
-            for (int i = 0; i < toolCalls.size(); i++) {
-                JsonNode toolCall = toolCalls.get(i);
-                if (toolCall.has("name") && toolCall.has("arguments")) {
-                    String toolName = toolCall.get("name").asText();
-                    JsonNode arguments = toolCall.get("arguments");
+            String toolName = toolCall.get("name").asText();
+            JsonNode arguments = toolCall.get("arguments");
 
-                    String argumentsJson;
-                    if (arguments.isObject()) {
-                        argumentsJson = arguments.toString();
-                    } else {
-                        // Handle case where arguments might be a string instead of object
-                         try {
-                             JsonNode parsedArgs = mapper.readTree(arguments.asText());
-                             argumentsJson = parsedArgs.toString();
-                         } catch (Exception e) {
-                             // If parsing fails, use as-is or log warning
-                             logger.warn("Argument is not valid JSON object for tool '{}', treating as string: {}", toolName, arguments.asText(), e);
-                            argumentsJson = arguments.toString(); // Keep original if parsing fails
-                         }
-                    }
-
-                    var toolExecutionRequest = ToolExecutionRequest.builder()
-                            .id(String.valueOf(i))
-                            .name(toolName)
-                            .arguments(argumentsJson)
-                            .build();
-
-                    toolExecutionRequests.add(toolExecutionRequest);
+            String argumentsJson;
+            if (arguments.isObject()) {
+                argumentsJson = arguments.toString();
+            } else {
+                // Handle case where arguments might be a string instead of object
+                try {
+                    JsonNode parsedArgs = mapper.readTree(arguments.asText());
+                    argumentsJson = parsedArgs.toString();
+                } catch (Exception e) {
+                    // If parsing fails, use as-is or log warning
+                    logger.warn("Argument is not valid JSON object for tool '{}', treating as string: {}", toolName, arguments.asText(), e);
+                    argumentsJson = arguments.toString(); // Keep original if parsing fails
                 }
             }
 
-            assert !toolExecutionRequests.isEmpty();
-            logger.debug("Generated tool execution requests: {}", toolExecutionRequests);
+            var toolExecutionRequest = ToolExecutionRequest.builder()
+                    .id(String.valueOf(i))
+                    .name(toolName)
+                    .arguments(argumentsJson)
+                    .build();
 
-            // Create a properly formatted AiMessage with tool execution requests
-            var aiMessage = new AiMessage("[json]", toolExecutionRequests);
-            var cr = ChatResponse.builder().aiMessage(aiMessage).build();
-            return new StreamingResult(cr, false, null);
+            toolExecutionRequests.add(toolExecutionRequest);
         }
-        // If no tool_call found, return original response
-        logger.debug("No tool calls found in response, returning original");
-        return response;
+
+        assert !toolExecutionRequests.isEmpty();
+        logger.debug("Generated tool execution requests: {}", toolExecutionRequests);
+
+        // Create a properly formatted AiMessage with tool execution requests
+        var aiMessage = new AiMessage("[json]", toolExecutionRequests);
+        var cr = ChatResponse.builder().aiMessage(aiMessage).build();
+        return new StreamingResult(cr, result.originalResponse, false, null);
     }
 
-    private static String getInstructions(List<ToolSpecification> tools, ObjectMapper mapper) {
+    private static String getInstructions(List<ToolSpecification> tools) {
         String toolsDescription = tools.stream()
                 .map(tool -> {
                     var parametersInfo = tool.parameters().properties().entrySet().stream()
                             .map(entry -> {
-                                try {
-                                    var node = mapper.valueToTree(entry.getValue());
-                                    // Safely get description
-                                    var descriptionNode = node.get("description");
-                                    String description = (descriptionNode != null && descriptionNode.isTextual())
-                                            ? ": " + descriptionNode.asText()
-                                            : "";
-                                    return "    - %s (type: %s)%s".formatted(
-                                            entry.getKey(),
-                                            node.path("type").asText("unknown"), // Include type if available
-                                            description);
-                                } catch (Exception e) {
-                                    logger.warn("Error processing parameter {} for tool {}", entry.getKey(), tool.name(), e);
-                                    return "    - %s".formatted(entry.getKey());
-                                }
+                                // tool parameters only have a string `description` property
+                                var p = (JsonStringSchema) entry.getValue();
+                                return """
+                                <parameter name="%s" type="%s" required="%s">
+                                %s
+                                </parameter>
+                                """.formatted(
+                                        entry.getKey(),
+                                        "String",
+                                        tool.parameters().required().contains(entry.getKey()),
+                                        p.description());
                             })
                             .collect(Collectors.joining("\n"));
 
-                    String requiredParams = "";
-                    if (tool.parameters().required() != null && !tool.parameters().required().isEmpty()) {
-                        requiredParams = "\n    Required: " + String.join(", ", tool.parameters().required());
-                    }
-
                     return """
-                           - %s: %s
-                             Parameters:%s
+                           <tool name="%s">
                            %s
-                           """.formatted(tool.name(), tool.description(), requiredParams, parametersInfo.isEmpty() ? "    (No parameters)" : "\n" + parametersInfo);
+                           %s
+                           </tool>
+                           """.formatted(tool.name(), tool.description(), parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
                 })
                 .collect(Collectors.joining("\n")); // Use collect instead of reduce for safer empty handling
 
         return """
-        You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
-        Make as many tool calls as appropriate to satisfy the request.
+        You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Your first call should be to `explain`.
+        Include all the tool calls necessary to satisfy the request in a single array!
+        REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT a top-level array.
 
-        Available tools:
+        %d available tools:
         %s
 
         Response format:
@@ -571,34 +580,22 @@ public class Coder {
             }
           ]
         }
-        """.formatted(toolsDescription);
-    }
-
-    private static @Nullable JsonNode tryParseJson(ObjectMapper mapper, String jsonResponse) {
-        JsonNode root;
-        try {
-            root = mapper.readTree(jsonResponse);
-        } catch (JsonProcessingException e) {
-            logger.debug("Error parsing raw JSON response", e);
-            root = null;
-        }
-        return root;
+        """.formatted(tools.size(), toolsDescription);
     }
 
     private void writeRequestToHistory(List<ChatMessage> messages, List<ToolSpecification> tools) {
         String requestText = messages.stream()
-                .filter(m -> !(m instanceof ToolExecutionResultMessage))
                 .map(m -> "%s: %s\n".formatted(m.type(), Models.getText(m)))
                 .reduce((a, b) -> a + "\n" + b)
                 .orElse("");
-                
+
         if (tools != null && !tools.isEmpty()) {
             requestText += "\nTools:\n" + tools.stream()
-                .map(t -> "- %s: %s".formatted(t.name(), t.description()))
-                .reduce((a, b) -> a + "\n" + b)
-                .orElse("");
+                    .map(t -> "- %s: %s".formatted(t.name(), t.description()))
+                    .reduce((a, b) -> a + "\n" + b)
+                    .orElse("");
         }
-        
+
         writeToHistory("Request", requestText);
     }
 
@@ -614,11 +611,37 @@ public class Coder {
     }
 
     /**
+     * Combines tool request validations and their execution results into a summary string.
+     * Each line is in the format: "description: result text"
+     *
+     * @param validatedRequests the list of validated tool requests
+     * @param resultMessages the corresponding list of tool execution result messages
+     * @return a combined summary string
+     */
+    public String emulateToolResults(List<LLMTools.ValidatedToolRequest> validatedRequests, List<dev.langchain4j.data.message.ToolExecutionResultMessage> resultMessages) {
+        var sb = new StringBuilder();
+        for (int i = 0; i < validatedRequests.size() && i < resultMessages.size(); i++) {
+            var vr = validatedRequests.get(i);
+            var term = resultMessages.get(i);
+            sb.append(vr.description())
+                    .append(": ")
+                    .append(term.text())
+                    .append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    /**
      * Represents the outcome of a streaming request.
      */
-    public record StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
+    public record StreamingResult(ChatResponse chatResponse, ChatResponse originalResponse, boolean cancelled, Throwable error) {
+        public StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
+            this(chatResponse, chatResponse, cancelled, error);
+        }
+
         public StreamingResult {
             assert cancelled || error != null || chatResponse != null;
+            assert (originalResponse == null) == (chatResponse == null);
         }
     }
 }

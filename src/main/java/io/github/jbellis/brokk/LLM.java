@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
@@ -60,7 +59,6 @@ public class LLM {
         // Provide an initial note to the user (or logs) that the session started
         io.systemOutput("Request sent to LLM. Processing...");
 
-        // apply edits with this
         var tools = new LLMTools(coder.contextManager);
         outer:
         while (true) {
@@ -75,8 +73,10 @@ public class LLM {
             var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages, reminder);
             allMessages.add(nextRequest);
 
+            //
             // Actually send the request to the LLM
-            var toolSpecs = ToolSpecifications.toolSpecificationsFrom(tools);
+            //
+            var toolSpecs = tools.getToolSpecifications(model);
             var streamingResult = coder.sendMessage(model, allMessages, toolSpecs, ToolChoice.AUTO, true);
             if (streamingResult.cancelled()) {
                 io.systemOutput("Session cancelled.");
@@ -102,7 +102,7 @@ public class LLM {
 
             // The LLM has responded successfully, so record both sides of the conversation
             sessionMessages.add(nextRequest);
-            sessionMessages.add(llmResponse.aiMessage());
+            sessionMessages.add(streamingResult.originalResponse().aiMessage());
 
             var toolRequests = llmResponse.aiMessage().toolExecutionRequests();
             if (toolRequests == null || toolRequests.isEmpty()) {
@@ -111,13 +111,15 @@ public class LLM {
                 break;
             }
 
-            // process tool calls
+            //
+            // Process tool calls
+            //
             var validatedRequests = new ArrayList<LLMTools.ValidatedToolRequest>();
             for (var req : toolRequests) {
                 var parsed = tools.parseToolRequest(req);
                 if (parsed.error() != null) {
                     // Track the error so we can include a Tool Response
-                    logger.warn("Tool request parse error: {}", parsed.error());
+                    logger.debug("Tool request parse error: {}", parsed.error());
                     validatedRequests.add(parsed);
                     continue;
                 }
@@ -146,22 +148,30 @@ public class LLM {
                 validatedRequests.add(parsed);
             }
 
-            // apply tools
+            // Execute tools
             io.llmOutput("\n");
             int failures = 0;
             var resultMessages = new ArrayList<ToolExecutionResultMessage>();
+            var output = new StringBuilder();
             for (var validated : validatedRequests) {
                 // Attempt actual edit. (Handles validation errors internally)
                 var result = tools.executeTool(validated);
-                if (!result.text().equals("SUCCESS")) {
-                    logger.warn("Tool application failure: {}", result.text());
-                    failures++;
+                if (result.toolName().equals("explain") && validated.error() == null) {
+                    io.llmOutput("\n\n%s".formatted(result.text()));
+                } else {
+                    // TODO make this fancier! like, an actual graphical representation of the diff
+                    output.append("\n%s: %s".formatted(result.toolName(), result.text()));
+                    if (!result.text().equals("SUCCESS")) {
+                        logger.warn("Tool application failure: {}", result.text());
+                        failures++;
+                    }
                 }
                 resultMessages.add(result);
-                // TODO make this fancier! like, an actual graphical representation of the diff
-                io.llmOutput("\n" + result.toolName() + ": " + result.text());
             }
-            if (!coder.requiresEmulatedTools(model)) {
+            if (!output.isEmpty()) {
+                io.llmOutput("\n\n```" + output + "```\n\n");
+            }
+            if (!LLMTools.requiresEmulatedTools(model)) {
                 // need this whether success or failure or the LLM gets confused seeing that it made a call but no results
                 sessionMessages.addAll(resultMessages);
             }
@@ -174,25 +184,36 @@ public class LLM {
                     io.systemOutput("Repeated tool request failures. Stopping session.");
                     break;
                 }
-                // We'll reflect in the next loop iteration
+            }
+            if (failures > 0) {
+                if (failures < validatedRequests.size()) {
+                    // If at least one succeeded, reset parseErrorAttempts -- we're making progress!
+                    parseErrorAttempts = 0;
+                }
                 logger.debug("Tool requests had errors. Asking LLM to correct them...");
                 io.systemOutput("Tool requests had errors. Asking LLM to correct them...");
-                nextRequest = new UserMessage("""
+                String msg;
+                if (LLMTools.requiresEmulatedTools(model)) {
+                    msg = """
                     Some of your tool calls could not be applied. Please revisit your changes
                     and provide corrected tool usage or updated instructions.  Here are the tool results,
                     in the same order that you provided them:
                     
                     %s
-                    """.formatted(coder.emulateToolResults(validatedRequests, resultMessages)).stripIndent());
+                    """.formatted(coder.emulateToolResults(validatedRequests, resultMessages)).stripIndent().stripIndent();
+                } else {
+                    msg = """
+                    Some of your tool calls could not be applied. Please revisit your changes
+                    and provide corrected tool usage or updated instructions.
+                    """.stripIndent();
+                }
+                nextRequest = new UserMessage(msg);
                 continue;
-            } else {
-                // If at least one succeeded, reset parseErrorAttempts
-                parseErrorAttempts = 0;
             }
 
-            // -------------------------------------------
-            // C) Attempt to build and see if we are done
-            // -------------------------------------------
+            //
+            // Attempt to build and see if we are done
+            //
             String buildReflection = getBuildReflection(contextManager, io, buildErrors);
             if (buildReflection.isEmpty()) {
                 // Build succeeded!
@@ -213,7 +234,10 @@ public class LLM {
         // If we had any conversation at all, store it in the context history
         if (!sessionMessages.isEmpty()) {
             String finalUserInput = isComplete ? userInput : userInput + " [incomplete]";
-            coder.contextManager.addToHistory(sessionMessages, originalContents, finalUserInput);
+            var filtered = sessionMessages.stream()
+                    .filter(m -> !(m instanceof ToolExecutionResultMessage))
+                    .toList();
+            coder.contextManager.addToHistory(filtered, originalContents, finalUserInput);
         }
         if (isComplete) {
             io.systemOutput("Session complete!");
@@ -343,23 +367,17 @@ public class LLM {
             return "";
         }
 
-        io.llmOutput("""
+        var msg = """
             %s
             ```
             %s
             ```
-            """.stripIndent().formatted(result.error(), result.output()));
+            """.stripIndent().formatted(result.error(), result.output());
+        io.llmOutput(msg);
         io.systemOutput("Build failed (details above)");
         buildErrors.add(result.error() + "\n\n" + result.output());
 
-        StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
-        for (int i = 0; i < buildErrors.size(); i++) {
-            query.append("=== Attempt ").append(i + 1).append(" ===\n")
-                    .append(buildErrors.get(i))
-                    .append("\n\n");
-        }
-        query.append("Please fix these build errors.");
-        return query.toString();
+        return "The build failed:\n%s\n\nPlease fix these build errors.".formatted(msg);
     }
 
     /**

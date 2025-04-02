@@ -3,6 +3,8 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import io.github.jbellis.brokk.analyzer.FunctionLocation;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -10,6 +12,7 @@ import io.github.jbellis.brokk.analyzer.SymbolAmbiguousException;
 import io.github.jbellis.brokk.analyzer.SymbolNotFoundException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -25,11 +28,10 @@ import java.util.stream.Collectors;
  *
  * Instead of previewing in bulk, each tool request is parsed with parseToolRequest(...),
  * returning a ValidatedToolRequest (with a recognized ProjectFile, function location, or an error).
- * Then the second pass calls applyRequest(...) to actually do the edit, returning
+ * Then the second pass calls executeTool(...) to actually do the edit, returning
  * a ToolExecutionResultMessage indicating success or failure.
  */
-public class LLMTools
-{
+public class LLMTools {
     private static final Logger logger = LogManager.getLogger(LLMTools.class);
 
     private final IContextManager contextManager;
@@ -49,18 +51,16 @@ public class LLMTools
      * On success, returns a ValidatedToolRequest with no error; if something
      * can't be resolved, returns one with an error message.
      *
-     * The caller can then apply these edits in a second pass by calling applyRequest(...).
+     * The caller can then apply these edits in a second pass by calling executeTool(...).
      */
-    public ValidatedToolRequest parseToolRequest(ToolExecutionRequest request)
-    {
+    public ValidatedToolRequest parseToolRequest(ToolExecutionRequest request) {
         String toolName = request.name();
         Map<String, Object> argMap;
         try {
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            argMap = mapper.readValue(request.arguments(),
-                                      new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            argMap = mapper.readValue(request.arguments(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
         } catch (Exception ex) {
-            return ValidatedToolRequest.error(request, "JSON parse error: " + ex.getMessage());
+            return ValidatedToolRequest.error(request, "JSON parse error: " + ex.getMessage(), toolName);
         }
 
         return switch (toolName) {
@@ -68,21 +68,18 @@ public class LLMTools
             case "replaceLines" -> parseReplaceLines(request, argMap);
             case "replaceFunction" -> parseReplaceFunction(request, argMap);
             case "removeFile" -> parseRemoveFile(request, argMap);
-            default -> ValidatedToolRequest.error(request, "Unrecognized tool name: " + toolName);
+            case "explain" -> parseExplain(request, argMap);
+            default -> ValidatedToolRequest.error(request, "Unrecognized tool name: " + toolName, toolName);
         };
     }
 
     /**
      * Actually apply a ValidatedToolRequest to the filesystem, returning
-     * a ToolExecutionResultMessage with either "Success" or the error.
+     * a ToolExecutionResultMessage with either "SUCCESS" or an error message.
      */
-    public ToolExecutionResultMessage executeTool(ValidatedToolRequest validated)
-    {
+    public ToolExecutionResultMessage executeTool(ValidatedToolRequest validated) {
         if (validated.error() != null) {
-            return ToolExecutionResultMessage.from(
-                    validated.originalRequest(),
-                    validated.error()
-            );
+            return ToolExecutionResultMessage.from(validated.originalRequest(), validated.error());
         }
         try {
             switch (validated.originalRequest().name()) {
@@ -90,14 +87,15 @@ public class LLMTools
                 case "replaceLines" -> replaceLines(validated.file(), validated.oldLines(), validated.newLines());
                 case "replaceFunction" -> replaceFunction(validated.functionLocation(), validated.newFunctionBody());
                 case "removeFile" -> removeFile(validated.file());
-                default -> throw new ToolExecutionException("Unsupported tool: " + validated.originalRequest().name()
-                );
+                case "explain" -> {
+                    return ToolExecutionResultMessage.from(validated.originalRequest(), validated.explanation());
+                }
+                default -> throw new ToolExecutionException("Unsupported tool: " + validated.originalRequest().name());
             }
         } catch (Exception ex) {
             logger.warn("Tool application error", ex);
-            return ToolExecutionResultMessage.from(validated.originalRequest(), "Failed to apply: " + ex.getMessage());
+            return ToolExecutionResultMessage.from(validated.originalRequest(), "Failed: " + ex.getMessage());
         }
-
         return ToolExecutionResultMessage.from(validated.originalRequest(), "SUCCESS");
     }
 
@@ -105,13 +103,8 @@ public class LLMTools
     Replaces the entire file content.
     Use this tool to create new files: just provide the full path and content.
     """)
-    public void replaceFile(
-            @P("The path of the file to overwrite") String filename,
-            @P("The new file content") String text
-    ) {
-        // This annotation-based method is no longer used directly at runtime.
-        // It's replaced by parseToolRequest/applyRequest. If invoked anyway, throw:
-        throw new ToolExecutionException("Direct invocation of replaceFile(String,String) is not supported. Use parseToolRequest + applyRequest.");
+    public void replaceFile(@P("The path of the file to overwrite") String filename, @P("The new file content") String text) {
+        throw new ToolExecutionException("Direct invocation of replaceFile(String,String) is not supported. Use parseToolRequest + executeTool.");
     }
 
     /**
@@ -128,23 +121,21 @@ public class LLMTools
 
     @Tool(value = """
     Replace the first occurrence of oldLines in the specified file with newLines (both are full lines).
-    - If oldLines is empty, newLines is appended at the end of the file. 
-    - If replacing sequential lines, make one call for all of them.
-    - Include enough oldLines that the match is unique!
-    - You can use this tool to add new lines by giving existing lines as an "anchor," then repeating
-      the anchor unchanged with new lies appended.
-    - If you want to move code within a file, use 2 calls: one to remove the old code, and another to add it
-      in the new location.
+    - If oldLines is empty, newLines is appended at the end of the file.
+    - If replacing sequential lines, make one call for all of them. Never make multiple calls to replaceLines when they can be combined to one!
+    - Include enough oldLines that the match is unique.
+    - You can use this tool to add new lines by giving existing lines as an "anchor," then repeating the anchor unchanged with new lines appended.
+    - If you want to move code within a file, use 2 calls: one to remove the old code, and another to add it in the new location.
+    - Never call replaceLines with newLines == oldLines, that is just a waste of time!
     """)
-    public void replaceLines(
-            @P("Full path + name of the file to modify") String filename,
-            @P("Lines to replace") String oldLines,
-            @P("Replacement lines (will be used as-is, so make sure indentation is appropriate)") String newLines
-    ) {
-        throw new ToolExecutionException("Direct invocation of replaceLines(String,String,String) is not supported. Use parseToolRequest + applyRequest.");
+    public void replaceLines(@P("Full path + name of the file to modify") String filename,
+                             @P("Lines to replace") String oldLines,
+                             @P("Replacement lines (will be used as-is, so make sure indentation is appropriate)") String newLines) {
+        throw new ToolExecutionException("Direct invocation of replaceLines(String,String,String) is not supported. Use parseToolRequest + executeTool.");
     }
 
-    public void replaceLines(ProjectFile file, String oldLines, String newLines) throws EditBlock.NoMatchException {
+    public void replaceLines(ProjectFile file, String oldLines, String newLines)
+            throws EditBlock.NoMatchException, EditBlock.AmbiguousMatchException {
         try {
             EditBlock.replaceInFile(file, oldLines, newLines);
             logger.info("replaceLines: updated text in {}", file);
@@ -154,31 +145,13 @@ public class LLMTools
     }
 
     /**
-     * "replaceFunction" - replaces lines from startLine..endLine with new code,
-     * based on analyzing the function location from the analyzer.
-     */
-    @Tool(value = """
-    Replace the entire function, identified by fullyQualifiedFunctionName + param names. This CANNOT replace a
-    a class or interface or anything besides functions/methods (you have to use replaceLines or replaceFile for that).
-    """)
-    public void replaceFunction(
-            @P("The fully qualified function name, e.g. com.example.Foo.barMethod") String fullyQualifiedFunctionName,
-            @P("List of parameter variable names, e.g. [\"arg1\", \"userId\"]") List<String> functionParameterNames,
-            @P("The new code for the entire function, including signature and braces. Will be used as-is, so make sure indentation is appropriate") String newFunctionBody
-    ) {
-        throw new ToolExecutionException("Direct invocation of replaceFunction(String,List,String) is not supported. Use parseToolRequest + applyRequest.");
-    }
-
-    /**
      * "removeFile" - deletes a file from the filesystem.
      */
     @Tool(value = "Remove (delete) a file from the filesystem.")
-    public void removeFile(
-            @P("Full path + name of the file to remove") String filename
-    ) {
-        throw new ToolExecutionException("Direct invocation of removeFile(String) is not supported. Use parseToolRequest + applyRequest.");
+    public void removeFile(@P("Full path + name of the file to remove") String filename) {
+        throw new ToolExecutionException("Direct invocation of removeFile(String) is not supported. Use parseToolRequest + executeTool.");
     }
-    
+
     /**
      * Overload that actually does the file removal after we've validated the file.
      */
@@ -187,7 +160,6 @@ public class LLMTools
             if (!file.exists()) {
                 throw new ToolExecutionException("File does not exist: " + file);
             }
-            
             java.nio.file.Files.delete(file.absPath());
             logger.debug("removeFile: deleted {}", file);
         } catch (IOException e) {
@@ -238,110 +210,77 @@ public class LLMTools
      * Utility to parse "replaceFile" arguments from the tool request,
      * resolving the target ProjectFile from the context manager.
      */
-    private ValidatedToolRequest parseReplaceFile(ToolExecutionRequest req,
-                                                  Map<String,Object> argMap)
-    {
+    private ValidatedToolRequest parseReplaceFile(ToolExecutionRequest req, Map<String, Object> argMap) {
         var filename = (String) argMap.get("filename");
-        var newText  = (String) argMap.get("text");
+        var newText = (String) argMap.get("text");
         if (filename == null || newText == null) {
-            return ValidatedToolRequest.error(req, "replaceFile requires 'filename' and 'text' fields");
+            return ValidatedToolRequest.error(req, "replaceFile requires 'filename' and 'text' fields", "replaceFile: " + (filename != null ? filename : "unknown"));
         }
 
         ProjectFile pf;
         try {
             pf = resolveProjectFile(filename);
         } catch (Exception e) {
-            return ValidatedToolRequest.error(req, e.getMessage());
+            return ValidatedToolRequest.error(req, e.getMessage(), "replaceFile: " + filename);
         }
 
-        return new ValidatedToolRequest(
-                req,
-                pf,
-                null,   // functionLocation
-                null,   // error
-                // old lines / new lines / function body are not used here
-                null,
-                null,
-                newText,
-                null
-        );
+        return new ValidatedToolRequest(req, pf, null, null,
+                                        new ValidatedToolRequest.RequestContents(null, null, newText, null, null),
+                                        "replaceFile: " + filename);
     }
-    
+
     /**
      * Utility to parse "removeFile" arguments from the tool request,
      * resolving the target ProjectFile from the context manager.
      */
-    private ValidatedToolRequest parseRemoveFile(ToolExecutionRequest req,
-                                                Map<String,Object> argMap)
-    {
+    private ValidatedToolRequest parseRemoveFile(ToolExecutionRequest req, Map<String, Object> argMap) {
         var filename = (String) argMap.get("filename");
         if (filename == null) {
-            return ValidatedToolRequest.error(req, "removeFile requires 'filename' field");
+            return ValidatedToolRequest.error(req, "removeFile requires 'filename' field", "removeFile: unknown");
         }
 
         ProjectFile pf;
         try {
             pf = resolveProjectFile(filename);
         } catch (Exception e) {
-            return ValidatedToolRequest.error(req, e.getMessage());
+            return ValidatedToolRequest.error(req, e.getMessage(), "removeFile: " + filename);
         }
 
-        return new ValidatedToolRequest(
-                req,
-                pf,
-                null,   // functionLocation
-                null,   // error
-                null,   // oldLines
-                null,   // newLines
-                null,   // newFileContent
-                null    // newFunctionBody
-        );
+        return new ValidatedToolRequest(req, pf, null, null,
+                                        new ValidatedToolRequest.RequestContents(null, null, null, null, null),
+                                        "removeFile: " + filename);
     }
 
-    private ValidatedToolRequest parseReplaceLines(
-            ToolExecutionRequest req,
-            Map<String,Object> argMap)
-    {
+    private ValidatedToolRequest parseReplaceLines(ToolExecutionRequest req, Map<String, Object> argMap) {
         var filename = (String) argMap.get("filename");
         var oldLines = (String) argMap.get("oldLines");
         var newLines = (String) argMap.get("newLines");
 
         if (filename == null || oldLines == null || newLines == null) {
-            return ValidatedToolRequest.error(
-                    req,
-                    "replaceLines requires 'filename','oldLines','newLines'"
-            );
+            return ValidatedToolRequest.error(req, "replaceLines requires 'filename','oldLines','newLines'", "replaceLines: " + (filename != null ? filename : "unknown"));
         }
 
         ProjectFile pf;
         try {
             pf = resolveProjectFile(filename);
         } catch (Exception e) {
-            return ValidatedToolRequest.error(req, e.getMessage());
+            return ValidatedToolRequest.error(req, e.getMessage(), "replaceLines: " + filename);
         }
-
-        return new ValidatedToolRequest(
-                req,
-                pf,
-                null,         // functionLocation
-                null,         // error
-                oldLines,
-                newLines,
-                null,         // newFileContent
-                null          // newFunctionBody
-        );
+        var firstLine = oldLines.split("\n", -1)[0];
+        return new ValidatedToolRequest(req, pf, null, null,
+                                        new ValidatedToolRequest.RequestContents(oldLines, newLines, null, null, null),
+                                        "replaceLines: " + filename + ", " + firstLine + "...");
     }
 
-    private ValidatedToolRequest parseReplaceFunction(ToolExecutionRequest req,
-                                                      Map<String,Object> argMap)
-    {
+    private ValidatedToolRequest parseReplaceFunction(ToolExecutionRequest req, Map<String, Object> argMap) {
         var fullyQualifiedName = (String) argMap.get("fullyQualifiedFunctionName");
         @SuppressWarnings("unchecked")
         var paramNames = (List<String>) argMap.get("functionParameterNames");
-        var body       = (String) argMap.get("newFunctionBody");
+        var body = (String) argMap.get("newFunctionBody");
 
         if (fullyQualifiedName == null || paramNames == null || body == null) {
-            return ValidatedToolRequest.error(req, "replaceFunction requires 'fullyQualifiedFunctionName','functionParameterNames','newFunctionBody'");
+            return ValidatedToolRequest.error(req, "replaceFunction requires 'fullyQualifiedFunctionName','functionParameterNames','newFunctionBody'",
+                                              "replaceFunction: " + (fullyQualifiedName != null ? fullyQualifiedName : "unknown"));
         }
 
         var analyzer = contextManager.getAnalyzer();
@@ -351,43 +290,40 @@ public class LLMTools
         try {
             var location = analyzer.getFunctionLocation(fullyQualifiedName, paramNames);
             if (!contextManager.getEditableFiles().contains(location.file())) {
-                return ValidatedToolRequest.error(req, "File for " + fullyQualifiedName + " is not editable: " + location.file());
+                return ValidatedToolRequest.error(req, "File for " + fullyQualifiedName + " is not editable: " + location.file(),
+                                                  "replaceFunction: " + fullyQualifiedName + ", " + paramNames);
             }
-            return new ValidatedToolRequest(req, location.file(), location, null, null, null, null, body);
+            return new ValidatedToolRequest(req, location.file(), location, null,
+                                            new ValidatedToolRequest.RequestContents(null, null, null, body, null),
+                                            "replaceFunction: " + fullyQualifiedName + ", " + paramNames);
         } catch (SymbolNotFoundException e) {
-            // 2) if that fails, see if we can match by "className.methodName" ignoring package
-            // e.g. "Bar.baz". We'll do a quick partial approach:
             int lastDot = fullyQualifiedName.lastIndexOf('.');
             if (lastDot > 0) {
                 var shortMethod = fullyQualifiedName.substring(lastDot + 1);
-                // So the user typed "com.foo.Bar.baz" but it wasn't found; try ignoring the "com.foo"
-                // We'll just do "Bar.baz" and see how many matches
                 var shortName = fullyQualifiedName.substring(fullyQualifiedName.lastIndexOf('.', lastDot - 1) + 1);
                 var maybeLoc = getFunctionLocationIgnoringPackage(shortName, paramNames);
                 if (maybeLoc.size() == 1) {
                     var loc = maybeLoc.get(0);
                     if (!contextManager.getEditableFiles().contains(loc.file())) {
-                        return ValidatedToolRequest.error(req, "File for " + shortName + " is not editable: " + loc.file());
+                        return ValidatedToolRequest.error(req, "File for " + shortName + " is not editable: " + loc.file(),
+                                                          "replaceFunction: " + shortName + ", " + paramNames);
                     }
-                    return new ValidatedToolRequest(
-                            req, loc.file(), loc, null,
-                            null, null, null, body
-                    );
+                    return new ValidatedToolRequest(req, loc.file(), loc, null,
+                                                    new ValidatedToolRequest.RequestContents(null, null, null, body, null),
+                                                    "replaceFunction: " + shortMethod + ", " + paramNames);
                 }
                 if (maybeLoc.isEmpty()) {
-                    return ValidatedToolRequest.error(req, "No match found for function " + fullyQualifiedName);
+                    return ValidatedToolRequest.error(req, "No match found for function " + fullyQualifiedName,
+                                                      "replaceFunction: " + fullyQualifiedName + ", " + paramNames);
                 }
-                // else multiple
                 var allFQNs = maybeLoc.stream()
                         .map(fl -> fl.file().toString() + " -> " + fl.code())
                         .collect(Collectors.joining("\n"));
-                return ValidatedToolRequest.error(req,
-                                                  "Multiple matches found for " + fullyQualifiedName + ", ignoring package. " +
-                                                          "Candidates:\n" + allFQNs);
+                return ValidatedToolRequest.error(req, "Multiple matches found for " + fullyQualifiedName + ", ignoring package. Candidates:\n" + allFQNs,
+                                                  "replaceFunction: " + fullyQualifiedName + ", " + paramNames);
             }
-
-            // No matches at all
-            return ValidatedToolRequest.error(req, "No match found for function: " + fullyQualifiedName);
+            return ValidatedToolRequest.error(req, "No match found for function: " + fullyQualifiedName,
+                                              "replaceFunction: " + fullyQualifiedName + ", " + paramNames);
         }
     }
 
@@ -395,29 +331,20 @@ public class LLMTools
      * Helper method: see if "class.method" can be found ignoring the top-level package.
      * Returns all potential matches.
      */
-    private List<FunctionLocation> getFunctionLocationIgnoringPackage(String classAndMethod,
-                                                                      List<String> paramNames) {
+    private List<FunctionLocation> getFunctionLocationIgnoringPackage(String classAndMethod, List<String> paramNames) {
         var analyzer = contextManager.getAnalyzer();
         if (analyzer == null) return List.of();
 
-        // We'll gather all possible typeDecls that end with e.g. ".Bar"
-        // Then for each, we see if there's a method "baz"
-        // We'll do a quick pass: if "classAndMethod" = "Bar.baz", we split on "."
         int dotIdx = classAndMethod.indexOf('.');
         if (dotIdx <= 0) {
             return List.of();
         }
-        var cls   = classAndMethod.substring(0, dotIdx);
+        var cls = classAndMethod.substring(0, dotIdx);
         var mName = classAndMethod.substring(dotIdx + 1);
 
-        // We'll retrieve all typeDecl whose simple name is cls
-        // Then check each for method mName
-        // We'll combine all found functionLocations
-        // (We reuse findFunctionLocation on each "fqClass.mName")
         var allClasses = analyzer.getAllClasses();
         var matchedClasses = new ArrayList<String>();
         for (var codeUnit : allClasses) {
-            // codeUnit might be a class
             if (codeUnit.isClass() && codeUnit.shortName().equals(cls)) {
                 matchedClasses.add(codeUnit.fqName());
             }
@@ -439,9 +366,9 @@ public class LLMTools
      * Returns null if we cannot find exactly one match. The caller can then store an error on the request.
      *
      * Steps:
-     *   1) Check if an exact match is recognized by contextManager.toFile(...)
-     *   2) If that fails, find all files in contextManager.getEditableFiles() whose filename matches ignoring path
-     *   3) If that fails, find all tracked files in the git repo whose filename matches ignoring path
+     *   1) Check if an exact match is recognized by contextManager.toFile(...).
+     *   2) If that fails, find all files in contextManager.getEditableFiles() whose filename matches ignoring path.
+     *   3) If that fails, find all tracked files in the git repo whose filename matches ignoring path.
      *   4) If exactly 1 match is found, return it. Otherwise return null.
      */
     private ProjectFile resolveProjectFile(String filename) {
@@ -450,9 +377,7 @@ public class LLMTools
         if (direct != null && contextManager.getEditableFiles().contains(direct)) {
             return direct;
         }
-        // If direct not in editable set, let's keep going. Maybe it doesn't exist or is read-only.
 
-        // We'll define a small helper to compare the last segment:
         String fileNameOnly = Path.of(filename).getFileName().toString();
 
         // Step 2: search editable files by last segment
@@ -464,7 +389,7 @@ public class LLMTools
             }
         }
         if (editableMatches.size() == 1) {
-            return editableMatches.getFirst();
+            return editableMatches.get(0);
         }
         if (editableMatches.size() > 1) {
             throw new SymbolAmbiguousException("No exact match for %s and %s is ambiguous".formatted(filename, fileNameOnly));
@@ -472,40 +397,35 @@ public class LLMTools
 
         // Step 3: look in the repo's tracked files
         var tracked = contextManager.getRepo().getTrackedFiles();
-        // That is a Set of paths (?), might or might not be absolute strings. We'll just do a similar approach:
         var repoMatches = new ArrayList<ProjectFile>();
         for (var t : tracked) {
-            // t might be a Path or a string? In the GitRepo code, it's a Set of ProjectFile or Path? It's not super clear,
-            // but we'll assume we can do .toString() for matching. We'll build a ProjectFile from it if it ends with the same name.
             String last = Path.of(t.toString()).getFileName().toString();
             if (fileNameOnly.equals(last)) {
                 repoMatches.add(t);
             }
         }
         if (repoMatches.size() == 1) {
-            // Found exactly one
-            // But is it editable in the context manager? If not, user might be trying to edit a read-only file.
-            if (!contextManager.getEditableFiles().contains(repoMatches.getFirst())) {
+            if (!contextManager.getEditableFiles().contains(repoMatches.get(0))) {
                 throw new FileNotEditableException("Matched file in repo, but not editable: " + repoMatches);
             }
-            return repoMatches.getFirst();
+            return repoMatches.get(0);
         }
         if (repoMatches.size() > 1) {
             throw new SymbolAmbiguousException("No exact match for %s and %s is ambiguous".formatted(filename, fileNameOnly));
         }
 
-        // If we reach here, there's no single match
         throw new SymbolNotFoundException("File not found: " + filename);
     }
 
     /**
-     * An internal exception thrown when a tool fails. The parse or apply logic
+     * An internal exception thrown when a tool fails. The parse or execute logic
      * catches it and packages the message for the user.
      */
     public static class ToolExecutionException extends RuntimeException {
         public ToolExecutionException(String s) {
             super(s);
         }
+
         public ToolExecutionException(String s, Throwable cause) {
             super(s, cause);
         }
@@ -515,30 +435,84 @@ public class LLMTools
      * Represents a single parsed tool request.
      * If error() is non-null, the request is invalid.
      * Otherwise, we have at least a non-null file or functionLocation.
-     *
-     *  - oldLines / newLines are only used for "replaceLines"
-     *  - newFileContent is only used for "replaceFile"
-     *  - newFunctionBody is only used for "replaceFunction"
      */
-    public record ValidatedToolRequest(
-            ToolExecutionRequest originalRequest,
-            ProjectFile file,
-            FunctionLocation functionLocation,
-            String error,
-            String oldLines,
-            String newLines,
-            String newFileContent,
-            String newFunctionBody
-    ) {
-        public static ValidatedToolRequest error(ToolExecutionRequest req, String msg) {
-            return new ValidatedToolRequest(req, null, null, msg,
-                                            null, null, null, null);
+    public record ValidatedToolRequest(ToolExecutionRequest originalRequest,
+                                       ProjectFile file,
+                                       FunctionLocation functionLocation,
+                                       String error,
+                                       RequestContents contents,
+                                       String description) {
+        /**
+         * Convenience factory for error responses.
+         */
+        public static ValidatedToolRequest error(ToolExecutionRequest req, String msg, String description) {
+            return new ValidatedToolRequest(req, null, null, msg, null, description);
         }
+
+        /**
+         * Accessors for individual content fields, delegating to the nested RequestContents.
+         */
+        public String oldLines() {
+            return contents.oldLines();
+        }
+
+        public String newLines() {
+            return contents.newLines();
+        }
+
+        public String newFileContent() {
+            return contents.newFileContent();
+        }
+
+        public String newFunctionBody() {
+            return contents.newFunctionBody();
+        }
+
+        public String explanation() {
+            return contents.explanation();
+        }
+
+        /**
+         * Single record grouping the various forms of replacement text.
+         */
+        public record RequestContents(String oldLines, String newLines, String newFileContent, String newFunctionBody, String explanation) { }
     }
 
     public static class FileNotEditableException extends RuntimeException {
         public FileNotEditableException(String message) {
             super(message);
         }
+    }
+
+    @Tool(value = "Explain your strategy to the user. ALWAYS CALL THIS BEFORE OTHER TOOLS..")
+    public void explain(@P("Explanation") String text) {
+        throw new UnsupportedOperationException("runSession should special case `explain`");
+    }
+
+    private ValidatedToolRequest parseExplain(ToolExecutionRequest req, Map<String, Object> argMap) {
+        var text = (String) argMap.get("text");
+        if (text == null) {
+            return ValidatedToolRequest.error(req, "explain requires parameter `text`", "explain: ???");
+        }
+        var contents = new ValidatedToolRequest.RequestContents(null, null, null, null, text);
+        var shortDesc = text.substring(0, Math.min(20, text.length())).replace('\n', ' ');
+        return new ValidatedToolRequest(req, null, null, null, contents, "explain: " + shortDesc);
+    }
+
+    /**
+     * Returns the list of ToolSpecifications for this tool set.
+     * If the model does not require emulated tools, the "explain" tool is filtered out.
+     */
+    public List<ToolSpecification> getToolSpecifications(StreamingChatLanguageModel model) {
+        var all = ToolSpecifications.toolSpecificationsFrom(this);
+        if (!requiresEmulatedTools(model)) {
+            all = all.stream().filter(spec -> !spec.name().equals("explain")).toList();
+        }
+        return all;
+    }
+
+    public static boolean requiresEmulatedTools(StreamingChatLanguageModel model) {
+        var modelName = Models.nameOf(model);
+        return modelName.toLowerCase().contains("deepseek") || modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
     }
 }
