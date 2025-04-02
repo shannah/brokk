@@ -8,13 +8,8 @@ import io.github.jbellis.brokk.ContextManager;
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class BuildPrompts extends DefaultPrompts {
+public abstract class BuildPrompts {
     public static final BuildPrompts instance = new BuildPrompts() {};
-
-    @Override
-    public List<ChatMessage> collectMessages(ContextManager cm) {
-        throw new UnsupportedOperationException();
-    }
 
     public List<ChatMessage> collectMessages(List<String> buildResults) {
         var formattedResults = new ArrayList<String>();
@@ -38,7 +33,6 @@ public abstract class BuildPrompts extends DefaultPrompts {
         return List.of(new SystemMessage(systemIntro()), new UserMessage(buildStr));
     }
 
-    @Override
     public String systemIntro() {
         return """
                You are an expert software engineer that can tell if a junior engineer is

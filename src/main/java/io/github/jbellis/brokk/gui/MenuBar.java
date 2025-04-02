@@ -26,24 +26,10 @@ public class MenuBar {
         // File menu
         var fileMenu = new JMenu("File");
 
-        var editKeysItem = new JMenuItem("Edit secret keys");
-        editKeysItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        editKeysItem.addActionListener(e -> {
-            chrome.showSecretKeysDialog();
-            if (chrome.contextManager != null) {
-                // Reopen the current project to create new Models and Coder with updated keys
-                var currentPath = chrome.contextManager.getProject().getRoot();
-                if (currentPath != null) {
-                    io.github.jbellis.brokk.Brokk.openProject(currentPath);
-                }
-            }
-        });
-        fileMenu.add(editKeysItem);
-
-        fileMenu.addSeparator();
-
         var refreshItem = new JMenuItem("Refresh Code Intelligence");
         refreshItem.addActionListener(e -> {
+            // Fixme ensure the menu item is disabled if no project is open
+            assert chrome.getContextManager() != null;
             chrome.contextManager.requestRebuild();
             chrome.systemOutput("Code intelligence will refresh in the background");
         });
@@ -80,6 +66,12 @@ public class MenuBar {
         var recentProjectsMenu = new JMenu("Recent Projects");
         fileMenu.add(recentProjectsMenu);
         rebuildRecentProjectsMenu(recentProjectsMenu);
+
+        var settingsItem = new JMenuItem("Settings...");
+        settingsItem.addActionListener(e -> {
+            openSettingsDialog(chrome);
+        });
+        fileMenu.add(settingsItem);
 
         fileMenu.addSeparator();
 
@@ -232,26 +224,9 @@ public class MenuBar {
         // Help menu
         var helpMenu = new JMenu("Help");
 
-        // Theme submenu
-        var themeMenu = new JMenu("Theme");
-        
-        var lightThemeItem = new JMenuItem("Light");
-        lightThemeItem.addActionListener(e -> chrome.switchTheme(false));
-        lightThemeItem.setToolTipText("Switch to light theme");
-
-        var darkThemeItem = new JMenuItem("Dark");
-        darkThemeItem.addActionListener(e -> chrome.switchTheme(true));
-        darkThemeItem.setToolTipText("Switch to dark theme");
-        
-        themeMenu.add(lightThemeItem);
-        themeMenu.add(darkThemeItem);
-        helpMenu.add(themeMenu);
-        
-        helpMenu.addSeparator();
-        
         var aboutItem = new JMenuItem("About");
         aboutItem.addActionListener(e -> {
-            JOptionPane.showMessageDialog(chrome.frame,
+            JOptionPane.showMessageDialog(chrome.getFrame(),
                                           "Brokk Swing UI\nVersion X\n...",
                                           "About Brokk",
                                           JOptionPane.INFORMATION_MESSAGE);
@@ -261,6 +236,15 @@ public class MenuBar {
         menuBar.add(helpMenu);
 
         return menuBar;
+    }
+
+    /**
+     * Opens the settings dialog
+     * @param chrome the Chrome instance
+     */
+    static void openSettingsDialog(Chrome chrome) {
+        var dialog = new SettingsDialog(chrome.frame, chrome);
+        dialog.setVisible(true);
     }
 
     /**

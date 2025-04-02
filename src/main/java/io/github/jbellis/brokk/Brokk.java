@@ -53,6 +53,9 @@ public class Brokk {
             System.setProperty("apple.awt.application.name", "Brokk");
         }
 
+        // Ensure models are initialized (fetches from litellm) before any code that might call its static methods
+        Models.init();
+
         SwingUtilities.invokeLater(() -> {
             // Check for --no-project flag
             boolean noProjectFlag = false;
@@ -113,26 +116,13 @@ public class Brokk {
         Project.updateRecentProject(projectPath);
 
         var contextManager = new ContextManager(projectPath);
-        Models models;
-        String modelsError = null;
-        try {
-            models = Models.load();
-        } catch (Throwable th) {
-            modelsError = th.getMessage();
-            models = Models.disabled();
-        }
 
         var io = new Chrome(contextManager);
-        var coder = new Coder(models, io, projectPath, contextManager);
+        var coder = new Coder(io, projectPath, contextManager);
 
         contextManager.resolveCircularReferences(io, coder);
         io.onComplete();
         io.systemOutput("Opened project at " + projectPath);
-
-        if (!coder.isLlmAvailable()) {
-            io.toolError("\nError loading models: " + modelsError);
-            io.toolError("AI will not be available this session");
-        }
         io.focusInput();
 
         openProjectWindows.put(projectPath, io);
@@ -152,7 +142,7 @@ public class Brokk {
 
                 Project.removeFromOpenProjects(projectPath);
                 logger.debug("Removed project from open windows map: {}", projectPath);
-
+                
                 if (reOpeningProjects.contains(projectPath)) {
                     reOpeningProjects.remove(projectPath);
                     openProject(projectPath);

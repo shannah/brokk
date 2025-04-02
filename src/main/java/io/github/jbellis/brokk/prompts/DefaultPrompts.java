@@ -12,21 +12,31 @@ import java.util.List;
 public abstract class DefaultPrompts {
     public static final DefaultPrompts instance = new DefaultPrompts() {};
 
-    public List<ChatMessage> collectMessages(ContextManager cm) {
+    public static final String LAZY_REMINDER = """
+    You are diligent and tireless!
+    You NEVER leave comments describing code without implementing it!
+    You always COMPLETELY IMPLEMENT the needed code!
+    """;
+
+    public static final String OVEREAGER_REMINDER = """
+    Pay careful attention to the scope of the user's request. Do what he asks, but no more.
+    """;
+
+    public List<ChatMessage> collectMessages(ContextManager cm, String reminder) {
         var messages = new ArrayList<ChatMessage>();
 
         messages.add(new SystemMessage(formatIntro(cm)));
         messages.addAll(exampleMessages());
         messages.addAll(cm.getReadOnlyMessages());
         messages.addAll(cm.getHistoryMessages());
-        messages.add(new UserMessage(searchReplaceReminder()));
+        messages.add(new UserMessage(searchReplaceReminder(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
         messages.addAll(cm.getEditableMessages());
 
         return messages;
     }
 
-    public String formatIntro(ContextManager cm) {
+    protected String formatIntro(ContextManager cm) {
         var editableContents = cm.getEditableSummary();
         var readOnlyContents = cm.getReadOnlySummary();
         var styleGuide = cm.getProject().getStyleGuide();
@@ -163,7 +173,7 @@ public abstract class DefaultPrompts {
         );
     }
 
-    public String searchReplaceReminder() {
+    private String searchReplaceReminder(String reminder) {
         return """
                <rules>
                # *SEARCH/REPLACE block* Rules:
@@ -211,16 +221,11 @@ public abstract class DefaultPrompts {
               
                NEVER use smart quotes in your *SEARCH/REPLACE* blocks, not even in comments.  ALWAYS
                use vanilla ascii single and double quotes.
+               
+               %s
 
-               You are diligent and tireless!
-               You ALWAYS follow the existing code style!
-               You NEVER leave comments describing code without implementing it!
-               You always COMPLETELY IMPLEMENT the needed code, but you do NOT make unnecessary modifications
-               outside the scope of the request!
-
-               ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
+               Follow the existing code style, and ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
                </rules>
-               """.stripIndent();
+               """.formatted(reminder).stripIndent();
     }
 }
-

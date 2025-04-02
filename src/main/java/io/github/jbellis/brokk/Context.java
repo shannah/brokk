@@ -304,7 +304,6 @@ public class Context implements Serializable {
         }
 
         var analyzer = contextManager.getAnalyzer();
-        var repo = contextManager.getRepo();
 
         // Collect ineligible classnames from fragments not eligible for auto-context
         var project = contextManager.getProject();

@@ -96,23 +96,6 @@ public class VoiceInputButton extends JButton {
 
         model.setEnabled(contextManager != null);
     }
-    
-    /**
-     * Configures the button based on STT availability.
-     * 
-     * @param sttEnabled whether STT is available
-     * @return this button instance for method chaining
-     */
-    public VoiceInputButton configure(boolean sttEnabled) {
-        if (!sttEnabled) {
-            setEnabled(false);
-            setToolTipText("OpenAI key is required for STT");
-        } else {
-            setEnabled(true);
-            setToolTipText("Click to start/stop recording");
-        }
-        return this;
-    }
 
     /**
      * Starts capturing audio from the default microphone to micBuffer on a background thread.
@@ -193,6 +176,7 @@ public class VoiceInputButton extends JButton {
 
                     // call coder
                     var transcript = contextManager.getCoder().transcribeAudio(tempFile);
+                    logger.debug("Successfully transcribed audio: {}", transcript);
 
                     // put it in the target text area
                     SwingUtilities.invokeLater(() -> {

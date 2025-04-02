@@ -27,6 +27,12 @@ public class LLM {
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
+     * Uses the provided model for the initial request and potentially switches for fixes.
+     *
+     * @param coder The Coder instance.
+     * @param io Console IO handler.
+     * @param model The model selected by the user for the main task.
+     * @param userInput The user's goal/instructions.
      */
     public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
         // Track original contents of files before any changes
@@ -48,6 +54,8 @@ public class LLM {
         // we give more specific feedback when we need to make another request
         io.systemOutput("Request sent");
 
+        boolean isComplete = false;
+
         while (true) {
             // Check for interruption before sending to LLM
             if (Thread.currentThread().isInterrupted()) {
@@ -56,35 +64,38 @@ public class LLM {
             }
 
             // refresh with updated file contents
-            var contextMessages = DefaultPrompts.instance.collectMessages((ContextManager) coder.contextManager);
+            var contextManager = (ContextManager) coder.contextManager;
+            var reminder = Models.isLazy(model) ? DefaultPrompts.LAZY_REMINDER : DefaultPrompts.OVEREAGER_REMINDER;
+            var contextMessages = DefaultPrompts.instance.collectMessages(contextManager, reminder);
             // Actually send the message to the LLM and get the response
             var allMessages = new ArrayList<>(contextMessages);
-            allMessages.addAll(requestMessages);
+            allMessages.addAll(requestMessages); // Add ongoing conversation history
+            logger.debug("Sending request to model: {}", Models.nameOf(model));
             var streamingResult = coder.sendStreaming(model, allMessages, true);
 
             // 1) If user cancelled
             if (streamingResult.cancelled()) {
                 io.systemOutput("Session interrupted");
-                return;
+                break;
             }
 
             // 2) Handle errors or empty responses
             if (streamingResult.error() != null) {
                 logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
                 io.systemOutput("LLM returned an error even after retries.");
-                return;
+                break;
             }
 
             var llmResponse = streamingResult.chatResponse();
             if (llmResponse == null) {
                 io.systemOutput("Empty LLM response even after retries. Stopping session.");
-                return;
+                break;
             }
 
             String llmText = llmResponse.aiMessage().text();
             if (llmText.isBlank()) {
                 io.systemOutput("Blank LLM response even after retries. Stopping session.");
-                return;
+                break;
             }
 
             // We got a valid response
@@ -164,10 +175,9 @@ public class LLM {
             } else {
                 parseErrorAttempts = 0;
             }
-            blocks.clear(); // don't re-apply the same ones on the next loop
+            blocks.clear(); // Don't re-apply the same successful ones on the next loop
             if (!parseReflection.isEmpty()) {
-                io.systemOutput("Attempting to fix parse/match errors...");
-                model = parseErrorAttempts > 0 ? coder.models.editModel() : coder.models.applyModel();
+                io.systemOutput("Attempting to fix apply/match errors...");
                 requestMessages.add(new UserMessage(parseReflection));
                 continue;
             }
@@ -182,6 +192,7 @@ public class LLM {
             var buildReflection = getBuildReflection(coder.contextManager, io, buildErrors);
             blocksAppliedWithoutBuild = 0;
             if (buildReflection.isEmpty()) {
+                isComplete = true;
                 break;
             }
 
@@ -191,13 +202,14 @@ public class LLM {
             }
 
             io.systemOutput("Attempting to fix build errors...");
-            // Use EDIT model (smarter) for build fixes
-            model = coder.models.editModel();
             requestMessages.add(new UserMessage(buildReflection));
         }
 
         // Add all pending messages to history in one batch
         if (!pendingHistory.isEmpty()) {
+            if (!isComplete) {
+                userInput += " [incomplete]";
+            }
             coder.contextManager.addToHistory(pendingHistory, originalContents, userInput);
         }
     }
@@ -242,13 +254,32 @@ public class LLM {
         var instructionsMsg = QuickEditPrompts.instance.formatInstructions(oldText, instructions);
         messages.add(new UserMessage(instructionsMsg));
 
-        // No echo for Quick Edit
-        var result = coder.sendStreaming(coder.models.applyModel(), messages, false);
-        var responseText = result.chatResponse().aiMessage().text();
-        if (responseText.isBlank()) {
-            io.systemOutput("No response from LLM for quick edit.");
+        // Record the original content so we can undo if necessary
+        var originalContents = Map.of(file, fileContents);
+        
+        // Initialize pending history with the instruction
+        var pendingHistory = new ArrayList<ChatMessage>();
+        pendingHistory.add(new UserMessage(instructionsMsg));
+
+        // No echo for Quick Edit, use static quickModel
+        var result = coder.sendStreaming(Models.quickModel(), messages, false);
+
+        if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+            io.systemOutput("Quick edit failed or was cancelled.");
+            // Add to history even if canceled, so we can potentially undo any partial changes
+            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName());
             return;
         }
+        var responseText = result.chatResponse().aiMessage().text();
+        if (responseText == null || responseText.isBlank()) {
+            io.systemOutput("LLM returned empty response for quick edit.");
+            // Add to history even if it failed
+            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName());
+            return;
+        }
+        
+        // Add the response to pending history
+        pendingHistory.add(new AiMessage(responseText));
 
         // Extract the new snippet
         var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
@@ -263,6 +294,8 @@ public class LLM {
         try {
             if (!fileContents.contains(oldText)) {
                 io.systemOutput("The selected snippet was not found in the file. No changes applied.");
+                // Add to history even if it failed
+                cm.addToHistory(List.of(new UserMessage(instructionsMsg)), originalContents, "Quick Edit (failed): " + file.getFileName());
                 return;
             }
             updatedFileContents = fileContents.replaceFirst(
@@ -271,6 +304,8 @@ public class LLM {
             );
         } catch (Exception ex) {
             io.systemOutput("Failed to replace text: " + ex.getMessage());
+            // Add to history even if it failed
+            cm.addToHistory(List.of(new UserMessage(instructionsMsg)), originalContents, "Quick Edit (failed): " + file.getFileName());
             return;
         }
 
@@ -281,14 +316,7 @@ public class LLM {
             throw new java.io.UncheckedIOException(e);
         }
 
-        // Record the original content so we can undo if necessary
-        var originalContents = Map.<ProjectFile,String>of(file, fileContents);
-
-        // Save to context history
-        var pendingHistory = List.of(
-                new UserMessage(instructionsMsg),
-                new AiMessage(responseText)
-        );
+        // Save to context history - pendingHistory already contains both the instruction and the response
         cm.addToHistory(pendingHistory, originalContents, "Quick Edit: " + file.getFileName(), responseText);
     }
 
@@ -412,7 +440,7 @@ public class LLM {
                     ## Failed to match in file: `%s`
                     ```
                     <<<<<<< SEARCH
-                    %s
+            %s
                     =======
                     %s
                     >>>>>>> REPLACE

@@ -1,8 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.LLM;
+import io.github.jbellis.brokk.*; // Import Models class
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
@@ -295,11 +294,6 @@ public class PreviewPanel extends JPanel
                 contextManager,
                 () -> { /* no action on record start */ },
                 error -> { /* no special error handling */ }
-        );
-        micButton.configure(
-                contextManager != null &&
-                        contextManager.getCoder() != null &&
-                        contextManager.getCoder().models != null
         );
 
         // infoLabel at row=0
