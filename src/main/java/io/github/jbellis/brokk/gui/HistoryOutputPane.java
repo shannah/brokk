@@ -16,16 +16,16 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
 /**
- * A component that combines the context history panel with the output panel in a horizontal split pane.
+ * A component that combines the context history panel with the output panel using BorderLayout.
  */
-public class HistoryOutputPane extends JSplitPane {
+public class HistoryOutputPane extends JPanel {
     private static final Logger logger = LogManager.getLogger(HistoryOutputPane.class);
 
     private final Chrome chrome;
     private final ContextManager contextManager;
     private JTable historyTable;
     private DefaultTableModel historyModel;
-    
+
     // Output components
     private MarkdownOutputPanel llmStreamArea;
     private JScrollPane llmScrollPane;
@@ -41,25 +41,31 @@ public class HistoryOutputPane extends JSplitPane {
      * @param contextManager The context manager
      */
     public HistoryOutputPane(Chrome chrome, ContextManager contextManager) {
-        super(JSplitPane.HORIZONTAL_SPLIT);
+        super(new BorderLayout()); // Use BorderLayout
         this.chrome = chrome;
         this.contextManager = contextManager;
 
-        // Build left side - context history panel
-        var historyPanel = buildContextHistoryPanel();
-        setLeftComponent(historyPanel);
+        // Build Output components (Center)
+        var centerPanel = buildCenterOutputPanel();
+        add(centerPanel, BorderLayout.CENTER);
 
+        // Build History panel (East)
+        var historyPanel = buildContextHistoryPanel();
+        add(historyPanel, BorderLayout.EAST);
+
+        // Set minimum sizes for the main panel
+        setMinimumSize(new Dimension(300, 200)); // Example minimum size
+    }
+
+    private JPanel buildCenterOutputPanel() {
         // Build LLM streaming area
         llmScrollPane = buildLLMStreamScrollPane();
-        
+
         // Build capture output panel
         var capturePanel = buildCaptureOutputPanel();
-        
+
         // Build system messages area
         systemScrollPane = buildSystemMessagesArea();
-
-        // Build right side - output panel
-        var rightPanel = new JPanel(new BorderLayout());
 
         // Output panel with LLM stream
         var outputPanel = new JPanel(new BorderLayout());
@@ -71,25 +77,17 @@ public class HistoryOutputPane extends JSplitPane {
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
+        outputPanel.add(capturePanel, BorderLayout.SOUTH); // Add capture panel below LLM output
 
-        // Add capture panel below LLM output
-        outputPanel.add(capturePanel, BorderLayout.SOUTH);
+        // Container for the center section (Output + System Messages)
+        var centerContainer = new JPanel(new BorderLayout());
+        centerContainer.add(outputPanel, BorderLayout.CENTER);
+        centerContainer.add(systemScrollPane, BorderLayout.SOUTH);
+        centerContainer.setMinimumSize(new Dimension(200, 0)); // Minimum width for output area
 
-        // Add output panel and system messages to right side
-        rightPanel.add(outputPanel, BorderLayout.CENTER);
-        rightPanel.add(systemScrollPane, BorderLayout.SOUTH);
-
-        setRightComponent(rightPanel);
-        
-        // Configure the split pane
-        setResizeWeight(0.2); // 80% to output, 20% to history
-        setContinuousLayout(true);
-        
-        // Set minimum sizes
-        getLeftComponent().setMinimumSize(new Dimension(100, 0));
-        getRightComponent().setMinimumSize(new Dimension(200, 0));
+        return centerContainer;
     }
-    
+
     /**
      * Builds the Context History panel that shows past contexts
      */
@@ -194,33 +192,52 @@ public class HistoryOutputPane extends JSplitPane {
         scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         new SmartScroll(scrollPane);
 
-        // Add undo/redo buttons at the bottom
-        var buttonPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+        // Add undo/redo buttons at the bottom, side by side
+        var buttonPanel = new JPanel();
+        buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.X_AXIS)); // Horizontal layout
         buttonPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
+        buttonPanel.add(Box.createHorizontalGlue()); // Push buttons to center
 
         var undoButton = new JButton("Undo");
         undoButton.setMnemonic(KeyEvent.VK_Z);
         undoButton.setToolTipText("Undo the most recent history entry");
+        var undoSize = new Dimension(100, undoButton.getPreferredSize().height);
+        undoButton.setPreferredSize(undoSize);
+        undoButton.setMinimumSize(undoSize);
+        undoButton.setMaximumSize(undoSize);
         undoButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-
-            chrome.currentUserTask = contextManager.undoContextAsync();
+            chrome.setCurrentUserTask(contextManager.undoContextAsync());
         });
 
         var redoButton = new JButton("Redo");
         redoButton.setMnemonic(KeyEvent.VK_Y);
         redoButton.setToolTipText("Redo the most recently undone entry");
+        var redoSize = new Dimension(100, redoButton.getPreferredSize().height);
+        redoButton.setPreferredSize(redoSize);
+        redoButton.setMinimumSize(redoSize);
+        redoButton.setMaximumSize(redoSize);
         redoButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-
-            chrome.currentUserTask = contextManager.redoContextAsync();
+            chrome.setCurrentUserTask(contextManager.redoContextAsync());
         });
 
         buttonPanel.add(undoButton);
+        buttonPanel.add(Box.createRigidArea(new Dimension(5, 0))); // Add spacing
         buttonPanel.add(redoButton);
+        buttonPanel.add(Box.createHorizontalGlue()); // Push buttons to center
 
         panel.add(scrollPane, BorderLayout.CENTER);
         panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Calculate preferred width for the history panel
+        // Table width (30 + 150) + scrollbar (~20) + padding = ~210
+        // Button width (100 + 100 + 5) + padding = ~215
+        int preferredWidth = 230; // Give a bit more room
+        var preferredSize = new Dimension(preferredWidth, panel.getPreferredSize().height);
+        panel.setPreferredSize(preferredSize);
+        panel.setMinimumSize(preferredSize);
+        panel.setMaximumSize(new Dimension(preferredWidth, Integer.MAX_VALUE)); // Fixed width, flexible height
 
         return panel;
     }
@@ -263,8 +280,7 @@ public class HistoryOutputPane extends JSplitPane {
      */
     private void undoHistoryUntil(Context targetContext) {
         chrome.disableUserActionButtons();
-
-        chrome.currentUserTask = contextManager.undoContextUntilAsync(targetContext);
+        chrome.setCurrentUserTask(contextManager.undoContextUntilAsync(targetContext));
     }
 
     /**
@@ -273,19 +289,18 @@ public class HistoryOutputPane extends JSplitPane {
      */
     private void resetContextTo(Context targetContext) {
         chrome.disableUserActionButtons();
-
-        chrome.currentUserTask = contextManager.resetContextToAsync(targetContext);
+        chrome.setCurrentUserTask(contextManager.resetContextToAsync(targetContext));
     }
 
     /**
      * Updates the context history table with the current context history, and selects the given context
-     * 
+     *
      * @param contextToSelect Context to select in the history table
      */
     public void updateHistoryTable(Context contextToSelect) {
         logger.debug("Updating context history table with context {}",
                      contextToSelect != null ? contextToSelect.getAction() : "null");
-        
+
         SwingUtilities.invokeLater(() -> {
             historyModel.setRowCount(0);
 
@@ -317,28 +332,16 @@ public class HistoryOutputPane extends JSplitPane {
             }
         });
     }
-    
-    /**
-     * Sets the initial width of the history panel
-     */
-    public void setInitialWidth() {
-        // Keep the resize weight consistent with the initial setting (0.2)
-        setDividerLocation(0.2);
-        
-        // Re-validate to ensure the UI picks up changes
-        revalidate();
-        repaint();
-    }
-    
+
     /**
      * Returns the history table for selection checks
-     * 
+     *
      * @return The JTable containing context history
      */
     public JTable getHistoryTable() {
         return historyTable;
     }
-    
+
     /**
      * Builds the LLM streaming area where markdown output is displayed
      */
@@ -382,7 +385,7 @@ public class HistoryOutputPane extends JSplitPane {
 
         return scrollPane;
     }
-    
+
     /**
      * Builds the "Capture Output" panel with a horizontal layout:
      * [Capture Text]
@@ -419,7 +422,7 @@ public class HistoryOutputPane extends JSplitPane {
         // Set minimum size
         copyButton.setMinimumSize(copyButton.getPreferredSize());
         buttonsPanel.add(copyButton);
-        
+
         // "Capture" button
         var captureButton = new JButton("Capture");
         captureButton.setMnemonic(KeyEvent.VK_C);
@@ -430,7 +433,7 @@ public class HistoryOutputPane extends JSplitPane {
         // Set minimum size
         captureButton.setMinimumSize(captureButton.getPreferredSize());
         buttonsPanel.add(captureButton);
-        
+
         // "Open in New Window" button
         var openWindowButton = new JButton("Open in New Window");
         openWindowButton.setMnemonic(KeyEvent.VK_W);
@@ -457,7 +460,7 @@ public class HistoryOutputPane extends JSplitPane {
     public String getLlmOutputText() {
         return llmStreamArea.getText();
     }
-    
+
     /**
      * Sets the text in the LLM output area
      */
@@ -488,14 +491,14 @@ public class HistoryOutputPane extends JSplitPane {
     public void appendLlmOutput(String text) {
         llmStreamArea.append(text);
     }
-    
+
     /**
      * Clears the LLM output area
      */
     public void clear() {
         llmStreamArea.clear();
     }
-    
+
     /**
      * Appends text to the system output area with timestamp
      */
@@ -511,7 +514,7 @@ public class HistoryOutputPane extends JSplitPane {
         // Append timestamped message
         systemArea.append(timestamp + ": " + message);
     }
-    
+
     /**
      * Sets the enabled state of the copy text button
      */
@@ -524,6 +527,7 @@ public class HistoryOutputPane extends JSplitPane {
      */
     public void updateTheme(boolean isDark) {
         llmStreamArea.updateTheme(isDark);
+        // Potentially update systemArea theme if needed
     }
 
     /**
@@ -532,42 +536,42 @@ public class HistoryOutputPane extends JSplitPane {
     public JScrollPane getLlmScrollPane() {
         return llmScrollPane;
     }
-    
+
     /**
      * Inner class representing a detached window for viewing output text
      */
     private class OutputWindow extends JFrame {
         /**
          * Creates a new output window with the given text content
-         * 
+         *
          * @param text The markdown text to display
          * @param isDark Whether to use dark theme
          */
         public OutputWindow(String text, boolean isDark) {
             super("Output");
             setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-            
+
             // Create markdown panel with the text
             var outputPanel = new MarkdownOutputPanel();
             outputPanel.updateTheme(isDark);
             outputPanel.setText(text);
-            
+
             // Add to a scroll pane
             var scrollPane = new JScrollPane(outputPanel);
             scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-            
+
             // Add the scroll pane to the frame
             add(scrollPane);
-            
+
             // Set size and position
             setSize(800, 600);
             setLocationRelativeTo(null);
-            
+
             // Add ESC key binding to close the window
             var rootPane = getRootPane();
             var actionMap = rootPane.getActionMap();
             var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-            
+
             inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeWindow");
             actionMap.put("closeWindow", new AbstractAction() {
                 @Override
@@ -575,7 +579,7 @@ public class HistoryOutputPane extends JSplitPane {
                     dispose();
                 }
             });
-            
+
             // Make window visible
             setVisible(true);
         }

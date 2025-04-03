@@ -598,21 +598,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
 
         SwingUtilities.invokeLater(() -> {
-            int historyPos = project.getHistorySplitPosition();
-            if (historyPos > 0) {
-                historyOutputPane.setDividerLocation(historyPos);
-            } else {
-                historyOutputPane.setInitialWidth();
-            }
-
-            historyOutputPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-                if (historyOutputPane.isShowing()) {
-                    var newPos = historyOutputPane.getDividerLocation();
-                    if (newPos > 0) {
-                        project.saveHistorySplitPosition(newPos);
-                    }
-                }
-            });
+            // FIXME
+//            int topSplitPosition = project.getTopSplitPosition();
+//            historyOutputPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+//                if (historyOutputPane.isShowing()) {
+//                    var newPos = historyOutputPane.getDividerLocation();
+//                    if (newPos > 0) {
+//                        project.saveHistorySplitPosition(newPos);
+//                    }
+//                }
+//            });
 
             int verticalPos = project.getVerticalSplitPosition();
             if (verticalPos > 0) {

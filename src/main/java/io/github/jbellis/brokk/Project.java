@@ -651,7 +651,7 @@ public class Project implements IProject, AutoCloseable {
     /**
      * Get history split pane position
      */
-    public int getHistorySplitPosition() {
+    public int getTopSplitPosition() {
         try {
             String posStr = workspaceProps.getProperty("historySplitPosition");
             return posStr != null ? Integer.parseInt(posStr) : -1;

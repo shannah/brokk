@@ -112,7 +112,7 @@ public class Coder {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
                         if (LLMTools.requiresEmulatedTools(model) && emulatedToolInstructionsPresent(request.messages())) {
-                            io.llmOutput(".");
+                            io.llmOutput(". ");
                         } else {
                             io.llmOutput(token);
                         }
