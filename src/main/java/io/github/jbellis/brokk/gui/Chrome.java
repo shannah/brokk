@@ -44,7 +44,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
-    HistoryOutputPane historyOutputPane;
+    HistoryOutputPanel historyOutputPanel;
 
     // Panels:
     private ContextPanel contextPanel;
@@ -272,14 +272,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         logger.debug("Initializing theme manager");
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
-        themeManager = new GuiTheme(frame, historyOutputPane.getLlmScrollPane(), this);
+        themeManager = new GuiTheme(frame, historyOutputPanel.getLlmScrollPane(), this);
 
         // Apply current theme based on project settings
         String currentTheme = Project.getTheme();
         logger.debug("Applying theme from project settings: {}", currentTheme);
         boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
         themeManager.applyTheme(isDark);
-        historyOutputPane.updateTheme(isDark);
+        historyOutputPanel.updateTheme(isDark);
     }
 
     /**
@@ -300,12 +300,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.insets = new Insets(2, 2, 2, 2);
 
         // Create history output pane (combines history panel and output panel)
-        historyOutputPane = new HistoryOutputPane(this, contextManager);
+        historyOutputPanel = new HistoryOutputPanel(this, contextManager);
 
         // Create a split pane: top = historyOutputPane, bottom = bottomPanel (to be populated later)
         verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         verticalSplitPane.setResizeWeight(0.4);
-        verticalSplitPane.setTopComponent(historyOutputPane);
+        verticalSplitPane.setTopComponent(historyOutputPanel);
 
         // Create the bottom panel
         bottomPanel = new JPanel(new BorderLayout());
@@ -342,7 +342,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         SwingUtilities.invokeLater(() -> {
             contextPanel.populateContextTable(ctx);
-            historyOutputPane.resetLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
+            historyOutputPanel.resetLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
             updateCaptureButtons();
         });
     }
@@ -354,7 +354,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public void switchTheme(boolean isDark) {
         themeManager.applyTheme(isDark);
-        historyOutputPane.updateTheme(isDark);
+        historyOutputPanel.updateTheme(isDark);
         for (Window window : Window.getWindows()) {
             if (window instanceof JFrame && window != frame) {
                 Container contentPane = ((JFrame) window).getContentPane();
@@ -366,7 +366,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public String getLlmOutputText() {
-        return SwingUtil.runOnEDT(() -> historyOutputPane.getLlmOutputText(), null);
+        return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmOutputText(), null);
     }
 
     private JComponent buildCommandResultLabel() {
@@ -398,7 +398,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public void clear() {
         SwingUtilities.invokeLater(() -> {
-            historyOutputPane.clear();
+            historyOutputPanel.clear();
         });
     }
 
@@ -488,12 +488,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void llmOutput(String token) {
-        SwingUtilities.invokeLater(() -> historyOutputPane.appendLlmOutput(token));
+        SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token));
     }
 
     @Override
     public void systemOutput(String message) {
-        SwingUtilities.invokeLater(() -> historyOutputPane.appendSystemOutput(message));
+        SwingUtilities.invokeLater(() -> historyOutputPanel.appendSystemOutput(message));
     }
 
     public void backgroundOutput(String message) {
@@ -651,7 +651,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void updateContextHistoryTable(Context contextToSelect) {
-        historyOutputPane.updateHistoryTable(contextToSelect);
+        historyOutputPanel.updateHistoryTable(contextToSelect);
     }
 
     private boolean isPositionOnScreen(int x, int y) {
@@ -666,8 +666,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void updateCaptureButtons() {
-        String text = historyOutputPane.getLlmOutputText();
-        SwingUtilities.invokeLater(() -> historyOutputPane.setCopyButtonEnabled(!text.isBlank()));
+        String text = historyOutputPanel.getLlmOutputText();
+        SwingUtilities.invokeLater(() -> historyOutputPanel.setCopyButtonEnabled(!text.isBlank()));
     }
 
     public JFrame getFrame() {

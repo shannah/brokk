@@ -18,8 +18,8 @@ import java.awt.event.MouseEvent;
 /**
  * A component that combines the context history panel with the output panel using BorderLayout.
  */
-public class HistoryOutputPane extends JPanel {
-    private static final Logger logger = LogManager.getLogger(HistoryOutputPane.class);
+public class HistoryOutputPanel extends JPanel {
+    private static final Logger logger = LogManager.getLogger(HistoryOutputPanel.class);
 
     private final Chrome chrome;
     private final ContextManager contextManager;
@@ -40,7 +40,7 @@ public class HistoryOutputPane extends JPanel {
      * @param chrome The parent Chrome instance
      * @param contextManager The context manager
      */
-    public HistoryOutputPane(Chrome chrome, ContextManager contextManager) {
+    public HistoryOutputPanel(Chrome chrome, ContextManager contextManager) {
         super(new BorderLayout()); // Use BorderLayout
         this.chrome = chrome;
         this.contextManager = contextManager;

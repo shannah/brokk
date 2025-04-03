@@ -8,7 +8,6 @@ import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
-import javax.swing.border.EtchedBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.KeyEvent;
@@ -315,7 +314,7 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPane.setLlmOutput("# Code\n" + input + "\n\n# Response\n");
+        chrome.historyOutputPanel.setLlmOutput("# Code\n" + input + "\n\n# Response\n");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runCodeCommandAsync(selectedModel, input));
@@ -333,7 +332,7 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPane.setLlmOutput("# Ask\n" + input + "\n\n# Response\n");
+        chrome.historyOutputPanel.setLlmOutput("# Ask\n" + input + "\n\n# Response\n");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runAskAsync(selectedModel, input));
@@ -351,8 +350,8 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPane.setLlmOutput("# Search\n" + input + "\n\n");
-        chrome.historyOutputPane.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
+        chrome.historyOutputPanel.setLlmOutput("# Search\n" + input + "\n\n");
+        chrome.historyOutputPanel.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runSearchAsync(selectedModel, input));
@@ -365,7 +364,7 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPane.setLlmOutput("# Run\n" + input + "\n\n# Output\n");
+        chrome.historyOutputPanel.setLlmOutput("# Run\n" + input + "\n\n# Output\n");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runRunCommandAsync(input));
