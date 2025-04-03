@@ -117,7 +117,6 @@ public class MenuBar {
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         undoItem.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.disableContextActionButtons();
             chrome.currentUserTask = chrome.contextManager.undoContextAsync();
         });
         undoItem.setEnabled(hasProject);
@@ -128,7 +127,6 @@ public class MenuBar {
                                                        Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
         redoItem.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.disableContextActionButtons();
             chrome.currentUserTask = chrome.contextManager.redoContextAsync();
         });
         redoItem.setEnabled(hasProject);
@@ -212,7 +210,7 @@ public class MenuBar {
         var dropAllItem = new JMenuItem("Drop All");
         dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         dropAllItem.addActionListener(e -> {
-            chrome.disableContextActionButtons();
+
             chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
                     Chrome.ContextAction.DROP, List.of());
         });

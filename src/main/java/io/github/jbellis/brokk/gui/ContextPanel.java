@@ -390,7 +390,7 @@ public class ContextPanel extends JPanel {
 
         JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
         dropAllMenuItem.addActionListener(e -> {
-            chrome.disableContextActionButtons();
+
             chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, List.of());
         });
         tablePopupMenu.add(dropAllMenuItem);

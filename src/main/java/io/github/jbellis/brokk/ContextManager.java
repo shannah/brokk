@@ -15,13 +15,16 @@ import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.LoggingExecutorService;
+import io.github.jbellis.brokk.gui.MultiFileSelectionDialog;
+import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
-import io.github.jbellis.brokk.gui.*;
-import io.github.jbellis.brokk.prompts.*;
+import io.github.jbellis.brokk.prompts.CommitPrompts;
+import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import io.github.jbellis.brokk.util.StackTrace;
@@ -301,7 +304,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 logger.error("Error while " + description, e);
                 io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -435,7 +437,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Symbol selection canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -463,7 +464,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Method selection canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -491,7 +491,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Method selection canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -597,7 +596,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput(action + " canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -926,7 +924,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Undo canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -948,7 +945,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Undo canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -970,7 +966,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Redo canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -986,7 +981,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Reset context canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -1048,7 +1042,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Capture canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -1221,7 +1214,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput("Auto-context update canceled.");
             } finally {
-                io.enableContextActionButtons();
                 io.enableUserActionButtons();
             }
         });
@@ -1417,7 +1409,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
-            protected String doInBackground() throws Exception {
+            protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                 // Use quickModel for summarization
                 var result = coder.sendMessage(Models.quickModel(), msgs);
@@ -1442,7 +1434,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
-            protected String doInBackground() throws Exception {
+            protected String doInBackground() {
                 var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
                  // Use quickModel for summarization
                 var result = coder.sendMessage(Models.quickModel(), msgs);

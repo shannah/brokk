@@ -7,6 +7,7 @@ import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
@@ -65,8 +66,8 @@ public class HistoryOutputPane extends JSplitPane {
         outputPanel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
                 "Output",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
@@ -95,13 +96,11 @@ public class HistoryOutputPane extends JSplitPane {
     private JPanel buildContextHistoryPanel() {
         // Create history panel
         var panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Context History",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
+        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
+                                                         "Context History",
+                                                         TitledBorder.DEFAULT_JUSTIFICATION,
+                                                         TitledBorder.DEFAULT_POSITION,
+                                                         new Font(Font.DIALOG, Font.BOLD, 12)));
 
         // Create table model with columns - first two columns are visible, third is hidden
         historyModel = new DefaultTableModel(
@@ -204,7 +203,7 @@ public class HistoryOutputPane extends JSplitPane {
         undoButton.setToolTipText("Undo the most recent history entry");
         undoButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.disableContextActionButtons();
+
             chrome.currentUserTask = contextManager.undoContextAsync();
         });
 
@@ -213,7 +212,7 @@ public class HistoryOutputPane extends JSplitPane {
         redoButton.setToolTipText("Redo the most recently undone entry");
         redoButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.disableContextActionButtons();
+
             chrome.currentUserTask = contextManager.redoContextAsync();
         });
 
@@ -264,7 +263,7 @@ public class HistoryOutputPane extends JSplitPane {
      */
     private void undoHistoryUntil(Context targetContext) {
         chrome.disableUserActionButtons();
-        chrome.disableContextActionButtons();
+
         chrome.currentUserTask = contextManager.undoContextUntilAsync(targetContext);
     }
 
@@ -274,7 +273,7 @@ public class HistoryOutputPane extends JSplitPane {
      */
     private void resetContextTo(Context targetContext) {
         chrome.disableUserActionButtons();
-        chrome.disableContextActionButtons();
+
         chrome.currentUserTask = contextManager.resetContextToAsync(targetContext);
     }
 
@@ -375,8 +374,8 @@ public class HistoryOutputPane extends JSplitPane {
         scrollPane.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
                 "System Messages",
-                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
-                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
         new SmartScroll(scrollPane);
