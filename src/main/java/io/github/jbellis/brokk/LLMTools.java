@@ -409,10 +409,7 @@ public class LLMTools {
             }
         }
         if (repoMatches.size() == 1) {
-            if (!contextManager.getEditableFiles().contains(repoMatches.get(0))) {
-                throw new FileNotEditableException("Matched file in repo, but not editable: " + repoMatches);
-            }
-            return repoMatches.get(0);
+            return repoMatches.getFirst();
         }
         if (repoMatches.size() > 1) {
             throw new SymbolAmbiguousException("No exact match for %s and %s is ambiguous".formatted(filename, fileNameOnly));
@@ -480,12 +477,6 @@ public class LLMTools {
          * Single record grouping the various forms of replacement text.
          */
         public record RequestContents(String oldLines, String newLines, String newFileContent, String newFunctionBody, String explanation) { }
-    }
-
-    public static class FileNotEditableException extends RuntimeException {
-        public FileNotEditableException(String message) {
-            super(message);
-        }
     }
 
     @Tool(value = "Explain your strategy to the user. ALWAYS CALL THIS BEFORE OTHER TOOLS..")
