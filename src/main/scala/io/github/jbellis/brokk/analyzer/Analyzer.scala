@@ -974,6 +974,85 @@ class JavaAnalyzer private (sourcePath: Path, cpgInit: Cpg)
     val escaped = Regex.quote(resolvedMethodName)
     cpg.method.fullName(escaped + ":.*").l
   }
+
+  override def getFunctionLocation(
+                                    fqMethodName: String,
+                                    paramNames: java.util.List[String]
+                                  ): FunctionLocation = {
+    import scala.jdk.CollectionConverters.*
+
+    var methodPattern = Regex.quote(fqMethodName)
+    var allCandidates = cpg.method.fullName(s"$methodPattern:.*").l
+
+    if (allCandidates.size == 1) {
+      return toFunctionLocation(allCandidates.head)
+    }
+
+    if (allCandidates.isEmpty) {
+      // Try to resolve the method name without the package (but with the class)
+      val shortName = fqMethodName.split('.').takeRight(2).mkString(".")
+      methodPattern = Regex.quote(shortName)
+      allCandidates = cpg.method.fullName(s".*$methodPattern:.*").l
+    }
+
+    val paramList = paramNames.asScala.toList
+    val matched = allCandidates.filter { m =>
+      val actualNames = m.parameter
+        .filterNot(_.name == "this")
+        .sortBy(_.order)
+        .map(_.name)
+        .l
+      actualNames == paramList
+    }
+
+    if (matched.isEmpty) {
+      throw new SymbolNotFoundException(
+        s"No methods found in $fqMethodName matching provided parameter names $paramList"
+      )
+    }
+
+    if (matched.size > 1) {
+      throw new SymbolAmbiguousException(
+        s"Multiple methods match $fqMethodName with parameter names $paramList"
+      )
+    }
+
+    toFunctionLocation(matched.head)
+  }
+
+  /**
+   * Turns a method node into a FunctionLocation.
+   * Throws SymbolNotFoundError if file/line info or code extraction fails.
+   */
+  private def toFunctionLocation(chosen: Method): FunctionLocation = {
+    val fileOpt = toFile(chosen.typeDecl.filename.headOption.getOrElse(""))
+    if (fileOpt.isEmpty || chosen.lineNumber.isEmpty || chosen.lineNumberEnd.isEmpty) {
+      throw new SymbolNotFoundException("File or line info missing for chosen method.")
+    }
+
+    val file = fileOpt.get
+    val start = chosen.lineNumber.get
+    val end = chosen.lineNumberEnd.get
+
+    val maybeCode = try {
+      val lines = scala.io.Source
+        .fromFile(file.absPath().toFile)
+        .getLines()
+        .drop(start - 1)
+        .take((end - start) + 1)
+        .mkString("\n")
+      Some(lines)
+    } catch {
+      case _: Throwable => None
+    }
+
+    if (maybeCode.isEmpty) {
+      throw new SymbolNotFoundException("Could not read code for chosen method.")
+    }
+
+    FunctionLocation(file, start, end, maybeCode.get)
+  }
+
 }
 
 object JavaAnalyzer {

@@ -17,15 +17,19 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * A panel that displays text (typically code) in an RSyntaxTextArea with
- * advanced features:
- * - Case-insensitive, as-you-type search with Next/Previous navigation
- * - Ctrl+F focuses the search field
- * - Context menu with Copy and Quick Edit options
- * - Quick Edit dialog allows AI-assisted editing of selected code
- * - Quick Results dialog provides real-time feedback during code modifications
+ * A panel that displays text (typically code) in an RSyntaxTextArea.
+ * <p>
+ * Key features:
+ * <ul>
+ *   <li>Case-insensitive, as-you-type search with Next/Previous navigation.</li>
+ *   <li>Ctrl+F focuses the search field for quick searching.</li>
+ *   <li>Context menu with Copy and Quick Edit options for code manipulation.</li>
+ *   <li>Quick Edit dialog for AI-assisted editing of selected code.</li>
+ *   <li>Quick Results dialog providing real-time feedback during code modifications.</li>
+ * </ul>
  */
 public class PreviewPanel extends JPanel
 {
@@ -208,11 +212,10 @@ public class PreviewPanel extends JPanel
             quickEditAction.setEnabled(false);
             menu.add(quickEditAction);
 
-            // Update Quick Edit enabled state when popup becomes visible
+            // Quick Edit only enabled if user selected some text AND file != null
             menu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
                 @Override
                 public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
-                    // Quick Edit only enabled if user selected some text AND file != null
                     quickEditAction.setEnabled(getSelectedText() != null && file != null);
                 }
                 @Override
@@ -224,12 +227,13 @@ public class PreviewPanel extends JPanel
             return menu;
         }
     }
-    
+
     /**
      * Shows a quick edit dialog with the selected text.
      *
      * @param selectedText The text currently selected in the preview
-     */    private void showQuickEditDialog(String selectedText) {
+     */
+    private void showQuickEditDialog(String selectedText) {
         if (selectedText == null || selectedText.isEmpty()) {
             return;
         }
@@ -347,6 +351,19 @@ public class PreviewPanel extends JPanel
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW
         );
+        
+        // Set Code as the default button (triggered by Enter key)
+        quickEditDialog.getRootPane().setDefaultButton(codeButton);
+
+        // Register Ctrl+Enter to submit dialog
+        KeyStroke ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        editArea.getInputMap().put(ctrlEnter, "submitQuickEdit");
+        editArea.getActionMap().put("submitQuickEdit", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                codeButton.doClick();
+            }
+        });
 
         // Set focus to the edit area when the dialog opens
         SwingUtilities.invokeLater(editArea::requestFocusInWindow);
@@ -425,6 +442,8 @@ public class PreviewPanel extends JPanel
 
         // Create our IConsoleIO for quick results that appends to the systemArea.
         class QuickResultsIo implements IConsoleIO {
+            AtomicBoolean hasError = new AtomicBoolean();
+
             private void appendSystemMessage(String text) {
                 if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
                     systemArea.append("\n");
@@ -434,42 +453,30 @@ public class PreviewPanel extends JPanel
             }
 
             @Override
-            public void actionOutput(String msg) {
-                appendSystemMessage("Action: " + msg);
-            }
-
-            @Override
-            public void actionComplete() {
-                appendSystemMessage("[action complete]");
-            }
-
-            @Override
             public void toolErrorRaw(String msg) {
-                appendSystemMessage("Error: " + msg);
+                hasError.set(true);
+                appendSystemMessage(msg);
+            }
+
+            @Override
+            public void actionOutput(String msg) {
+                appendSystemMessage(msg);
             }
 
             @Override
             public void llmOutput(String token) {
                 appendSystemMessage(token);
             }
-
-            @Override
-            public void systemOutput(String message) {
-                appendSystemMessage(message);
-            }
-
         }
         var resultsIo = new QuickResultsIo();
 
         // Submit the quick edit task.
         var future = contextManager.submitUserTask("Quick Edit", () -> {
-            LLM.runQuickSession(
-                    contextManager,
-                    resultsIo,
-                    file,
-                    selectedText,
-                    instructions
-            );
+            return LLM.runQuickSession(contextManager,
+                                       resultsIo,
+                                       file,
+                                       selectedText,
+                                       instructions);
         });
 
         // Stop button cancels the task and closes the dialog.
@@ -484,34 +491,29 @@ public class PreviewPanel extends JPanel
         // Wait for the task to complete in a background thread.
         new Thread(() -> {
             try {
-                future.get(); // Wait for the task to complete successfully.
-                // On success, reload the preview panel's contents from the repofile.
+                // Wait for the task to complete
+                var newSnippet = future.get();
+                stopButton.setEnabled(false);
+                okayButton.setEnabled(true);
+
+                // Reload the preview panel's contents from the repofile.
                 var newContent = file.read();
-                
-                // Calculate the position of the edited text in the new content
-                // We use the original selected text to find where the edit was made
+                // Update UI on the EDT
                 SwingUtilities.invokeLater(() -> {
-                    // Remember current caret position before changing text
-                    int origCaretPos = textArea.getCaretPosition();
-                    
                     // Update the text area with new content
                     textArea.setText(newContent);
-                    
-                    // Try to find the text that was edited
-                    int startPos = newContent.indexOf(selectedText);
-                    if (startPos >= 0) {
-                        // If found, select it to highlight the changes
-                        textArea.setCaretPosition(startPos);
-                        textArea.moveCaretPosition(startPos + selectedText.length());
-                    } else {
-                        // If not found (likely because it was changed), 
-                        // try to position close to where we were
-                        textArea.setCaretPosition(Math.min(origCaretPos, newContent.length()));
+
+                    // Find the start offset of the new snippet in the content.
+                    int startOffset = newContent.indexOf(newSnippet);
+                    assert startOffset >= 0;
+                    textArea.setCaretPosition(startOffset);
+                    textArea.moveCaretPosition(startOffset + newSnippet.length());
+                    textArea.grabFocus();
+
+                    // Close the dialog automatically on success
+                    if (!resultsIo.hasError.get()) {
+                        resultsDialog.dispose();
                     }
-                    
-                    okayButton.setEnabled(true);
-                    stopButton.setEnabled(false);
-                    resultsIo.systemOutput("Quick edit completed successfully.");
                 });
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> resultsIo.toolErrorRaw("Error during quick edit: " + ex.getMessage()));

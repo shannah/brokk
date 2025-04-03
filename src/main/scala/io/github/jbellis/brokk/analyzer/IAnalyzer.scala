@@ -59,4 +59,19 @@ trait IAnalyzer {
    */
   def getCallgraphFrom(methodName: String, depth: Int): java.util.Map[String, java.util.List[CallSite]] =
     throw new UnsupportedOperationException()
+
+  /**
+   * Locates the source file and line range for the given fully-qualified method name.
+   * The paramNames list contains the *parameter variable names* (not types).
+   * If there is only a single match, or exactly one match with matching param names, return it.
+   * Otherwise throw SymbolNotFoundException or SymbolAmbiguousException
+   */
+  def getFunctionLocation(fqMethodName: String, paramNames: util.List[String]): FunctionLocation = {
+    throw new UnsupportedOperationException()
+  }
 }
+
+/**
+ * A container for the function’s location and current text.
+ */
+case class FunctionLocation(file: ProjectFile, startLine: Int, endLine: Int, code: String)

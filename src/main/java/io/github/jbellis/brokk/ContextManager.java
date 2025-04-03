@@ -263,8 +263,27 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
             } catch (Exception e) {
-                logger.error("Error in " + description, e);
-                io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
+                logger.error("Error while " + description, e);
+                io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
+            } finally {
+                io.actionComplete();
+                io.enableUserActionButtons();
+            }
+        });
+    }
+
+    public <T> Future<T> submitUserTask(String description, Callable<T> task) {
+        return userActionExecutor.submit(() -> {
+            try {
+                io.actionOutput(description);
+                return task.call();
+            } catch (CancellationException cex) {
+                io.systemOutput(description + " canceled.");
+                throw cex;
+            } catch (Exception e) {
+                logger.error("Error while " + description, e);
+                io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
+                throw e;
             } finally {
                 io.actionComplete();
                 io.enableUserActionButtons();
@@ -279,8 +298,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
             } catch (Exception e) {
-                logger.error("Error in " + description, e);
-                io.toolErrorRaw("Error in " + description + ": " + e.getMessage());
+                logger.error("Error while " + description, e);
+                io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
             } finally {
                 io.enableContextActionButtons();
                 io.enableUserActionButtons();
@@ -506,9 +525,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Cast BrokkFile to RepoFile. Will throw if ExternalFiles are present.
      */
     private List<ProjectFile> toRepoFiles(List<BrokkFile> files) {
-        return files.stream()
-                .map(f -> (ProjectFile) f)
-                .collect(Collectors.toList());
+        return files.stream().map(f -> (ProjectFile) f).toList();
     }
 
     /**
