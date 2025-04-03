@@ -25,8 +25,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.Future;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
@@ -638,7 +636,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Add to text history
         getProject().addToTextHistory(input, 20);
-        updateHistoryDropdown(); // Refresh history dropdown
+        // Refresh history dropdown
+        // This method might be needed if the history button itself needs updating,
+        // but currently, the menu is built dynamically on click.
+        // Could potentially update tooltip or icon if desired.
 
         historyOutputPane.setLlmOutput("# Code\n" + input + "\n\n# Response\n");
         commandInputField.setText("");
@@ -714,7 +715,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Add to text history
         getProject().addToTextHistory(input, 20);
-        updateHistoryDropdown(); // Refresh history dropdown
+        // Refresh history dropdown
+        // This method might be needed if the history button itself needs updating,
+        // but currently, the menu is built dynamically on click.
+        // Could potentially update tooltip or icon if desired.
 
         historyOutputPane.setLlmOutput("# Ask\n" + commandInputField.getText() + "\n\n# Response\n");
         commandInputField.setText("");
@@ -742,7 +746,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Add to text history
         getProject().addToTextHistory(input, 20);
-        updateHistoryDropdown(); // Refresh history dropdown
+        // Refresh history dropdown
+        // This method might be needed if the history button itself needs updating,
+        // but currently, the menu is built dynamically on click.
+        // Could potentially update tooltip or icon if desired.
 
         historyOutputPane.setLlmOutput("# Search\n" + commandInputField.getText() + "\n\n");
         historyOutputPane.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
@@ -1153,17 +1160,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         return historyPanel;
     }
-
-    /**
-      * Refreshes the history dropdown button text, potentially needed if history changes often.
-      * Currently not strictly necessary as the button text is static, but could be useful later.
-      */
-     public void updateHistoryDropdown() {
-         // This method might be needed if the history button itself needs updating,
-         // but currently, the menu is built dynamically on click.
-         // Could potentially update tooltip or icon if desired.
-     }
-
 
     /**
      * Creates and shows the history popup menu.
