@@ -62,5 +62,5 @@ public interface IContextManager {
         return new IProject() {};
     }
 
-    default void addToGit(String string) throws IOException {}
+    default void addToGit(List<ProjectFile> files) throws IOException {}
 }

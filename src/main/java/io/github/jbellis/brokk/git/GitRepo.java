@@ -79,6 +79,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * Adds files to staging.
      */
+    @Override
     public synchronized void add(List<ProjectFile> files) throws IOException
     {
         try {

@@ -1696,8 +1696,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     @Override
-    public void addToGit(String filename) throws IOException {
-        ((GitRepo) project.getRepo()).add(List.of(toFile(filename)));
+    public void addToGit(List<ProjectFile> files) throws IOException {
+        project.getRepo().add(files);
     }
 
     // Convert a throwable to a string with full stack trace

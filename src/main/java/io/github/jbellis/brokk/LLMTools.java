@@ -112,8 +112,12 @@ public class LLMTools {
      */
     public void replaceFile(ProjectFile file, String newContent) {
         try {
+            var existing = file.exists();
             file.write(newContent);
-            logger.info("replaceFile: overwrote content in {}", file);
+            if (!existing) {
+                contextManager.addToGit(List.of(file));
+            }
+            logger.debug("replaceFile: overwrote content in {}", file);
         } catch (IOException e) {
             throw new ToolExecutionException("Failed writing file " + file + ": " + e.getMessage());
         }
