@@ -362,7 +362,7 @@ public class LLM {
         }
 
         io.systemOutput("Running " + cmd);
-        var result = Environment.instance.captureShellCommand(cmd);
+        var result = Environment.instance.captureShellCommand(cmd, cm.getProject().getRoot());
         logger.debug("Build command result: {}", result);
         if (result.error() == null) {
             io.systemOutput("Build successful");

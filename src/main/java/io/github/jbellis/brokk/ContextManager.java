@@ -239,7 +239,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         assert io != null;
         return submitUserTask("Executing: " + input, () -> {
-            var result = Environment.instance.captureShellCommand(input);
+            var result = Environment.instance.captureShellCommand(input, root);
             String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
             io.llmOutput("\n```\n" + output + "\n```");
 

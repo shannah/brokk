@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.util;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Scanner;
 
 public class Environment {
@@ -13,13 +14,14 @@ public class Environment {
     
     /**
      * Runs a shell command using the appropriate shell for the current OS, returning {stdout, stderr}.
+     * The command is executed in the directory specified by `root`.
      */
-    public ProcessResultInternal runShellCommand(String command) throws IOException {
+    public ProcessResultInternal runShellCommand(String command, Path root) throws IOException {
         Process process;
         if (isWindows()) {
-            process = createProcessBuilder("cmd.exe", "/c", command).start();
+            process = createProcessBuilder(root, "cmd.exe", "/c", command).start();
         } else {
-            process = createProcessBuilder("/bin/sh", "-c", command).start();
+            process = createProcessBuilder(root, "/bin/sh", "-c", command).start();
         }
 
         var out = new StringBuilder();
@@ -53,8 +55,9 @@ public class Environment {
         return new ProcessResultInternal(exitCode, out.toString(), err.toString());
     }
 
-    private static ProcessBuilder createProcessBuilder(String... command) {
+    private static ProcessBuilder createProcessBuilder(Path root, String... command) {
         var pb = new ProcessBuilder(command);
+        pb.directory(root.toFile());
         // Redirect input from /dev/null (or NUL on Windows) so interactive prompts fail fast
         if (isWindows()) {
             pb.redirectInput(ProcessBuilder.Redirect.from(new File("NUL")));
@@ -69,12 +72,12 @@ public class Environment {
     }
 
     /**
-     * Run a shell command, returning stdout or stderr in an OperationResult.
+     * Run a shell command in the given root directory, returning stdout or stderr in an OperationResult.
      */
-    public ProcessResult captureShellCommand(String command) {
+    public ProcessResult captureShellCommand(String command, Path root) {
         ProcessResultInternal result;
         try {
-            result = runShellCommand(command);
+            result = runShellCommand(command, root);
         } catch (Exception e) {
             return new ProcessResult(e.getMessage(), "");
         }
