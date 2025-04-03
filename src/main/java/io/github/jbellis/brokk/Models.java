@@ -22,6 +22,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,7 +33,6 @@ import java.util.concurrent.TimeUnit;
  */
 public final class Models {
     private static final Logger logger = LogManager.getLogger(Models.class);
-    public static String[] defaultKeyNames = {"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY"}; // TODO remove
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -180,6 +180,7 @@ public final class Models {
             // placeholder, LiteLLM manages actual keys
             var builder = OpenAiStreamingChatModel.builder()
                     .baseUrl(LITELLM_BASE_URL)
+                    .timeout(Duration.ofMinutes(3)) // default 60s is not enough in practice
                     .apiKey("litellm") // placeholder, LiteLLM manages actual keys
                     .modelName(location);
 
