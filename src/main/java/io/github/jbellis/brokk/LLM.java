@@ -21,6 +21,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class LLM {
@@ -251,12 +253,14 @@ public class LLM {
      * 1) Gather the entire file content plus related context (buildAutoContext)
      * 2) Use QuickEditPrompts to ask for a single fenced code snippet
      * 3) Replace the old text with the new snippet in the file
+     *
+     * @return
      */
-    public static void runQuickSession(ContextManager cm,
-                                       IConsoleIO io,
-                                       ProjectFile file,
-                                       String oldText,
-                                       String instructions)
+    public static String runQuickSession(ContextManager cm,
+                                         IConsoleIO io,
+                                         ProjectFile file,
+                                         String oldText,
+                                         String instructions)
     {
         var coder = cm.getCoder();
         var analyzer = cm.getAnalyzer();
@@ -293,17 +297,17 @@ public class LLM {
         var result = coder.sendStreaming(Models.quickModel(), messages, false);
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-            io.systemOutput("Quick edit failed or was cancelled.");
+            io.toolErrorRaw("Quick edit failed or was cancelled.");
             // Add to history even if canceled, so we can potentially undo any partial changes
             cm.addToHistory(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName());
-            return;
+            return fileContents;
         }
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText == null || responseText.isBlank()) {
-            io.systemOutput("LLM returned empty response for quick edit.");
+            io.toolErrorRaw("LLM returned empty response for quick edit.");
             // Add to history even if it failed
             cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName());
-            return;
+            return fileContents;
         }
         
         // Add the response to pending history
@@ -312,32 +316,31 @@ public class LLM {
         // Extract the new snippet
         var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
         if (newSnippet.isEmpty()) {
-            io.systemOutput("Could not parse a fenced code snippet from LLM response.");
-            return;
+            io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
+            return fileContents;
         }
 
         // Attempt to replace old snippet in the file
         // If oldText not found, do nothing
         String updatedFileContents;
+        String newStripped = newSnippet.stripLeading();
         try {
             if (!fileContents.contains(oldText)) {
-                io.systemOutput("The selected snippet was not found in the file. No changes applied.");
+                io.toolErrorRaw("The selected snippet was not found in the file. No changes applied.");
                 // Add to history even if it failed
                 cm.addToHistory(List.of(new UserMessage(instructionsMsg)), originalContents, "Quick Edit (failed): " + file.getFileName());
-                return;
+                return fileContents;
             }
-            updatedFileContents = fileContents.replaceFirst(
-                    java.util.regex.Pattern.quote(oldText.stripLeading()),
-                    java.util.regex.Matcher.quoteReplacement(newSnippet.stripLeading())
-            );
+            updatedFileContents = fileContents.replaceFirst(Pattern.quote(oldText.stripLeading()),
+                                                            Matcher.quoteReplacement(newStripped));
         } catch (Exception ex) {
-            io.systemOutput("Failed to replace text: " + ex.getMessage());
+            io.toolErrorRaw("Failed to replace text: " + ex.getMessage());
             // Add to history even if it failed
             cm.addToHistory(List.of(new UserMessage(instructionsMsg)), originalContents, "Quick Edit (failed): " + file.getFileName());
-            return;
+            return fileContents;
         }
 
-        // (5) Wrap write() in UncheckedIOException
+        // Write the updated file to disk
         try {
             file.write(updatedFileContents);
         } catch (java.io.IOException e) {
@@ -346,6 +349,7 @@ public class LLM {
 
         // Save to context history - pendingHistory already contains both the instruction and the response
         cm.addToHistory(pendingHistory, originalContents, "Quick Edit: " + file.getFileName(), responseText);
+        return newStripped;
     }
 
     /**

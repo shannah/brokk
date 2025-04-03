@@ -272,6 +272,25 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
+    public <T> Future<T> submitUserTask(String description, Callable<T> task) {
+        return userActionExecutor.submit(() -> {
+            try {
+                io.actionOutput(description);
+                return task.call();
+            } catch (CancellationException cex) {
+                io.systemOutput(description + " canceled.");
+                throw cex;
+            } catch (Exception e) {
+                logger.error("Error while " + description, e);
+                io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
+                throw e;
+            } finally {
+                io.actionComplete();
+                io.enableUserActionButtons();
+            }
+        });
+    }
+
     public Future<?> submitContextTask(String description, Runnable task) {
         return contextActionExecutor.submit(() -> {
             try {

@@ -6,14 +6,11 @@ Coding Style Guide
 1. **Provide Comprehensive Logging**: Log relevant information using log4j, including request/response details, errors, and other important events.
 1. **Use `var`**: Prefer `var` for local variable declarations. Exception: numeric types, such as `int`, `float`, etc.
 1. **Avoid StringBuilder**: prefer joins or interpolated text blocks where possible. Use stripIndent() with text blocks.
-1. **Multiline parameters**: When calling a method with more parameters than reasonably fit on one line, align as follows:
+1. **Multiline parameters**: When calling a method with more parameters than reasonably fit on one line, DO NOT leave dangling open or close parens on separate lines; instead, align as follows:
 ```
    var combined = Streams.concat(currentContext().readonlyFiles(),
                                  currentContext().virtualFragments(),
-                                 Stream.of(currentContext().getAutoContext()))
-       .map(this::formattedOrNull)
-       .filter(Objects::nonNull)
-       .collect(Collectors.joining("\n\n"));
+                                 Stream.of(currentContext().getAutoContext()));
 ```
   When declaring a method with multiline parameters, align similarly and also put the opening brace on a new line.
 1. **Use asserts to validate assumptions**: Use `assert` to validate assumptions, and prefer making reasonable assumptions backed by assert to defensive `if` checks.
