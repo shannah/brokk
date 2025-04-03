@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.util;
 
 import java.util.Collection;
 import java.util.List;

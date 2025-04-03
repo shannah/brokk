@@ -17,7 +17,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.LoggingExecutorService;
+import io.github.jbellis.brokk.util.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.SymbolSelectionDialog;
