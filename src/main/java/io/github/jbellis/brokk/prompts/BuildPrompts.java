@@ -41,6 +41,9 @@ public abstract class BuildPrompts {
                Review the history of build outputs here.  Think carefully about what
                you can determine about his progress or lack thereof, and conclude your
                reasoning with either `BROKK_PROGRESSING` or `BROKK_FLOUNDERING`.
+               
+               If in doubt, choose `BROKK_PROGRESSING`. Only choose `BROKK_FLOUNDERING` if
+               the junior engineer is going in circles or otherwise not making progress.
                """.stripIndent();
     }
 }
