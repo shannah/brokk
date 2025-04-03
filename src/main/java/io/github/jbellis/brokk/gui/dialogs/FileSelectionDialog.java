@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.Project;
@@ -6,6 +6,8 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.gui.AutoCompleteUtil;
+import io.github.jbellis.brokk.gui.FileTree;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;

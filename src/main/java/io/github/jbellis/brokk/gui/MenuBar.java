@@ -1,6 +1,8 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Brokk;
+import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.util.Decompiler;
 
 import javax.swing.*;

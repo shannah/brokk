@@ -1,9 +1,10 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
+import io.github.jbellis.brokk.gui.AutoCompleteUtil;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionProvider;

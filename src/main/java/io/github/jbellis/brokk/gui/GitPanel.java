@@ -4,11 +4,11 @@ import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.gui.dialogs.DiffPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants; // Add this import back
-import org.fife.ui.rtextarea.RTextScrollPane;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -20,7 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import io.github.jbellis.brokk.gui.GuiTheme; // Import needed for PreviewPanel constructor
 
 /**
  * Panel for showing Git-related information and actions, excluding the "Log" tab

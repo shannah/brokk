@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.git.GitRepo;

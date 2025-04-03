@@ -1,8 +1,10 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.*; // Import Models class
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.gui.GuiTheme;
+import io.github.jbellis.brokk.gui.VoiceInputButton;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;

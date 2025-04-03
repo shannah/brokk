@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.gui.dialogs.PreviewPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

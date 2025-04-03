@@ -1,6 +1,7 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.gui.Chrome;
 
 import javax.swing.*;
 import java.awt.*;
