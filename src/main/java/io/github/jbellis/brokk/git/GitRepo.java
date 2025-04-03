@@ -72,6 +72,7 @@ public class GitRepo implements Closeable, IGitRepo {
 
     @Override
     public synchronized void refresh() {
+        logger.debug("Refreshing git repository");
         repository.getRefDatabase().refresh();
         trackedFilesCache = null;
     }
