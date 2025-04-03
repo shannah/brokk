@@ -121,6 +121,7 @@ public class LLMTools {
 
     @Tool(value = """
     Replace the first occurrence of oldLines in the specified file with newLines (both are full lines).
+    - replaceLines cannot create new files; use replaceFile for that use case.
     - If oldLines is empty, newLines is appended at the end of the file.
     - If replacing sequential lines, make one call for all of them. Never make multiple calls to replaceLines when they can be combined to one!
     - Include enough oldLines that the match is unique.
@@ -219,7 +220,7 @@ public class LLMTools {
 
         ProjectFile pf;
         try {
-            pf = resolveProjectFile(filename);
+            pf = resolveProjectFile(filename, true);
         } catch (Exception e) {
             return ValidatedToolRequest.error(req, e.getMessage(), "replaceFile: " + filename);
         }
@@ -241,7 +242,7 @@ public class LLMTools {
 
         ProjectFile pf;
         try {
-            pf = resolveProjectFile(filename);
+            pf = resolveProjectFile(filename, false);
         } catch (Exception e) {
             return ValidatedToolRequest.error(req, e.getMessage(), "removeFile: " + filename);
         }
@@ -262,7 +263,7 @@ public class LLMTools {
 
         ProjectFile pf;
         try {
-            pf = resolveProjectFile(filename);
+            pf = resolveProjectFile(filename, false);
         } catch (Exception e) {
             return ValidatedToolRequest.error(req, e.getMessage(), "replaceLines: " + filename);
         }
@@ -371,16 +372,15 @@ public class LLMTools {
      *   3) If that fails, find all tracked files in the git repo whose filename matches ignoring path.
      *   4) If exactly 1 match is found, return it. Otherwise return null.
      */
-    private ProjectFile resolveProjectFile(String filename) {
+    private ProjectFile resolveProjectFile(String filename, boolean createNew) {
         // Step 1: see if contextManager can directly map this path
         var direct = contextManager.toFile(filename);
-        if (direct != null && contextManager.getEditableFiles().contains(direct)) {
+        if (createNew || direct != null && contextManager.getEditableFiles().contains(direct)) {
             return direct;
         }
 
-        String fileNameOnly = Path.of(filename).getFileName().toString();
-
         // Step 2: search editable files by last segment
+        String fileNameOnly = Path.of(filename).getFileName().toString();
         var editableMatches = new ArrayList<ProjectFile>();
         for (var ef : contextManager.getEditableFiles()) {
             var last = ef.absPath().getFileName().toString();

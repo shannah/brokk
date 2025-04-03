@@ -130,8 +130,8 @@ public class LLM {
                 var pf = parsed.file();
                 if (pf != null) {
                     // Check read-only status
-                    if (!contextManager.getEditableFiles().contains(pf)) {
-                        io.systemOutput("Request attempts to edit read-only file: " + pf);
+                    if (contextManager.getReadonlyFiles().contains(pf)) {
+                        io.systemOutput("Request attempts to edit read-only file: " + pf + ". You should make it editable, or clarify your instructions so the AI doesn't think it needs to edit it.");
                         sessionMessages.add(new AiMessage("Session aborted: attempt to edit read-only file " + pf));
                         break outer;
                     }
