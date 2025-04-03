@@ -641,9 +641,9 @@ public class Project implements IProject, AutoCloseable {
     /**
      * Save history split pane position
      */
-    public void saveHistorySplitPosition(int position) {
+    public void saveTopSplitPosition(int position) {
         if (position > 0) {
-            workspaceProps.setProperty("historySplitPosition", String.valueOf(position));
+            workspaceProps.setProperty("topSplitPosition", String.valueOf(position));
             saveWorkspaceProperties();
         }
     }
@@ -653,7 +653,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public int getTopSplitPosition() {
         try {
-            String posStr = workspaceProps.getProperty("historySplitPosition");
+            String posStr = workspaceProps.getProperty("topSplitPosition");
             return posStr != null ? Integer.parseInt(posStr) : -1;
         } catch (NumberFormatException e) {
             return -1;

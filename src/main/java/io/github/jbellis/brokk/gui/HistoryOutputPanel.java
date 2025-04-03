@@ -31,6 +31,7 @@ public class HistoryOutputPanel extends JPanel {
     private JScrollPane llmScrollPane;
     private JTextArea systemArea;
     private JScrollPane systemScrollPane;
+    private JLabel commandResultLabel; // Added from InstructionsPanel
     private JTextArea captureDescriptionArea;
     private JButton copyButton;
 
@@ -44,6 +45,9 @@ public class HistoryOutputPanel extends JPanel {
         super(new BorderLayout()); // Use BorderLayout
         this.chrome = chrome;
         this.contextManager = contextManager;
+
+        // Initialize command result label
+        commandResultLabel = buildCommandResultLabel();
 
         // Build Output components (Center)
         var centerPanel = buildCenterOutputPanel();
@@ -67,6 +71,11 @@ public class HistoryOutputPanel extends JPanel {
         // Build system messages area
         systemScrollPane = buildSystemMessagesArea();
 
+        // Create a panel to hold system messages and the command result label
+        var topInfoPanel = new JPanel(new BorderLayout());
+        topInfoPanel.add(systemScrollPane, BorderLayout.CENTER);
+        topInfoPanel.add(commandResultLabel, BorderLayout.SOUTH);
+
         // Output panel with LLM stream
         var outputPanel = new JPanel(new BorderLayout());
         outputPanel.setBorder(BorderFactory.createTitledBorder(
@@ -79,10 +88,10 @@ public class HistoryOutputPanel extends JPanel {
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
         outputPanel.add(capturePanel, BorderLayout.SOUTH); // Add capture panel below LLM output
 
-        // Container for the center section (Output + System Messages)
+        // Container for the center section (Top Info + Output)
         var centerContainer = new JPanel(new BorderLayout());
-        centerContainer.add(outputPanel, BorderLayout.CENTER);
-        centerContainer.add(systemScrollPane, BorderLayout.SOUTH);
+        centerContainer.add(topInfoPanel, BorderLayout.NORTH); // System messages + command result at the top
+        centerContainer.add(outputPanel, BorderLayout.CENTER); // Output takes the remaining space
         centerContainer.setMinimumSize(new Dimension(200, 0)); // Minimum width for output area
 
         return centerContainer;
@@ -387,6 +396,16 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     /**
+     * Builds the command result label.
+     */
+    private JLabel buildCommandResultLabel() {
+        var label = new JLabel(" "); // Start with a space to ensure height
+        label.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+        label.setBorder(new EmptyBorder(2, 5, 2, 5)); // Padding
+        return label;
+    }
+
+    /**
      * Builds the "Capture Output" panel with a horizontal layout:
      * [Capture Text]
      */
@@ -535,6 +554,20 @@ public class HistoryOutputPanel extends JPanel {
      */
     public JScrollPane getLlmScrollPane() {
         return llmScrollPane;
+    }
+
+    /**
+     * Sets the text of the command result label.
+     */
+    public void setCommandResultText(String text) {
+        commandResultLabel.setText(text);
+    }
+
+    /**
+     * Clears the text of the command result label.
+     */
+    public void clearCommandResultText() {
+        commandResultLabel.setText(" "); // Set back to space to maintain height
     }
 
     /**

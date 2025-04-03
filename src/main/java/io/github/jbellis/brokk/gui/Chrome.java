@@ -37,11 +37,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Swing components:
     final JFrame frame;
-    private JLabel commandResultLabel;
     private JLabel backgroundStatusLabel;
     private Dimension backgroundLabelPreferredSize;
     private JPanel bottomPanel;
 
+    private JSplitPane topSplitPane;
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
     HistoryOutputPanel historyOutputPanel;
@@ -102,7 +102,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // 3) Main panel (top area + bottom area)
         frame.add(buildMainPanel(), BorderLayout.CENTER);
 
-        // 5) Register global keyboard shortcuts
+        // 4) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
 
         if (contextManager == null) {
@@ -123,7 +123,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
-        // Initialize model dropdown via InstructionsPanel (moved into IP)
+        // Initialize model dropdown via InstructionsPanel
         instructionsPanel.initializeModels();
 
         if (contextManager == null) {
@@ -284,9 +284,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     /**
      * Build the main panel that includes:
-     * - HistoryOutputPane
-     * - the command result label
      * - InstructionsPanel
+     * - HistoryOutputPane
      * - the bottom area (context/git panel + status label)
      */
     private JPanel buildMainPanel() {
@@ -299,30 +298,26 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         gbc.gridx = 0;
         gbc.insets = new Insets(2, 2, 2, 2);
 
-        // Create history output pane (combines history panel and output panel)
+        // Top Area: Instructions + History/Output
+        instructionsPanel = new InstructionsPanel(this);
         historyOutputPanel = new HistoryOutputPanel(this, contextManager);
 
-        // Create a split pane: top = historyOutputPane, bottom = bottomPanel (to be populated later)
-        verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        verticalSplitPane.setResizeWeight(0.4);
-        verticalSplitPane.setTopComponent(historyOutputPanel);
+        topSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        topSplitPane.setResizeWeight(0.4); // Instructions panel gets less space initially
+        topSplitPane.setTopComponent(instructionsPanel);
+        topSplitPane.setBottomComponent(historyOutputPanel);
 
-        // Create the bottom panel
+        // Bottom Area: Context/Git + Status
         bottomPanel = new JPanel(new BorderLayout());
-
-        // Build the top controls: result label + command input panel
-        var topControlsPanel = new JPanel(new BorderLayout(0, 2));
-        var resultLabel = buildCommandResultLabel();
-        topControlsPanel.add(resultLabel, BorderLayout.NORTH);
-        // Create the InstructionsPanel (encapsulates command input, history dropdown, mic, model dropdown, buttons)
-        var commandPanel = buildCommandInputPanel();
-        topControlsPanel.add(commandPanel, BorderLayout.SOUTH);
-        bottomPanel.add(topControlsPanel, BorderLayout.NORTH);
-
         // Status label at the very bottom
         var statusLabel = buildBackgroundStatusLabel();
         bottomPanel.add(statusLabel, BorderLayout.SOUTH);
+        // Center of bottomPanel will be filled in onComplete based on git presence
 
+        // Main Vertical Split: Top Area / Bottom Area
+        verticalSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        verticalSplitPane.setResizeWeight(0.3); // Give top area (instructions/history) 30% initially
+        verticalSplitPane.setTopComponent(topSplitPane);
         verticalSplitPane.setBottomComponent(bottomPanel);
 
         gbc.weighty = 1.0;
@@ -369,24 +364,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmOutputText(), null);
     }
 
-    private JComponent buildCommandResultLabel() {
-        commandResultLabel = new JLabel(" ");
-        commandResultLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        commandResultLabel.setBorder(new EmptyBorder(5, 8, 5, 8));
-        return commandResultLabel;
-    }
-
     private JComponent buildBackgroundStatusLabel() {
         backgroundStatusLabel = new JLabel(BGTASK_EMPTY);
         backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         backgroundStatusLabel.setBorder(new EmptyBorder(2, 5, 2, 5));
         backgroundLabelPreferredSize = backgroundStatusLabel.getPreferredSize();
         return backgroundStatusLabel;
-    }
-
-    private JPanel buildCommandInputPanel() {
-        instructionsPanel = new InstructionsPanel(this);
-        return instructionsPanel;
     }
 
     /**
@@ -471,14 +454,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void actionOutput(String msg) {
         SwingUtilities.invokeLater(() -> {
-            commandResultLabel.setText(msg);
+            historyOutputPanel.setCommandResultText(msg);
             logger.info(msg);
         });
     }
 
     @Override
     public void actionComplete() {
-        SwingUtilities.invokeLater(() -> commandResultLabel.setText(""));
+        SwingUtilities.invokeLater(() -> historyOutputPanel.clearCommandResultText());
     }
 
     @Override
@@ -499,7 +482,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public void backgroundOutput(String message) {
         SwingUtilities.invokeLater(() -> {
             if (message == null || message.isEmpty()) {
-                backgroundStatusLabel.setText("");
+                backgroundStatusLabel.setText(BGTASK_EMPTY);
             } else {
                 backgroundStatusLabel.setText(message);
             }
@@ -598,24 +581,27 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         });
 
         SwingUtilities.invokeLater(() -> {
-            // FIXME
-//            int topSplitPosition = project.getTopSplitPosition();
-//            historyOutputPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-//                if (historyOutputPane.isShowing()) {
-//                    var newPos = historyOutputPane.getDividerLocation();
-//                    if (newPos > 0) {
-//                        project.saveHistorySplitPosition(newPos);
-//                    }
-//                }
-//            });
+            int topSplitPos = project.getTopSplitPosition();
+            if (topSplitPos > 0) {
+                topSplitPane.setDividerLocation(topSplitPos);
+            } else {
+                topSplitPane.setDividerLocation(0.2);
+            }
+            topSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+                if (topSplitPane.isShowing()) {
+                    var newPos = topSplitPane.getDividerLocation();
+                    if (newPos > 0) {
+                        project.saveTopSplitPosition(newPos);
+                    }
+                }
+            });
 
             int verticalPos = project.getVerticalSplitPosition();
             if (verticalPos > 0) {
                 verticalSplitPane.setDividerLocation(verticalPos);
             } else {
-                verticalSplitPane.setDividerLocation(0.4);
+                verticalSplitPane.setDividerLocation(0.3);
             }
-
             verticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
                 if (verticalSplitPane.isShowing()) {
                     var newPos = verticalSplitPane.getDividerLocation();
