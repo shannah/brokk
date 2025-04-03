@@ -99,6 +99,7 @@ public class FileSelectionDialog extends JDialog {
         autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE,
                                                             InputEvent.CTRL_DOWN_MASK));
         autoCompletion.install(fileInput); // Install on JTextField
+        AutoCompleteUtil.bindCtrlEnter(autoCompletion, fileInput);
 
         // Instantiate FileTree
         fileTree = new FileTree(project, allowExternalFiles, fileFilter);

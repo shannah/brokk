@@ -92,6 +92,7 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
         autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE,
                                                             InputEvent.CTRL_DOWN_MASK));
         autoCompletion.install(fileInput);
+        AutoCompleteUtil.bindCtrlEnter(autoCompletion, fileInput);
 
         fileTree = new FileTree(project, allowExternalFiles, f -> true);
 

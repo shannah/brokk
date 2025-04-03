@@ -67,6 +67,9 @@ public class SymbolSelectionPanel extends JPanel {
 
         // Set tooltip
         symbolInput.setToolTipText("Enter a class or member name");
+
+        // Bind Ctrl+Enter for autocomplete/submit
+        AutoCompleteUtil.bindCtrlEnter(autoCompletion, symbolInput);
     }
 
     /**
