@@ -236,10 +236,9 @@ public class LLM {
         // If we had any conversation at all, store it in the context history
         if (!sessionMessages.isEmpty()) {
             String finalUserInput = isComplete ? userInput : userInput + " [incomplete]";
-            var filtered = sessionMessages.stream()
-                    .filter(m -> !(m instanceof ToolExecutionResultMessage))
-                    .toList();
-            coder.contextManager.addToHistory(filtered, originalContents, finalUserInput);
+            // Tool execution result messages are super ugly but leaving them out means Sonnet won't execute
+            // the next request that tries to include the tool-use messages, so we just throw it in unfiltered
+            coder.contextManager.addToHistory(sessionMessages, originalContents, finalUserInput);
         }
         if (isComplete) {
             io.systemOutput("Session complete!");
