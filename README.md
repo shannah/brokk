@@ -168,3 +168,13 @@ Other languages will follow.
 - There is some overlap between `Symbol Usage` and `Call Graph to Function`; besides the former being just a single level
   deep in the call graph, Symbol Uage includes the entire source of each calling method while Call Graph to Function
   only includes one line per call.
+
+# Contributing
+
+Brokk uses sbt (Scala Build Tool) since it has a Scala component. To build Brokk,
+1. Install sbt (e.g. with sdkman)
+2. Run the sbt repl: `sbt`
+3. In the sbt repl, run individual commands: `run`, `clean`, `test`, `assembly`, etc.
+
+(You can run a single command without the repl with e.g. `sbt run` but sbt has a very high
+startup overhead so using the repl is recommended.)
