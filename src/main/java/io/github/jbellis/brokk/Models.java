@@ -127,6 +127,11 @@ public final class Models {
             modelLocations.clear();
         }
 
+        // No models? Brokk must be down. Shove in a placeholder.
+        if (modelLocations.isEmpty()) {
+            modelLocations.put(UNAVAILABLE, "not_a_model");
+        }
+
         // Attempt to find a "preferred" quick model
         String preferredQuickModelLocation = "gemini/gemini-2.0-flash-lite";
 
