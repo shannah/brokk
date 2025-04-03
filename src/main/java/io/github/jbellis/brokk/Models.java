@@ -188,7 +188,7 @@ public final class Models {
                 // "Claude 3.7 Sonnet may be less likely to make make parallel tool calls in a response,
                 // even when you have not set disable_parallel_tool_use. To work around this, we recommend
                 // enabling token-efficient tool use, which helps encourage Claude to use parallel tools."
-                builder = builder.customHeaders(Map.of("anthropic-beta", "token-efficient-tools-2025-02-19"));
+                builder = builder.customHeaders(Map.of("anthropic-beta", "token-efficient-tools-2025-02-19,output-128k-2025-02-19"));
             }
 
             return builder.build();
