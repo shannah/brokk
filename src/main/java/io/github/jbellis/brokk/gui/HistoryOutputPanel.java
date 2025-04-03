@@ -370,7 +370,7 @@ public class HistoryOutputPanel extends JPanel {
         systemArea.setLineWrap(true);
         systemArea.setWrapStyleWord(true);
         systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        systemArea.setRows(3);
+        systemArea.setRows(5);
 
         // Create scroll pane with border and title
         var scrollPane = new JScrollPane(systemArea);
