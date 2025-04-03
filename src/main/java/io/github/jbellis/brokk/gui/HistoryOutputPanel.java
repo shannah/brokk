@@ -376,10 +376,11 @@ public class HistoryOutputPanel extends JPanel {
         // Create text area for system messages
         systemArea = new JTextArea();
         systemArea.setEditable(false);
+        systemArea.getCaret().setVisible(false); // Hide the edit caret
         systemArea.setLineWrap(true);
         systemArea.setWrapStyleWord(true);
         systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        systemArea.setRows(5);
+        systemArea.setRows(4);
 
         // Create scroll pane with border and title
         var scrollPane = new JScrollPane(systemArea);
