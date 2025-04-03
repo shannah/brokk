@@ -125,10 +125,10 @@ public class ContextPanel extends JPanel {
                     var value = contextTable.getValueAt(row, col);
                     if (value != null) {
                         // Show file references in a multiline tooltip
-                        @SuppressWarnings("unchecked") List<FileReferenceData> refs = (List<FileReferenceData>) value;
+                        @SuppressWarnings("unchecked") List<FileReferenceList.FileReferenceData> refs = (List<FileReferenceList.FileReferenceData>) value;
                         if (!refs.isEmpty()) {
                             var sb = new StringBuilder("<html>");
-                            for (FileReferenceData r : refs) {
+                            for (FileReferenceList.FileReferenceData r : refs) {
                                 sb.append(r.getFullPath()).append("<br>");
                             }
                             sb.append("</html>");
@@ -254,9 +254,9 @@ public class ContextPanel extends JPanel {
                         // If the user right-clicked on the references column, show reference options
                         var fileActionsAdded = false;
                         if (col == FILES_REFERENCED_COLUMN) {
-                            @SuppressWarnings("unchecked") List<FileReferenceData> references = (List<FileReferenceData>) contextTable.getValueAt(row, col);
+                            @SuppressWarnings("unchecked") List<FileReferenceList.FileReferenceData> references = (List<FileReferenceList.FileReferenceData>) contextTable.getValueAt(row, col);
                             if (references != null && !references.isEmpty()) {
-                                FileReferenceData targetRef = findClickedReference(e.getPoint(), row, col, references);
+                                FileReferenceList.FileReferenceData targetRef = findClickedReference(e.getPoint(), row, col, references);
                                 if (targetRef != null) {
                                     // If clicking on a specific file reference, show specific file options
                                     contextMenu.addSeparator();
@@ -544,13 +544,13 @@ public class ContextPanel extends JPanel {
             }
 
             // Build file references
-            List<FileReferenceData> fileReferences = new ArrayList<>();
+            List<FileReferenceList.FileReferenceData> fileReferences = new ArrayList<>();
             if (!(frag instanceof ContextFragment.RepoPathFragment)) {
                 fileReferences = frag.files(contextManager.getProject())
                         .stream()
-                        .map(file -> new FileReferenceData(file.getFileName(), file.toString(), file))
+                        .map(file -> new FileReferenceList.FileReferenceData(file.getFileName(), file.toString(), file))
                         .distinct()
-                        .sorted(Comparator.comparing(FileReferenceData::getFileName))
+                        .sorted(Comparator.comparing(FileReferenceList.FileReferenceData::getFileName))
                         .collect(Collectors.toList());
             }
 
@@ -594,9 +594,9 @@ public class ContextPanel extends JPanel {
      * Determine which file reference was clicked based on mouse coordinates.
      * We replicate the FlowLayout calculations to find the badge at xInCell.
      */
-    private FileReferenceData findClickedReference(Point pointInTableCoords,
-                                                   int row, int col,
-                                                   List<FileReferenceData> references) {
+    private FileReferenceList.FileReferenceData findClickedReference(Point pointInTableCoords,
+                                                                     int row, int col,
+                                                                     List<FileReferenceList.FileReferenceData> references) {
         // Get cell rectangle so we can convert to cell-local coordinates
         Rectangle cellRect = contextTable.getCellRect(row, col, false);
         int xInCell = pointInTableCoords.x - cellRect.x;
@@ -618,7 +618,7 @@ public class ContextPanel extends JPanel {
         final int borderThickness = 3; // extra width for border + rounding
         int currentX = 0;
 
-        for (FileReferenceData ref : references) {
+        for (FileReferenceList.FileReferenceData ref : references) {
             String text = ref.getFileName();
             int textWidth = fm.stringWidth(text);
             // label’s total width = text + internal padding + border
@@ -635,7 +635,7 @@ public class ContextPanel extends JPanel {
     /**
      * Build "Add file" menu item for a single file reference
      */
-    private JMenuItem buildAddMenuItem(FileReferenceData fileRef) {
+    private JMenuItem buildAddMenuItem(FileReferenceList.FileReferenceData fileRef) {
         JMenuItem editItem = new JMenuItem("Edit " + fileRef.getFullPath());
         editItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
@@ -658,7 +658,7 @@ public class ContextPanel extends JPanel {
     /**
      * Build "Read file" menu item for a single file reference
      */
-    private JMenuItem buildReadMenuItem(FileReferenceData fileRef) {
+    private JMenuItem buildReadMenuItem(FileReferenceList.FileReferenceData fileRef) {
         JMenuItem readItem = new JMenuItem("Read " + fileRef.getFullPath());
         readItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
@@ -683,7 +683,7 @@ public class ContextPanel extends JPanel {
     /**
      * Build "Summarize file" menu item for a single file reference
      */
-    private JMenuItem buildSummarizeMenuItem(FileReferenceData fileRef) {
+    private JMenuItem buildSummarizeMenuItem(FileReferenceList.FileReferenceData fileRef) {
         JMenuItem summarizeItem = new JMenuItem("Summarize " + fileRef.getFullPath());
         summarizeItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {

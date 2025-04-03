@@ -19,7 +19,7 @@ public class FileReferencesTableCellRenderer implements TableCellRenderer {
                                                  boolean isSelected, boolean hasFocus,
                                                  int row, int column) {
         // Convert the value to a list of FileReferenceData
-        List<FileReferenceData> fileRefs = convertToFileReferences(value);
+        List<FileReferenceList.FileReferenceData> fileRefs = convertToFileReferences(value);
 
         FileReferenceList component = new FileReferenceList(fileRefs);
 
@@ -47,13 +47,13 @@ public class FileReferencesTableCellRenderer implements TableCellRenderer {
      * Converts various input types to a list of FileReferenceData objects.
      */
     @SuppressWarnings("unchecked")
-    public static List<FileReferenceData> convertToFileReferences(Object value) {
+    public static List<FileReferenceList.FileReferenceData> convertToFileReferences(Object value) {
         if (value == null) {
             return new ArrayList<>();
         }
 
         if (value instanceof List) {
-            return (List<FileReferenceData>) value;
+            return (List<FileReferenceList.FileReferenceData>) value;
         }  else {
             throw new IllegalArgumentException("Input is not supported for FileReferencesTableCellRenderer. Expected List<FileReferenceData>");
         }
