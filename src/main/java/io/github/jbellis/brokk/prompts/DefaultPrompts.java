@@ -105,13 +105,7 @@ public abstract class DefaultPrompts {
     private String toolUsageReminder(String reminder) {
         return """
                <rules>
-               # Tips for editing code
-
-               - If you are replacing large amounts of code, or if this file is tiny, use replaceFile.
-               - replaceFunction is the most frequently useful but it can be fragile if the file is not
-                 syntactically correct enough to parse.
-               - replaceLines can handle any edit, but it is the most manual and you have to get the
-                 oldLines exactly right.
+               Always write elegant, well-encapsulated code that is easy to maintain and use without mistakes.
 
                ALWAYS MAKE ALL TOOL CALL EDITS IN A SINGLE RESPONSE!
 
