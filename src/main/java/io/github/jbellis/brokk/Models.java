@@ -320,7 +320,6 @@ public final class Models {
                       ]
                     }
                   ],
-                  "modalities": ["text", "audio"],
                   "stream": false
                 }
                 """.formatted(modelLocation, encodedString, audioFormat).stripIndent();
