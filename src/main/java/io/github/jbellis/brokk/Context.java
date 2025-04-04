@@ -56,7 +56,7 @@ public class Context implements Serializable {
     /** description of the action that created this context, can be a future (like PasteFragment) */
     transient final Future<String> action;
     public static final String SUMMARIZING = "(Summarizing)";
-    public static final String IN_PROGRESS_ACTION = "Edit in progress";
+    public static final String IN_PROGRESS_ACTION = "Response in progress";
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
