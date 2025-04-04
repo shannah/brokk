@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
@@ -107,7 +108,7 @@ public class LLM {
             sessionMessages.add(streamingResult.originalResponse().aiMessage());
 
             var toolRequests = llmResponse.aiMessage().toolExecutionRequests();
-            if (toolRequests == null || toolRequests.isEmpty()) {
+            if (isToolsEmpty(toolRequests)) {
                 // LLM thinks we're done
                 isComplete = true;
                 break;
@@ -245,6 +246,10 @@ public class LLM {
         } else {
             io.systemOutput("Session ended without success.");
         }
+    }
+
+    private static boolean isToolsEmpty(List<ToolExecutionRequest> toolRequests) {
+        return toolRequests == null || toolRequests.stream().allMatch(tr -> tr.name().equals("explain"));
     }
 
     /**
