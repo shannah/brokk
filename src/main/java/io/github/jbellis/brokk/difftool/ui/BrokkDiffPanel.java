@@ -4,12 +4,23 @@ import javax.swing.*;
 import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import java.awt.*;
+
+import com.github.difflib.DiffUtils;
+import com.github.difflib.UnifiedDiffUtils;
+import com.github.difflib.algorithm.DiffAlgorithmListener;
+import com.github.difflib.patch.Patch;
+import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.ContextManager;
+
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.util.Arrays;
+import java.util.List;
 import java.io.File;
 import java.util.concurrent.ExecutionException;
 
 public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
+    private final ContextManager contextManager;
     private final JTabbedPane tabbedPane;
     private boolean started;
     private final JLabel loadingLabel = new JLabel("Processing... Please wait.");
@@ -23,6 +34,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     private final boolean isStringAndFileComparison;
     private final boolean isDarkTheme;
 
+
     public boolean isTwoFilesComparison() {
         return isTwoFilesComparison;
     }
@@ -33,6 +45,8 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
 
 
     public BrokkDiffPanel(Builder builder) {
+        assert builder.contextManager != null;
+        this.contextManager = builder.contextManager;
         this.leftFile = builder.leftFile;
         this.rightFile = builder.rightFile;
         this.contentLeft = builder.contentLeft;
@@ -42,6 +56,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         this.isTwoFilesComparison = builder.isTwoFilesComparison;
         this.isStringAndFileComparison = builder.isStringAndFileComparison;
         this.isDarkTheme = builder.isDarkTheme;
+        assert this.contextManager != null : "ContextManager cannot be null";
 
         // Make the container focusable, so it can handle key events
         setFocusable(true);
@@ -73,6 +88,12 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         private boolean isTwoFilesComparison = false;
         private boolean isStringAndFileComparison = false;
         private boolean isDarkTheme = false; // Default to light theme
+        private final ContextManager contextManager;
+
+        public Builder(ContextManager contextManager) {
+            assert contextManager != null;
+            this.contextManager = contextManager;
+        }
 
         // Compare two files
         public Builder compareFiles(File leftFile, String leftFileTitle, File rightFile, String rightFileTitle) {
@@ -94,16 +115,6 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             return this;
         }
 
-
-        // Compare a string and a file
-        public Builder compareStringAndFileStringOnTheRight(File leftFile, String leftFileTitle, String contentRight, String contentRightTitle) {
-            this.contentRight = contentRight;
-            this.rightFileTitle = contentRightTitle;
-            this.leftFile = leftFile;
-            this.leftFileTitle = leftFileTitle;
-            this.isStringAndFileComparison = true;
-            return this;
-        }
 
         public Builder withTheme(boolean isDark) {
             this.isDarkTheme = isDark;
@@ -152,6 +163,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     }
 
     private JButton btnRedo;
+    private JButton captureDiffButton;
     private BufferDiffPanel bufferDiffPanel;
 
     public void setBufferDiffPanel(BufferDiffPanel bufferDiffPanel) {
@@ -171,6 +183,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         JButton btnPrevious = new JButton("Previous Change");
         btnUndo = new JButton("Undo");
         btnRedo = new JButton("Redo");
+        captureDiffButton = new JButton("Capture Diff");
 
         btnNext.addActionListener(e -> {
             getCurrentContentPanel().doDown();
@@ -190,6 +203,32 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             repaint();
             getBufferDiffPanel().doSave();
         });
+        captureDiffButton.addActionListener(e -> {
+            var bufferPanel = getBufferDiffPanel();
+            if (bufferPanel == null) {
+                contextManager.getIo().toolError("Diff panel not available for capturing diff.");
+                return;
+            }
+            var leftPanel = bufferPanel.getFilePanel(BufferDiffPanel.LEFT);
+            var rightPanel = bufferPanel.getFilePanel(BufferDiffPanel.RIGHT);
+            if (leftPanel == null || rightPanel == null) {
+                contextManager.getIo().toolError("File panels not available for capturing diff.");
+                return;
+            }
+            String leftContent = leftPanel.getEditor().getText();
+            String rightContent = rightPanel.getEditor().getText();
+            List<String> leftLines = Arrays.asList(leftContent.split("\\R"));
+            List<String> rightLines = Arrays.asList(rightContent.split("\\R"));
+
+            Patch<String> patch = DiffUtils.diff(leftLines, rightLines, (DiffAlgorithmListener) null);
+            List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(leftFileTitle, rightFileTitle, leftLines, patch, 0);
+            String diffText = String.join("\n", unifiedDiff);
+
+            var description = "Captured Diff: %s vs %s".formatted(leftFileTitle, rightFileTitle);
+            var fragment = new ContextFragment.StringFragment(diffText, description);
+            contextManager.addVirtualFragment(fragment);
+            contextManager.getIo().systemOutput("Added captured diff to context: " + description);
+        });
         // Add buttons to toolbar with spacing
         toolBar.add(btnPrevious);
         toolBar.add(Box.createHorizontalStrut(10)); // 10px spacing
@@ -200,6 +239,11 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         toolBar.add(btnUndo);
         toolBar.add(Box.createHorizontalStrut(10)); // 10px spacing
         toolBar.add(btnRedo);
+
+        // Add Capture Diff button to the right
+        toolBar.add(Box.createHorizontalGlue()); // Pushes subsequent components to the right
+        toolBar.add(captureDiffButton);
+
 
         return toolBar;
     }
@@ -263,15 +307,16 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     /**
      * Shows the diff panel in a frame.
      *
-     * @param contextManager The context manager for accessing project settings (like window bounds)
+     * Shows the diff panel in a frame. Window bounds are managed via the ContextManager provided during construction.
+     *
      * @param title The frame title
      */
-    public void showInFrame(io.github.jbellis.brokk.ContextManager contextManager, String title) {
+    public void showInFrame(String title) {
         JFrame frame = new JFrame(title);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.getContentPane().add(this);
 
-        // Get saved bounds from Project
+        // Get saved bounds from Project via the stored ContextManager
         var bounds = contextManager.getProject().getDiffWindowBounds();
         frame.setBounds(bounds);
 

@@ -53,6 +53,7 @@ libraryDependencies ++= Seq(
   "com.formdev" % "flatlaf" % "3.5.4",
   "com.fifesoft" % "rsyntaxtextarea" % "3.5.4",
   "com.fifesoft" % "autocomplete" % "3.3.2",
+  "io.github.java-diff-utils" % "java-diff-utils" % "4.15",
   "org.yaml" % "snakeyaml" % "2.3",
   "org.eclipse.jgit" % "org.eclipse.jgit" % "7.1.0.202411261347-r",
   "org.eclipse.jgit" % "org.eclipse.jgit.ssh.apache" % "7.1.0.202411261347-r",

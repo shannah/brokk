@@ -140,11 +140,11 @@ public final class GitUiUtil
 
                 SwingUtilities.invokeLater(() -> {
                     var isDark = chrome.themeManager.isDarkTheme();
-                    var brokkDiffPanel = new BrokkDiffPanel.Builder()
+                    var brokkDiffPanel = new BrokkDiffPanel.Builder(cm)
                             .compareStrings(parentContent, parentCommitId, commitContent, commitId)
                             .withTheme(isDark)
                             .build();
-                    brokkDiffPanel.showInFrame(cm, dialogTitle);
+                    brokkDiffPanel.showInFrame(dialogTitle);
                 });
             } catch (Exception ex) {
                 cm.getIo().toolErrorRaw("Error loading history diff: " + ex.getMessage());
@@ -343,11 +343,11 @@ public final class GitUiUtil
 
                 SwingUtilities.invokeLater(() -> {
                     var isDark = chrome.themeManager.isDarkTheme();
-                    var brokkDiffPanel = new BrokkDiffPanel.Builder()
+                    var brokkDiffPanel = new BrokkDiffPanel.Builder(cm)
                             .compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString())
                             .withTheme(isDark)
                             .build();
-                    brokkDiffPanel.showInFrame(cm, finalDialogTitle);
+                    brokkDiffPanel.showInFrame(finalDialogTitle);
                 });
             } catch (Exception ex) {
                 cm.getIo().toolErrorRaw("Error loading compare-with-local diff: " + ex.getMessage());
