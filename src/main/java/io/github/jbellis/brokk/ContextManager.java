@@ -1269,7 +1269,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             - Quick model: %s
             - Project: %s (%d native files, %d total including dependencies)
             - Analyzer language: %s
-            - Available models):
+            - Available models:
             %s
             """.formatted(welcomeMarkdown,
                           version,
