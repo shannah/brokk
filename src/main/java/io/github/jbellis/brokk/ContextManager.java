@@ -238,7 +238,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> runRunCommandAsync(String input)
     {
         assert io != null;
-        return submitUserTask("Executing: " + input, () -> {
+        assert contextHistory.topContext().getAction() != Context.IN_PROGRESS_ACTION : "runRunCommandAsync called while another user action is in progress";
+        return submitAction("Run", input, () -> {
             var result = Environment.instance.captureShellCommand(input, root);
             String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
             io.llmOutput("\n```\n" + output + "\n```");
@@ -249,15 +250,37 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 return;
             }
 
-            // Add to context history with the output text
-            pushContext(ctx -> {
-                var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
-                var parsed = new ParsedOutput(llmOutputText, runFrag);
-                return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
-            });
+            // Create the final context
+            replacePlaceholder(ctx -> {
+                 var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
+                 var parsed = new ParsedOutput(llmOutputText, runFrag);
+                 return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
+             });
         });
     }
 
+    public Future<?> submitAction(String action, String input, Runnable task) {
+        return userActionExecutor.submit(() -> {
+            pushContext(ctx -> Context.createInProgressContext(this, ctx));
+            io.historyOutputPanel.setLlmOutput("# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response"));
+            io.disableHistoryPanel();
+
+            try {
+                task.run();
+            } catch (CancellationException cex) {
+                io.systemOutput("Canceled!");
+            } catch (Exception e) {
+                logger.error("Error in " + action, e);
+                io.toolErrorRaw("Error in " + action + " processing: " + e.getMessage());
+            } finally {
+                io.actionComplete();
+                io.enableUserActionButtons();
+                io.enableHistoryPanel();
+            }
+        });
+    }
+
+    // TODO split this out from the Action executor?
     public Future<?> submitUserTask(String description, Runnable task) {
         return userActionExecutor.submit(() -> {
             try {
@@ -320,7 +343,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         assert io != null;
         var modelName = Models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
-        return submitUserTask("Running Code Command", () -> {
+        return submitAction("Code", input, () -> {
             LLM.runSession(coder, io, model, input);
         });
     }
@@ -333,9 +356,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public Future<?> runAskAsync(StreamingChatLanguageModel model, String question)
     {
+        assert contextHistory.topContext().getAction() != Context.IN_PROGRESS_ACTION : "runAskAsync called while another user action is in progress";
         var modelName = Models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
-        return submitUserTask("Asking the LLM", () -> {
+        return submitAction("Ask", question, () -> {
             try {
                 if (question.isBlank()) {
                     io.toolErrorRaw("Please provide a question");
@@ -380,9 +404,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> runSearchAsync(StreamingChatLanguageModel model, String query)
     {
         assert io != null;
+        assert contextHistory.topContext().getAction() != Context.IN_PROGRESS_ACTION : "runSearchAsync called while another user action is in progress";
         var modelName = Models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
-         return submitUserTask("Running Search Command", () -> {
+         return submitAction("Search", query, () -> {
              if (query.isBlank()) {
                  io.toolErrorRaw("Please provide a search query");
                  return;
@@ -396,12 +421,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
                      io.systemOutput("Search did not complete successfully.");
                  } else {
                      io.clear();
-                     // SearchFragment.text() doesn't actually throw IOException
                      String textResult = result.text();
                      io.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, textResult));
-                     // The search agent already creates the right fragment type
                      addSearchFragment(result);
-                 }
+                  }
              } catch (CancellationException cex) {
                  io.systemOutput("Search command cancelled.");
              } catch (Exception e) {
@@ -1013,7 +1036,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         var parsed = new ParsedOutput(llmOutputText, fragment);
-        pushContext(ctx -> ctx.addSearchFragment(query, parsed));
+        replacePlaceholder(ctx -> ctx.addSearchFragment(query, parsed));
     }
 
     /**
@@ -1374,8 +1397,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         Context newContext = contextHistory.pushContext(contextGenerator);
         if (newContext != null) {
+            // Only save non-placeholder contexts immediately
+            if (newContext.getAction() != Context.IN_PROGRESS_ACTION) {
+                project.saveContext(newContext);
+            }
+            // Always update the UI table
             io.updateContextHistoryTable(newContext);
-            project.saveContext(newContext);
         }
     }
 
@@ -1668,6 +1695,28 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
+     /**
+     * Replaces the in-progress placeholder context or pushes a new context if no placeholder exists.
+     * @param ctxTransformer Function to generate the final context based on the state *before* the placeholder.
+     */
+    private void replacePlaceholder(Function<Context, Context> ctxTransformer) {
+        var history = contextHistory.getHistory();
+        var placeholder = history.getLast();
+        assert placeholder != null && placeholder.getAction() == Context.IN_PROGRESS_ACTION : "Top context is not the expected placeholder";
+        assert history.size() > 1 : "Placeholder context cannot be the only context in history";
+
+        // The context state *before* the placeholder is the second to last one
+        Context baseContext = history.get(history.size() - 2);
+
+        // Generate the final context using the function and the identified base context
+        var finalContext = ctxTransformer.apply(baseContext);
+        assert finalContext != null;
+        contextHistory.replaceContext(placeholder, finalContext);
+        project.saveContext(finalContext); // Save the final context
+        io.updateContextHistoryTable(finalContext); // Update UI to show the final context
+    }
+
+    /**
      * Add to the user/AI message history. Called by both Ask and Code.
      */
     @Override
@@ -1680,7 +1729,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
         logger.debug("Adding to history with {} changed files", originalContents.size());
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
+        replacePlaceholder(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
     }
 
     public List<Context> getContextHistory() {

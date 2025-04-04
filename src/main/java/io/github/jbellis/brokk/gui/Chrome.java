@@ -45,7 +45,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JSplitPane topSplitPane;
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
-    HistoryOutputPanel historyOutputPanel;
+    public HistoryOutputPanel historyOutputPanel;
 
     // Panels:
     private ContextPanel contextPanel;
@@ -335,6 +335,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void loadContext(Context ctx) {
         assert ctx != null;
+        if (ctx.getAction() == Context.IN_PROGRESS_ACTION) {
+            // since context-loading and action execution run in different threads, it's not safe
+            // to reset the output of an in-progress action (and we don't need to update context table)
+            return;
+        }
 
         SwingUtilities.invokeLater(() -> {
             contextPanel.populateContextTable(ctx);
@@ -750,5 +755,23 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         dialog.pack();
         dialog.setLocationRelativeTo(getFrame());
         dialog.setVisible(true);
+    }
+
+    /**
+     * Disables the history panel via HistoryOutputPanel.
+     */
+    public void disableHistoryPanel() {
+        if (historyOutputPanel != null) {
+            historyOutputPanel.disablePanel();
+        }
+    }
+
+    /**
+     * Enables the history panel via HistoryOutputPanel.
+     */
+    public void enableHistoryPanel() {
+        if (historyOutputPanel != null) {
+            historyOutputPanel.enablePanel();
+        }
     }
 }

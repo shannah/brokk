@@ -334,7 +334,6 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPanel.setLlmOutput("# Code\n" + input + "\n\n# Response\n");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runCodeCommandAsync(selectedModel, input));
@@ -352,7 +351,6 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPanel.setLlmOutput("# Ask\n" + input + "\n\n# Response\n");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runAskAsync(selectedModel, input));
@@ -370,7 +368,6 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPanel.setLlmOutput("# Search\n" + input + "\n\n");
         chrome.historyOutputPanel.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         clearCommandInput();
         disableButtons();
@@ -384,7 +381,6 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPanel.setLlmOutput("# Run\n" + input + "\n\n# Output\n");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runRunCommandAsync(input));

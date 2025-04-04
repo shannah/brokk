@@ -25,6 +25,8 @@ public class HistoryOutputPanel extends JPanel {
     private final ContextManager contextManager;
     private JTable historyTable;
     private DefaultTableModel historyModel;
+    private JButton undoButton;
+    private JButton redoButton;
 
     // Output components
     private MarkdownOutputPanel llmStreamArea;
@@ -207,7 +209,7 @@ public class HistoryOutputPanel extends JPanel {
         buttonPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
         buttonPanel.add(Box.createHorizontalGlue()); // Push buttons to center
 
-        var undoButton = new JButton("Undo");
+        undoButton = new JButton("Undo");
         undoButton.setMnemonic(KeyEvent.VK_Z);
         undoButton.setToolTipText("Undo the most recent history entry");
         var undoSize = new Dimension(100, undoButton.getPreferredSize().height);
@@ -219,7 +221,7 @@ public class HistoryOutputPanel extends JPanel {
             chrome.setCurrentUserTask(contextManager.undoContextAsync());
         });
 
-        var redoButton = new JButton("Redo");
+        redoButton = new JButton("Redo");
         redoButton.setMnemonic(KeyEvent.VK_Y);
         redoButton.setToolTipText("Redo the most recently undone entry");
         var redoSize = new Dimension(100, redoButton.getPreferredSize().height);
@@ -617,5 +619,34 @@ public class HistoryOutputPanel extends JPanel {
             // Make window visible
             setVisible(true);
         }
+    }
+
+    /**
+     * Disables the history panel components.
+     */
+    public void disablePanel() {
+        SwingUtilities.invokeLater(() -> {
+            historyTable.setEnabled(false);
+            undoButton.setEnabled(false);
+            redoButton.setEnabled(false);
+            // Optionally change appearance to indicate disabled state
+            historyTable.setForeground(UIManager.getColor("Label.disabledForeground"));
+            // Make the table visually distinct when disabled
+             historyTable.setBackground(UIManager.getColor("Panel.background").darker());
+        });
+    }
+
+    /**
+     * Enables the history panel components.
+     */
+    public void enablePanel() {
+        SwingUtilities.invokeLater(() -> {
+            historyTable.setEnabled(true);
+            undoButton.setEnabled(true);
+            redoButton.setEnabled(true);
+            // Restore appearance
+            historyTable.setForeground(UIManager.getColor("Table.foreground"));
+            historyTable.setBackground(UIManager.getColor("Table.background"));
+        });
     }
 }
