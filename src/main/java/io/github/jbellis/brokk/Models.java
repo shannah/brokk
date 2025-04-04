@@ -380,7 +380,7 @@ public final class Models {
             var symbolListString = String.join(", ", symbols);
             System.out.println(symbolListString);
             // Simpler prompt formatting, assuming symbols don't need complex escaping for the LLM prompt itself
-            return String.format("Transcribe this audio. Pay attention to these technical terms or symbols: %s", symbolListString);
+            return String.format("Transcribe this audio. Pay attention to these technical terms or symbols: %s. You don't have to quote them specially but if you do, use backticks markdown-style.", symbolListString);
         }
     }
 }
