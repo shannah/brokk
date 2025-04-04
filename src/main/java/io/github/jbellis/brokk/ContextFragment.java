@@ -56,7 +56,7 @@ public interface ContextFragment extends Serializable {
     }
 
     sealed interface PathFragment extends ContextFragment
-            permits RepoPathFragment, ExternalPathFragment
+            permits ProjectPathFragment, ExternalPathFragment
     {
         BrokkFile file();
 
@@ -80,7 +80,7 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    record RepoPathFragment(ProjectFile file) implements PathFragment {
+    record ProjectPathFragment(ProjectFile file) implements PathFragment {
         private static final long serialVersionUID = 1L;
 
         @Override
@@ -143,7 +143,7 @@ public interface ContextFragment extends Serializable {
 
     static PathFragment toPathFragment(BrokkFile bf) {
         if (bf instanceof ProjectFile repo) {
-            return new RepoPathFragment(repo);
+            return new ProjectPathFragment(repo);
         } else if (bf instanceof ExternalFile ext) {
             return new ExternalPathFragment(ext);
         }

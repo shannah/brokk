@@ -522,7 +522,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
         try {
-            if (fragment instanceof ContextFragment.RepoPathFragment(ProjectFile file)) {
+            if (fragment instanceof ContextFragment.ProjectPathFragment(ProjectFile file)) {
                 PreviewPanel.showInFrame(frame, contextManager, file, syntaxType, themeManager);
             } else {
                 String content = fragment.text();

@@ -2,13 +2,10 @@ package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.git.IGitRepo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import scala.Tuple2;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -79,7 +76,7 @@ public class ContextSerializationTest {
         
         // Create context with fragments
         Context context = new Context(mockContextManager, 5)
-            .addEditableFiles(List.of(new ContextFragment.RepoPathFragment(projectFile)))
+            .addEditableFiles(List.of(new ContextFragment.ProjectPathFragment(projectFile)))
             .addReadonlyFiles(List.of(new ContextFragment.ExternalPathFragment(externalFile)))
             .addVirtualFragment(new ContextFragment.StringFragment("virtual content", "Virtual Fragment"));
         
@@ -93,7 +90,7 @@ public class ContextSerializationTest {
         assertEquals(1, deserialized.virtualFragments.size());
         
         // Check paths were properly serialized
-        ContextFragment.RepoPathFragment repoFragment = deserialized.editableFiles.get(0);
+        ContextFragment.ProjectPathFragment repoFragment = deserialized.editableFiles.get(0);
         assertEquals(projectFile.toString(), repoFragment.file().toString());
         assertEquals(repoRoot.toString(), repoFragment.file().absPath().getParent().getParent().getParent().getParent().toString());
 
@@ -234,12 +231,12 @@ public class ContextSerializationTest {
         Files.createDirectories(repoRoot);
         
         // Create many files
-        List<ContextFragment.RepoPathFragment> editableFiles = new ArrayList<>();
+        List<ContextFragment.ProjectPathFragment> editableFiles = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             ProjectFile file = new ProjectFile(repoRoot, "src/main/java/Test" + i + ".java");
             Files.createDirectories(file.absPath().getParent());
             Files.writeString(file.absPath(), "public class Test" + i + " {}");
-            editableFiles.add(new ContextFragment.RepoPathFragment(file));
+            editableFiles.add(new ContextFragment.ProjectPathFragment(file));
         }
         
         // Create many virtual fragments

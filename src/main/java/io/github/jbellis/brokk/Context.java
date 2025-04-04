@@ -38,7 +38,7 @@ public class Context implements Serializable {
     private static final String WELCOME_BACK = "Welcome back";
 
     transient final IContextManager contextManager;
-    final List<ContextFragment.RepoPathFragment> editableFiles;
+    final List<ContextFragment.ProjectPathFragment> editableFiles;
     final List<ContextFragment.PathFragment> readonlyFiles;
     final List<ContextFragment.VirtualFragment> virtualFragments;
 
@@ -102,7 +102,7 @@ public class Context implements Serializable {
 
     private Context(
             IContextManager contextManager,
-            List<ContextFragment.RepoPathFragment> editableFiles,
+            List<ContextFragment.ProjectPathFragment> editableFiles,
             List<ContextFragment.PathFragment> readonlyFiles,
             List<ContextFragment.VirtualFragment> virtualFragments,
             AutoContext autoContext,
@@ -136,7 +136,7 @@ public class Context implements Serializable {
     /**
      * Creates a new Context with an additional set of editable files. Rebuilds autoContext if toggled on.
      */
-    public Context addEditableFiles(Collection<ContextFragment.RepoPathFragment> paths) {
+    public Context addEditableFiles(Collection<ContextFragment.ProjectPathFragment> paths) {
         var toAdd = paths.stream().filter(fragment -> !editableFiles.contains(fragment)).toList();
         if (toAdd.isEmpty()) {
             return this;
@@ -271,7 +271,7 @@ public class Context implements Serializable {
     }
 
     @NotNull
-    private Context getWithFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
+    private Context getWithFragments(List<ContextFragment.ProjectPathFragment> newEditableFiles,
                                      List<ContextFragment.PathFragment> newReadonlyFiles,
                                      List<ContextFragment.VirtualFragment> newVirtualFragments,
                                      String action) {
@@ -385,7 +385,7 @@ public class Context implements Serializable {
     // Accessors
     // ---------------------------------------------------------
 
-    public Stream<ContextFragment.RepoPathFragment> editableFiles() {
+    public Stream<ContextFragment.ProjectPathFragment> editableFiles() {
         return editableFiles.stream();
     }
 
@@ -419,7 +419,7 @@ public class Context implements Serializable {
      * Creates a new context with custom collections and action description,
      * refreshing auto-context if needed
      */
-    private Context withFragments(List<ContextFragment.RepoPathFragment> newEditableFiles,
+    private Context withFragments(List<ContextFragment.ProjectPathFragment> newEditableFiles,
                                   List<ContextFragment.PathFragment> newReadonlyFiles,
                                   List<ContextFragment.VirtualFragment> newVirtualFragments,
                                   Future<String> action) {

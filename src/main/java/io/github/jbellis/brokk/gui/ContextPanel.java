@@ -243,7 +243,7 @@ public class ContextPanel extends JPanel {
                                     int selectedRow = contextTable.getSelectedRow();
                                     if (selectedRow >= 0) {
                                         var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
-                                        if (selectedFragment instanceof ContextFragment.RepoPathFragment(
+                                        if (selectedFragment instanceof ContextFragment.ProjectPathFragment(
                                                 ProjectFile f
                                         )) {
                                             chrome.getGitPanel().addFileHistoryTab(f);
@@ -251,7 +251,7 @@ public class ContextPanel extends JPanel {
                                     }
                                 });
                                 contextMenu.add(viewHistoryItem);
-                                viewHistoryItem.setEnabled(fragment instanceof ContextFragment.RepoPathFragment);
+                                viewHistoryItem.setEnabled(fragment instanceof ContextFragment.ProjectPathFragment);
                             }
                         }
 
@@ -549,7 +549,7 @@ public class ContextPanel extends JPanel {
 
             // Build file references
             List<FileReferenceList.FileReferenceData> fileReferences = new ArrayList<>();
-            if (!(frag instanceof ContextFragment.RepoPathFragment)) {
+            if (!(frag instanceof ContextFragment.ProjectPathFragment)) {
                 fileReferences = frag.files(contextManager.getProject())
                         .stream()
                         .map(file -> new FileReferenceList.FileReferenceData(file.getFileName(), file.toString(), file))
@@ -645,7 +645,7 @@ public class ContextPanel extends JPanel {
             if (fileRef.getRepoFile() != null) {
                 chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
                         Chrome.ContextAction.EDIT,
-                        List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
+                        List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
             } else {
                 chrome.toolErrorRaw("Cannot add file: " + fileRef.getFullPath() + " - no RepoFile available");
@@ -668,7 +668,7 @@ public class ContextPanel extends JPanel {
             if (fileRef.getRepoFile() != null) {
                 chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
                         Chrome.ContextAction.READ,
-                        List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
+                        List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
             } else {
                 chrome.toolErrorRaw("Cannot read file: " + fileRef.getFullPath() + " - no RepoFile available");
@@ -693,7 +693,7 @@ public class ContextPanel extends JPanel {
             if (fileRef.getRepoFile() != null) {
                 chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
                         Chrome.ContextAction.SUMMARIZE,
-                        List.of(new ContextFragment.RepoPathFragment(fileRef.getRepoFile()))
+                        List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
             } else {
                 chrome.toolErrorRaw("Cannot summarize: " + fileRef.getFullPath() + " - file information not available");

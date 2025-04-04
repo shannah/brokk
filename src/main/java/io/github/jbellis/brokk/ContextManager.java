@@ -891,7 +891,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public void editFiles(Collection<ProjectFile> files)
     {
-        var fragments = files.stream().map(ContextFragment.RepoPathFragment::new).toList();
+        var fragments = files.stream().map(ContextFragment.ProjectPathFragment::new).toList();
         pushContext(ctx -> ctx.removeReadonlyFiles(fragments).addEditableFiles(fragments));
     }
 
@@ -1384,7 +1384,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Set<ProjectFile> getEditableFiles()
     {
         return selectedContext().editableFiles()
-                .map(ContextFragment.RepoPathFragment::file)
+                .map(ContextFragment.ProjectPathFragment::file)
                 .collect(Collectors.toSet());
     }
 
