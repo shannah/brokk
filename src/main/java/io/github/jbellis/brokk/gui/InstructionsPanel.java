@@ -120,6 +120,21 @@ public class InstructionsPanel extends JPanel {
         area.setRows(3); // Initial rows
         area.setMinimumSize(new Dimension(100, 80));
         area.setAutoIndentEnabled(false);
+
+        // Add Ctrl+Enter shortcut to trigger the default button
+        var ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, java.awt.event.InputEvent.CTRL_DOWN_MASK);
+        area.getInputMap().put(ctrlEnter, "submitDefault");
+        area.getActionMap().put("submitDefault", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                // If there's a default button, "click" it
+                var rootPane = SwingUtilities.getRootPane(area);
+                if (rootPane != null && rootPane.getDefaultButton() != null) {
+                    rootPane.getDefaultButton().doClick();
+                }
+            }
+        });
+
         return area;
     }
 
