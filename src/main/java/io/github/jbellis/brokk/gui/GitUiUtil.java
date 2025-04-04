@@ -249,31 +249,23 @@ public final class GitUiUtil
     (
             ContextManager contextManager,
             Chrome chrome,
-            int[] selectedRows,
-            javax.swing.table.TableModel tableModel,
-            List<String> filePaths
+            String firstCommitId,
+            String lastCommitId,
+            List<ProjectFile> files
     ) {
         contextManager.submitContextTask("Adding file changes from range to context", () -> {
             try {
-                if (selectedRows.length == 0 || tableModel.getRowCount() == 0) {
-                    chrome.systemOutput("No commits selected or commits table is empty");
+                if (files.isEmpty()) {
+                    chrome.systemOutput("No files provided to capture diff");
                     return;
                 }
-                var sorted = selectedRows.clone();
-                java.util.Arrays.sort(sorted);
-                if (sorted[0] < 0 || sorted[sorted.length - 1] >= tableModel.getRowCount()) {
-                    chrome.systemOutput("Invalid commit selection");
-                    return;
-                }
-                var firstCommitId = (String) tableModel.getValueAt(sorted[0], 3);
-                var lastCommitId  = (String) tableModel.getValueAt(sorted[sorted.length - 1], 3);
-
                 var repo = contextManager.getProject().getRepo();
-                var repoFiles = filePaths.stream()
-                        .map(fp -> new ProjectFile(contextManager.getRoot(), fp))
-                        .toList();
+                if (repo == null) {
+                    chrome.toolError("Git repository not available.");
+                    return;
+                }
 
-                var diffs = repoFiles.stream()
+                var diffs = files.stream()
                         .map(file -> repo.showFileDiff(firstCommitId, lastCommitId + "^", file))
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.joining("\n\n"));
@@ -287,11 +279,8 @@ public final class GitUiUtil
                         ? firstShort
                         : "%s..%s".formatted(firstShort, lastShort);
 
-                var filesTxt = filePaths.stream()
-                        .map(fp -> {
-                            var slashPos = fp.lastIndexOf('/');
-                            return (slashPos >= 0) ? fp.substring(slashPos + 1) : fp;
-                        })
+                var filesTxt = files.stream()
+                        .map(ProjectFile::getFileName)
                         .collect(Collectors.joining(", "));
                 var description = "Diff of %s [%s]".formatted(filesTxt, shortHash);
 

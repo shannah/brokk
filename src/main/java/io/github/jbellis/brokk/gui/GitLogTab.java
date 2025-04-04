@@ -492,12 +492,23 @@ public class GitLogTab extends JPanel {
         addFileToContextItem.addActionListener(e -> {
             TreePath[] paths = changesTree.getSelectionPaths();
             if (paths != null && paths.length > 0) {
-                List<String> selectedFiles = getSelectedFilePaths(paths);
-                if (!selectedFiles.isEmpty()) {
+                List<String> selectedFilePaths = getSelectedFilePaths(paths);
+                if (!selectedFilePaths.isEmpty()) {
                     int[] selRows = commitsTable.getSelectedRows();
                     if (selRows.length >= 1) {
-                        GitUiUtil.addFilesChangeToContext(contextManager, chrome, selRows,
-                                                          commitsTableModel, selectedFiles);
+                        // Extract commit IDs
+                        var sorted = selRows.clone();
+                        java.util.Arrays.sort(sorted);
+                        String firstCommitId = (String) commitsTableModel.getValueAt(sorted[0], 3);
+                        String lastCommitId = (String) commitsTableModel.getValueAt(sorted[sorted.length - 1], 3);
+
+                        // Convert file paths to ProjectFile objects
+                        List<ProjectFile> projectFiles = selectedFilePaths.stream()
+                                .map(fp -> new ProjectFile(contextManager.getRoot(), fp))
+                                .toList();
+
+                        GitUiUtil.addFilesChangeToContext(contextManager, chrome, firstCommitId,
+                                                          lastCommitId, projectFiles);
                     }
                 }
             }
