@@ -482,7 +482,7 @@ public class GitLogTab extends JPanel {
                         if (selRows.length == 1 && isFileNode(path)) {
                             String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
                             String filePath = getFilePathFromTreePath(path);
-                            GitUiUtil.showFileHistoryDiff(contextManager, chrome, GitLogTab.this, commitId, contextManager.toFile(filePath));
+                            GitUiUtil.showFileHistoryDiff(contextManager, GitLogTab.this, commitId, contextManager.toFile(filePath));
                         }
                     }
                 }
@@ -509,7 +509,7 @@ public class GitLogTab extends JPanel {
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1) {
                     String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
-                    GitUiUtil.showDiffVsLocal(contextManager, chrome, GitLogTab.this,
+                    GitUiUtil.showDiffVsLocal(contextManager, GitLogTab.this,
                                               commitId, filePath, /*useParent=*/ false);
                 }
             }
@@ -521,7 +521,7 @@ public class GitLogTab extends JPanel {
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1) {
                     String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
-                    GitUiUtil.showDiffVsLocal(contextManager, chrome, GitLogTab.this,
+                    GitUiUtil.showDiffVsLocal(contextManager, GitLogTab.this,
                                               commitId, filePath, /*useParent=*/ true);
                 }
             }
@@ -533,7 +533,7 @@ public class GitLogTab extends JPanel {
                 if (selRows.length == 1 && isFileNode(paths[0])) {
                     String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
                     String filePath = getFilePathFromTreePath(paths[0]);
-                    GitUiUtil.showFileHistoryDiff(contextManager, chrome, this, commitId, contextManager.toFile(filePath));
+                    GitUiUtil.showFileHistoryDiff(contextManager, this, commitId, contextManager.toFile(filePath));
                 }
             }
         });

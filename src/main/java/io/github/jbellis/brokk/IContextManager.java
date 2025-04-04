@@ -63,4 +63,8 @@ public interface IContextManager {
     }
 
     default void addToGit(List<ProjectFile> files) throws IOException {}
+
+    default IConsoleIO getIo() {
+        throw new UnsupportedOperationException();
+    }
 }

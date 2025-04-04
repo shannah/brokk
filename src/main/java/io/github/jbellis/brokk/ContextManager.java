@@ -1753,4 +1753,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         throwable.printStackTrace(pw);
         return sw.toString();
     }
+
+    @Override
+    public IConsoleIO getIo() {
+        return io;
+    }
 }

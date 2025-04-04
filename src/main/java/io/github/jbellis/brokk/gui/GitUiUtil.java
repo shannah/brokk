@@ -66,11 +66,10 @@ public final class GitUiUtil
      * comparing HEAD vs the local on-disk version.
      */
     public static void showUncommittedFileDiff(ContextManager contextManager,
-                                               Chrome chrome,
                                                Component parent,
                                                String filePath)
     {
-        showDiffVsLocal(contextManager, chrome, parent, "HEAD", filePath, false);
+        showDiffVsLocal(contextManager, parent, "HEAD", filePath, false);
     }
 
     /**
@@ -122,22 +121,21 @@ public final class GitUiUtil
     /**
      * Show the diff for a single file at a specific commit.
      */
-    public static void showFileHistoryDiff(ContextManager contextManager,
-                                           Chrome chrome,
+    public static void showFileHistoryDiff(ContextManager cm,
                                            Component parent,
                                            String commitId,
                                            ProjectFile file)
     {
-        var repo = contextManager.getProject().getRepo();
+        var repo = cm.getProject().getRepo();
         if (repo == null) {
-            chrome.toolError("Git repository not available.");
+            cm.getIo().toolError("Git repository not available.");
             return;
         }
         var shortCommitId = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
         var dialogTitle = "Diff: " + file.getFileName() + " (" + shortCommitId + ")";
         var parentCommitId = commitId + "^";
 
-        contextManager.submitBackgroundTask("Loading history diff for " + file.getFileName(), () -> {
+        cm.submitBackgroundTask("Loading history diff for " + file.getFileName(), () -> {
             try {
                 var parentObjectId = repo.resolve(parentCommitId);
                 var parentContent = parentObjectId == null ? "" : repo.getFileContent(parentCommitId, file);
@@ -145,10 +143,10 @@ public final class GitUiUtil
 
                 SwingUtilities.invokeLater(() -> {
                     var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStrings(parentContent, parentCommitId, commitContent, commitId).build();
-                    brokkDiffPanel.showInDialog(contextManager, parent, dialogTitle);
+                    brokkDiffPanel.showInDialog(cm, parent, dialogTitle);
                 });
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error loading history diff: " + ex.getMessage()));
+                cm.getIo().toolErrorRaw("Error loading history diff: " + ex.getMessage());
             }
             return null;
         });
@@ -157,20 +155,18 @@ public final class GitUiUtil
     /**
      * View the file content at a specific commit (opens it in a preview window).
      */
-    public static void viewFileAtRevision
-    (
-            ContextManager contextManager,
-            Chrome chrome,
-            String commitId,
-            String filePath
-    ) {
-        var repo = contextManager.getProject().getRepo();
+    public static void viewFileAtRevision(ContextManager cm,
+                                          Chrome chrome,
+                                          String commitId,
+                                          String filePath)
+    {
+        var repo = cm.getProject().getRepo();
         if (repo == null) {
             chrome.toolError("Git repository not available.");
             return;
         }
-        contextManager.submitUserTask("Viewing file at revision", () -> {
-            var file = new ProjectFile(contextManager.getRoot(), filePath);
+        cm.submitUserTask("Viewing file at revision", () -> {
+            var file = new ProjectFile(cm.getRoot(), filePath);
             String content = null;
             try {
                 content = repo.getFileContent(commitId, file);
@@ -311,21 +307,20 @@ public final class GitUiUtil
      * Compare a single file from a specific commit to the local (working directory) version.
      * If useParent=true, compares the file's parent commit to local.
      */
-    public static void showDiffVsLocal(ContextManager contextManager,
-                                       Chrome chrome,
+    public static void showDiffVsLocal(ContextManager cm,
                                        Component parent,
                                        String commitId,
                                        String filePath,
                                        boolean useParent)
     {
-        var repo = contextManager.getProject().getRepo();
+        var repo = cm.getProject().getRepo();
         if (repo == null) {
-            chrome.toolError("Git repository not available.");
+            cm.getIo().toolError("Git repository not available.");
             return;
         }
-        var file = new ProjectFile(contextManager.getRoot(), filePath);
+        var file = new ProjectFile(cm.getRoot(), filePath);
 
-        contextManager.submitBackgroundTask("Loading compare-with-local for " + file.getFileName(), () -> {
+        cm.submitBackgroundTask("Loading compare-with-local for " + file.getFileName(), () -> {
             try {
                 // 2) Figure out the base commit ID and title components
                 String baseCommitId = commitId;
@@ -358,10 +353,10 @@ public final class GitUiUtil
 
                 SwingUtilities.invokeLater(() -> {
                     var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString()).build();
-                    brokkDiffPanel.showInDialog(contextManager, parent, finalDialogTitle);
+                    brokkDiffPanel.showInDialog(cm, parent, finalDialogTitle);
                 });
             } catch (Exception ex) {
-                 SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error loading compare-with-local diff: " + ex.getMessage()));
+                cm.getIo().toolErrorRaw("Error loading compare-with-local diff: " + ex.getMessage());
             }
             return null;
         });

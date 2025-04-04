@@ -3,7 +3,6 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.gui.dialogs.DiffPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -101,7 +100,7 @@ public class GitCommitTab extends JPanel {
                         String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
                         String filePath = path.isEmpty() ? filename : path + "/" + filename;
                         // Unified call:
-                        GitUiUtil.showUncommittedFileDiff(contextManager, chrome, GitCommitTab.this, filePath);
+                        GitUiUtil.showUncommittedFileDiff(contextManager, GitCommitTab.this, filePath);
                     }
                 }
             }
@@ -146,7 +145,7 @@ public class GitCommitTab extends JPanel {
                 String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
                 String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
                 String filePath = path.isEmpty() ? filename : path + "/" + filename;
-                GitUiUtil.showUncommittedFileDiff(contextManager, chrome, this, filePath);
+                GitUiUtil.showUncommittedFileDiff(contextManager, this, filePath);
             }
         });
 
