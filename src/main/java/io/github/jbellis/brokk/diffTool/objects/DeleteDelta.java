@@ -9,20 +9,17 @@ import io.github.jbellis.brokk.diffTool.diff.Diff;
 
  */
 public class DeleteDelta
-    extends Delta
-{
+        extends Delta {
 
-  public DeleteDelta(Chunk orig)
-  {
-    init(orig, null);
-  }
+    public DeleteDelta(Chunk orig) {
+        init(orig, null);
+    }
 
-  public void toString(StringBuffer s)
-  {
-    s.append(original.rangeString());
-    s.append("d");
-    s.append(revised.rcsto());
-    s.append(Diff.NL);
-    original.toString(s, "< ", Diff.NL);
-  }
+    public void toString(StringBuffer s) {
+        s.append(original.rangeString());
+        s.append("d");
+        s.append(revised.rcsto());
+        s.append(Diff.NL);
+        original.toString(s, "< ", Diff.NL);
+    }
 }

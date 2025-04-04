@@ -4,12 +4,11 @@ package io.github.jbellis.brokk.diffTool.node;
 
 import io.github.jbellis.brokk.diffTool.doc.BufferDocumentIF;
 
-public interface BufferNode
-{
-  String getName();
+public interface BufferNode {
+    String getName();
 
-  long getSize();
+    long getSize();
 
-  BufferDocumentIF getDocument();
+    BufferDocumentIF getDocument();
 
 }

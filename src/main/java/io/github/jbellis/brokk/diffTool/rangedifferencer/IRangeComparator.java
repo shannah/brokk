@@ -18,24 +18,23 @@ package io.github.jbellis.brokk.diffTool.rangedifferencer;
  * Clients should implement this interface; there is no standard implementation.
  * </p>
  */
-public interface IRangeComparator
-{
-  /**
-   * Returns the number of comparable entities.
-   *
-   * @return the number of comparable entities
-   */
-  int getRangeCount();
+public interface IRangeComparator {
+    /**
+     * Returns the number of comparable entities.
+     *
+     * @return the number of comparable entities
+     */
+    int getRangeCount();
 
-  /**
-   * Returns whether the comparable entity given by the first index
-   * matches an entity specified by the other <code>IRangeComparator</code> and index.
-   *
-   * @param thisIndex the index of the comparable entity within this <code>IRangeComparator</code>
-   * @param other the IRangeComparator to compare this with
-   * @param otherIndex the index of the comparable entity within the other <code>IRangeComparator</code>
-   * @return <code>true</code> if the comparable entities are equal
-   */
-  boolean rangesEqual(int thisIndex, IRangeComparator other, int otherIndex);
+    /**
+     * Returns whether the comparable entity given by the first index
+     * matches an entity specified by the other <code>IRangeComparator</code> and index.
+     *
+     * @param thisIndex the index of the comparable entity within this <code>IRangeComparator</code>
+     * @param other the IRangeComparator to compare this with
+     * @param otherIndex the index of the comparable entity within the other <code>IRangeComparator</code>
+     * @return <code>true</code> if the comparable entities are equal
+     */
+    boolean rangesEqual(int thisIndex, IRangeComparator other, int otherIndex);
 
 }

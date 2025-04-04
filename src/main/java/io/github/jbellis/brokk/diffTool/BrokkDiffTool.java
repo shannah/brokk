@@ -20,13 +20,13 @@ public class BrokkDiffTool
                     private String name;
                     private double outstanding;
                     private int unused;
-
+                
                     void printOwing() {
                         // Print banner
                         System.out.println("Details of account");
                         System.out.println("-----");
                         System.out.println("");
-
+                
                         // Print details
                         System.out.println("name: " + name);
                         System.out.println("amount: " + outstanding);
@@ -38,16 +38,16 @@ public class BrokkDiffTool
                 public class AccountManager {
                     private String name;
                     private double outstanding;
-
+                
                     void printOwing() {
                         // Print banner
                         System.out.println("***");
                         System.out.println("");
-
+                
                         // Print details
                         printDetails();
                     }
-
+                
                     void printDetails() {
                         System.out.println("name: " + name);
                         System.out.println("amount: " + outstanding);
@@ -66,7 +66,7 @@ public class BrokkDiffTool
         JMHighlightPainter.initializePainters();
         JFrame frame = new JFrame("BrokkDiffTool");
         // Creating a new BrokkDiffPanel instance for file comparison mode.
-        BrokkDiffPanel brokkPanel=new BrokkDiffPanel.Builder()
+        BrokkDiffPanel brokkPanel = new BrokkDiffPanel.Builder()
                 //if you want to compare two files
 //                .compareFiles(new File("NOTICE.txt"),"left-source",new File("LICENSE.txt"),"right-source")
                 //if you want to compare a file and String

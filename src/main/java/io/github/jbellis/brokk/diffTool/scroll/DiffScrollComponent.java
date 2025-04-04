@@ -15,7 +15,12 @@ import javax.swing.event.ChangeListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseMotionListener;
+import java.awt.event.MouseWheelListener;
 import java.awt.geom.CubicCurve2D;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Line2D;
@@ -84,9 +89,6 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
             }
         };
     }
-
-
-
 
 
     public void executeCommand(double x, double y) {
@@ -282,7 +284,7 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
                 toLine = revised.getAnchor() + revised.getSize();
                 viewportRect = viewportTo.getViewRect();
                 offset = bdTo.getOffsetForLine(fromLine);
-                if (offset < 0 ) {
+                if (offset < 0) {
                     continue;
                 }
 
@@ -325,32 +327,32 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
                     GeneralPath curve = new GeneralPath();
                     if (getCurveType() == 0) {
                         curve.append(new Line2D.Float(curveX4, curveY4, curveX1, curveY1),
-                                true);
+                                     true);
                         curve.append(new Line2D.Float(curveX2, y, curveX3, curveY3),
-                                true);
+                                     true);
                     } else if (getCurveType() == 1) {
                         int posyOrg = original.getSize() > 0 ? 0 : 1;
                         int posyRev = revised.getSize() > 0 ? 0 : 1;
                         curve.append(new CubicCurve2D.Float(curveX1, curveY1 - posyOrg
-                                        , curveX1 + ((float) (curveX2 - curveX1) / 2) + 5, curveY1
-                                        , curveX1 + ((float) (curveX2 - curveX1) / 2) + 5, y
-                                        , curveX2, y - posyRev)
+                                             , curveX1 + ((float) (curveX2 - curveX1) / 2) + 5, curveY1
+                                             , curveX1 + ((float) (curveX2 - curveX1) / 2) + 5, y
+                                             , curveX2, y - posyRev)
                                 , true);
                         curve.append(new CubicCurve2D.Float(curveX3, curveY3 + posyRev/* - addHeightCorrection*/
-                                        , curveX3 + ((float) (curveX4 - curveX3) / 2) - 5, curveY3 /*- addHeightCorrection*/
-                                        , curveX3 + ((float) (curveX4 - curveX3) / 2) - 5, curveY4
-                                        , curveX4, curveY4 + posyOrg)
+                                             , curveX3 + ((float) (curveX4 - curveX3) / 2) - 5, curveY3 /*- addHeightCorrection*/
+                                             , curveX3 + ((float) (curveX4 - curveX3) / 2) - 5, curveY4
+                                             , curveX4, curveY4 + posyOrg)
                                 , true);
                     } else if (getCurveType() == 2) {
                         curve.append(new CubicCurve2D.Float(curveX1, curveY1 - 2
-                                        , curveX2 + 10, curveY1
-                                        , curveX1 + 10, y
-                                        , curveX2, y - 2)
+                                             , curveX2 + 10, curveY1
+                                             , curveX1 + 10, y
+                                             , curveX2, y - 2)
                                 , true);
                         curve.append(new CubicCurve2D.Float(curveX3, curveY3 + 2
-                                        , curveX4 - 10, curveY3
-                                        , curveX3 - 10, curveY4
-                                        , curveX4, curveY4 + 2)
+                                             , curveX4 - 10, curveY3
+                                             , curveX3 - 10, curveY4
+                                             , curveX4, curveY4 + 2)
                                 , true);
                     }
                     g2.setColor(color);
@@ -410,7 +412,7 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
                 if (bdTo.isReadonly() && (diffPanel.getMainPanel().isTwoFilesComparison() || diffPanel.getMainPanel().isStringAndFileComparison())) {
                     if (!shift || original.getSize() > 0) {
 
-                        shape = createTriangle(x1, y1,delta.isHovered() ? 2 : 1); // Scale 2x on hover
+                        shape = createTriangle(x1, y1, delta.isHovered() ? 2 : 1); // Scale 2x on hover
                         setAntiAlias(g2);
                         g2.setColor(delta.isHovered() ? Color.gray : color);
                         g2.fillPolygon(shape);
@@ -419,7 +421,7 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
                         resetAntiAlias(g2);
 
                         commands.add(new DiffChangeCommand(shape, delta, fromPanelIndex,
-                                toPanelIndex));
+                                                           toPanelIndex));
                     }
 
                     // Draw delete right command
@@ -451,7 +453,6 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
 
         return shape;
     }
-
 
 
     private MouseMotionListener getMouseMotionListener() {

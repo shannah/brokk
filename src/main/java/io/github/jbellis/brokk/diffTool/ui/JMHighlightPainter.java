@@ -9,7 +9,7 @@ import javax.swing.text.JTextComponent;
 import java.awt.*;
 
 public class JMHighlightPainter extends DefaultHighlighter.DefaultHighlightPainter {
-    public static  JMHighlightPainter ADDED;
+    public static JMHighlightPainter ADDED;
     public static JMHighlightPainter ADDED_LINE;
     /** Painter which adds a newline at end */
     public static JMHighlightPainter ADDED_NEWLINE;
@@ -89,8 +89,7 @@ public class JMHighlightPainter extends DefaultHighlighter.DefaultHighlightPaint
                             // firstline:
                             x = r1.x;
                             width = b.width - b.x;
-                        }
-                        else if (i == count - 1) {
+                        } else if (i == count - 1) {
                             // lastline:
                             x = b.x;
                             width = r2.x - x;
@@ -105,7 +104,7 @@ public class JMHighlightPainter extends DefaultHighlighter.DefaultHighlightPaint
                 }
             } else {
                 height = r2.y - r1.y;
-                if(height == 0) {
+                if (height == 0) {
                     height = r1.height;
                 }
                 g.fillRect(0, r1.y, b.x + b.width, height);
@@ -182,8 +181,7 @@ public class JMHighlightPainter extends DefaultHighlighter.DefaultHighlightPaint
                                 // firstline:
                                 x = r1.x;
                                 width = b.width - b.x;
-                            }
-                            else if (i == count - 1) {
+                            } else if (i == count - 1) {
                                 // lastline:
                                 x = b.x;
                                 width = r2.x - x;

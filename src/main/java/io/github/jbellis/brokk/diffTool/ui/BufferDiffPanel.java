@@ -21,7 +21,6 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.JTextComponent;
 import javax.swing.text.PlainDocument;
 import java.awt.*;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -71,7 +70,7 @@ public class BufferDiffPanel extends AbstractContentPanel {
     public BrokkDiffPanel getMainPanel() {
         return mainPanel;
     }
-    
+
     public BufferDiffPanel(BrokkDiffPanel mainPanel) {
         this.mainPanel = mainPanel;
         mainPanel.setBufferDiffPanel(this);
@@ -176,8 +175,8 @@ public class BufferDiffPanel extends AbstractContentPanel {
             bd2 = filePanels[RIGHT].getBufferDocument();
 
             if (!currentRevision.update(bd1 != null ? bd1.getLines() : null,
-                    bd2 != null ? bd2.getLines() : null, fp == filePanels[LEFT], de
-                            .getStartLine(), de.getNumberOfLines())) {
+                                        bd2 != null ? bd2.getLines() : null, fp == filePanels[LEFT], de
+                                                .getStartLine(), de.getNumberOfLines())) {
                 return false;
             }
 
@@ -243,11 +242,9 @@ public class BufferDiffPanel extends AbstractContentPanel {
     }
 
 
-
-
     public JPanel activateBarDialog() {
         JPanel barContainer = new JPanel(new BorderLayout()); // Use BorderLayout for left & right placement
-        
+
         // Case-Sensitive Toggle:
         caseSensitiveCheckBox = new JCheckBox("Case Sensitive");
         caseSensitiveCheckBox.setFocusable(false); // Avoids stealing focus
@@ -256,17 +253,17 @@ public class BufferDiffPanel extends AbstractContentPanel {
         rightBar = new SearchBarDialog(getMainPanel(), this);
 
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        
+
         leftPanel.add(Box.createHorizontalStrut(5)); // Add space between checkbox and left bar
         leftPanel.add(leftBar);
 
-        JPanel leftMostPanelUp =new JPanel(new FlowLayout(FlowLayout.LEADING));
+        JPanel leftMostPanelUp = new JPanel(new FlowLayout(FlowLayout.LEADING));
         leftMostPanelUp.add(caseSensitiveCheckBox);
 
-        JPanel leftMostPanelDown =new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JPanel leftMostPanelDown = new JPanel(new FlowLayout(FlowLayout.CENTER));
         leftMostPanelDown.add(new JLabel(""));
 
-        JPanel leftMostPane=new JPanel();
+        JPanel leftMostPane = new JPanel();
         leftMostPane.setLayout(new BoxLayout(leftMostPane, BoxLayout.Y_AXIS));
         leftMostPane.add(leftMostPanelUp);
         leftMostPane.add(leftMostPanelDown);
@@ -274,12 +271,12 @@ public class BufferDiffPanel extends AbstractContentPanel {
 
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         rightPanel.add(rightBar);
-        
+
         rightPanel.add(Box.createHorizontalStrut(5)); // Add space between checkbox and left bar
         barContainer.add(leftMostPane, BorderLayout.WEST);
-        barContainer.add(leftPanel,BorderLayout.CENTER);
+        barContainer.add(leftPanel, BorderLayout.CENTER);
         barContainer.add(rightPanel, BorderLayout.EAST);
-        
+
         return barContainer;
     }
 
@@ -509,8 +506,8 @@ public class BufferDiffPanel extends AbstractContentPanel {
             } catch (Exception ex) {
                 ex.printStackTrace();
                 JOptionPane.showMessageDialog(mainPanel, "Can't save file"
-                                + document.getName(),
-                        "Problem writing file", JOptionPane.ERROR_MESSAGE);
+                                                      + document.getName(),
+                                              "Problem writing file", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -675,7 +672,7 @@ public class BufferDiffPanel extends AbstractContentPanel {
             // Select the next delta if there is any.
             if (index - 1 >= 0) {
                 setSelectedDelta(deltas.get(index - 1));
-                if (index-1==0){
+                if (index - 1 == 0) {
                     Arrays.stream(filePanels).forEach(
                             item ->
                             {

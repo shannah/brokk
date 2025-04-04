@@ -4,7 +4,6 @@ import javax.swing.*;
 import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
@@ -30,8 +29,8 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     public boolean isStringAndFileComparison() {
         return isStringAndFileComparison;
     }
-    
-     
+
+
     public BrokkDiffPanel(Builder builder) {
         this.leftFile = builder.leftFile;
         this.rightFile = builder.rightFile;
@@ -50,9 +49,12 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             public void ancestorAdded(AncestorEvent event) {
                 start();
             }
-            public void ancestorMoved(AncestorEvent event) {}
 
-            public void ancestorRemoved(AncestorEvent event) {}
+            public void ancestorMoved(AncestorEvent event) {
+            }
+
+            public void ancestorRemoved(AncestorEvent event) {
+            }
         });
 
         revalidate();
@@ -195,7 +197,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     }
 
     public void updateUndoRedoButtons() {
-        if(getCurrentContentPanel()!=null) {
+        if (getCurrentContentPanel() != null) {
             boolean canUndo = getCurrentContentPanel().isUndoEnabled();
             boolean canRedo = getCurrentContentPanel().isRedoEnabled();
             getBtnUndo().setEnabled(canUndo);
@@ -217,14 +219,13 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
                 .withComparisonType(isTwoFilesComparison, isStringAndFileComparison)
                 .withFiles(leftFile, leftFileTitle, rightFile, rightFileTitle)
                 .withStringAndFile(contentLeft, leftFileTitle, rightFile, rightFileTitle)
-                .withStringAndFile(leftFile,leftFileTitle,contentRight,rightFileTitle)
+                .withStringAndFile(leftFile, leftFileTitle, contentRight, rightFileTitle)
                 .withStrings(contentLeft, leftFileTitle, contentRight, rightFileTitle)
                 .build();
 
         fileComparison.addPropertyChangeListener(this);
         fileComparison.execute();
     }
-
 
 
     public AbstractContentPanel getCurrentContentPanel() {

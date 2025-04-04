@@ -95,7 +95,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
                 previousDocument = bufferDocument.getDocument();
                 if (previousDocument != null) {
                     previousDocument.removeUndoableEditListener(diffPanel
-                            .getUndoHandler());
+                                                                        .getUndoHandler());
                 }
             }
 
@@ -114,9 +114,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
             ex.printStackTrace();
 
             JOptionPane.showMessageDialog(diffPanel, "Could not read file: "
-                            + bufferDocument.getName()
-                            + "\n" + ex.getMessage(),
-                    "Error opening file", JOptionPane.ERROR_MESSAGE);
+                                                  + bufferDocument.getName()
+                                                  + "\n" + ex.getMessage(),
+                                          "Error opening file", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -193,7 +193,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
                             toOffset2 = fromOffset2 + changeOriginal.getSize();
 
                             setHighlight(JMHighlighter.LAYER1, fromOffset2, toOffset2,
-                                    JMHighlightPainter.CHANGED_LIGHTER);
+                                         JMHighlightPainter.CHANGED_LIGHTER);
                         }
                     }
                 }
@@ -327,9 +327,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
                 bufferDocument.write();
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(SwingUtilities.getRoot(editor),
-                        "Could not save file: " + bufferDocument.getName() + "\n"
-                                + ex.getMessage(), "Error saving file",
-                        JOptionPane.ERROR_MESSAGE);
+                                              "Could not save file: " + bufferDocument.getName() + "\n"
+                                                      + ex.getMessage(), "Error saving file",
+                                              JOptionPane.ERROR_MESSAGE);
             }
         };
     }
@@ -372,10 +372,8 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
 
 
     public static class LeftScrollPaneLayout
-            extends ScrollPaneLayout
-    {
-        public void layoutContainer(Container parent)
-        {
+            extends ScrollPaneLayout {
+        public void layoutContainer(Container parent) {
             ComponentOrientation originalOrientation;
 
             // Dirty trick to get the vertical scrollbar to the left side of
@@ -397,83 +395,82 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
     }
 
     public SearchHits doSearch() {
-            int numberOfLines;
-            BufferDocumentIF doc;
-            String text;
-            int index, fromIndex;
-            boolean caseSensitive;
-            String searchText, searchTextToCompare, textToSearch;
-            SearchHit searchHit;
-            int offset;
-            SearchCommand searchCommand;
+        int numberOfLines;
+        BufferDocumentIF doc;
+        String text;
+        int index, fromIndex;
+        boolean caseSensitive;
+        String searchText, searchTextToCompare, textToSearch;
+        SearchHit searchHit;
+        int offset;
+        SearchCommand searchCommand;
 
-            searchCommand = getSearchCommand();
-            if (searchCommand == null) {
-                return null;
-            }
+        searchCommand = getSearchCommand();
+        if (searchCommand == null) {
+            return null;
+        }
 
-            searchText = searchCommand.searchText();
-            caseSensitive = searchCommand.isCaseSensitive(); // Get case-sensitive flag
+        searchText = searchCommand.searchText();
+        caseSensitive = searchCommand.isCaseSensitive(); // Get case-sensitive flag
 
-            doc = getBufferDocument();
-            numberOfLines = doc.getNumberOfLines();
+        doc = getBufferDocument();
+        numberOfLines = doc.getNumberOfLines();
 
-            searchHits = new SearchHits();
+        searchHits = new SearchHits();
 
-            if (!searchText.isEmpty()) {
-                for (int line = 0; line < numberOfLines; line++) {
-                    text = doc.getLineText(line);
+        if (!searchText.isEmpty()) {
+            for (int line = 0; line < numberOfLines; line++) {
+                text = doc.getLineText(line);
 
-                    // Adjust case based on case-sensitive flag
-                    if (!caseSensitive) {
-                        textToSearch = text.toLowerCase();
-                        searchTextToCompare = searchText.toLowerCase();
-                    } else {
-                        textToSearch = text;
-                        searchTextToCompare = searchText;
+                // Adjust case based on case-sensitive flag
+                if (!caseSensitive) {
+                    textToSearch = text.toLowerCase();
+                    searchTextToCompare = searchText.toLowerCase();
+                } else {
+                    textToSearch = text;
+                    searchTextToCompare = searchText;
+                }
+
+                fromIndex = 0;
+                while ((index = textToSearch.indexOf(searchTextToCompare, fromIndex)) != -1) {
+                    offset = bufferDocument.getOffsetForLine(line);
+                    if (offset < 0) {
+                        continue;
                     }
 
-                    fromIndex = 0;
-                    while ((index = textToSearch.indexOf(searchTextToCompare, fromIndex)) != -1) {
-                        offset = bufferDocument.getOffsetForLine(line);
-                        if (offset < 0) {
-                            continue;
-                        }
+                    searchHit = new SearchHit(line, offset + index, searchText.length());
+                    searchHits.add(searchHit);
 
-                        searchHit = new SearchHit(line, offset + index, searchText.length());
-                        searchHits.add(searchHit);
-
-                        fromIndex = index + searchHit.getSize();
-                    }
+                    fromIndex = index + searchHit.getSize();
                 }
             }
+        }
 
-            reDisplay();
-            scrollToSearch(this, searchHits);
-            return getSearchHits();
+        reDisplay();
+        scrollToSearch(this, searchHits);
+        return getSearchHits();
     }
 
 
     SearchHits getSearchHits() {
         return searchHits;
     }
+
     private void paintSearchHighlights() {
         if (searchHits != null) {
             for (SearchHit sh : searchHits.getSearchHits()) {
                 setHighlight(JMHighlighter.LAYER2, sh.getFromOffset(),
-                        sh.getToOffset(),
-                        searchHits.isCurrent(sh)
-                                ? JMHighlightPainter.CURRENT_SEARCH: JMHighlightPainter.SEARCH);
+                             sh.getToOffset(),
+                             searchHits.isCurrent(sh)
+                                     ? JMHighlightPainter.CURRENT_SEARCH : JMHighlightPainter.SEARCH);
             }
         }
     }
 
 
-
-
     public void doPreviousSearch() {
         SearchHits searchHits = getSearchHits();
-        if (searchHits==null) {
+        if (searchHits == null) {
             return;
         }
         searchHits.previous();
@@ -501,9 +498,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
 
     public void doNextSearch() {
         SearchHits searchHits = getSearchHits();
-       if (searchHits==null) {
-           return;
-       }
+        if (searchHits == null) {
+            return;
+        }
         searchHits.next();
         reDisplay();
 

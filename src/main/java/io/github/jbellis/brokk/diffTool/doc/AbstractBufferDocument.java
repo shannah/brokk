@@ -126,7 +126,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
         return (-searchIndex) - 1;
     }
 
-    public void read(){
+    public void read() {
         try {
             Reader reader;
 
@@ -300,7 +300,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     }
 
     public class Line
-            implements  Comparable<Line> {
+            implements Comparable<Line> {
         Element element;
 
         Line(Element element) {
@@ -319,8 +319,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
             System.out.printf("[%08d]: %s\n", getOffset(), replaceNewLines(toString()));
         }
 
-        public static String replaceNewLines(String text)
-        {
+        public static String replaceNewLines(String text) {
             return text.replaceAll("\n", "<LF>").replaceAll("\r", "<CR>");
         }
 
@@ -362,7 +361,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
         public String toString() {
             try {
                 return content.getString(element.getStartOffset(),
-                        element.getEndOffset() - element.getStartOffset());
+                                         element.getEndOffset() - element.getStartOffset());
             } catch (Exception ex) {
                 ex.printStackTrace();
                 return "";

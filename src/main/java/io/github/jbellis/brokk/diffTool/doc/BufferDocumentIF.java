@@ -23,7 +23,7 @@ public interface BufferDocumentIF {
 
     AbstractBufferDocument.Line[] getLines();
 
-  int getOffsetForLine(int lineNumber);
+    int getOffsetForLine(int lineNumber);
 
     int getLineForOffset(int offset);
 

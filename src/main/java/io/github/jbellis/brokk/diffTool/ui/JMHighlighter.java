@@ -1,9 +1,16 @@
 package io.github.jbellis.brokk.diffTool.ui;
 
-import javax.swing.text.*;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Document;
+import javax.swing.text.Highlighter;
+import javax.swing.text.JTextComponent;
+import javax.swing.text.Position;
 import java.awt.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class JMHighlighter implements Highlighter {
 
@@ -177,8 +184,16 @@ public class JMHighlighter implements Highlighter {
             this.painter = painter;
         }
 
-        public int getStartOffset() { return p0.getOffset(); }
-        public int getEndOffset() { return p1.getOffset(); }
-        public HighlightPainter getPainter() { return painter; }
+        public int getStartOffset() {
+            return p0.getOffset();
+        }
+
+        public int getEndOffset() {
+            return p1.getOffset();
+        }
+
+        public HighlightPainter getPainter() {
+            return painter;
+        }
     }
 }

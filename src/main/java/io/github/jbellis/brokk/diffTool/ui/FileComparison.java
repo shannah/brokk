@@ -84,7 +84,7 @@ public class FileComparison extends SwingWorker<String, Object> {
             return this;
         }
 
-        public FileComparisonBuilder withStringAndFile(File leftFile, String leftFileTitle,String contentRight, String contentRightTitle) {
+        public FileComparisonBuilder withStringAndFile(File leftFile, String leftFileTitle, String contentRight, String contentRightTitle) {
             if (isStringAndFileComparison) {
                 this.contentRight = contentRight;
                 this.contentRightTitle = contentRightTitle;
@@ -153,7 +153,6 @@ public class FileComparison extends SwingWorker<String, Object> {
         }
         return null;
     }
-
 
 
     public JMDiffNode create(String fileLeftName, File fileLeft,

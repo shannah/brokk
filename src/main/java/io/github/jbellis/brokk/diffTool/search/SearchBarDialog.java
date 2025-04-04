@@ -86,7 +86,6 @@ public class SearchBarDialog extends JPanel {
     }
 
 
-
     private void initButton(AbstractButton button) {
         button.setFocusable(false);
         button.setBorderPainted(false);

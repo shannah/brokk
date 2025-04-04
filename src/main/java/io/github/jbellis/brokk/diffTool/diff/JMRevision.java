@@ -5,8 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
-public class JMRevision
-{
+public class JMRevision {
     private static boolean incrementalUpdateActivated = false;
 
     private Object[] orgArray;
@@ -14,8 +13,7 @@ public class JMRevision
     private final LinkedList<JMDelta> deltaList;
     private Ignore ignore;
 
-    public JMRevision(Object[] orgArray, Object[] revArray)
-    {
+    public JMRevision(Object[] orgArray, Object[] revArray) {
         this.orgArray = orgArray;
         this.revArray = revArray;
 
@@ -24,24 +22,20 @@ public class JMRevision
         ignore = Ignore.NULL_IGNORE;
     }
 
-    public void setIgnore(Ignore ignore)
-    {
+    public void setIgnore(Ignore ignore) {
         this.ignore = ignore;
     }
 
-    public void add(JMDelta delta)
-    {
+    public void add(JMDelta delta) {
         deltaList.add(delta);
         delta.setRevision(this);
     }
 
-    public List<JMDelta> getDeltas()
-    {
+    public List<JMDelta> getDeltas() {
         return deltaList;
     }
 
-    public void update(Object[] oArray, Object[] rArray)
-    {
+    public void update(Object[] oArray, Object[] rArray) {
         this.orgArray = oArray;
         this.revArray = rArray;
     }
@@ -50,15 +44,13 @@ public class JMRevision
      * This solves a performance issue while editing one of the array's.
      */
     public boolean update(Object[] oArray, Object[] rArray, boolean original,
-                          int startLine, int numberOfLines)
-    {
+                          int startLine, int numberOfLines) {
         update(oArray, rArray);
         return incrementalUpdate(original, startLine, numberOfLines);
     }
 
     private boolean incrementalUpdate(boolean original, int startLine,
-                                      int numberOfLines)
-    {
+                                      int numberOfLines) {
         JMChunk chunk;
         List<JMDelta> deltaListToRemove;
         List<JMChunk> chunkListToChange;
@@ -74,26 +66,22 @@ public class JMRevision
         JMDelta firstDelta;
         int length;
 
-        if (!incrementalUpdateActivated)
-        {
+        if (!incrementalUpdateActivated) {
             return false;
         }
 
-        if (original)
-        {
+        if (original) {
             orgStartLine = startLine;
             orgEndLine = startLine + (Math.max(numberOfLines, 0)) + 1;
             revStartLine = DiffUtil.getRevisedLine(this, startLine);
             revEndLine = DiffUtil.getRevisedLine(this,
-                    startLine + (numberOfLines > 0 ? 0 : -numberOfLines)) + 1;
-        }
-        else
-        {
+                                                 startLine + (numberOfLines > 0 ? 0 : -numberOfLines)) + 1;
+        } else {
             revStartLine = startLine;
             revEndLine = startLine + (Math.max(numberOfLines, 0)) + 1;
             orgStartLine = DiffUtil.getOriginalLine(this, startLine);
             orgEndLine = DiffUtil.getOriginalLine(this,
-                    startLine + (numberOfLines > 0 ? 0 : -numberOfLines)) + 1;
+                                                  startLine + (numberOfLines > 0 ? 0 : -numberOfLines)) + 1;
         }
 
         System.out.println("orgStartLine=" + orgStartLine);
@@ -106,22 +94,18 @@ public class JMRevision
 
         // Find the delta's of this change!
         endLine = startLine + Math.abs(numberOfLines);
-        for (JMDelta delta : deltaList)
-        {
+        for (JMDelta delta : deltaList) {
             chunk = original ? delta.getOriginal() : delta.getRevised();
 
             // The change is above this Chunk! It will not change!
-            if (endLine < chunk.getAnchor() - 5)
-            {
+            if (endLine < chunk.getAnchor() - 5) {
                 continue;
             }
 
             // The change is below this chunk! The anchor of the chunk will be changed!
-            if (startLine > chunk.getAnchor() + chunk.getSize() + 5)
-            {
+            if (startLine > chunk.getAnchor() + chunk.getSize() + 5) {
                 // No need to change chunks if the numberoflines haven't changed.
-                if (numberOfLines != 0)
-                {
+                if (numberOfLines != 0) {
                     chunkListToChange.add(chunk);
                 }
                 continue;
@@ -134,22 +118,18 @@ public class JMRevision
 
             // Revise the start and end if there are overlapping chunks.
             chunk = delta.getOriginal();
-            if (chunk.getAnchor() < orgStartLine)
-            {
+            if (chunk.getAnchor() < orgStartLine) {
                 orgStartLine = chunk.getAnchor();
             }
-            if (chunk.getAnchor() + chunk.getSize() > orgEndLine)
-            {
+            if (chunk.getAnchor() + chunk.getSize() > orgEndLine) {
                 orgEndLine = chunk.getAnchor() + chunk.getSize();
             }
 
             chunk = delta.getRevised();
-            if (chunk.getAnchor() < revStartLine)
-            {
+            if (chunk.getAnchor() < revStartLine) {
                 revStartLine = chunk.getAnchor();
             }
-            if (chunk.getAnchor() + chunk.getSize() > revEndLine)
-            {
+            if (chunk.getAnchor() + chunk.getSize() > revEndLine) {
                 revEndLine = chunk.getAnchor() + chunk.getSize();
             }
         }
@@ -161,48 +141,39 @@ public class JMRevision
         length = Math.min(orgArray.length, orgEndLine) - orgStartLine;
         orgArrayDelta = new Object[length];
         System.arraycopy(orgArray, orgStartLine, orgArrayDelta, 0,
-                orgArrayDelta.length);
+                         orgArrayDelta.length);
 
         length = Math.min(revArray.length, revEndLine) - revStartLine;
         revArrayDelta = new Object[length];
         System.arraycopy(revArray, revStartLine, revArrayDelta, 0,
-                revArrayDelta.length);
+                         revArrayDelta.length);
 
-        try
-        {
-            for (int i = 0; i < orgArrayDelta.length; i++)
-            {
+        try {
+            for (int i = 0; i < orgArrayDelta.length; i++) {
                 System.out.println("  org[" + i + "]:" + orgArrayDelta[i]);
             }
-            for (int i = 0; i < revArrayDelta.length; i++)
-            {
+            for (int i = 0; i < revArrayDelta.length; i++) {
                 System.out.println("  rev[" + i + "]:" + revArrayDelta[i]);
             }
             deltaRevision = new JMDiff().diff(orgArrayDelta, revArrayDelta, ignore);
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             ex.printStackTrace();
             return false;
         }
 
         // OK, Make the changes now
-        if (!deltaListToRemove.isEmpty())
-        {
-            for (JMDelta delta : deltaListToRemove)
-            {
+        if (!deltaListToRemove.isEmpty()) {
+            for (JMDelta delta : deltaListToRemove) {
                 deltaList.remove(delta);
             }
         }
 
-        for (JMChunk c : chunkListToChange)
-        {
+        for (JMChunk c : chunkListToChange) {
             c.setAnchor(c.getAnchor() + numberOfLines);
         }
 
         // Prepare the diff's to be copied into this revision.
-        for (JMDelta delta : deltaRevision.deltaList)
-        {
+        for (JMDelta delta : deltaRevision.deltaList) {
             chunk = delta.getOriginal();
             chunk.setAnchor(chunk.getAnchor() + orgStartLine);
 
@@ -211,23 +182,19 @@ public class JMRevision
         }
 
         // Find insertion index point
-        if (!deltaRevision.deltaList.isEmpty())
-        {
+        if (!deltaRevision.deltaList.isEmpty()) {
             firstDelta = deltaRevision.deltaList.get(0);
             index = 0;
-            for (JMDelta delta : deltaList)
-            {
+            for (JMDelta delta : deltaList) {
                 if (delta.getOriginal().getAnchor() > firstDelta.getOriginal()
-                        .getAnchor())
-                {
+                        .getAnchor()) {
                     break;
                 }
 
                 index++;
             }
 
-            for (JMDelta diffDelta : deltaRevision.deltaList)
-            {
+            for (JMDelta diffDelta : deltaRevision.deltaList) {
                 diffDelta.setRevision(this);
                 deltaList.add(index, diffDelta);
                 index++;

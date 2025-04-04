@@ -7,7 +7,7 @@ public enum TypeDiff {
 
     final String description;
 
-    TypeDiff(String description){
+    TypeDiff(String description) {
         this.description = description;
     }
 
