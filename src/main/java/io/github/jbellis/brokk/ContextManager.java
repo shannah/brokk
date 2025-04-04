@@ -344,7 +344,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var modelName = Models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
         return submitAction("Code", input, () -> {
-            LLM.runSession(coder, io, model, input);
+            project.pauseAnalyzerRebuilds();
+            try {
+                LLM.runSession(coder, io, model, input);
+            } finally {
+                project.resumeAnalyzerRebuilds();
+            }
         });
     }
 

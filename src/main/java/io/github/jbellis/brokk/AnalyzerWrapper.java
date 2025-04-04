@@ -43,6 +43,7 @@ public class AnalyzerWrapper implements AutoCloseable {
     private final Project project;
 
     private volatile boolean running = true;
+    private volatile boolean paused = false;
 
     private volatile Future<IAnalyzer> future;
     private volatile IAnalyzer currentAnalyzer = null;
@@ -78,6 +79,11 @@ public class AnalyzerWrapper implements AutoCloseable {
 
             // Watche for events, debounces them, and handles them
             while (running) {
+                // Wait if paused
+                while (paused) {
+                    Thread.onSpinWait();
+                }
+
                 // Choose a short or long poll depending on focus
                 long pollTimeout = isApplicationFocused() ? POLL_TIMEOUT_FOCUSED_MS : POLL_TIMEOUT_UNFOCUSED_MS;
                 WatchKey key = watchService.poll(pollTimeout, TimeUnit.MILLISECONDS);
@@ -442,9 +448,22 @@ public class AnalyzerWrapper implements AutoCloseable {
         }
     }
 
+    /** Pause the file watching service. */
+    public synchronized void pause() {
+        logger.debug("Pausing file watcher");
+        paused = true;
+    }
+
+    /** Resume the file watching service. */
+    public synchronized void resume() {
+        logger.debug("Resuming file watcher");
+        paused = false;
+    }
+
     @Override
     public void close() {
         running = false;
+        resume(); // Ensure any waiting thread is woken up to exit
     }
 
     public record CodeWithSource(String code, Set<CodeUnit> sources) {

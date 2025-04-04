@@ -291,6 +291,14 @@ public class Project implements IProject, AutoCloseable {
         return repo instanceof GitRepo;
     }
 
+    public void pauseAnalyzerRebuilds() {
+        analyzerWrapper.pause();
+    }
+
+    public void resumeAnalyzerRebuilds() {
+        analyzerWrapper.resume();
+    }
+
     public enum CpgRefresh {
         AUTO,
         MANUAL,
@@ -723,13 +731,6 @@ public class Project implements IProject, AutoCloseable {
     @Override
     public IAnalyzer getAnalyzer() {
         return analyzerWrapper.get();
-    }
-
-    /**
-     * Gets the analyzer without blocking, may return null if not available
-     */
-    public IAnalyzer getAnalyzerNonBlocking() {
-        return analyzerWrapper.getNonBlocking();
     }
 
     // --- Static methods for managing projects.properties ---
