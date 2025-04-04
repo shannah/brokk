@@ -143,7 +143,7 @@ public final class GitUiUtil
 
                 SwingUtilities.invokeLater(() -> {
                     var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStrings(parentContent, parentCommitId, commitContent, commitId).build();
-                    brokkDiffPanel.showInDialog(cm, parent, dialogTitle);
+                    brokkDiffPanel.showInFrame(cm, dialogTitle);
                 });
             } catch (Exception ex) {
                 cm.getIo().toolErrorRaw("Error loading history diff: " + ex.getMessage());
@@ -353,7 +353,7 @@ public final class GitUiUtil
 
                 SwingUtilities.invokeLater(() -> {
                     var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString()).build();
-                    brokkDiffPanel.showInDialog(cm, parent, finalDialogTitle);
+                    brokkDiffPanel.showInFrame(cm, finalDialogTitle);
                 });
             } catch (Exception ex) {
                 cm.getIo().toolErrorRaw("Error loading compare-with-local diff: " + ex.getMessage());

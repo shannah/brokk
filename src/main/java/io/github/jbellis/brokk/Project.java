@@ -45,7 +45,6 @@ public class Project implements IProject, AutoCloseable {
     // --- Static paths ---
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
     private static final Path PROJECTS_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("projects.properties");
-    private static final Path LLM_KEYS_PATH = BROKK_CONFIG_DIR.resolve("keys.properties");
     private static final Path GLOBAL_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("brokk.properties");
 
     public Project(Path root, ContextManager.TaskRunner runner, AnalyzerListener analyzerListener) {
@@ -151,7 +150,7 @@ public class Project implements IProject, AutoCloseable {
     @Override
     public Set<ProjectFile> getFiles() {
         var trackedFiles = repo.getTrackedFiles();
-        var allFiles = new java.util.HashSet<ProjectFile>(trackedFiles);
+        var allFiles = new java.util.HashSet<>(trackedFiles);
         allFiles.addAll(dependencyFiles);
         return allFiles;
     }
@@ -469,40 +468,12 @@ public class Project implements IProject, AutoCloseable {
     }
 
     /**
-     * Returns the LLM API keys stored in ~/.config/brokk/keys.properties
-     * @return Map of key names to values, or empty map if file doesn't exist
-     */
-    public Map<String, String> getLlmKeys() {
-        Map<String, String> keys = new HashMap<>();
-        var keysPath = getLlmKeysPath();
-
-        if (Files.exists(keysPath)) {
-            try (var reader = Files.newBufferedReader(keysPath)) {
-                Properties keyProps = new Properties();
-                keyProps.load(reader);
-                for (String name : keyProps.stringPropertyNames()) {
-                    keys.put(name, keyProps.getProperty(name));
-                }
-            } catch (IOException e) {
-                logger.error("Error loading LLM keys: {}", e.getMessage());
-            }
-        }
-
-        return keys;
-    }
-
-    public static Path getLlmKeysPath() {
-        return LLM_KEYS_PATH;
-    }
-
-    /**
      * Save a window's position and size
      * @param key identifier for the window
      * @param window the window to save position for
      */
     public void saveWindowBounds(String key, JFrame window) {
-        if (window == null || !window.isDisplayable() ||
-                window.getExtendedState() != java.awt.Frame.NORMAL) {
+        if (window == null || !window.isDisplayable()) {
             return;
         }
 
@@ -513,6 +484,7 @@ public class Project implements IProject, AutoCloseable {
             node.put("width", window.getWidth());
             node.put("height", window.getHeight());
 
+            logger.debug("Saving {} bounds as {}", key, node);
             workspaceProps.setProperty(key, objectMapper.writeValueAsString(node));
             saveWorkspaceProperties();
         } catch (Exception e) {
@@ -532,6 +504,7 @@ public class Project implements IProject, AutoCloseable {
 
         try {
             String json = workspaceProps.getProperty(key);
+            logger.debug("Loading {} bounds from {}", key, json);
             if (json != null) {
                 var node = objectMapper.readValue(json, ObjectNode.class);
 
@@ -590,23 +563,8 @@ public class Project implements IProject, AutoCloseable {
     /**
      * Save diff window bounds
      */
-    public void saveDiffWindowBounds(JDialog dialog) {
-        if (dialog == null || !dialog.isDisplayable()) {
-            return;
-        }
-
-        try {
-            var node = objectMapper.createObjectNode();
-            node.put("x", dialog.getX());
-            node.put("y", dialog.getY());
-            node.put("width", dialog.getWidth());
-            node.put("height", dialog.getHeight());
-
-            workspaceProps.setProperty("diffFrame", objectMapper.writeValueAsString(node));
-            saveWorkspaceProperties();
-        } catch (Exception e) {
-            logger.error("Error saving diff window bounds: {}", e.getMessage());
-        }
+    public void saveDiffWindowBounds(JFrame frame) {
+        saveWindowBounds("diffFrame", frame);
     }
 
     /**
@@ -707,18 +665,6 @@ public class Project implements IProject, AutoCloseable {
         var props = loadGlobalProperties();
         props.setProperty("theme", theme);
         saveGlobalProperties(props);
-    }
-
-    public void saveLlmKeys(Map<String, String> keys) {
-        var keysPath = getLlmKeysPath();
-
-        try {
-            Properties keyProps = new Properties();
-            keys.forEach(keyProps::setProperty);
-            AtomicWrites.atomicSaveProperties(keysPath, keyProps, "Brokk LLM API keys");
-        } catch (IOException e) {
-            logger.error("Error saving LLM keys: {}", e.getMessage());
-        }
     }
 
     public void rebuildAnalyzer() {
