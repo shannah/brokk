@@ -47,7 +47,7 @@ public class GitPanel extends JPanel {
 
 
     // Reference to the extracted Log tab
-    private GitLogPanel gitLogPanel;  // The separate class
+    private GitLogTab gitLogTab;  // The separate class
 
     /**
      * Constructor for the Git panel
@@ -94,15 +94,15 @@ public class GitPanel extends JPanel {
         tabbedPane.addTab("Commit", commitTab);
 
         // 2) Log tab (moved into GitLogPanel)
-        gitLogPanel = new GitLogPanel(chrome, contextManager);
-        tabbedPane.addTab("Log", gitLogPanel);
+        gitLogTab = new GitLogTab(chrome, contextManager);
+        tabbedPane.addTab("Log", gitLogTab);
     }
 
     /**
      * Updates repository data in the UI
      */
     public void updateRepo() {
-        SwingUtilities.invokeLater(() -> gitLogPanel.update());
+        SwingUtilities.invokeLater(() -> gitLogTab.update());
     }
 
     /**
@@ -323,7 +323,7 @@ public class GitPanel extends JPanel {
                         }
                         commitMessageArea.setText("");
                         updateCommitPanel();
-                        gitLogPanel.update(); // Update to show new stash in the virtual "stashes" branch
+                        gitLogTab.update(); // Update to show new stash in the virtual "stashes" branch
                         chrome.enableUserActionButtons();
                      });
                  } catch (Exception ex) {
@@ -371,9 +371,9 @@ public class GitPanel extends JPanel {
                         commitMessageArea.setText("");
                         updateCommitPanel();
                         // The GitLogPanel can refresh branches/commits:
-                        gitLogPanel.update();
+                        gitLogTab.update();
                         // Select the newly checked out branch in the log panel
-                        gitLogPanel.selectCurrentBranch();
+                        gitLogTab.selectCurrentBranch();
                         chrome.enableUserActionButtons();
                     });
                 } catch (Exception ex) {
@@ -858,7 +858,7 @@ public class GitPanel extends JPanel {
         }
 
         // Find and select the commit in gitLogPanel
-        gitLogPanel.selectCommitById(commitId);
+        gitLogTab.selectCommitById(commitId);
     }
 
     private void loadFileHistory(ProjectFile file, DefaultTableModel model, JTable table) {

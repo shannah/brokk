@@ -35,11 +35,11 @@ import java.util.stream.Collectors;
  * - Tree of changed files (per commit)
  * - Search functionality
  */
-public class GitLogPanel extends JPanel {
+public class GitLogTab extends JPanel {
 
     // Methods to expose to GitPanel for finding and selecting commits by ID
 
-    private static final Logger logger = LogManager.getLogger(GitLogPanel.class);
+    private static final Logger logger = LogManager.getLogger(GitLogTab.class);
 
     private final Chrome chrome;
     private final ContextManager contextManager;
@@ -66,7 +66,7 @@ public class GitLogPanel extends JPanel {
     /**
      * Constructor. Builds and arranges the UI components for the Log tab.
      */
-    public GitLogPanel(Chrome chrome, ContextManager contextManager) {
+    public GitLogTab(Chrome chrome, ContextManager contextManager) {
         super(new BorderLayout());
         this.chrome = chrome;
         this.contextManager = contextManager;
@@ -90,7 +90,7 @@ public class GitLogPanel extends JPanel {
 
                         String shortHash = (commitId + "^").substring(0, Math.min(commitId.length() + 1, 7));
                         String title = String.format("Diff: %s [Local vs %s]", repoFile.getFileName(), shortHash);
-                        diffPanel.showInDialog(GitLogPanel.this, title);
+                        diffPanel.showInDialog(GitLogTab.this, title);
                     });
                 }
             } catch (Exception ex) {
@@ -1138,7 +1138,7 @@ public class GitLogPanel extends JPanel {
 
                         String shortHash = commitId.length() >= 7 ? commitId.substring(0, 7) : commitId;
                         String title = String.format("Diff: %s [Local vs %s]", repoFile.getFileName(), shortHash);
-                        diffPanel.showInDialog(GitLogPanel.this, title);
+                        diffPanel.showInDialog(GitLogTab.this, title);
                     });
                 }
             } catch (Exception ex) {
