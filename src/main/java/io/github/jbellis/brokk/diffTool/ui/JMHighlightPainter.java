@@ -47,9 +47,9 @@ public class JMHighlightPainter extends DefaultHighlighter.DefaultHighlightPaint
         DELETED_LINE.initConfiguration();
         DELETED_NEWLINE = new JMHighlightNewLinePainter(Colors.DELETED);
         DELETED_NEWLINE.initConfiguration();
-        SEARCH = new JMHighlightPainter(Color.yellow);
+        SEARCH = new JMHighlightPainter(Colors.SEARCH);
         SEARCH.initConfiguration();
-        CURRENT_SEARCH = new JMHighlightPainter(Color.yellow.darker());
+        CURRENT_SEARCH = new JMHighlightPainter(Colors.CURRENT_SEARCH);
         CURRENT_SEARCH.initConfiguration();
     }
 
