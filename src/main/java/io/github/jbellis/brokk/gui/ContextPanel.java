@@ -3,8 +3,8 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -243,7 +243,9 @@ public class ContextPanel extends JPanel {
                                     int selectedRow = contextTable.getSelectedRow();
                                     if (selectedRow >= 0) {
                                         var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
-                                        if (selectedFragment instanceof ContextFragment.RepoPathFragment(ProjectFile f)) {
+                                        if (selectedFragment instanceof ContextFragment.RepoPathFragment(
+                                                ProjectFile f
+                                        )) {
                                             chrome.getGitPanel().addFileHistoryTab(f);
                                         }
                                     }
@@ -305,14 +307,14 @@ public class ContextPanel extends JPanel {
                             chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
                         });
                         contextMenu.add(copySelectionItem);
-                        
+
                         JMenuItem dropSelectionItem = new JMenuItem("Drop");
                         dropSelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
                             chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, selectedFragments);
                         });
                         contextMenu.add(dropSelectionItem);
-                        
+
                         if (!contextManager.selectedContext().equals(contextManager.topContext())) {
                             dropSelectionItem.setEnabled(false);
                         } else if (contextTable.getSelectedRowCount() == 1 && fragment instanceof ContextFragment.AutoContext) {
@@ -350,8 +352,8 @@ public class ContextPanel extends JPanel {
 
         JMenuItem editMenuItem = new JMenuItem("Edit Files");
         editMenuItem.addActionListener(e -> {
-                                           chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, List.of());
-                                       });
+            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, List.of());
+        });
         // Only add Edit Files when git is present
         if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
             addMenu.add(editMenuItem);
@@ -359,32 +361,32 @@ public class ContextPanel extends JPanel {
 
         JMenuItem readMenuItem = new JMenuItem("Read Files");
         readMenuItem.addActionListener(e -> {
-                                           chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.READ, List.of());
-                                       });
+            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.READ, List.of());
+        });
         addMenu.add(readMenuItem);
 
         JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
         summarizeMenuItem.addActionListener(e -> {
-                                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.SUMMARIZE, List.of());
-                                            });
+            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.SUMMARIZE, List.of());
+        });
         addMenu.add(summarizeMenuItem);
 
         JMenuItem symbolMenuItem = new JMenuItem("Symbol Usage");
         symbolMenuItem.addActionListener(e -> {
-                                             chrome.currentUserTask = contextManager.findSymbolUsageAsync();
-                                         });
+            chrome.currentUserTask = contextManager.findSymbolUsageAsync();
+        });
         addMenu.add(symbolMenuItem);
 
         JMenuItem callersMenuItem = new JMenuItem("Callers");
         callersMenuItem.addActionListener(e -> {
-                                              chrome.currentUserTask = contextManager.findMethodCallersAsync();
-                                          });
+            chrome.currentUserTask = contextManager.findMethodCallersAsync();
+        });
         addMenu.add(callersMenuItem);
 
         JMenuItem calleesMenuItem = new JMenuItem("Callees");
         calleesMenuItem.addActionListener(e -> {
-                                              chrome.currentUserTask = contextManager.findMethodCalleesAsync();
-                                          });
+            chrome.currentUserTask = contextManager.findMethodCalleesAsync();
+        });
         addMenu.add(calleesMenuItem);
 
         tablePopupMenu.add(addMenu);
@@ -399,14 +401,14 @@ public class ContextPanel extends JPanel {
 
         JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
         copyAllMenuItem.addActionListener(e -> {
-                                              chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, List.of());
-                                          });
+            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, List.of());
+        });
         tablePopupMenu.add(copyAllMenuItem);
 
         JMenuItem pasteMenuItem = new JMenuItem("Paste");
         pasteMenuItem.addActionListener(e -> {
-                                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
-                                        });
+            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
+        });
         tablePopupMenu.add(pasteMenuItem);
 
         // Register the popup menu with the theme manager
@@ -450,7 +452,7 @@ public class ContextPanel extends JPanel {
         var tablePanel = new JPanel(new BorderLayout());
         var tableScrollPane = new JScrollPane(contextTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         tableScrollPane.setPreferredSize(new Dimension(600, 150));
-        
+
         // Add a mouse listener to the scroll pane for right-clicks on empty areas
         tableScrollPane.addMouseListener(new MouseAdapter() {
             @Override
@@ -466,9 +468,9 @@ public class ContextPanel extends JPanel {
             private void handleScrollPanePopup(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     // Get the event point in view coordinates
-                    Point viewPoint = SwingUtilities.convertPoint(tableScrollPane, e.getPoint(), 
-                                                                 tableScrollPane.getViewport().getView());
-                    
+                    Point viewPoint = SwingUtilities.convertPoint(tableScrollPane, e.getPoint(),
+                                                                  tableScrollPane.getViewport().getView());
+
                     // If the click is in the table and on a row, let the table's listener handle it
                     if (contextTable.getRowCount() > 0) {
                         int row = contextTable.rowAtPoint(viewPoint);
@@ -476,13 +478,13 @@ public class ContextPanel extends JPanel {
                             return;
                         }
                     }
-                    
+
                     // Otherwise show the table popup menu
                     tablePopupMenu.show(tableScrollPane, e.getX(), e.getY());
                 }
             }
         });
-        
+
         tablePanel.add(tableScrollPane, BorderLayout.CENTER);
 
         setLayout(new BorderLayout());
@@ -490,7 +492,7 @@ public class ContextPanel extends JPanel {
         add(tablePanel, BorderLayout.CENTER);
 
         add(contextSummaryPanel, BorderLayout.SOUTH);
-        
+
         tableScrollPane.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -704,14 +706,13 @@ public class ContextPanel extends JPanel {
      * Table cell renderer for displaying file references.
      */
     public static class FileReferencesTableCellRenderer implements TableCellRenderer {
-
         public FileReferencesTableCellRenderer() {
         }
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
-                                                     boolean isSelected, boolean hasFocus,
-                                                     int row, int column) {
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
             // Convert the value to a list of FileReferenceData
             List<FileReferenceList.FileReferenceData> fileRefs = convertToFileReferences(value);
 
@@ -748,7 +749,7 @@ public class ContextPanel extends JPanel {
 
             if (value instanceof List) {
                 return (List<FileReferenceList.FileReferenceData>) value;
-            }  else {
+            } else {
                 throw new IllegalArgumentException("Input is not supported for FileReferencesTableCellRenderer. Expected List<FileReferenceData>");
             }
         }
@@ -860,8 +861,8 @@ public class ContextPanel extends JPanel {
                     g2d.setStroke(new BasicStroke(BORDER_THICKNESS));
 
                     // Draw rounded rectangle border only
-                    g2d.draw(new RoundRectangle2D.Float(BORDER_THICKNESS/2, BORDER_THICKNESS/2,
-                                                        getWidth()-BORDER_THICKNESS, getHeight()-BORDER_THICKNESS,
+                    g2d.draw(new RoundRectangle2D.Float(BORDER_THICKNESS / 2, BORDER_THICKNESS / 2,
+                                                        getWidth() - BORDER_THICKNESS, getHeight() - BORDER_THICKNESS,
                                                         BADGE_ARC_WIDTH, BADGE_ARC_WIDTH));
 
                     g2d.dispose();
@@ -896,9 +897,17 @@ public class ContextPanel extends JPanel {
             }
 
             // Getters
-            public String getFileName() { return fileName; }
-            public String getFullPath() { return fullPath; }
-            public ProjectFile getRepoFile() { return projectFile; }
+            public String getFileName() {
+                return fileName;
+            }
+
+            public String getFullPath() {
+                return fullPath;
+            }
+
+            public ProjectFile getRepoFile() {
+                return projectFile;
+            }
 
             @Override
             public String toString() {
