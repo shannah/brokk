@@ -1,7 +1,8 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.*; // Import Models class
+import io.github.jbellis.brokk.IConsoleIO;
+import io.github.jbellis.brokk.LLM;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
@@ -19,6 +20,7 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -39,6 +41,7 @@ public class PreviewPanel extends JPanel
     private final JTextField searchField;
     private final JButton nextButton;
     private final JButton previousButton;
+    private JButton editButton; // Added Edit File button
     private final ContextManager contextManager;
 
     // Theme manager reference
@@ -61,16 +64,40 @@ public class PreviewPanel extends JPanel
         this.themeManager = guiTheme;
         this.file = file;
 
-        // === Top search bar ===
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        // === Top search/action bar ===
+        JPanel topPanel = new JPanel(new BorderLayout(8, 4)); // Use BorderLayout
+        JPanel searchControlsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); // Panel for search items
+
         searchField = new JTextField(20);
         nextButton = new JButton("↓");
         previousButton = new JButton("↑");
 
-        searchPanel.add(new JLabel("Search:"));
-        searchPanel.add(searchField);
-        searchPanel.add(previousButton);
-        searchPanel.add(nextButton);
+        searchControlsPanel.add(new JLabel("Search:"));
+        searchControlsPanel.add(searchField);
+        searchControlsPanel.add(previousButton);
+        searchControlsPanel.add(nextButton);
+
+        topPanel.add(searchControlsPanel, BorderLayout.CENTER); // Search controls on the left/center
+
+        // Edit button panel (conditionally added)
+        editButton = null; // Initialize to null
+        if (file != null) {
+            JPanel editButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0)); // Panel to align button right
+            editButton = new JButton("Edit File");
+
+            if (contextManager.getEditableFiles().contains(file)) {
+                editButton.setEnabled(false);
+                editButton.setToolTipText("File is in Edit context");
+            } else {
+                editButton.addActionListener(e -> {
+                    contextManager.editFiles(java.util.List.of(this.file));
+                    editButton.setEnabled(false);
+                    editButton.setToolTipText("File is in Edit context");
+                });
+            }
+            editButtonPanel.add(editButton);
+            topPanel.add(editButtonPanel, BorderLayout.EAST);
+        }
 
         // === Text area with syntax highlighting ===
         textArea = new PreviewTextArea(content, syntaxStyle);
@@ -84,8 +111,8 @@ public class PreviewPanel extends JPanel
             guiTheme.applyCurrentThemeToComponent(textArea);
         }
 
-        // Add top search panel + text area to this panel
-        add(searchPanel, BorderLayout.NORTH);
+        // Add top panel (search + edit) + text area to this panel
+        add(topPanel, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
 
         // === Hook up the search as you type ===
@@ -162,6 +189,53 @@ public class PreviewPanel extends JPanel
     }
 
     /**
+     * Displays a non-modal preview dialog for the given project file.
+     *
+     * @param parentFrame    The parent frame.
+     * @param contextManager The context manager.
+     * @param file           The project file to preview.
+     * @param syntaxStyle    The syntax style (e.g., SyntaxConstants.SYNTAX_STYLE_JAVA).
+     * @param guiTheme       The GUI theme manager.
+     */
+    public static void showInFrame(JFrame parentFrame, ContextManager contextManager, ProjectFile file, String syntaxStyle, GuiTheme guiTheme) {
+        try {
+            String content = file.read();
+            String title = "View File: " + file;
+            PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxStyle, guiTheme);
+            showFrame(contextManager, title, previewPanel);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(parentFrame, "Error reading file: " + ex.getMessage(), "File Read Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    public static void showFrame(ContextManager contextManager, String title, PreviewPanel previewPanel) {
+        JFrame frame = new JFrame(title);
+        frame.setContentPane(previewPanel);
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+
+        var project = contextManager.getProject();
+        assert project != null;
+        var storedBounds = project.getPreviewWindowBounds();
+        if (storedBounds != null) {
+            frame.setBounds(storedBounds);
+        }
+
+        // Add listener to save bounds
+        frame.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e) {
+                project.savePreviewWindowBounds(frame); // Save JFrame bounds
+            }
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                project.savePreviewWindowBounds(frame); // Save JFrame bounds
+            }
+        });
+
+        frame.setVisible(true);
+    }
+
+    /**
      * Updates the theme of this panel
      * @param guiTheme The theme manager to use
      */
@@ -170,7 +244,7 @@ public class PreviewPanel extends JPanel
             guiTheme.applyCurrentThemeToComponent(textArea);
         }
     }
-    
+
     /**
      * Constructs a new PreviewPanel with the given content and syntax style.
      *
@@ -353,7 +427,7 @@ public class PreviewPanel extends JPanel
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW
         );
-        
+
         // Set Code as the default button (triggered by Enter key)
         quickEditDialog.getRootPane().setDefaultButton(codeButton);
 
@@ -422,10 +496,10 @@ public class PreviewPanel extends JPanel
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
         systemArea.setText("Request sent.");
-        
+
         // Set the same width as the quick edit dialog
         systemScrollPane.setPreferredSize(new Dimension(400, 200));
-        
+
         // Set the same width as the quick edit dialog
         systemScrollPane.setPreferredSize(new Dimension(400, 200));
 
@@ -524,7 +598,7 @@ public class PreviewPanel extends JPanel
 
         resultsDialog.setVisible(true);
     }
-    
+
     /**
      * Registers ESC key to first clear search highlights if search field has focus,
      * otherwise close the preview panel
@@ -547,7 +621,7 @@ public class PreviewPanel extends JPanel
                 textArea.requestFocusInWindow();
             }
         });
-        
+
         // Add ESC handler to panel to close window when search is not focused
         getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(escapeKeyStroke, "closePreview");
         getActionMap().put("closePreview", new AbstractAction() {
@@ -566,7 +640,7 @@ public class PreviewPanel extends JPanel
 
     /**
      * Called whenever the user types in the search field, to highlight all matches (case-insensitive).
-     * 
+     *
      * @param jumpToFirst If true, jump to the first occurrence; if false, maintain current position
      */
     private void updateSearchHighlights(boolean jumpToFirst)
@@ -605,7 +679,7 @@ public class PreviewPanel extends JPanel
             }
         }
     }
-    
+
     /**
      * Centers the current match in the viewport
      */

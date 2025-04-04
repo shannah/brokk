@@ -513,46 +513,28 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * @param fragment   The fragment to preview
      * @param syntaxType The syntax highlighting style to use
      */
+    /**
+     * Opens a preview window for a context fragment.
+     * For RepoPathFragments with a ProjectFile, uses showInDialog; otherwise, it calls showDialog.
+     *
+     * @param fragment   The fragment to preview.
+     * @param syntaxType The syntax highlighting style to use.
+     */
     public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
-        String content;
         try {
-            content = fragment.text();
-        } catch (IOException e) {
-            systemOutput("Error reading fragment: " + e.getMessage());
-            return;
-        }
-
-        var frame = new JFrame("Preview: " + fragment.shortDescription());
-        var previewPanel = new PreviewPanel(contextManager,
-                                            fragment instanceof ContextFragment.RepoPathFragment(ProjectFile file) ? file : null,
-                                            content,
-                                            syntaxType,
-                                            themeManager);
-        frame.setContentPane(previewPanel);
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-
-        var project = contextManager.getProject();
-        var storedBounds = project.getPreviewWindowBounds();
-        if (storedBounds != null) {
-            frame.setBounds(storedBounds);
-        } else {
-            frame.setSize(800, 600);
-            frame.setLocationRelativeTo(this.getFrame());
-        }
-
-        frame.addComponentListener(new java.awt.event.ComponentAdapter() {
-            @Override
-            public void componentMoved(java.awt.event.ComponentEvent e) {
-                project.savePreviewWindowBounds(frame);
+            if (fragment instanceof ContextFragment.RepoPathFragment(ProjectFile file)) {
+                PreviewPanel.showInFrame(frame, contextManager, file, syntaxType, themeManager);
+            } else {
+                String content = fragment.text();
+                String title = "Preview: " + fragment.description();
+                PreviewPanel previewPanel = new PreviewPanel(contextManager, null, content, syntaxType, themeManager);
+                PreviewPanel.showFrame(contextManager, title, previewPanel);
             }
-
-            @Override
-            public void componentResized(java.awt.event.ComponentEvent e) {
-                project.savePreviewWindowBounds(frame);
-            }
-        });
-
-        frame.setVisible(true);
+        } catch (IOException ex) {
+            toolErrorRaw("Error reading fragment content: " + ex.getMessage());
+        } catch (Exception ex) {
+            toolErrorRaw("Error opening preview: " + ex.getMessage());
+        }
     }
 
     private void loadWindowSizeAndPosition() {

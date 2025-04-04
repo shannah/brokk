@@ -2,8 +2,10 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.dialogs.PreviewPanel; // Added import
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.util.Decompiler;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import java.awt.*;
@@ -184,6 +186,50 @@ public class MenuBar {
         });
         summarizeFilesItem.setEnabled(hasProject);
         contextMenu.add(summarizeFilesItem);
+
+        var viewFileItem = new JMenuItem("View File");
+        viewFileItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        viewFileItem.addActionListener(e -> {
+            assert chrome.getContextManager() != null;
+            assert chrome.getProject() != null;
+            var cm = chrome.getContextManager();
+            var project = cm.getProject();
+
+            // Use a simplified FileSelectionDialog for viewing
+            SwingUtilities.invokeLater(() -> {
+                // Autocomplete with all project files, transforming Set<ProjectFile> to List<Path>
+                var allFilesFuture = cm.submitBackgroundTask("Fetching project files", () -> {
+                    return project.getFiles().stream()
+                           .map(io.github.jbellis.brokk.analyzer.BrokkFile::absPath)
+                           .toList();
+                });
+
+                FileSelectionDialog dialog = new FileSelectionDialog(
+                        chrome.getFrame(),
+                        project,
+                        "Select File to View",
+                        false, // Don't allow external files
+                        f -> true, // Allow all files/directories in tree
+                        allFilesFuture
+                );
+                dialog.setVisible(true);
+
+                if (dialog.isConfirmed() && dialog.getSelectedFile() != null) {
+                    var selectedBrokkFile = dialog.getSelectedFile();
+            if (selectedBrokkFile instanceof io.github.jbellis.brokk.analyzer.ProjectFile selectedFile) {
+                // Use the static method in PreviewPanel
+                PreviewPanel.showInFrame(chrome.getFrame(), cm, selectedFile, SyntaxConstants.SYNTAX_STYLE_JAVA, chrome.themeManager);
+            } else {
+                // Handle case where selected file is not a ProjectFile (e.g., external file if allowExternalFiles was true)
+                chrome.toolErrorRaw("Cannot view non-project files this way.");
+            }
+                }
+            });
+        });
+        viewFileItem.setEnabled(hasProject);
+        contextMenu.add(viewFileItem);
+
+        contextMenu.addSeparator(); // Add separator before Symbol Usage
 
         var symbolUsageItem = new JMenuItem("Symbol Usage");
         symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
