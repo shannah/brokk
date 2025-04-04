@@ -7,9 +7,7 @@ import io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
-import java.awt.*;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -92,7 +90,7 @@ public final class GitUiUtil
             ContextManager contextManager,
             Chrome chrome,
             String commitId,
-            String filePath
+            ProjectFile file
     ) {
         var repo = contextManager.getProject().getRepo();
         if (repo == null) {
@@ -101,14 +99,13 @@ public final class GitUiUtil
         }
         contextManager.submitContextTask("Adding file change to context", () -> {
             try {
-                var file = new ProjectFile(contextManager.getRoot(), filePath);
-                var diff = repo.showFileDiff("HEAD", commitId, file);
+                var diff = repo.showFileDiff(commitId + "^", commitId, file);
                 if (diff.isEmpty()) {
-                    chrome.systemOutput("No changes found for " + filePath);
+                    chrome.systemOutput("No changes found for " + file.getFileName());
                     return;
                 }
                 var shortHash = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
-                var description = "Diff of %s [%s]".formatted(Path.of(filePath).getFileName(), shortHash);
+                var description = "Diff of %s [%s]".formatted(file.getFileName(), shortHash);
                 var fragment = new ContextFragment.StringFragment(diff, description);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added changes for " + file.getFileName() + " to context");

@@ -146,7 +146,7 @@ public class GitHistoryTab extends JPanel {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
                 String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                GitUiUtil.addFileChangeToContext(contextManager, chrome, commitId, getFilePath());
+                GitUiUtil.addFileChangeToContext(contextManager, chrome, commitId, file);
             }
         });
 
