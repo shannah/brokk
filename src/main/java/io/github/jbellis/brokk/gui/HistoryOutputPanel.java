@@ -31,9 +31,7 @@ public class HistoryOutputPanel extends JPanel {
     // Output components
     private MarkdownOutputPanel llmStreamArea;
     private JScrollPane llmScrollPane;
-    private JTextArea systemArea;
-    private JScrollPane systemScrollPane;
-    private JLabel commandResultLabel; // Added from InstructionsPanel
+    // systemArea, systemScrollPane, commandResultLabel removed
     private JTextArea captureDescriptionArea;
     private JButton copyButton;
 
@@ -48,8 +46,7 @@ public class HistoryOutputPanel extends JPanel {
         this.chrome = chrome;
         this.contextManager = contextManager;
 
-        // Initialize command result label
-        commandResultLabel = buildCommandResultLabel();
+        // commandResultLabel initialization removed
 
         // Build Output components (Center)
         var centerPanel = buildCenterOutputPanel();
@@ -70,13 +67,8 @@ public class HistoryOutputPanel extends JPanel {
         // Build capture output panel
         var capturePanel = buildCaptureOutputPanel();
 
-        // Build system messages area
-        systemScrollPane = buildSystemMessagesArea();
-
-        // Create a panel to hold system messages and the command result label
-        var topInfoPanel = new JPanel(new BorderLayout());
-        topInfoPanel.add(systemScrollPane, BorderLayout.CENTER);
-        topInfoPanel.add(commandResultLabel, BorderLayout.SOUTH);
+        // systemScrollPane removed
+        // topInfoPanel removed
 
         // Output panel with LLM stream
         var outputPanel = new JPanel(new BorderLayout());
@@ -90,10 +82,10 @@ public class HistoryOutputPanel extends JPanel {
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
         outputPanel.add(capturePanel, BorderLayout.SOUTH); // Add capture panel below LLM output
 
-        // Container for the center section (Top Info + Output)
+        // Container for the center section (just the outputPanel now)
         var centerContainer = new JPanel(new BorderLayout());
-        centerContainer.add(topInfoPanel, BorderLayout.NORTH); // System messages + command result at the top
-        centerContainer.add(outputPanel, BorderLayout.CENTER); // Output takes the remaining space
+        // Removed topInfoPanel
+        centerContainer.add(outputPanel, BorderLayout.CENTER); // Output takes the entire space
         centerContainer.setMinimumSize(new Dimension(200, 0)); // Minimum width for output area
 
         return centerContainer;
@@ -371,42 +363,9 @@ public class HistoryOutputPanel extends JPanel {
         return jsp;
     }
 
-    /**
-     * Builds the system messages area that appears below the LLM output area.
-     */
-    private JScrollPane buildSystemMessagesArea() {
-        // Create text area for system messages
-        systemArea = new JTextArea();
-        systemArea.setEditable(false);
-        systemArea.getCaret().setVisible(false); // Hide the edit caret
-        systemArea.setLineWrap(true);
-        systemArea.setWrapStyleWord(true);
-        systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        systemArea.setRows(4);
+    // buildSystemMessagesArea removed
 
-        // Create scroll pane with border and title
-        var scrollPane = new JScrollPane(systemArea);
-        scrollPane.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "System Messages",
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)
-        ));
-        new SmartScroll(scrollPane);
-
-        return scrollPane;
-    }
-
-    /**
-     * Builds the command result label.
-     */
-    private JLabel buildCommandResultLabel() {
-        var label = new JLabel(" "); // Start with a space to ensure height
-        label.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        label.setBorder(new EmptyBorder(2, 5, 2, 5)); // Padding
-        return label;
-    }
+    // buildCommandResultLabel removed
 
     /**
      * Builds the "Capture Output" panel with a horizontal layout:
@@ -521,21 +480,7 @@ public class HistoryOutputPanel extends JPanel {
         llmStreamArea.clear();
     }
 
-    /**
-     * Appends text to the system output area with timestamp
-     */
-    public void appendSystemOutput(String message) {
-        // Format timestamp as HH:MM
-        String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-
-        // Add newline if needed
-        if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
-            systemArea.append("\n");
-        }
-
-        // Append timestamped message
-        systemArea.append(timestamp + ": " + message);
-    }
+    // appendSystemOutput removed
 
     /**
      * Sets the enabled state of the copy text button
@@ -559,19 +504,9 @@ public class HistoryOutputPanel extends JPanel {
         return llmScrollPane;
     }
 
-    /**
-     * Sets the text of the command result label.
-     */
-    public void setCommandResultText(String text) {
-        commandResultLabel.setText(text);
-    }
+    // setCommandResultText removed
 
-    /**
-     * Clears the text of the command result label.
-     */
-    public void clearCommandResultText() {
-        commandResultLabel.setText(" "); // Set back to space to maintain height
-    }
+    // clearCommandResultText removed
 
     /**
      * Inner class representing a detached window for viewing output text

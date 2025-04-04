@@ -17,6 +17,7 @@ import java.util.List;
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
  * mic button, model dropdown, and the action buttons.
+ * It also includes the system messages and command result areas.
  * All initialization and action code related to these components has been moved here.
  */
 public class InstructionsPanel extends JPanel {
@@ -26,7 +27,6 @@ public class InstructionsPanel extends JPanel {
     private static final int TRUNCATION_LENGTH = 100;    // Characters
 
     private final Chrome chrome;
-    // commandResultLabel removed - moved to HistoryOutputPanel
     private final RSyntaxTextArea commandInputField;
     private final JComboBox<String> modelDropdown;
     private final VoiceInputButton micButton;
@@ -35,6 +35,9 @@ public class InstructionsPanel extends JPanel {
     private final JButton searchButton;
     private final JButton runButton;
     private final JButton stopButton;
+    private final JTextArea systemArea; // Moved from HistoryOutputPanel
+    private final JScrollPane systemScrollPane; // Moved from HistoryOutputPanel
+    private final JLabel commandResultLabel; // Moved from HistoryOutputPanel
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2)); // Main layout is BorderLayout
@@ -47,7 +50,6 @@ public class InstructionsPanel extends JPanel {
         this.chrome = chrome;
 
         // Initialize components
-        // commandResultLabel initialization removed
         commandInputField = buildCommandInputField();
         modelDropdown = new JComboBox<>();
         micButton = new VoiceInputButton(
@@ -56,6 +58,9 @@ public class InstructionsPanel extends JPanel {
                 () -> chrome.actionOutput("Recording"),
                 chrome::toolError
         );
+        systemArea = new JTextArea(); // Initialize moved component
+        systemScrollPane = buildSystemMessagesArea(); // Initialize moved component
+        commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
         // Initialize Buttons first
         codeButton = new JButton("Code");
@@ -86,12 +91,9 @@ public class InstructionsPanel extends JPanel {
         JPanel topBarPanel = buildTopBarPanel();
         add(topBarPanel, BorderLayout.NORTH);
 
-        // Command Input Field (Center)
-        JScrollPane commandScrollPane = new JScrollPane(commandInputField);
-        commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        commandScrollPane.setPreferredSize(new Dimension(600, 80));
-        commandScrollPane.setMinimumSize(new Dimension(100, 80));
-        add(commandScrollPane, BorderLayout.CENTER);
+        // Center Panel (Command Input + System/Result) (Center)
+        JPanel centerPanel = buildCenterPanel();
+        add(centerPanel, BorderLayout.CENTER);
 
         // Bottom Bar (Mic, Model, Actions) (South)
         JPanel bottomPanel = buildBottomPanel();
@@ -103,8 +105,6 @@ public class InstructionsPanel extends JPanel {
             }
         });
     }
-
-    // buildCommandResultLabel removed
 
     private RSyntaxTextArea buildCommandInputField() {
         var area = new RSyntaxTextArea(3, 40);
@@ -125,13 +125,18 @@ public class InstructionsPanel extends JPanel {
 
     private JPanel buildTopBarPanel() {
         JPanel topBarPanel = new JPanel(new BorderLayout(5, 0)); // Use BorderLayout
-        topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, 5, 2, 5)); // Add padding
+        topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 5)); // Add padding
 
-        // History Button (West)
+        // Left Panel (Mic + History) (West)
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        leftPanel.add(micButton);
+
         JButton historyButton = new JButton("History ▼");
         historyButton.setToolTipText("Select a previous instruction from history");
         historyButton.addActionListener(e -> showHistoryMenu(historyButton));
-        topBarPanel.add(historyButton, BorderLayout.WEST);
+        leftPanel.add(historyButton);
+
+        topBarPanel.add(leftPanel, BorderLayout.WEST);
 
         // Model Dropdown (Center)
         modelDropdown.setToolTipText("Select the AI model to use");
@@ -143,32 +148,37 @@ public class InstructionsPanel extends JPanel {
         return topBarPanel;
     }
 
+    private JPanel buildCenterPanel() {
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 2)); // Vertical layout
+
+        // Command Input Field (Top)
+        JScrollPane commandScrollPane = new JScrollPane(commandInputField);
+        commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        commandScrollPane.setPreferredSize(new Dimension(600, 80));
+        commandScrollPane.setMinimumSize(new Dimension(100, 80));
+        centerPanel.add(commandScrollPane, BorderLayout.CENTER);
+
+        // System Messages + Command Result (Bottom)
+        // Create a panel to hold system messages and the command result label
+        var topInfoPanel = new JPanel();
+        topInfoPanel.setLayout(new BoxLayout(topInfoPanel, BoxLayout.PAGE_AXIS)); // Use vertical BoxLayout
+        topInfoPanel.add(commandResultLabel);
+        topInfoPanel.add(systemScrollPane);
+        centerPanel.add(topInfoPanel, BorderLayout.SOUTH);
+
+        return centerPanel;
+    }
+
     private JPanel buildBottomPanel() {
-        JPanel bottomPanel = new JPanel(new GridBagLayout());
-        var gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 2, 2, 2);
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.LINE_AXIS)); // Use horizontal BoxLayout
+        bottomPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2)); // Add padding
 
-        // Mic Button (Left, spanning 2 rows)
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.gridheight = 2;
-        gbc.weighty = 1.0; // Allow mic to take vertical space
-        gbc.fill = GridBagConstraints.VERTICAL;
-        gbc.anchor = GridBagConstraints.CENTER;
-        gbc.insets = new Insets(2, 2, 2, 8); // Add right padding for mic
-        bottomPanel.add(micButton, gbc);
-        gbc.insets = new Insets(2, 2, 2, 2); // Reset insets
-        gbc.gridheight = 1;
-        gbc.weighty = 0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        // Action Button Bar (Bottom Right)
-        gbc.gridx = 1;
-        gbc.gridy = 1;
-        gbc.weightx = 1.0;
-        gbc.anchor = GridBagConstraints.WEST;
-        JPanel actionButtonBar = buildActionBar(); // Renamed helper
-        bottomPanel.add(actionButtonBar, gbc);
+        // Action Button Bar
+        JPanel actionButtonBar = buildActionBar();
+        actionButtonBar.setAlignmentY(Component.CENTER_ALIGNMENT);
+        bottomPanel.add(actionButtonBar);
+        bottomPanel.add(Box.createHorizontalGlue()); // Pushes buttons to the left if needed
 
         return bottomPanel;
     }
@@ -182,6 +192,44 @@ public class InstructionsPanel extends JPanel {
         actionButtonsPanel.add(searchButton);
         actionButtonsPanel.add(runButton);
         return actionButtonsPanel;
+    }
+
+    /**
+     * Builds the system messages area that appears below the command input area.
+     * Moved from HistoryOutputPanel.
+     */
+    private JScrollPane buildSystemMessagesArea() {
+        // Create text area for system messages
+        systemArea.setEditable(false);
+        systemArea.getCaret().setVisible(false); // Hide the edit caret
+        systemArea.setLineWrap(true);
+        systemArea.setWrapStyleWord(true);
+        systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        systemArea.setRows(4);
+
+        // Create scroll pane with border and title
+        var scrollPane = new JScrollPane(systemArea);
+        scrollPane.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "System Messages",
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION,
+                new Font(Font.DIALOG, Font.BOLD, 12)
+        ));
+        new SmartScroll(scrollPane);
+
+        return scrollPane;
+    }
+
+    /**
+     * Builds the command result label.
+     * Moved from HistoryOutputPanel.
+     */
+    private JLabel buildCommandResultLabel() {
+        var label = new JLabel(" "); // Start with a space to ensure height
+        label.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+        label.setBorder(new EmptyBorder(2, 5, 2, 5)); // Padding
+        return label;
     }
 
     private void showHistoryMenu(Component invoker) {
@@ -245,9 +293,40 @@ public class InstructionsPanel extends JPanel {
         commandInputField.requestFocus();
     }
 
-    // setCommandResultText removed
+    /**
+     * Sets the text of the command result label.
+     * Moved from HistoryOutputPanel.
+     */
+    public void setCommandResultText(String text) {
+        commandResultLabel.setText(text);
+    }
 
-    // clearCommandResultText removed
+    /**
+     * Clears the text of the command result label.
+     * Moved from HistoryOutputPanel.
+     */
+    public void clearCommandResultText() {
+        commandResultLabel.setText(" "); // Set back to space to maintain height
+    }
+
+    /**
+     * Appends text to the system output area with timestamp.
+     * Moved from HistoryOutputPanel.
+     */
+    public void appendSystemOutput(String message) {
+        // Format timestamp as HH:MM
+        String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+
+        // Add newline if needed
+        if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
+            systemArea.append("\n");
+        }
+
+        // Append timestamped message
+        systemArea.append(timestamp + ": " + message);
+        // Scroll to bottom
+        SwingUtilities.invokeLater(() -> systemArea.setCaretPosition(systemArea.getDocument().getLength()));
+    }
 
     // Initialization of model dropdown is now encapsulated here.
     public void initializeModels() {
@@ -368,7 +447,8 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         chrome.getProject().addToTextHistory(input, 20);
-        chrome.historyOutputPanel.appendLlmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
+        // Update the LLM output panel directly via Chrome
+        chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         clearCommandInput();
         disableButtons();
         chrome.setCurrentUserTask(chrome.getContextManager().runSearchAsync(selectedModel, input));

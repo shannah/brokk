@@ -460,14 +460,14 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void actionOutput(String msg) {
         SwingUtilities.invokeLater(() -> {
-            historyOutputPanel.setCommandResultText(msg);
+            instructionsPanel.setCommandResultText(msg);
             logger.info(msg);
         });
     }
 
     @Override
     public void actionComplete() {
-        SwingUtilities.invokeLater(() -> historyOutputPanel.clearCommandResultText());
+        SwingUtilities.invokeLater(() -> instructionsPanel.clearCommandResultText());
     }
 
     @Override
@@ -482,7 +482,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void systemOutput(String message) {
-        SwingUtilities.invokeLater(() -> historyOutputPanel.appendSystemOutput(message));
+        SwingUtilities.invokeLater(() -> instructionsPanel.appendSystemOutput(message));
     }
 
     public void backgroundOutput(String message) {
