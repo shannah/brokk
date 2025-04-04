@@ -104,7 +104,7 @@ public class AutoCompleteUtil {
         var ttFontMetrics = textComponent.getFontMetrics(UIManager.getFont("ToolTip.font"));
         boolean hasDescriptions = completions.stream().anyMatch(c -> getCompletionDescription(c) != null && !getCompletionDescription(c).isEmpty());
         // disabled for https://github.com/bobbylight/AutoComplete/issues/97
-        if (false) {
+        if (hasDescriptions) {
             int maxDescWidth = completions.stream()
                     .mapToInt(c -> ttFontMetrics.stringWidth(getCompletionDescription(c)))
                     .max().orElse(300); // Default width
