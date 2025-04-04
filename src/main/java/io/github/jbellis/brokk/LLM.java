@@ -111,14 +111,13 @@ public class LLM {
             if (isToolsEmpty(toolRequests)) {
                 // LLM thinks we're done
                 isComplete = true;
-                break;
             }
 
             //
             // Process tool calls
             //
             var validatedRequests = new ArrayList<LLMTools.ValidatedToolRequest>();
-            for (var req : toolRequests) {
+            for (var req : toolRequests == null ? List.<ToolExecutionRequest>of() : toolRequests) {
                 var parsed = tools.parseToolRequest(req);
                 if (parsed.error() != null) {
                     // Track the error so we can include a Tool Response
@@ -170,6 +169,10 @@ public class LLM {
                     }
                 }
                 resultMessages.add(result);
+            }
+            if (isComplete) {
+                // stop now that we've processed any `explain` tools
+                break;
             }
             if (!output.isEmpty()) {
                 io.llmOutput("\n\n```" + output + "```\n\n");
