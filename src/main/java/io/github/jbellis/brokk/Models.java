@@ -198,6 +198,7 @@ public final class Models {
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
             var builder = OpenAiStreamingChatModel.builder()
+                    .maxTokens(getMaxOutputTokens(modelName))
                     .baseUrl(LITELLM_BASE_URL)
                     .timeout(Duration.ofMinutes(3)) // default 60s is not enough in practice
                     .apiKey("litellm") // placeholder, LiteLLM manages actual keys
