@@ -9,6 +9,7 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import javax.swing.*;
 import java.awt.*;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -108,8 +109,7 @@ public final class GitUiUtil
                     return;
                 }
                 var shortHash = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
-                var description = "git %s (single file)".formatted(shortHash);
-
+                var description = "Diff of %s [%s]".formatted(Path.of(filePath).getFileName(), shortHash);
                 var fragment = new ContextFragment.StringFragment(diff, description);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added changes for " + file.getFileName() + " to context");
