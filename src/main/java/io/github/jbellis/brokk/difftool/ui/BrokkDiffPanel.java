@@ -21,6 +21,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     private final String rightFileTitle;
     private final boolean isTwoFilesComparison;
     private final boolean isStringAndFileComparison;
+    private final boolean isDarkTheme;
 
     public boolean isTwoFilesComparison() {
         return isTwoFilesComparison;
@@ -40,6 +41,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         this.rightFileTitle = builder.rightFileTitle;
         this.isTwoFilesComparison = builder.isTwoFilesComparison;
         this.isStringAndFileComparison = builder.isStringAndFileComparison;
+        this.isDarkTheme = builder.isDarkTheme;
 
         // Make the container focusable, so it can handle key events
         setFocusable(true);
@@ -70,6 +72,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         private String rightFileTitle = "";
         private boolean isTwoFilesComparison = false;
         private boolean isStringAndFileComparison = false;
+        private boolean isDarkTheme = false; // Default to light theme
 
         // Compare two files
         public Builder compareFiles(File leftFile, String leftFileTitle, File rightFile, String rightFileTitle) {
@@ -99,6 +102,11 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             this.leftFile = leftFile;
             this.leftFileTitle = leftFileTitle;
             this.isStringAndFileComparison = true;
+            return this;
+        }
+
+        public Builder withTheme(boolean isDark) {
+            this.isDarkTheme = isDark;
             return this;
         }
 
@@ -221,6 +229,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
                 .withStringAndFile(contentLeft, leftFileTitle, rightFile, rightFileTitle)
                 .withStringAndFile(leftFile, leftFileTitle, contentRight, rightFileTitle)
                 .withStrings(contentLeft, leftFileTitle, contentRight, rightFileTitle)
+                .withTheme(this.isDarkTheme) // Pass theme state
                 .build();
 
         fileComparison.addPropertyChangeListener(this);

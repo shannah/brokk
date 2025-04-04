@@ -32,6 +32,7 @@ public class BufferDiffPanel extends AbstractContentPanel {
 
 
     private final BrokkDiffPanel mainPanel;
+    private final boolean isDarkTheme;
 
     public FilePanel[] getFilePanels() {
         return filePanels;
@@ -71,8 +72,15 @@ public class BufferDiffPanel extends AbstractContentPanel {
         return mainPanel;
     }
 
+    // Original constructor (kept for compatibility if needed, delegates to new one)
     public BufferDiffPanel(BrokkDiffPanel mainPanel) {
+        this(mainPanel, false); // Default to light theme
+    }
+
+    // Constructor accepting theme
+    public BufferDiffPanel(BrokkDiffPanel mainPanel, boolean isDarkTheme) {
         this.mainPanel = mainPanel;
+        this.isDarkTheme = isDarkTheme;
         mainPanel.setBufferDiffPanel(this);
         diff = new JMDiff();
 
@@ -158,6 +166,10 @@ public class BufferDiffPanel extends AbstractContentPanel {
         return title;
     }
 
+    public boolean isDarkTheme() {
+        return isDarkTheme;
+    }
+    
     public boolean revisionChanged(JMDocumentEvent de) {
         FilePanel fp;
         BufferDocumentIF bd1;
@@ -292,6 +304,10 @@ public class BufferDiffPanel extends AbstractContentPanel {
 
         filePanels = new FilePanel[NUMBER_OF_PANELS];
 
+        // TODO: FilePanel needs to accept isDarkTheme in constructor when it becomes editable
+        // filePanels[LEFT] = new FilePanel(this, BufferDocumentIF.ORIGINAL, leftBar, isDarkTheme);
+        // filePanels[RIGHT] = new FilePanel(this, BufferDocumentIF.REVISED, rightBar, isDarkTheme);
+        // For now, using old constructor:
         filePanels[LEFT] = new FilePanel(this, BufferDocumentIF.ORIGINAL, leftBar);
         filePanels[RIGHT] = new FilePanel(this, BufferDocumentIF.REVISED, rightBar);
 

@@ -63,7 +63,6 @@ public class BrokkDiffTool
                 Jonathan's version is much better than Richard's.
                 """;
 
-        JMHighlightPainter.initializePainters();
         JFrame frame = new JFrame("BrokkDiffTool");
         // Creating a new BrokkDiffPanel instance for file comparison mode.
         BrokkDiffPanel brokkPanel = new BrokkDiffPanel.Builder()

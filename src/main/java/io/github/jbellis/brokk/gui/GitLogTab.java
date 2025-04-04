@@ -482,7 +482,7 @@ public class GitLogTab extends JPanel {
                         if (selRows.length == 1 && isFileNode(path)) {
                             String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
                             String filePath = getFilePathFromTreePath(path);
-                            GitUiUtil.showFileHistoryDiff(contextManager, GitLogTab.this, commitId, contextManager.toFile(filePath));
+                            GitUiUtil.showFileHistoryDiff(contextManager, chrome, commitId, contextManager.toFile(filePath));
                         }
                     }
                 }
@@ -509,7 +509,7 @@ public class GitLogTab extends JPanel {
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1) {
                     String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
-                    GitUiUtil.showDiffVsLocal(contextManager, GitLogTab.this,
+                    GitUiUtil.showDiffVsLocal(contextManager, chrome,
                                               commitId, filePath, /*useParent=*/ false);
                 }
             }
@@ -521,7 +521,7 @@ public class GitLogTab extends JPanel {
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1) {
                     String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
-                    GitUiUtil.showDiffVsLocal(contextManager, GitLogTab.this,
+                    GitUiUtil.showDiffVsLocal(contextManager, chrome,
                                               commitId, filePath, /*useParent=*/ true);
                 }
             }
@@ -533,7 +533,7 @@ public class GitLogTab extends JPanel {
                 if (selRows.length == 1 && isFileNode(paths[0])) {
                     String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
                     String filePath = getFilePathFromTreePath(paths[0]);
-                    GitUiUtil.showFileHistoryDiff(contextManager, this, commitId, contextManager.toFile(filePath));
+                    GitUiUtil.showFileHistoryDiff(contextManager, chrome, commitId, contextManager.toFile(filePath));
                 }
             }
         });
@@ -1413,19 +1413,6 @@ public class GitLogTab extends JPanel {
             selectedFiles.add(filePath);
         }
         return selectedFiles;
-    }
-
-    /**
-     * Opens a file history tab for the selected file
-     */
-    private void viewFileHistory(String filePath) {
-        if (filePath == null || filePath.isEmpty()) return;
-
-        GitPanel gitPanel = chrome.getGitPanel();
-        if (gitPanel != null) {
-            var repoFile = new ProjectFile(contextManager.getRoot(), filePath);
-            gitPanel.addFileHistoryTab(repoFile);
-        }
     }
 
     /**

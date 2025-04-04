@@ -6,6 +6,7 @@ import io.github.jbellis.brokk.difftool.diff.JMDelta;
 import io.github.jbellis.brokk.difftool.diff.JMRevision;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentChangeListenerIF;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
+import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.difftool.doc.JMDocumentEvent;
 import io.github.jbellis.brokk.difftool.search.SearchBarDialog;
 import io.github.jbellis.brokk.difftool.search.SearchCommand;
@@ -109,6 +110,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
                 document.addUndoableEditListener(diffPanel.getUndoHandler());
             }
 
+            // Initialize configuration including theme-specific highlight painters
             initConfiguration();
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -176,6 +178,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
             }
 
             boolean isEndAndIsLastNewLine = isEndAndIsLastNewLine(toOffset);
+            boolean isDark = diffPanel.isDarkTheme();
 
             JMHighlightPainter highlight = null;
             if (delta.isChange()) {
@@ -193,20 +196,22 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
                             toOffset2 = fromOffset2 + changeOriginal.getSize();
 
                             setHighlight(JMHighlighter.LAYER1, fromOffset2, toOffset2,
-                                         JMHighlightPainter.CHANGED_LIGHTER);
+                                         new JMHighlightPainter(Colors.getChanged(isDark)));
                         }
                     }
                 }
 
-                highlight = isEndAndIsLastNewLine ? JMHighlightPainter.CHANGED_NEWLINE : JMHighlightPainter.CHANGED;
+                highlight = isEndAndIsLastNewLine ? 
+                    new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getChanged(isDark)) : 
+                    new JMHighlightPainter(Colors.getChanged(isDark));
             } else {
                 if (isEmptyLine()) {
                     toOffset = fromOffset + 1;
                 }
                 if (delta.isAdd()) {
-                    highlight = getAddedHighlightPainter(isOriginal(), isEndAndIsLastNewLine);
+                    highlight = getAddedHighlightPainter(isOriginal(), isEndAndIsLastNewLine, isDark);
                 } else if (delta.isDelete()) {
-                    highlight = getDeleteHighlightPainter(!isOriginal(), isEndAndIsLastNewLine);
+                    highlight = getDeleteHighlightPainter(!isOriginal(), isEndAndIsLastNewLine, isDark);
                 }
             }
 
@@ -240,20 +245,22 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
             return delta.getOriginal() == getPrimaryChunk();
         }
 
-        private JMHighlightPainter getAddedHighlightPainter(boolean line, boolean isLastNewLine) {
+        private JMHighlightPainter getAddedHighlightPainter(boolean line, boolean isLastNewLine, boolean isDark) {
+            Color addedColor = Colors.getAdded(isDark);
             return line
-                    ? JMHighlightPainter.ADDED_LINE
+                    ? new JMHighlightPainter.JMHighlightLinePainter(addedColor)
                     : isLastNewLine
-                    ? JMHighlightPainter.ADDED_NEWLINE
-                    : JMHighlightPainter.ADDED;
+                    ? new JMHighlightPainter.JMHighlightNewLinePainter(addedColor)
+                    : new JMHighlightPainter(addedColor);
         }
 
-        private JMHighlightPainter getDeleteHighlightPainter(boolean line, boolean isLastNewLine) {
+        private JMHighlightPainter getDeleteHighlightPainter(boolean line, boolean isLastNewLine, boolean isDark) {
+            Color deletedColor = Colors.getDeleted(isDark);
             return line
-                    ? JMHighlightPainter.DELETED_LINE
+                    ? new JMHighlightPainter.JMHighlightLinePainter(deletedColor)
                     : isLastNewLine
-                    ? JMHighlightPainter.DELETED_NEWLINE
-                    : JMHighlightPainter.DELETED;
+                    ? new JMHighlightPainter.JMHighlightNewLinePainter(deletedColor)
+                    : new JMHighlightPainter(deletedColor);
         }
 
         protected abstract JMChunk getPrimaryChunk(JMDelta changeDelta);

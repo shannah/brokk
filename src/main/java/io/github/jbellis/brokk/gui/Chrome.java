@@ -272,7 +272,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         assert getProject() != null;
 
         logger.debug("Initializing theme manager");
-        JMHighlightPainter.initializePainters(); // TODO rip this out of the diff code
+        // JMHighlightPainter.initializePainters(); // Removed: Painters are now created dynamically with theme colors
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
         themeManager = new GuiTheme(frame, historyOutputPanel.getLlmScrollPane(), this);

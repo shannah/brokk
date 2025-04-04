@@ -135,7 +135,7 @@ public class GitHistoryTab extends JPanel {
                     if (row >= 0) {
                         fileHistoryTable.setRowSelectionInterval(row, row);
                         String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                        GitUiUtil.showFileHistoryDiff(contextManager, GitHistoryTab.this, commitId, file);
+                        GitUiUtil.showFileHistoryDiff(contextManager, chrome, commitId, file);
                     }
                 }
             }
@@ -162,7 +162,7 @@ public class GitHistoryTab extends JPanel {
             int row = fileHistoryTable.getSelectedRow();
             if (row >= 0) {
                 String commitId = (String) fileHistoryTable.getValueAt(row, 3);
-                GitUiUtil.showFileHistoryDiff(contextManager, GitHistoryTab.this, commitId, file);
+                GitUiUtil.showFileHistoryDiff(contextManager, chrome, commitId, file);
             }
         });
 
@@ -171,7 +171,7 @@ public class GitHistoryTab extends JPanel {
             if (row >= 0) {
                 String commitId = (String) fileHistoryTable.getValueAt(row, 3);
                 // Compare commit -> local
-                GitUiUtil.showDiffVsLocal(contextManager, GitHistoryTab.this,
+                GitUiUtil.showDiffVsLocal(contextManager, chrome,
                                           commitId, getFilePath(), /*useParent=*/ false);
             }
         });

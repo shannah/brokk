@@ -201,13 +201,14 @@ public class DiffScrollComponent extends JComponent implements ChangeListener {
 
                 // OK, this delta has some visible lines. Now draw it!
                 Color darkerColor = Color.gray;
+                boolean isDarkTheme = diffPanel.isDarkTheme();
 
                 if (delta.isChange()) {
-                    color = Colors.CHANGED;
+                    color = Colors.getChanged(isDarkTheme);
                 } else if (delta.isDelete()) {
-                    color = Colors.DELETED;
+                    color = Colors.getDeleted(isDarkTheme);
                 } else {
-                    color = Colors.ADDED;
+                    color = Colors.getAdded(isDarkTheme);
                 }
                 g2.setColor(color);
                 g2.setColor(color);

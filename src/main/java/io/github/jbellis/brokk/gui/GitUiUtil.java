@@ -66,10 +66,10 @@ public final class GitUiUtil
      * comparing HEAD vs the local on-disk version.
      */
     public static void showUncommittedFileDiff(ContextManager contextManager,
-                                               Component parent,
+                                               Chrome chrome, // Pass Chrome for theme access
                                                String filePath)
     {
-        showDiffVsLocal(contextManager, parent, "HEAD", filePath, false);
+        showDiffVsLocal(contextManager, chrome, "HEAD", filePath, false);
     }
 
     /**
@@ -122,7 +122,7 @@ public final class GitUiUtil
      * Show the diff for a single file at a specific commit.
      */
     public static void showFileHistoryDiff(ContextManager cm,
-                                           Component parent,
+                                           Chrome chrome, // Pass Chrome for theme access
                                            String commitId,
                                            ProjectFile file)
     {
@@ -142,7 +142,11 @@ public final class GitUiUtil
                 var commitContent = repo.getFileContent(commitId, file);
 
                 SwingUtilities.invokeLater(() -> {
-                    var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStrings(parentContent, parentCommitId, commitContent, commitId).build();
+                    var isDark = chrome.themeManager.isDarkTheme();
+                    var brokkDiffPanel = new BrokkDiffPanel.Builder()
+                            .compareStrings(parentContent, parentCommitId, commitContent, commitId)
+                            .withTheme(isDark)
+                            .build();
                     brokkDiffPanel.showInFrame(cm, dialogTitle);
                 });
             } catch (Exception ex) {
@@ -308,7 +312,7 @@ public final class GitUiUtil
      * If useParent=true, compares the file's parent commit to local.
      */
     public static void showDiffVsLocal(ContextManager cm,
-                                       Component parent,
+                                       Chrome chrome, // Pass Chrome for theme access
                                        String commitId,
                                        String filePath,
                                        boolean useParent)
@@ -352,7 +356,11 @@ public final class GitUiUtil
                 String finalDialogTitle = "Diff: %s [Local vs %s]".formatted(file.getFileName(), baseCommitShort);
 
                 SwingUtilities.invokeLater(() -> {
-                    var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString()).build();
+                    var isDark = chrome.themeManager.isDarkTheme();
+                    var brokkDiffPanel = new BrokkDiffPanel.Builder()
+                            .compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString())
+                            .withTheme(isDark)
+                            .build();
                     brokkDiffPanel.showInFrame(cm, finalDialogTitle);
                 });
             } catch (Exception ex) {

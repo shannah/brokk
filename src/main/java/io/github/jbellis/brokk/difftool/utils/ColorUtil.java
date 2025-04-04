@@ -40,16 +40,16 @@ public class ColorUtil {
         return color;
     }
 
-    public static Color getColor(JMDelta delta) {
+    public static Color getColor(JMDelta delta, boolean isDark) {
         if (delta.isDelete()) {
-            return Colors.DELETED;
+            return Colors.getDeleted(isDark);
         }
 
         if (delta.isChange()) {
-            return Colors.CHANGED;
+            return Colors.getChanged(isDark);
         }
 
-        return Colors.ADDED;
+        return Colors.getAdded(isDark);
     }
 
 }

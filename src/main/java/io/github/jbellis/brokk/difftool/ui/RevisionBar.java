@@ -157,7 +157,7 @@ public class RevisionBar
         for (JMDelta delta : revision.getDeltas()) {
             chunk = original ? delta.getOriginal() : delta.getRevised();
 
-            g.setColor(ColorUtil.getColor(delta));
+            g.setColor(ColorUtil.getColor(delta, diffPanel.isDarkTheme()));
             y = r.y + (r.height * chunk.getAnchor()) / numberOfLines;
             height = (r.height * chunk.getSize()) / numberOfLines;
             if (height <= 0) {

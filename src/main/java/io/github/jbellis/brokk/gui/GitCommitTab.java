@@ -35,7 +35,7 @@ public class GitCommitTab extends JPanel {
     private RSyntaxTextArea commitMessageArea;
     private JButton commitButton;
     private JButton stashButton;
-    private Map<String, String> fileStatusMap = new HashMap<>();
+    private final Map<String, String> fileStatusMap = new HashMap<>();
 
     public GitCommitTab(Chrome chrome, ContextManager contextManager, GitPanel gitPanel) {
         super(new BorderLayout());
@@ -100,7 +100,7 @@ public class GitCommitTab extends JPanel {
                         String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
                         String filePath = path.isEmpty() ? filename : path + "/" + filename;
                         // Unified call:
-                        GitUiUtil.showUncommittedFileDiff(contextManager, GitCommitTab.this, filePath);
+                        GitUiUtil.showUncommittedFileDiff(contextManager, chrome, filePath);
                     }
                 }
             }
@@ -145,7 +145,7 @@ public class GitCommitTab extends JPanel {
                 String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
                 String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
                 String filePath = path.isEmpty() ? filename : path + "/" + filename;
-                GitUiUtil.showUncommittedFileDiff(contextManager, this, filePath);
+                GitUiUtil.showUncommittedFileDiff(contextManager, chrome, filePath);
             }
         });
 

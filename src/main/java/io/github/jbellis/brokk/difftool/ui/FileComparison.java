@@ -25,6 +25,7 @@ public class FileComparison extends SwingWorker<String, Object> {
     private final boolean isTwoFilesComparison;
     private final String leftFileTitle;
     private final String rightFileTitle;
+    private final boolean isDarkTheme;
 
     // Constructor
     private FileComparison(FileComparisonBuilder builder) {
@@ -38,6 +39,7 @@ public class FileComparison extends SwingWorker<String, Object> {
         this.isTwoFilesComparison = builder.isTwoFilesComparison;
         this.leftFileTitle = builder.leftFileTitle;
         this.rightFileTitle = builder.rightFileTitle;
+        this.isDarkTheme = builder.isDarkTheme;
     }
 
     // Static Builder class
@@ -53,6 +55,7 @@ public class FileComparison extends SwingWorker<String, Object> {
         private boolean isStringAndFileComparison;
         private String leftFileTitle = "";
         private String rightFileTitle = "";
+        private boolean isDarkTheme = false; // Default to light
 
         public FileComparisonBuilder(BrokkDiffPanel mainPanel) {
             this.mainPanel = mainPanel;
@@ -101,6 +104,11 @@ public class FileComparison extends SwingWorker<String, Object> {
                 this.contentRight = contentRight;
                 this.contentRightTitle = contentRightTitle;
             }
+            return this;
+        }
+
+        public FileComparisonBuilder withTheme(boolean isDark) {
+            this.isDarkTheme = isDark;
             return this;
         }
 
@@ -206,7 +214,7 @@ public class FileComparison extends SwingWorker<String, Object> {
             if (result != null) {
                 JOptionPane.showMessageDialog(mainPanel, result, "Error opening file", JOptionPane.ERROR_MESSAGE);
             } else {
-                panel = new BufferDiffPanel(mainPanel);
+                panel = new BufferDiffPanel(mainPanel, isDarkTheme); // Pass theme state
                 panel.setDiffNode(diffNode);
                 ImageIcon resizedIcon = getScaledIcon();
                 mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
