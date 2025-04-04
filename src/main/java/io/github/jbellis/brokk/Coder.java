@@ -90,6 +90,7 @@ public class Coder {
         AtomicBoolean canceled = new AtomicBoolean(false);
         var lock = new ReentrantLock();
         AtomicReference<Throwable> errorRef = new AtomicReference<>(null);
+        AtomicReference<Integer> outputTokenCountRef = new AtomicReference<>(-1);
         Consumer<Runnable> ifNotCancelled = (r -> {
             lock.lock();
             try {
@@ -133,6 +134,8 @@ public class Coder {
                         errorRef.set(new HttpException(400, "BadRequestError"));
                     } else {
                         writeToHistory("Response", response.toString());
+                        assert response.tokenUsage() != null;
+                        outputTokenCountRef.set(response.tokenUsage().outputTokenCount());
                     }
                     latch.countDown();
                 });
@@ -156,23 +159,23 @@ public class Coder {
             lock.lock();
             canceled.set(true);
             lock.unlock();
-            // We were interrupted while waiting. That is cancellation.
+            // We were interrupted while waiting
             return new StreamingResult(null, true, null);
         }
-
         if (Thread.currentThread().isInterrupted()) {
             // Another chance to detect cancellation
             return new StreamingResult(null, true, null);
         }
 
         Throwable streamingError = errorRef.get();
+        int outputTokenCount = outputTokenCountRef.get();
         if (streamingError != null) {
             // Return an error result
-            return new StreamingResult(null, false, streamingError);
+            return new StreamingResult(null, outputTokenCount, false, streamingError);
         }
 
         // No error, not cancelled => success
-        return new StreamingResult(atomicResponse.get(), false, null);
+        return new StreamingResult(atomicResponse.get(), outputTokenCount, false, null);
     }
 
     /**
@@ -205,8 +208,12 @@ public class Coder {
      * @param tools    List of tools to enable for the LLM
      * @return The LLM response as a string
      */
-    public StreamingResult sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages, List<ToolSpecification> tools, ToolChoice toolChoice, boolean echo) {
-
+    public StreamingResult sendMessage(StreamingChatLanguageModel model,
+                                       List<ChatMessage> messages,
+                                       List<ToolSpecification> tools,
+                                       ToolChoice toolChoice,
+                                       boolean echo)
+    {
         var result = sendMessageWithRetry(model, messages, tools, toolChoice, echo, MAX_ATTEMPTS);
         var cr = result.chatResponse();
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
@@ -410,7 +417,7 @@ public class Coder {
                 if (attempt == maxRetries) {
                     var msg = "Failed to get valid tool calls after %d attempts: %s".formatted(maxRetries, e.getMessage());
                     logger.error(msg);
-                    return new StreamingResult(result.chatResponse, false, new RuntimeException(msg));
+                    return new StreamingResult(result.chatResponse, result.outputTokenCount, false, new RuntimeException(msg));
                 }
 
                 // Add the invalid response to the messages
@@ -422,10 +429,19 @@ public class Coder {
                 currentMessages.add(new AiMessage(invalidResponse));
 
                 // Add a clearer instruction for the next attempt
+                String additionalInstruction = "Include all the tool calls necessary to satisfy the request in a single array!";
+                if (result.outputTokenCount > 0) {
+                    int maxTokens = Models.getMaxOutputTokens(Models.nameOf(model));
+                    if (maxTokens > 0 && result.outputTokenCount >= maxTokens) {
+                        logger.debug("Max token limit hit: output={} >= max={}", result.outputTokenCount, maxTokens);
+                        additionalInstruction = "\n\nIMPORTANT: Your previous response reached the token limit.  Try solving a smaller piece of the problem this time.";
+                    }
+                }
+
                 String retryMessage = """
                 Your previous response was not valid: %s
                 You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
-                Include all the tool calls necessary to satisfy the request in a single array!
+                %s
                 REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
                 Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
                 {
@@ -440,7 +456,7 @@ public class Coder {
                     }
                   ]
                 }
-                """.formatted(e.getMessage()).stripIndent();
+                """.formatted(e.getMessage(), additionalInstruction).stripIndent();
 
                 currentMessages.add(new UserMessage(retryMessage));
                 writeToHistory("Retry Attempt " + attempt, "Invalid JSON: " + invalidResponse + "\n\nRetry with: " + retryMessage);
@@ -529,7 +545,7 @@ public class Coder {
         // Create a properly formatted AiMessage with tool execution requests
         var aiMessage = new AiMessage("[json]", toolExecutionRequests);
         var cr = ChatResponse.builder().aiMessage(aiMessage).build();
-        return new StreamingResult(cr, result.originalResponse, false, null);
+        return new StreamingResult(cr, result.originalResponse, result.outputTokenCount, false, null);
     }
 
     private static String getInstructions(List<ToolSpecification> tools) {
@@ -634,9 +650,13 @@ public class Coder {
     /**
      * Represents the outcome of a streaming request.
      */
-    public record StreamingResult(ChatResponse chatResponse, ChatResponse originalResponse, boolean cancelled, Throwable error) {
+    public record StreamingResult(ChatResponse chatResponse, ChatResponse originalResponse, int outputTokenCount, boolean cancelled, Throwable error) {
         public StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
-            this(chatResponse, chatResponse, cancelled, error);
+            this(chatResponse, -1, cancelled, error);
+        }
+
+        public StreamingResult(ChatResponse chatResponse, int outputTokenCount, boolean cancelled, Throwable error) {
+            this(chatResponse, chatResponse, outputTokenCount, cancelled, error);
         }
 
         public StreamingResult {

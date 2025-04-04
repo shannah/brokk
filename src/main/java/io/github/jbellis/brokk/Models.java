@@ -47,6 +47,9 @@ public final class Models {
     // name -> location
     private static final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>();
 
+    // name -> max output tokens
+    private static final ConcurrentHashMap<String, Integer> modelMaxOutputTokens = new ConcurrentHashMap<>();
+
     // "quick" default model instance, set in init()
     private static volatile StreamingChatLanguageModel quickModel = null;
 
@@ -96,6 +99,7 @@ public final class Models {
 
                 if (dataNode.isArray()) {
                     modelLocations.clear(); // Clear previous entries
+                    modelMaxOutputTokens.clear();
 
                     // For each element, parse:
                     //   top-level "model_name" => modelName
@@ -106,14 +110,19 @@ public final class Models {
                                 .path("litellm_params")
                                 .path("model")
                                 .asText();
-
-                        logger.debug("Parsed from info: modelName={}, modelLocation={}", modelName, modelLocation);
+                        int maxOutputTokens = modelInfo.path("model_info").path("max_output_tokens").asInt();
+                        if (maxOutputTokens == 0) {
+                            logger.warn("Null max_output_tokens for model: {}", modelName);
+                            maxOutputTokens = 65536; // Don't gimp Gemini Pro 2.5 unnecessarily
+                        }
+                        logger.debug("Parsed from info: modelName={}, modelLocation={}, maxOutputTokens={}", modelName, modelLocation, maxOutputTokens);
 
                         if (modelName != null && !modelName.isBlank() &&
                                 modelLocation != null && !modelLocation.isBlank())
                         {
                             modelLocations.put(modelName, modelLocation);
-                            logger.debug("Discovered model: {} -> {}", modelName, modelLocation);
+                            modelMaxOutputTokens.put(modelName, maxOutputTokens);
+                            logger.debug("Discovered model: {} -> {} (Max Output: {})", modelName, modelLocation, maxOutputTokens);
                         }
                     }
 
@@ -165,6 +174,14 @@ public final class Models {
      */
     public static Map<String, String> getAvailableModels() {
         return Map.copyOf(modelLocations);
+    }
+
+    /**
+     * Retrieves the maximum output tokens for the given model name, if known.
+     * Returns -1 if the information is not available for the model.
+     */
+    public static int getMaxOutputTokens(String modelName) {
+        return modelMaxOutputTokens.getOrDefault(modelName, -1);
     }
 
     /**
