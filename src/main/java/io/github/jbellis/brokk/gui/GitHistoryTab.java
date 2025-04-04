@@ -3,7 +3,6 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.gui.dialogs.DiffPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -136,7 +135,6 @@ public class GitHistoryTab extends JPanel {
                     if (row >= 0) {
                         fileHistoryTable.setRowSelectionInterval(row, row);
                         String commitId = (String) fileHistoryModel.getValueAt(row, 3);
-                        // Replaced local code with GitUIUtils:
                         GitUiUtil.showFileHistoryDiff(contextManager, chrome, GitHistoryTab.this, commitId, file);
                     }
                 }
@@ -173,8 +171,8 @@ public class GitHistoryTab extends JPanel {
             if (row >= 0) {
                 String commitId = (String) fileHistoryTable.getValueAt(row, 3);
                 // Compare commit -> local
-                GitUiUtil.compareFileWithLocal(contextManager, chrome, GitHistoryTab.this,
-                                               commitId, getFilePath(), /*useParent=*/ false);
+                GitUiUtil.showDiffVsLocal(contextManager, chrome, GitHistoryTab.this,
+                                          commitId, getFilePath(), /*useParent=*/ false);
             }
         });
 

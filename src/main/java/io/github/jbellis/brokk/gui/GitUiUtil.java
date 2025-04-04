@@ -3,7 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.gui.dialogs.DiffPanel;
+import io.github.jbellis.brokk.diffTool.ui.BrokkDiffPanel;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
@@ -64,24 +64,12 @@ public final class GitUiUtil
      * Show the diff of the uncommitted (working directory) changes for a single file,
      * comparing HEAD vs the local on-disk version.
      */
-    public static void showUncommittedFileDiff
-    (
-            ContextManager contextManager,
-            Chrome chrome,
-            Component parent,
-            String filePath
-    ) {
-        var repo = contextManager.getProject().getRepo();
-        if (repo == null) {
-            chrome.toolError("Git repository not available.");
-            return;
-        }
-        var file = new ProjectFile(contextManager.getRoot(), filePath);
-        var diffPanel = new DiffPanel(contextManager);
-
-        var dialogTitle = "Uncommitted Changes: " + file.getFileName();
-        diffPanel.showCompareWithLocal("HEAD", file, /*useParent=*/ false);
-        diffPanel.showInDialog(parent, dialogTitle);
+    public static void showUncommittedFileDiff(ContextManager contextManager,
+                                               Chrome chrome,
+                                               Component parent,
+                                               String filePath)
+    {
+        showDiffVsLocal(contextManager, chrome, parent, "HEAD", filePath, false);
     }
 
     /**
@@ -134,25 +122,36 @@ public final class GitUiUtil
     /**
      * Show the diff for a single file at a specific commit.
      */
-    public static void showFileHistoryDiff
-    (
-            ContextManager contextManager,
-            Chrome chrome,
-            Component parent,
-            String commitId,
-            ProjectFile file
-    ) {
+    public static void showFileHistoryDiff(ContextManager contextManager,
+                                           Chrome chrome,
+                                           Component parent,
+                                           String commitId,
+                                           ProjectFile file)
+    {
         var repo = contextManager.getProject().getRepo();
         if (repo == null) {
             chrome.toolError("Git repository not available.");
             return;
         }
-        var diffPanel = new DiffPanel(contextManager);
         var shortCommitId = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
         var dialogTitle = "Diff: " + file.getFileName() + " (" + shortCommitId + ")";
+        var parentCommitId = commitId + "^";
 
-        diffPanel.showFileDiff(commitId, file);
-        diffPanel.showInDialog(parent, dialogTitle);
+        contextManager.submitBackgroundTask("Loading history diff for " + file.getFileName(), () -> {
+            try {
+                var parentObjectId = repo.resolve(parentCommitId);
+                var parentContent = parentObjectId == null ? "" : repo.getFileContent(parentCommitId, file);
+                var commitContent = repo.getFileContent(commitId, file);
+
+                SwingUtilities.invokeLater(() -> {
+                    var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStrings(parentContent, parentCommitId, commitContent, commitId).build();
+                    brokkDiffPanel.showInDialog(contextManager, parent, dialogTitle);
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error loading history diff: " + ex.getMessage()));
+            }
+            return null;
+        });
     }
 
     /**
@@ -309,67 +308,62 @@ public final class GitUiUtil
     }
 
     /**
-     * Show a simple file diff (commitId vs file) in a new dialog.
-     */
-    public static void showFileDiffDialog
-    (
-            ContextManager contextManager,
-            Chrome chrome,
-            Component parent,
-            String commitId,
-            String filePath
-    ) {
-        var repo = contextManager.getProject().getRepo();
-        if (repo == null) {
-            chrome.toolError("Git repository not available.");
-            return;
-        }
-        var file = new ProjectFile(contextManager.getRoot(), filePath);
-        var diffPanel = new DiffPanel(contextManager);
-
-        var shortCommitId = (commitId.length() > 7) ? commitId.substring(0,7) : commitId;
-        var dialogTitle   = "Diff: " + file.getFileName() + " (" + shortCommitId + ")";
-
-        diffPanel.showFileDiff(commitId, file);
-        diffPanel.showInDialog(parent, dialogTitle);
-    }
-
-    /**
      * Compare a single file from a specific commit to the local (working directory) version.
      * If useParent=true, compares the file's parent commit to local.
      */
-    public static void compareFileWithLocal
-    (
-            ContextManager contextManager,
-            Chrome chrome,
-            Component parent,
-            String commitId,
-            String filePath,
-            boolean useParent
-    ) {
+    public static void showDiffVsLocal(ContextManager contextManager,
+                                       Chrome chrome,
+                                       Component parent,
+                                       String commitId,
+                                       String filePath,
+                                       boolean useParent)
+    {
         var repo = contextManager.getProject().getRepo();
         if (repo == null) {
             chrome.toolError("Git repository not available.");
             return;
         }
         var file = new ProjectFile(contextManager.getRoot(), filePath);
-        var diffPanel = new DiffPanel(contextManager);
 
-        if (useParent) {
-            // Compare commitId^ (parent) to local
-            diffPanel.showCompareWithLocal(commitId, file, /*useParent=*/ true);
-            var shortHash = commitId + "^";
-            if (commitId.length() >= 7) {
-                shortHash = commitId.substring(0,7) + "^";
+        contextManager.submitBackgroundTask("Loading compare-with-local for " + file.getFileName(), () -> {
+            try {
+                // 2) Figure out the base commit ID and title components
+                String baseCommitId = commitId;
+                String baseCommitTitle = commitId;
+                String baseCommitShort = (commitId.length() >= 7) ? commitId.substring(0, 7) : commitId;
+
+                if (useParent) {
+                    var parentObjectId = repo.resolve(commitId + "^");
+                    if (parentObjectId != null) {
+                        baseCommitId = commitId + "^";
+                        baseCommitTitle = commitId + "^";
+                        baseCommitShort = ((commitId.length() >= 7) ? commitId.substring(0, 7) : commitId) + "^";
+                    } else {
+                        baseCommitId = null; // Indicates no parent, so old content will be empty
+                        baseCommitTitle = "[No Parent]";
+                        baseCommitShort = "[No Parent]";
+                    }
+                }
+
+                // 3) Read old content from the base commit (if it exists)
+                var oldContent = "";
+                if (baseCommitId != null) {
+                    oldContent = repo.getFileContent(baseCommitId, file);
+                }
+
+                // 4) Create panel on Swing thread
+                String finalOldContent = oldContent; // effectively final for lambda
+                String finalBaseCommitTitle = baseCommitTitle;
+                String finalDialogTitle = "Diff: %s [Local vs %s]".formatted(file.getFileName(), baseCommitShort);
+
+                SwingUtilities.invokeLater(() -> {
+                    var brokkDiffPanel = new BrokkDiffPanel.Builder().compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString()).build();
+                    brokkDiffPanel.showInDialog(contextManager, parent, finalDialogTitle);
+                });
+            } catch (Exception ex) {
+                 SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error loading compare-with-local diff: " + ex.getMessage()));
             }
-            var title = "Diff: %s [Local vs %s]".formatted(file.getFileName(), shortHash);
-            diffPanel.showInDialog(parent, title);
-        } else {
-            // Compare commitId to local
-            diffPanel.showCompareWithLocal(commitId, file, /*useParent=*/ false);
-            var shortHash = (commitId.length() >= 7) ? commitId.substring(0, 7) : commitId;
-            var title = "Diff: %s [Local vs %s]".formatted(file.getFileName(), shortHash);
-            diffPanel.showInDialog(parent, title);
-        }
+            return null;
+        });
     }
 }

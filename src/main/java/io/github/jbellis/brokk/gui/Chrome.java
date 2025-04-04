@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.diffTool.ui.JMHighlightPainter;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewPanel;
 import org.apache.logging.log4j.LogManager;
@@ -271,6 +272,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         assert getProject() != null;
 
         logger.debug("Initializing theme manager");
+        JMHighlightPainter.initializePainters(); // TODO rip this out of the diff code
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
         themeManager = new GuiTheme(frame, historyOutputPanel.getLlmScrollPane(), this);

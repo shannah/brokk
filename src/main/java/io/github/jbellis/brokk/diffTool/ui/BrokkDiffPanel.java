@@ -250,4 +250,38 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         }
     }
 
+    /**
+     * Shows the diff panel in a frame.
+     *
+     * @param contextManager The context manager for accessing project settings (like window bounds)
+     * @param parent The parent component for the frame
+     * @param title The frame title
+     */
+    public void showInDialog(io.github.jbellis.brokk.ContextManager contextManager, Component parent, String title) {
+        JFrame frame = new JFrame(title);
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.getContentPane().add(this);
+
+        // Get saved bounds from Project if available
+        java.awt.Rectangle bounds = contextManager.getProject().getDiffWindowBounds();
+        frame.setSize(bounds.width, bounds.height);
+
+        // Only set location if coordinates were provided
+        if (bounds.x >= 0 && bounds.y >= 0) {
+            frame.setLocation(bounds.x, bounds.y);
+        } else {
+            frame.setLocationRelativeTo(parent);
+        }
+
+        // Save window position and size when closing
+        frame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                // Save window bounds manually since frame is not a JDialog
+                contextManager.getProject().saveWindowBounds("diff", frame);
+            }
+        });
+
+        frame.setVisible(true);
+    }
 }
