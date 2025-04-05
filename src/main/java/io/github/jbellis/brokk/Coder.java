@@ -15,6 +15,10 @@ import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.chat.request.ResponseFormatType;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.model.chat.request.json.JsonArraySchema;
+import dev.langchain4j.model.chat.request.json.JsonBooleanSchema;
+import dev.langchain4j.model.chat.request.json.JsonIntegerSchema;
+import dev.langchain4j.model.chat.request.json.JsonNumberSchema;
 import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
@@ -554,33 +558,82 @@ public class Coder {
     }
 
     private static String getInstructions(List<ToolSpecification> tools) {
+        var mapper = new ObjectMapper();
         String toolsDescription = tools.stream()
                 .map(tool -> {
                     var parametersInfo = tool.parameters().properties().entrySet().stream()
                             .map(entry -> {
-                                // tool parameters only have a string `description` property
-                                var p = (JsonStringSchema) entry.getValue();
+                                var schema = entry.getValue(); // Get the JsonSchemaElement object
+                                String description;
+                                String type;
+
+                                // this seems unnecessarily clunky but the common interface does not offer anything useful
+                                switch (schema) {
+                                    case JsonStringSchema jsSchema -> {
+                                        description = jsSchema.description();
+                                        type = "string";
+                                    }
+                                    case JsonArraySchema jaSchema -> {
+                                        description = jaSchema.description();
+                                        var itemSchema = jaSchema.items();
+                                        String itemType = switch (itemSchema) {
+                                            case JsonStringSchema __ -> "string";
+                                            case JsonIntegerSchema __ -> "integer";
+                                            case JsonNumberSchema __ -> "number";
+                                            case JsonBooleanSchema __ -> "boolean";
+                                            default ->
+                                                    throw new IllegalArgumentException("Unsupported array item type: " + itemSchema);
+                                        };
+                                        type = "array of %s".formatted(itemType);
+                                    }
+                                    case JsonIntegerSchema jiSchema -> {
+                                        description = jiSchema.description();
+                                        type = "integer";
+                                    }
+                                    case JsonNumberSchema jnSchema -> {
+                                        description = jnSchema.description();
+                                        type = "number";
+                                    }
+                                    case JsonBooleanSchema jbSchema -> {
+                                        description = jbSchema.description();
+                                        type = "boolean";
+                                    }
+                                    default ->
+                                            throw new IllegalArgumentException("Unsupported schema type: " + schema);
+                                }
+
+                                // Ensure description is not null for formatting
+                                if (description == null) {
+                                    logger.warn("Parameter '{}' for tool '{}' has a null description.", entry.getKey(), tool.name());
+                                    description = "(No description provided)"; // Provide a default
+                                }
+
+                                // REMOVED: var node = mapper.valueToTree(entry.getValue());
+                                // REMOVED: var descriptionNode = node.get("description");
+                                // REMOVED: assert descriptionNode != null && descriptionNode.isTextual() : descriptionNode;
+                                // REMOVED: var typeNode = node.get("type");
+                                // REMOVED: assert typeNode != null && typeNode.isTextual() : typeNode;
+
                                 return """
-                                <parameter name="%s" type="%s" required="%s">
-                                %s
-                                </parameter>
-                                """.formatted(
+                        <parameter name="%s" type="%s" required="%s">
+                        %s
+                        </parameter>
+                        """.formatted(
                                         entry.getKey(),
-                                        "String",
+                                        type, // Use the determined type string
                                         tool.parameters().required().contains(entry.getKey()),
-                                        p.description());
+                                        description); // Use the directly accessed description
                             })
                             .collect(Collectors.joining("\n"));
 
                     return """
-                           <tool name="%s">
-                           %s
-                           %s
-                           </tool>
-                           """.formatted(tool.name(), tool.description(), parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
+                   <tool name="%s">
+                   %s
+                   %s
+                   </tool>
+                   """.formatted(tool.name(), tool.description(), parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
                 })
-                .collect(Collectors.joining("\n")); // Use collect instead of reduce for safer empty handling
-
+                .collect(Collectors.joining("\n"));
         return """
         You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Your first call should be to `explain`.
         Include all the tool calls necessary to satisfy the request in a single array!
