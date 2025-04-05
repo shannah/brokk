@@ -40,6 +40,18 @@ public class ColorUtil {
         return color;
     }
 
+    /**
+     * Calculates the perceived brightness of a color.
+     * @param color The color.
+     * @return A value between 0 (black) and 255 (white).
+     */
+    public static int getBrightness(Color color) {
+        return (int) Math.sqrt(
+                color.getRed() * color.getRed() * .241 +
+                color.getGreen() * color.getGreen() * .691 +
+                color.getBlue() * color.getBlue() * .068);
+    }
+
     public static Color getColor(AbstractDelta<String> delta, boolean darkTheme) {
         return switch (delta.getType()) {
             case INSERT -> Colors.getAdded(darkTheme);

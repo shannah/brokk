@@ -385,15 +385,6 @@ public class DiffScrollComponent extends JComponent implements ChangeListener
                         // Add command for merging left-to-right (apply change to right panel)
                         commands.add(new DiffChangeCommand(mergeRightTriangle, delta, fromPanelIndex, toPanelIndex));
                     }
-                    // Draw delete right command (small cross 'X' inside right bar)
-                    if (revised.size() > 0 && !shift) { // Show if there are lines to delete on the right
-                        int crossX = xRightEdge + 2;
-                        int crossY = yRight + 2;
-                        int crossSize = 6;
-                        Rectangle deleteRightRect = new Rectangle(crossX, crossY, crossSize, crossSize);
-                        drawCross(g2, deleteRightRect, hovered ? Color.darkGray : darkerColor);
-                        commands.add(new DiffDeleteCommand(deleteRightRect, delta, toPanelIndex)); // Command deletes from right panel
-                    }
                 }
 
                 // Draw merge left command (triangle pointing left on right edge of left bar) - Symmetric logic
@@ -413,15 +404,6 @@ public class DiffScrollComponent extends JComponent implements ChangeListener
 
                         // Add command for merging right-to-left (apply change to left panel)
                         commands.add(new DiffChangeCommand(mergeLeftTriangle, delta, toPanelIndex, fromPanelIndex));
-                    }
-                    // Draw delete left command (small cross 'X' inside left bar)
-                    if (original.size() > 0 && !shift) { // Show if there are lines to delete on the left
-                        int crossX = 2; // X position within the left bar
-                        int crossY = yLeft + 2;
-                        int crossSize = 6;
-                        Rectangle deleteLeftRect = new Rectangle(crossX, crossY, crossSize, crossSize);
-                        drawCross(g2, deleteLeftRect, hovered ? Color.darkGray : darkerColor);
-                        commands.add(new DiffDeleteCommand(deleteLeftRect, delta, fromPanelIndex)); // Command deletes from left panel
                     }
                  }
             }
@@ -670,36 +652,6 @@ public class DiffScrollComponent extends JComponent implements ChangeListener
             diffPanel.setSelectedDelta(delta);
             // Use the source and target indexes provided during construction
             diffPanel.runChange(sourcePanelIndex, targetPanelIndex, shift);
-            diffPanel.doSave(); // Consider if save should always happen here
-        }
-    }
-
-    /**
-     * A click command that deletes a chunk from one panel.
-     */
-    class DiffDeleteCommand extends Command
-    {
-        private final int panelIndexToDeleteFrom;
-
-        /**
-         * @param shape Shape to click (e.g., the 'X' cross)
-         * @param delta Associated delta
-         * @param panelIndexToDeleteFrom Index of the panel where deletion should occur
-         */
-        DiffDeleteCommand(Shape shape, AbstractDelta<String> delta, int panelIndexToDeleteFrom)
-        {
-            super(shape, delta);
-            this.panelIndexToDeleteFrom = panelIndexToDeleteFrom;
-        }
-
-        @Override
-        public void execute()
-        {
-            diffPanel.setSelectedDelta(delta);
-            // Determine the 'other' panel index (assuming only two panels 0 and 1)
-            int otherPanelIndex = (panelIndexToDeleteFrom == 0) ? 1 : 0;
-            // Run delete operation targeting the specified panel
-            diffPanel.runDelete(panelIndexToDeleteFrom, otherPanelIndex); // runDelete might need adjustment
             diffPanel.doSave(); // Consider if save should always happen here
         }
     }

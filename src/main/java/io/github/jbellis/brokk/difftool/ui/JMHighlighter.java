@@ -55,9 +55,8 @@ public class JMHighlighter implements Highlighter {
                 ? (LineNumberBorder) component.getBorder()
                 : null;
 
-        if (lineNumberBorder != null) {
-            lineNumberBorder.paintBefore(g);
-        }
+        // The LineNumberBorder handles its own painting via paintBorder.
+        // Calls to paintBefore/paintAfter have been removed.
 
         Rectangle textBounds = component.getBounds();
         Insets insets = component.getInsets();
@@ -77,9 +76,8 @@ public class JMHighlighter implements Highlighter {
             }
         }
 
-        if (lineNumberBorder != null) {
-            lineNumberBorder.paintAfter(g, startOffset, endOffset);
-        }
+        // The LineNumberBorder handles its own painting via paintBorder.
+        // Calls to paintBefore/paintAfter have been removed.
     }
 
     /**

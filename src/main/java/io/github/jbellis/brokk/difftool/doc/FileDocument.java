@@ -1,44 +1,90 @@
-
 package io.github.jbellis.brokk.difftool.doc;
-
 
 import com.ibm.icu.text.CharsetDetector;
 import com.ibm.icu.text.CharsetMatch;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.Reader;
-import java.io.Writer;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultEditorKit;
+import javax.swing.text.Element;
+import javax.swing.text.PlainDocument;
+import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
-public class FileDocument
-        extends AbstractBufferDocument {
-    // instance variables:
+/**
+ * Implementation of BufferDocumentIF backed by a file.
+ * It uses PlainDocument internally for text management and Swing integration.
+ */
+public class FileDocument implements BufferDocumentIF, DocumentListener {
     private final File file;
+    private final String name;
+    private final String shortName;
     private Charset charset;
     private final Map<String, Charset> charsetMap;
     private boolean readOnly;
+    private PlainDocument document;
+    private boolean changed = false;
 
     public FileDocument(File file, String name) {
-        super(); // Call AbstractBufferDocument constructor
         this.file = file;
-        this.readOnly = !file.canWrite();
-        charsetMap = Charset.availableCharsets();
-        setName(name); // Set names before reading
-        setShortName(file.getName());
+        this.name = name;
+        this.shortName = (file != null) ? file.getName() : name;
+        this.readOnly = (file == null) || !file.canWrite();
+        this.charsetMap = Charset.availableCharsets();
         initializeAndRead(); // Read content during construction
+    }
+
+    // Called internally to load/reload the document content
+    private void initializeAndRead() {
+        if (document != null) {
+            document.removeDocumentListener(this);
+        }
+        document = new PlainDocument(); // Use default content
+        try (Reader reader = getReaderInternal()) { // Use internal reader method
+            if (reader != null) {
+                new DefaultEditorKit().read(reader, document, 0);
+            } else {
+                System.err.println("Warning: Could not obtain reader for " + getName() + ", initializing empty document.");
+            }
+        } catch (IOException | BadLocationException readEx) {
+            System.err.println("Error reading content for " + getName() + ": " + readEx.getMessage());
+            document = new PlainDocument(); // Fall back to empty document
+        } catch (Exception e) {
+            System.err.println("Unexpected error during document initialization for " + getName() + ": " + e.getMessage());
+            document = new PlainDocument();
+        }
+        document.addDocumentListener(this);
+        changed = false; // Reset changed status after load/reload
+    }
+
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public String getShortName() {
+        return shortName;
+    }
+
+    @Override
+    public boolean isChanged() {
+        return changed;
+    }
+
+    @Override
+    public void setChanged(boolean changed) {
+        this.changed = changed;
+    }
+
+    @Override
+    public PlainDocument getDocument() {
+        return document;
     }
 
     @Override
@@ -46,57 +92,45 @@ public class FileDocument
         return readOnly;
     }
 
-    @Override
-    public int getBufferSize() {
-        // Return a reasonable default buffer size if file doesn't exist or is empty
-        return (file != null && file.exists()) ? (int) Math.max(file.length(), 1024) : 1024;
+    // Internal method to get reader, used during initialization
+    private Reader getReaderInternal() throws IOException {
+        if (file == null || !file.exists() || !file.canRead()) {
+            System.err.println("Warning: File does not exist or cannot be read: " + (file != null ? file.getAbsolutePath() : "<null>"));
+            return new StringReader(""); // Return reader for empty string
+        }
+
+        // Detect charset first
+        try (InputStream fisDetect = new FileInputStream(file);
+             BufferedInputStream bisDetect = new BufferedInputStream(fisDetect)) {
+            bisDetect.mark(1024 * 1024); // Mark for reset
+            this.charset = detectCharset(bisDetect);
+            bisDetect.reset(); // Reset not needed as we reopen below
+            if (this.charset == null) {
+                System.err.println("Warning: Could not detect charset for " + file.getName() + ", using default UTF-8.");
+                this.charset = StandardCharsets.UTF_8;
+            }
+        } catch (IOException ex) {
+            System.err.println("Error detecting charset for " + file.getName() + ", using default UTF-8. Error: " + ex.getMessage());
+            this.charset = StandardCharsets.UTF_8; // Fallback on error
+        }
+
+        // Return a NEW InputStreamReader with the detected/default charset
+        return new BufferedReader(new InputStreamReader(new FileInputStream(file), this.charset));
     }
 
     @Override
-    public Reader getReader() {
-        try {
-            if (!file.exists() || !file.canRead()) {
-                System.err.println("Warning: File does not exist or cannot be read: " + file.getAbsolutePath());
-                // Return a reader for an empty string if file is inaccessible
-                return new BufferedReader(new InputStreamReader(new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8));
-            }
-
-            // Use try-with-resources for the InputStream
-            try (InputStream fis = new FileInputStream(file);
-                 BufferedInputStream bis = new BufferedInputStream(fis)) {
-
-                // Detect charset *without* consuming the stream if possible,
-                // or reset it if necessary and supported.
-                bis.mark(1024 * 1024); // Mark a large enough buffer for detection
-                this.charset = detectCharset(bis);
-                bis.reset(); // Reset stream to the beginning
-
-                if (this.charset == null) {
-                    System.err.println("Warning: Could not detect charset for " + file.getName() + ", using default UTF-8.");
-                    this.charset = StandardCharsets.UTF_8;
-                    // No need to reset again if detection failed, already at start
-                }
-
-                // MUST return a NEW InputStreamReader each time, as the underlying stream (bis)
-                // might be closed by the caller (e.g., DefaultEditorKit.read).
-                // We re-open the file here to ensure a fresh stream.
-                return new BufferedReader(new InputStreamReader(new FileInputStream(file), this.charset));
-            }
-        } catch (IOException ex) {
-            throw new RuntimeException("Failed to create reader for file: " + file.getName(), ex);
-        }
+    public Reader getReader() throws Exception {
+         // Public method returns a fresh reader based on current state
+         return getReaderInternal();
     }
 
     private Charset detectCharset(BufferedInputStream bis) {
         try {
             CharsetDetector detector = new CharsetDetector();
-            // Provide the stream directly if supported, or read bytes if needed.
-            // The detector might consume part of the stream, hence the mark/reset in getReader.
             detector.setText(bis);
             CharsetMatch match = detector.detect();
             if (match != null) {
                 String charsetName = match.getName();
-                // Ensure the detected charset is supported by Java
                 if (Charset.isSupported(charsetName)) {
                     return Charset.forName(charsetName);
                 } else {
@@ -104,33 +138,160 @@ public class FileDocument
                 }
             }
         } catch (IOException ex) {
-            // Log error during detection
             System.err.println("IOException during charset detection for " + file.getName() + ": " + ex.getMessage());
         }
-        // Return null if detection fails or charset is unsupported
         return null;
     }
 
     @Override
     public Writer getWriter() throws IOException {
-         if (isReadonly()) {
-             throw new IOException("Cannot get writer for read-only file: " + file.getName());
-         }
-        try {
-             // Ensure the detected or default charset is used for writing
-             Charset effectiveCharset = (this.charset != null) ? this.charset : StandardCharsets.UTF_8;
-            // Use try-with-resources for the output streams
-            FileOutputStream fos = new FileOutputStream(file); // Opens the file for writing (truncates by default)
-            BufferedOutputStream bos = new BufferedOutputStream(fos);
-            return new BufferedWriter(new OutputStreamWriter(bos, effectiveCharset));
-        } catch (IOException ex) {
-            throw new RuntimeException("Cannot create FileWriter for file: " + file.getName(), ex);
+        if (isReadonly()) {
+            throw new IOException("Cannot get writer for read-only file: " + getName());
         }
+        if (file == null) {
+            throw new IOException("Cannot get writer, file object is null for: " + getName());
+        }
+        // Ensure the detected or default charset is used for writing
+        Charset effectiveCharset = (this.charset != null) ? this.charset : StandardCharsets.UTF_8;
+        // Use try-with-resources for the output streams
+        FileOutputStream fos = new FileOutputStream(file); // Opens file for writing (truncates)
+        BufferedOutputStream bos = new BufferedOutputStream(fos);
+        return new BufferedWriter(new OutputStreamWriter(bos, effectiveCharset));
     }
 
     @Override
     public void read() {
         // Re-initialize and read the file content again
         initializeAndRead();
+    }
+
+    @Override
+    public void write() throws IOException {
+        if (document == null) {
+            throw new IllegalStateException("Cannot write document, it was not initialized: " + getName());
+        }
+        if (isReadonly()) {
+             System.err.println("Attempted to write read-only document: " + getName());
+             return; // Or throw?
+        }
+        try (Writer out = getWriter()) { // getWriter handles file opening
+            new DefaultEditorKit().write(out, document, 0, document.getLength());
+            out.flush();
+            changed = false; // Mark as not changed after successful write
+        } catch (IOException | BadLocationException ex) {
+            throw new RuntimeException("Failed to write document: " + getName(), ex);
+        } catch (Exception e) {
+             throw new RuntimeException("Unexpected error writing document: " + getName(), e);
+        }
+    }
+
+    @Override
+    public int getOffsetForLine(int lineNumber) {
+        if (lineNumber < 0 || document == null) {
+            return -1;
+        }
+        Element root = document.getDefaultRootElement();
+        if (lineNumber >= root.getElementCount()) {
+            // Requesting offset for line *after* the last valid line index
+            // Return the document length (offset after the very last character)
+             if (lineNumber == root.getElementCount()) {
+                return document.getLength();
+             } else {
+                 return -1; // Invalid line number way past the end
+             }
+        }
+        Element lineElement = root.getElement(lineNumber);
+        return lineElement.getStartOffset();
+    }
+
+    @Override
+    public int getLineForOffset(int offset) {
+        if (offset < 0 || document == null) {
+            return 0; // Or -1 for error?
+        }
+        Element root = document.getDefaultRootElement();
+        return root.getElementIndex(offset);
+    }
+
+    @Override
+    public String getLineText(int lineNumber) {
+        if (document == null || lineNumber < 0) return "<INVALID LINE>";
+
+        Element root = document.getDefaultRootElement();
+        if (lineNumber >= root.getElementCount()) {
+             System.err.println("getLineText: Invalid line number " + lineNumber + " for document " + getName());
+             return "<INVALID LINE>";
+        }
+
+        Element lineElement = root.getElement(lineNumber);
+        int startOffset = lineElement.getStartOffset();
+        int endOffset = lineElement.getEndOffset();
+        try {
+            return document.getText(startOffset, endOffset - startOffset);
+        } catch (BadLocationException e) {
+            System.err.println("Error getting text for line " + lineNumber + " in " + getName() + ": " + e.getMessage());
+            return "<ERROR>";
+        }
+    }
+
+    @Override
+    public int getNumberOfLines() {
+        if (document == null) return 0;
+        return document.getDefaultRootElement().getElementCount();
+    }
+
+    @Override
+    public List<String> getLineList() {
+        if (document == null) return List.of();
+
+        int lineCount = getNumberOfLines();
+        List<String> lines = new ArrayList<>(lineCount);
+        Element root = document.getDefaultRootElement();
+        try {
+            for (int i = 0; i < lineCount; i++) {
+                Element lineElement = root.getElement(i);
+                int start = lineElement.getStartOffset();
+                int end = lineElement.getEndOffset();
+                // PlainDocument lines often include the newline, need to handle this
+                String line = document.getText(start, end - start);
+                // DiffUtils works best without trailing newlines in the list elements
+                if (line.endsWith("\n")) {
+                     // Handle CRLF as well
+                    if (line.endsWith("\r\n")) {
+                         lines.add(line.substring(0, line.length() - 2));
+                    } else {
+                         lines.add(line.substring(0, line.length() - 1));
+                    }
+                } else {
+                    lines.add(line);
+                }
+            }
+        } catch (BadLocationException e) {
+            throw new RuntimeException("Error constructing line list for " + getName(), e);
+        }
+        return lines;
+    }
+
+    // --- DocumentListener Methods --- Implementing Change Tracking ---
+    @Override
+    public void insertUpdate(DocumentEvent e) {
+        changed = true;
+    }
+
+    @Override
+    public void removeUpdate(DocumentEvent e) {
+        changed = true;
+    }
+
+    @Override
+    public void changedUpdate(DocumentEvent e) {
+        // Attribute changes usually don't affect file content 'changed' status
+        // but we might mark it changed for safety or if styles were persisted.
+        // For now, treat attribute changes as non-content changes.
+    }
+
+    @Override
+    public String toString() {
+        return "FileDocument[name=" + getName() + ", file=" + (file != null ? file.getPath() : "<null>") + ", readonly=" + readOnly + ", changed=" + changed + "]";
     }
 }
