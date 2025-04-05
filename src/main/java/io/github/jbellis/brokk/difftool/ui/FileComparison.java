@@ -1,9 +1,8 @@
 package io.github.jbellis.brokk.difftool.ui;
 
-import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
-import io.github.jbellis.brokk.difftool.doc.FileDocument;
-import io.github.jbellis.brokk.difftool.doc.StringDocument;
+import io.github.jbellis.brokk.difftool.node.FileNode;
 import io.github.jbellis.brokk.difftool.node.JMDiffNode;
+import io.github.jbellis.brokk.difftool.node.StringNode;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -13,10 +12,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
 
-public class FileComparison extends SwingWorker<JMDiffNode, Object> {
+public class FileComparison extends SwingWorker<String, Object> {
     private final BrokkDiffPanel mainPanel;
+    private JMDiffNode diffNode;
     private final File leftFile;
     private final File rightFile;
+    private BufferDiffPanel panel;
     private final String contentLeft;
     private final String contentRight;
     private final String contentLeftTitle;
@@ -25,10 +26,6 @@ public class FileComparison extends SwingWorker<JMDiffNode, Object> {
     private final String leftFileTitle;
     private final String rightFileTitle;
     private final boolean isDarkTheme;
-    private boolean isStringAndFileComparison;
-
-    // Holds the result panel
-    private BufferDiffPanel panel;
 
     // Constructor
     private FileComparison(FileComparisonBuilder builder) {
@@ -40,7 +37,6 @@ public class FileComparison extends SwingWorker<JMDiffNode, Object> {
         this.contentLeftTitle = builder.contentLeftTitle;
         this.contentRightTitle = builder.contentRightTitle;
         this.isTwoFilesComparison = builder.isTwoFilesComparison;
-        this.isStringAndFileComparison = builder.isStringAndFileComparison;
         this.leftFileTitle = builder.leftFileTitle;
         this.rightFileTitle = builder.rightFileTitle;
         this.isDarkTheme = builder.isDarkTheme;
@@ -82,22 +78,22 @@ public class FileComparison extends SwingWorker<JMDiffNode, Object> {
         }
 
         public FileComparisonBuilder withStringAndFile(String contentLeft, String contentLeftTitle, File rightFile, String rightFileTitle) {
-            // Assume contentLeft is indeed the left side
-            this.contentLeft = contentLeft;
-            this.contentLeftTitle = contentLeftTitle;
-            this.rightFile = rightFile;
-            this.rightFileTitle = rightFileTitle;
-            this.isStringAndFileComparison = true;
+            if (isStringAndFileComparison) {
+                this.contentLeft = contentLeft;
+                this.contentLeftTitle = contentLeftTitle;
+                this.rightFile = rightFile;
+                this.rightFileTitle = rightFileTitle;
+            }
             return this;
         }
 
-        public FileComparisonBuilder withFileAndString(File leftFile, String leftFileTitle, String contentRight, String contentRightTitle) {
-            // Assume leftFile is the left side
-            this.leftFile = leftFile;
-            this.leftFileTitle = leftFileTitle;
-            this.contentRight = contentRight;
-            this.contentRightTitle = contentRightTitle;
-            this.isStringAndFileComparison = true;
+        public FileComparisonBuilder withStringAndFile(File leftFile, String leftFileTitle, String contentRight, String contentRightTitle) {
+            if (isStringAndFileComparison) {
+                this.contentRight = contentRight;
+                this.contentRightTitle = contentRightTitle;
+                this.leftFile = leftFile;
+                this.leftFileTitle = leftFileTitle;
+            }
             return this;
         }
 
@@ -126,48 +122,73 @@ public class FileComparison extends SwingWorker<JMDiffNode, Object> {
     }
 
     @Override
-    public JMDiffNode doInBackground() {
-        // This method now solely focuses on creating the correct BufferDocumentIF instances
-        // and returning them wrapped in a JMDiffNode.
-        // The actual diffing happens in BufferDiffPanel after this worker completes.
-
-        BufferDocumentIF leftDoc = null;
-        BufferDocumentIF rightDoc = null;
-        String comparisonTitle = "Diff"; // Default title
-
-        try {
+    public String doInBackground() {
+        if (diffNode == null) {
             if (isTwoFilesComparison) {
-                if (leftFile == null || rightFile == null) throw new IllegalArgumentException("One or both files are null for file comparison.");
-                leftDoc = new FileDocument(leftFile, leftFileTitle);
-                rightDoc = new FileDocument(rightFile, rightFileTitle);
-                comparisonTitle = leftFileTitle + " vs " + rightFileTitle;
-            } else if (isStringAndFileComparison) {
-                if (contentLeft != null && rightFile != null) { // String on Left, File on Right
-                    leftDoc = new StringDocument(contentLeft, contentLeftTitle, false); // Assume editable string?
-                    rightDoc = new FileDocument(rightFile, rightFileTitle);
-                    comparisonTitle = contentLeftTitle + " vs " + rightFileTitle;
-                } else if (leftFile != null && contentRight != null) { // File on Left, String on Right
-                    leftDoc = new FileDocument(leftFile, leftFileTitle);
-                    rightDoc = new StringDocument(contentRight, contentRightTitle, false); // Assume editable string?
-                    comparisonTitle = leftFileTitle + " vs " + contentRightTitle;
+                // Ensure both leftFile and rightFile are not null
+                if (leftFile != null && rightFile != null) {
+                    diffNode = create(leftFileTitle, leftFile, rightFileTitle, rightFile);
                 } else {
-                    throw new IllegalArgumentException("Invalid combination for string/file comparison.");
+                    return "Error: One or both files are null.";
                 }
-            } else { // Two Strings comparison
-                if (contentLeft == null || contentRight == null) throw new IllegalArgumentException("One or both content strings are null for string comparison.");
-                leftDoc = new StringDocument(contentLeft, contentLeftTitle, false); // Assume editable
-                rightDoc = new StringDocument(contentRight, contentRightTitle, false); // Assume editable
-                comparisonTitle = contentLeftTitle + " vs " + contentRightTitle;
+            } else if (mainPanel.isStringAndFileComparison()) {
+                // Handle string and file comparison, ensuring that contentLeft is not null and rightFile is not null
+                if (contentLeft != null && !contentLeft.isEmpty() && rightFile != null) {
+                    diffNode = createStringAndFile(contentLeftTitle, contentLeft, rightFileTitle, rightFile);
+                } else if (contentRight != null && !contentRight.isEmpty() && leftFile != null) {
+                    diffNode = createStringAndFile(leftFileTitle, leftFile, contentRightTitle, contentRight);
+                } else {
+                    return "Error: Either the left content or right file is null or empty.";
+                }
+            } else if (contentLeft != null && contentRight != null) {
+                // Ensure both contentLeft and contentRight are not null
+                if (!contentLeft.isEmpty() && !contentRight.isEmpty()) {
+                    diffNode = createString(contentLeftTitle, contentLeft, contentRightTitle, contentRight);
+                } else {
+                    return "Error: One or both content values are empty.";
+                }
+            } else {
+                return "Error: One or both content values are null.";
             }
-
-            // Return the JMDiffNode containing the documents and title
-            return new JMDiffNode(comparisonTitle, leftDoc, rightDoc);
-        } catch (Exception e) {
-            // Log error and potentially signal failure by returning null or throwing
-            System.err.println("Error preparing documents for comparison: " + e.getMessage());
-            // Propagate error to done() method by throwing RuntimeException
-            throw new RuntimeException("Failed to create documents for comparison", e);
         }
+
+        // If no errors, proceed to diffing
+        SwingUtilities.invokeLater(() -> diffNode.diff());
+        return null;
+    }
+
+
+    public JMDiffNode create(String fileLeftName, File fileLeft,
+                             String fileRightName, File fileRight) {
+        JMDiffNode node = new JMDiffNode(fileLeftName, true);
+        node.setBufferNodeLeft(new FileNode(fileLeftName, fileLeft));
+        node.setBufferNodeRight(new FileNode(fileRightName, fileRight));
+        return node;
+    }
+
+    public JMDiffNode createString(String fileLeftName, String leftContent,
+                                   String fileRightName, String rightContent) {
+        JMDiffNode node = new JMDiffNode(fileLeftName, true);
+        node.setBufferNodeLeft(new StringNode(fileLeftName, leftContent));
+        node.setBufferNodeRight(new StringNode(fileRightName, rightContent));
+        return node;
+    }
+
+    public JMDiffNode createStringAndFile(String contentLeftTitle, String leftContent,
+                                          String fileRightName, File fileRight) {
+        JMDiffNode node = new JMDiffNode(contentLeftTitle, true);
+        node.setBufferNodeLeft(new StringNode(contentLeftTitle, leftContent));
+        node.setBufferNodeRight(new FileNode(fileRightName, fileRight));
+        return node;
+    }
+
+    public JMDiffNode createStringAndFile(String fileLeftName, File fileLeft, String contentRightTitle,
+                                          String rightContent) {
+        JMDiffNode node = new JMDiffNode(contentLeftTitle, true);
+        node.setBufferNodeLeft(new FileNode(fileLeftName, fileLeft));
+        node.setBufferNodeRight(new StringNode(contentRightTitle, rightContent));
+
+        return node;
     }
 
     private static ImageIcon getScaledIcon() {
@@ -177,29 +198,31 @@ public class FileComparison extends SwingWorker<JMDiffNode, Object> {
             return new ImageIcon(scaledImage);
         } catch (IOException | NullPointerException e) {
             System.err.println("Image not found: " + "/images/compare.png" + ": " + e.getMessage());
-            return null; // Return null if icon fails to load
+            // Optionally rethrow if icon is critical
+            // throw new RuntimeException("Failed to load required image icon", e);
+            return null;
         }
     }
 
     @Override
     protected void done() {
         try {
-            JMDiffNode diffInput = get(); // Get the result from doInBackground()
-            if (diffInput != null) {
+            String result = get();
+            if (result != null) {
+                JOptionPane.showMessageDialog(mainPanel, result, "Error opening file", JOptionPane.ERROR_MESSAGE);
+            } else {
                 panel = new BufferDiffPanel(mainPanel, isDarkTheme); // Pass theme state
-                panel.setDiffInput(diffInput); // Set the input node (which triggers diff)
+                panel.setDiffNode(diffNode);
                 ImageIcon resizedIcon = getScaledIcon();
                 mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
                 mainPanel.getTabbedPane().setSelectedComponent(panel);
-            } else {
-                // This case should ideally not happen if doInBackground throws on error
-                JOptionPane.showMessageDialog(mainPanel, "Failed to prepare comparison.", "Error", JOptionPane.ERROR_MESSAGE);
             }
         } catch (Exception ex) {
-            // Handle exceptions during the 'done' phase, including those propagated from doInBackground()
-            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-            System.err.println("Error completing file comparison task: " + cause.getMessage());
-            JOptionPane.showMessageDialog(mainPanel, "Error during comparison: " + cause.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            // Handle exceptions during the 'done' phase, e.g., from get()
+            System.err.println("Error completing file comparison task: " + ex.getMessage());
+            JOptionPane.showMessageDialog(mainPanel, "Error finalizing comparison: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            // Rethrow if necessary
+            // throw new RuntimeException("Failed to complete comparison UI update", ex);
         }
     }
 }

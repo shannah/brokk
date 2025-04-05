@@ -6,7 +6,7 @@ import io.github.jbellis.brokk.difftool.ui.BufferDiffPanel;
 import io.github.jbellis.brokk.difftool.ui.FilePanel;
 
 import javax.swing.text.BadLocationException;
-import java.awt.*;
+import java.awt.event.AdjustmentEvent;
 import java.awt.event.AdjustmentListener;
 
 /**
@@ -22,9 +22,6 @@ public class ScrollSynchronizer
     private AdjustmentListener horizontalAdjustmentListener;
     private AdjustmentListener verticalAdjustmentListener;
 
-    // Flag to prevent recursive scroll events
-    private boolean insideScroll = false;
-
     public ScrollSynchronizer(BufferDiffPanel diffPanel, FilePanel filePanelLeft, FilePanel filePanelRight)
     {
         this.diffPanel = diffPanel;
@@ -35,10 +32,6 @@ public class ScrollSynchronizer
 
     private void init()
     {
-        if (filePanelLeft == null || filePanelRight == null) {
-            System.err.println("ScrollSynchronizer init failed: FilePanels are null.");
-            return;
-        }
         // Sync horizontal:
         var barLeftH = filePanelLeft.getScrollPane().getHorizontalScrollBar();
         var barRightH = filePanelRight.getScrollPane().getHorizontalScrollBar();
@@ -55,19 +48,21 @@ public class ScrollSynchronizer
     private AdjustmentListener getHorizontalAdjustmentListener()
     {
         if (horizontalAdjustmentListener == null) {
-            horizontalAdjustmentListener = e -> {
-                if (insideScroll) return;
-                if (filePanelLeft == null || filePanelRight == null) return;
+            horizontalAdjustmentListener = new AdjustmentListener() {
+                boolean insideScroll;
 
-                var leftH = filePanelLeft.getScrollPane().getHorizontalScrollBar();
-                var rightH = filePanelRight.getScrollPane().getHorizontalScrollBar();
-                var scFrom = (e.getSource() == leftH ? leftH : rightH);
-                var scTo = (scFrom == leftH ? rightH : leftH);
+                @Override
+                public void adjustmentValueChanged(AdjustmentEvent e)
+                {
+                    if (insideScroll) return;
 
-                insideScroll = true;
-                try {
+                    var leftH = filePanelLeft.getScrollPane().getHorizontalScrollBar();
+                    var rightH = filePanelRight.getScrollPane().getHorizontalScrollBar();
+                    var scFrom = (e.getSource() == leftH ? leftH : rightH);
+                    var scTo = (scFrom == leftH ? rightH : leftH);
+
+                    insideScroll = true;
                     scTo.setValue(scFrom.getValue());
-                } finally {
                     insideScroll = false;
                 }
             };
@@ -78,16 +73,18 @@ public class ScrollSynchronizer
     private AdjustmentListener getVerticalAdjustmentListener()
     {
         if (verticalAdjustmentListener == null) {
-            verticalAdjustmentListener = e -> {
-                if (insideScroll) return;
-                if (filePanelLeft == null || filePanelRight == null) return;
+            verticalAdjustmentListener = new AdjustmentListener() {
+                boolean insideScroll;
 
-                var leftV = filePanelLeft.getScrollPane().getVerticalScrollBar();
-                boolean leftScrolled = (e.getSource() == leftV);
-                insideScroll = true;
-                try {
+                @Override
+                public void adjustmentValueChanged(AdjustmentEvent e)
+                {
+                    if (insideScroll) return;
+
+                    var leftV = filePanelLeft.getScrollPane().getVerticalScrollBar();
+                    boolean leftScrolled = (e.getSource() == leftV);
+                    insideScroll = true;
                     scroll(leftScrolled);
-                } finally {
                     insideScroll = false;
                 }
             };
@@ -103,182 +100,105 @@ public class ScrollSynchronizer
     {
         var patch = diffPanel.getPatch();
         if (patch == null) {
-            return; // No diff info, cannot sync based on lines
+            return;
         }
         var fp1 = leftScrolled ? filePanelLeft : filePanelRight;
         var fp2 = leftScrolled ? filePanelRight : filePanelLeft;
 
-        if (fp1 == null || fp2 == null) return;
-
         // Which line is roughly in the center of fp1?
         int line = getCurrentLineCenter(fp1);
-        if (line < 0) return; // Could not determine center line
 
-        // Use the patch to map the line number from one side to the other
+        // Attempt naive line mapping using deltas:
+        // We walk through the patch's deltas to figure out how many lines inserted/deleted up to `line`.
+        // For simplicity, we just do “line” for the other side unless you want more advanced logic.
+        // (In Phase 1, we had some old “DiffUtil.getRevisedLine()” logic. If you want that back, adapt it with patch.)
         int mappedLine = approximateLineMapping(patch, line, leftScrolled);
 
-        // Scroll the other panel to the mapped line
         scrollToLine(fp2, mappedLine);
     }
 
     /**
-     * Basic approximation of line mapping based on the diff patch:
-     * If fromOriginal==true, `line` is from the original side, we apply deltas up to that line
+     * Basic approximation of line mapping:
+     * If leftScrolled==true, `line` is from the original side, we apply deltas up to that line
      * to see how many lines were inserted or removed, producing a revised line index.
-     * If false, we do the reverse (map revised line to original).
+     * If false, we do the reverse.
      */
     private int approximateLineMapping(com.github.difflib.patch.Patch<String> patch, int line, boolean fromOriginal)
     {
-        int currentOriginalLine = 0;
-        int currentRevisedLine = 0;
-        int targetLine = -1;
-
+        int offset = 0;
         for (AbstractDelta<String> delta : patch.getDeltas()) {
-            Chunk<String> source = delta.getSource(); // original chunk
-            Chunk<String> target = delta.getTarget(); // revised chunk
+            Chunk<String> source = delta.getSource(); // original
+            Chunk<String> target = delta.getTarget(); // revised
+            int srcPos = source.getPosition();
+            int tgtPos = target.getPosition();
+            // The chunk ends at pos+size-1
+            int srcEnd = srcPos + source.size() - 1;
+            int tgtEnd = tgtPos + target.size() - 1;
 
-            int sourceStart = source.getPosition();
-            int sourceSize = source.size();
-            int targetStart = target.getPosition();
-            int targetSize = target.size();
-
-            // Lines before this delta are equal
-            int equalLines = (fromOriginal ? sourceStart : targetStart) - (fromOriginal ? currentOriginalLine : currentRevisedLine);
-            if (equalLines > 0) {
-                if (fromOriginal) {
-                    if (line >= currentOriginalLine && line < currentOriginalLine + equalLines) {
-                        targetLine = currentRevisedLine + (line - currentOriginalLine);
-                        break;
-                    }
-                } else {
-                    if (line >= currentRevisedLine && line < currentRevisedLine + equalLines) {
-                        targetLine = currentOriginalLine + (line - currentRevisedLine);
-                        break;
-                    }
-                }
-                currentOriginalLine += equalLines;
-                currentRevisedLine += equalLines;
-            }
-
-            // Check if the line falls within this delta
             if (fromOriginal) {
-                if (line >= sourceStart && line < sourceStart + sourceSize) {
-                    // If line is in original chunk, map it to the start of the target chunk
-                    targetLine = targetStart;
-                    break;
+                // If this delta is fully after 'line', stop
+                if (srcPos > line) break;
+                // If 'line' is inside this chunk
+                if (line <= srcEnd) {
+                    // If inside a "change" or "delete" chunk, map to start of target
+                    return tgtPos + offset;
                 }
+                // Otherwise, line is beyond srcEnd, so add difference in lines to offset
+                offset += (target.size() - source.size());
             } else {
-                if (line >= targetStart && line < targetStart + targetSize) {
-                    // If line is in revised chunk, map it to the start of the original chunk
-                    targetLine = sourceStart;
-                    break;
+                // from the revised side
+                if (tgtPos > line) break;
+                if (line <= tgtEnd) {
+                    return srcPos + offset;
                 }
-            }
-
-            // Advance line counters past this delta
-            currentOriginalLine = sourceStart + sourceSize;
-            currentRevisedLine = targetStart + targetSize;
-        }
-
-        // If the line is after all deltas
-        if (targetLine == -1) {
-            if (fromOriginal) {
-                targetLine = currentRevisedLine + (line - currentOriginalLine);
-            } else {
-                targetLine = currentOriginalLine + (line - currentRevisedLine);
+                offset += (source.size() - target.size());
             }
         }
-
-        // Ensure the mapped line is non-negative
-        return Math.max(0, targetLine);
+        return line + offset;
     }
-
 
     /**
      * Determine which line is in the vertical center of the FilePanel's visible region.
-     * Returns -1 if unable to determine.
      */
     private int getCurrentLineCenter(FilePanel fp)
     {
-        if (fp == null) return -1;
         var editor = fp.getEditor();
         var viewport = fp.getScrollPane().getViewport();
-        var viewPos = viewport.getViewPosition();
-        var viewSize = viewport.getSize();
+        var p = viewport.getViewPosition();
+        // We shift p.y by half the viewport height to approximate center
+        p.y += (viewport.getSize().height / 2);
 
-        // Calculate center Y coordinate relative to the editor component
-        int centerY = viewPos.y + viewSize.height / 2;
-        Point centerPoint = new Point(0, centerY); // X doesn't matter for line num
-
-        int offset = editor.viewToModel2D(centerPoint);
-        if (offset < 0) {
-             // Try edge cases if center fails
-             offset = editor.viewToModel2D(new Point(0, viewPos.y)); // Top edge
-             if (offset < 0) offset = editor.viewToModel2D(new Point(0, viewPos.y + viewSize.height - 1)); // Bottom edge
-             if (offset < 0) return -1; // Still couldn't find a valid offset
-        }
-
+        int offset = editor.viewToModel(p);
         var bd = fp.getBufferDocument();
-        if (bd == null) return -1;
+        if (bd == null) return 0;
         return bd.getLineForOffset(offset);
     }
 
-    /**
-     * Scrolls the given FilePanel so that the specified line is roughly centered vertically.
-     */
     public void scrollToLine(FilePanel fp, int line)
     {
-        if (fp == null || line < 0) return;
-
         var bd = fp.getBufferDocument();
-        if (bd == null) return;
-
+        if (bd == null) {
+            return;
+        }
         var offset = bd.getOffsetForLine(line);
         if (offset < 0) {
-             // Try to scroll to end if line is beyond last line
-             if (line >= bd.getNumberOfLines()) {
-                  offset = bd.getDocument().getLength();
-             } else {
-                  System.err.println("ScrollToLine: Invalid offset for line " + line);
-                  return;
-             }
+            return;
         }
-
         var viewport = fp.getScrollPane().getViewport();
         var editor = fp.getEditor();
         try {
-            // Get the rectangle for the target offset
-            Rectangle rect = editor.modelToView(offset);
-            if (rect == null) {
-                // Fallback if modelToView fails for the offset
-                rect = editor.modelToView(bd.getOffsetForLine(Math.max(0, line - 1)));
-                if (rect != null) rect.y += editor.getFontMetrics(editor.getFont()).getHeight(); // Estimate position
-                else return; // Cannot get view rect
-            }
+            var rect = editor.modelToView(offset);
+            if (rect == null) return;
 
-            // Calculate desired view position to center the line
-            int viewHeight = viewport.getHeight();
-            int desiredY = rect.y - (viewHeight / 2) + (rect.height / 2);
-            desiredY = Math.max(0, desiredY); // Don't scroll past the top
+            // We want to place the line near the center
+            rect.y -= (viewport.getSize().height / 2);
+            if (rect.y < 0) rect.y = 0;
 
-            // Ensure we don't scroll past the bottom
-            int maxViewY = Math.max(0, editor.getHeight() - viewHeight);
-            desiredY = Math.min(desiredY, maxViewY);
-
-            // Create the new view position point
-            Point p = new Point(viewport.getViewPosition().x, desiredY);
-
-            // Set the new view position (this will trigger adjustment listeners if changed)
+            var p = rect.getLocation();
             viewport.setViewPosition(p);
-
         } catch (BadLocationException ex) {
             // This usually means the offset is invalid for the document model
-            System.err.println("ScrollToLine Error: Bad location for offset " + offset + " in line " + line + ": " + ex.getMessage());
-            // Consider alternative scrolling, e.g., using JTextArea.setCaretPosition and ensureRectVisible
-            // editor.setCaretPosition(offset);
-            // editor.scrollRectToVisible(new Rectangle(0, editor.getCaret().getMagicCaretPosition().y, 1, viewport.getHeight()));
-        } catch (Exception e) {
-             System.err.println("ScrollToLine Error: Unexpected exception: " + e.getMessage());
+            throw new RuntimeException(ex);
         }
     }
 
@@ -288,17 +208,14 @@ public class ScrollSynchronizer
      */
     public void showDelta(AbstractDelta<String> delta)
     {
-        if (delta == null || filePanelLeft == null || filePanelRight == null) return;
-        // We assume we want to scroll based on the 'source' chunk (original side).
+        // We assume we want to scroll the left side. The 'source' chunk is the original side.
         var source = delta.getSource();
-        int lineToScroll = source.getPosition();
-
-        // Scroll the left panel first
-        scrollToLine(filePanelLeft, lineToScroll);
-
-        // The vertical adjustment listener should automatically sync the right panel
-        // based on the scroll of the left panel.
+        scrollToLine(filePanelLeft, source.getPosition());
+        // That triggers the verticalAdjustmentListener to sync the right side.
     }
 
-    // Removed toNextDelta - logic moved to BufferDiffPanel
+    public void toNextDelta(boolean next)
+    {
+        // Moved to BufferDiffPanel. This is not used here any more.
+    }
 }

@@ -1,10 +1,12 @@
+
 package io.github.jbellis.brokk.difftool.ui;
 
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Chunk;
+import io.github.jbellis.brokk.difftool.doc.BufferDocumentChangeListenerIF;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
 import io.github.jbellis.brokk.difftool.utils.Colors;
-// Removed JMDocumentEvent import
+import io.github.jbellis.brokk.difftool.doc.JMDocumentEvent;
 import io.github.jbellis.brokk.difftool.search.SearchBarDialog;
 import io.github.jbellis.brokk.difftool.search.SearchCommand;
 import io.github.jbellis.brokk.difftool.search.SearchHit;
@@ -14,15 +16,13 @@ import javax.swing.*;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.Highlighter;
-import javax.swing.text.PlainDocument;
 import java.awt.*;
-// Removed ActionListener import (timer gone)
+import java.awt.event.ActionListener;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
 
-// Removed BufferDocumentChangeListenerIF implementation
-public class FilePanel {
+public class FilePanel implements BufferDocumentChangeListenerIF {
     private static final int MAXSIZE_CHANGE_DIFF = 1000;
 
     private final BufferDiffPanel diffPanel;
@@ -30,7 +30,7 @@ public class FilePanel {
     private JScrollPane scrollPane;
     private JTextArea editor;
     private BufferDocumentIF bufferDocument;
-    // Removed Timer timer;
+    private Timer timer;
     private boolean selected;
     private SearchHits searchHits;
     private final SearchBarDialog bar;
@@ -49,6 +49,8 @@ public class FilePanel {
         editor.addFocusListener(getFocusListener());
         bar.setFilePanel(this);
 
+        editor.getDocument().addUndoableEditListener(diffPanel.getUndoHandler()); // Add undo listener
+
         // Wrap editor inside a scroll pane with optimized scrolling
         scrollPane = new JScrollPane(editor);
         scrollPane.getViewport().setScrollMode(JViewport.BLIT_SCROLL_MODE);
@@ -60,7 +62,13 @@ public class FilePanel {
             layout.syncWithScrollPane(scrollPane);
         }
 
-        // Removed Timer setup
+        // Setup a one-time timer to refresh the UI after 100ms
+        timer = new Timer(100, refresh());
+        timer.setRepeats(false);
+
+//        diffPanel.getCaseSensitiveCheckBox().addActionListener(e -> {
+//            doSearch()
+//        });
     }
 
 
@@ -78,45 +86,35 @@ public class FilePanel {
 
 
     public void setBufferDocument(BufferDocumentIF bd) {
-        PlainDocument previousDocument = null; // Use PlainDocument type
-        PlainDocument document = null;
+        Document previousDocument;
+        Document document;
         try {
             if (bufferDocument != null) {
-                // bufferDocument.removeChangeListener(this); // Listener removed
+                bufferDocument.removeChangeListener(this);
                 previousDocument = bufferDocument.getDocument();
                 if (previousDocument != null) {
-                    previousDocument.removeUndoableEditListener(diffPanel.getUndoHandler());
+                    previousDocument.removeUndoableEditListener(diffPanel
+                                                                        .getUndoHandler());
                 }
             }
 
             bufferDocument = bd;
 
-            if (bufferDocument != null) { // Check if new document is not null
-                 document = bufferDocument.getDocument();
-                 if (document != null) {
-                     editor.setDocument(document);
-                     editor.setTabSize(4);
-                     // bufferDocument.addChangeListener(this); // Listener removed
-                     document.addUndoableEditListener(diffPanel.getUndoHandler());
-                 } else {
-                     // Set an empty document if the bufferDocument's doc is null
-                     editor.setDocument(new PlainDocument());
-                 }
-            } else {
-                // Set an empty document if the bufferDocument itself is null
-                editor.setDocument(new PlainDocument());
+            document = bufferDocument.getDocument();
+            if (document != null) {
+                editor.setDocument(document);
+                editor.setTabSize(4);
+                bufferDocument.addChangeListener(this);
+                document.addUndoableEditListener(diffPanel.getUndoHandler());
             }
 
             // Initialize configuration including theme-specific highlight painters
             initConfiguration();
         } catch (Exception ex) {
-            // Log or show error if document access fails
-            System.err.println("Error setting buffer document " + (bd != null ? bd.getName() : "<null>") + ": " + ex.getMessage());
-            editor.setDocument(new PlainDocument()); // Ensure editor has a document
-            JOptionPane.showMessageDialog(diffPanel, "Could not set document: "
-                                                  + (bd != null ? bd.getName() : "<null>")
+            JOptionPane.showMessageDialog(diffPanel, "Could not read file: "
+                                                  + bufferDocument.getName()
                                                   + "\n" + ex.getMessage(),
-                                          "Error setting document", JOptionPane.ERROR_MESSAGE);
+                                          "Error opening file", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -162,39 +160,18 @@ public class FilePanel {
         }
 
         public void highlight() {
-            if (bufferDocument == null) return; // Ensure document exists
             // Retrieve the chunk relevant to this side
             var chunk = getChunk(delta);
             var fromOffset = bufferDocument.getOffsetForLine(chunk.getPosition());
-            if (fromOffset < 0) {
-                 // Handle invalid offset - maybe log or skip
-                 System.err.printf("Highlight %s: Invalid start offset for line %d in %s%n", delta.getType(), chunk.getPosition(), bufferDocument.getName());
-                 return;
-            }
-            // For end offset, use the start offset of the *next* line, or doc length if it's the last line.
-            int nextLine = chunk.getPosition() + chunk.size();
-            var toOffset = bufferDocument.getOffsetForLine(nextLine);
-            if (toOffset < 0) { // If next line is invalid (e.g., beyond EOF), use document length
-                 toOffset = bufferDocument.getDocument().getLength();
-            }
+            if (fromOffset < 0) return;
+            var toOffset = bufferDocument.getOffsetForLine(chunk.getPosition() + chunk.size());
+            if (toOffset < 0) return;
 
-            // Check if chunk is effectively "empty line" (e.g., insertion point)
+            // Check if chunk is effectively "empty line" in the old code
             boolean isEmpty = (chunk.size() == 0);
 
-            // Check for trailing newline indication
-            boolean isEndAndNewline = false;
-            if (toOffset > fromOffset && toOffset <= bufferDocument.getDocument().getLength()) {
-                try {
-                     // Check if the last character *before* toOffset is a newline
-                     if (toOffset > 0) {
-                          String lastChar = bufferDocument.getDocument().getText(toOffset - 1, 1);
-                          isEndAndNewline = "\n".equals(lastChar);
-                     }
-                 } catch (BadLocationException e) {
-                     // Should not happen with valid offsets
-                     System.err.println("Error checking for trailing newline: " + e.getMessage());
-                 }
-            }
+            // End offset might be the doc length; check trailing newline logic:
+            boolean isEndAndNewline = isEndAndLastNewline(toOffset);
 
             // Decide color. For Insert vs Delete vs Change we do:
             var isDark = diffPanel.isDarkTheme();
@@ -202,14 +179,14 @@ public class FilePanel {
             var painter = switch (type) {
                 case INSERT ->
                         isEmpty
-                                ? new JMHighlightPainter.JMHighlightLinePainter(Colors.getAdded(isDark)) // Indicate insertion point
+                                ? new JMHighlightPainter.JMHighlightLinePainter(Colors.getAdded(isDark))
                                 : isEndAndNewline
                                 ? new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getAdded(isDark))
                                 : new JMHighlightPainter(Colors.getAdded(isDark));
 
                 case DELETE ->
                         isEmpty
-                                ? new JMHighlightPainter.JMHighlightLinePainter(Colors.getDeleted(isDark)) // Indicate deletion point
+                                ? new JMHighlightPainter.JMHighlightLinePainter(Colors.getDeleted(isDark))
                                 : isEndAndNewline
                                 ? new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getDeleted(isDark))
                                 : new JMHighlightPainter(Colors.getDeleted(isDark));
@@ -218,9 +195,26 @@ public class FilePanel {
                         isEndAndNewline
                                 ? new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getChanged(isDark))
                                 : new JMHighlightPainter(Colors.getChanged(isDark));
-                case EQUAL -> throw new IllegalStateException("Equal delta type encountered in highlight painting"); // EQUAL deltas shouldn't be highlighted this way
+                case EQUAL -> throw new IllegalStateException();
             };
             setHighlight(fromOffset, toOffset, painter);
+        }
+
+        // Check if the last char is a newline *and* if offset is doc length
+        private boolean isEndAndLastNewline(int toOffset) {
+            try {
+                var docLen = bufferDocument.getDocument().getLength();
+                int endOffset = toOffset - 1;
+                if (endOffset < 0 || endOffset >= docLen) {
+                    return false;
+                }
+                // If the final character is a newline & chunk touches doc-end
+                boolean lastCharIsNL = "\n".equals(bufferDocument.getDocument().getText(endOffset, 1));
+                return (endOffset == docLen - 1) && lastCharIsNL;
+            } catch (BadLocationException e) {
+                // This exception indicates an issue with offsets, likely a bug
+                throw new RuntimeException("Bad location accessing document text", e);
+            }
         }
 
         protected abstract Chunk<String> getChunk(AbstractDelta<String> d);
@@ -260,23 +254,19 @@ public class FilePanel {
         jmhl.removeHighlights(JMHighlighter.LAYER2);
     }
 
-    private void setHighlight(int offset, int endOffset, // Use end offset instead of size
+    private void setHighlight(int offset, int size,
                               Highlighter.HighlightPainter highlight) {
 
-        setHighlight(JMHighlighter.LAYER0, offset, endOffset, highlight);
+        setHighlight(JMHighlighter.LAYER0, offset, size, highlight);
     }
 
-    private void setHighlight(Integer layer, int offset, int endOffset, // Use end offset
+    private void setHighlight(Integer layer, int offset, int size,
                               Highlighter.HighlightPainter highlight) {
         try {
-             // Add highlight using start and end offsets
-            getHighlighter().addHighlight(layer, offset, endOffset, highlight);
+            getHighlighter().addHighlight(layer, offset, size, highlight);
         } catch (BadLocationException ex) {
             // This usually indicates a logic error in calculating offsets/sizes
-            throw new RuntimeException("Error adding highlight from offset " + offset + " to " + endOffset, ex);
-        } catch (IllegalArgumentException iae) {
-             // Catch potential issue if end offset is before start offset
-             System.err.println("Warning: Attempted to add highlight with invalid offsets: start=" + offset + ", end=" + endOffset + ". Skipping highlight.");
+            throw new RuntimeException("Error adding highlight at offset " + offset + " size " + size, ex);
         }
     }
 
@@ -284,9 +274,22 @@ public class FilePanel {
         return bufferDocument != null && bufferDocument.isChanged();
     }
 
-    // Removed documentChanged method and BufferDocumentChangeListenerIF logic
+    public void documentChanged(JMDocumentEvent de) {
+        if (de.getStartLine() == -1 && de.getDocumentEvent() == null) {
+            // Refresh the diff of whole document.
+            timer.restart();
+        } else {
+//             Try to update the revision instead of doing a full diff.
+            if (!diffPanel.revisionChanged(de)) {
+                timer.restart();
+            }
+        }
+    }
 
-    // Removed refresh() ActionListener method
+
+    private ActionListener refresh() {
+        return ae -> diffPanel.diff();
+    }
 
     public FocusListener getFocusListener() {
         return new FocusAdapter() {
@@ -299,15 +302,11 @@ public class FilePanel {
 
 
     private void initConfiguration() {
-        Font font = new Font("Monospaced", Font.PLAIN, 12); // Adjusted font
-        editor.setFont(font);
+        Font font = new Font("Arial", Font.PLAIN, 14);
         editor.setBorder(new LineNumberBorder(this));
         FontMetrics fm = editor.getFontMetrics(font);
-        // Use average char width for horizontal scroll increment?
-        // int charWidth = fm.stringWidth("W"); // Example width
-        // scrollPane.getHorizontalScrollBar().setUnitIncrement(charWidth);
-        scrollPane.getHorizontalScrollBar().setUnitIncrement(fm.getHeight()); // Keep vertical for now
-        editor.setEditable(bufferDocument != null && !bufferDocument.isReadonly());
+        scrollPane.getHorizontalScrollBar().setUnitIncrement(fm.getHeight());
+        editor.setEditable(true);
     }
 
 
@@ -354,29 +353,36 @@ public class FilePanel {
         caseSensitive = searchCommand.isCaseSensitive(); // Get case-sensitive flag
 
         doc = getBufferDocument();
-        if (doc == null) return null; // No document to search
         numberOfLines = doc.getNumberOfLines();
 
         searchHits = new SearchHits();
 
         if (!searchText.isEmpty()) {
-            try {
-                 String fullText = doc.getDocument().getText(0, doc.getDocument().getLength());
-                 // Adjust case based on flag
-                 String textToSearchFull = caseSensitive ? fullText : fullText.toLowerCase();
-                 String searchTextToCompareFull = caseSensitive ? searchText : searchText.toLowerCase();
+            for (int line = 0; line < numberOfLines; line++) {
+                text = doc.getLineText(line);
 
-                 fromIndex = 0;
-                 while ((index = textToSearchFull.indexOf(searchTextToCompareFull, fromIndex)) != -1) {
-                     int line = doc.getLineForOffset(index);
-                     searchHit = new SearchHit(line, index, searchText.length());
-                     searchHits.add(searchHit);
-                     fromIndex = index + searchHit.getSize(); // Move past the found hit
-                 }
-             } catch (BadLocationException e) {
-                 System.err.println("Error reading document text for search: " + e.getMessage());
-                 return null; // Cannot search if document read fails
-             }
+                // Adjust case based on case-sensitive flag
+                if (!caseSensitive) {
+                    textToSearch = text.toLowerCase();
+                    searchTextToCompare = searchText.toLowerCase();
+                } else {
+                    textToSearch = text;
+                    searchTextToCompare = searchText;
+                }
+
+                fromIndex = 0;
+                while ((index = textToSearch.indexOf(searchTextToCompare, fromIndex)) != -1) {
+                    offset = bufferDocument.getOffsetForLine(line);
+                    if (offset < 0) {
+                        continue;
+                    }
+
+                    searchHit = new SearchHit(line, offset + index, searchText.length());
+                    searchHits.add(searchHit);
+
+                    fromIndex = index + searchHit.getSize();
+                }
+            }
         }
 
         reDisplay();
@@ -393,7 +399,7 @@ public class FilePanel {
         if (searchHits != null) {
             for (SearchHit sh : searchHits.getSearchHits()) {
                 setHighlight(JMHighlighter.LAYER2, sh.getFromOffset(),
-                             sh.getToOffset(), // Use end offset
+                             sh.getToOffset(),
                              searchHits.isCurrent(sh)
                                      ? JMHighlightPainter.CURRENT_SEARCH : JMHighlightPainter.SEARCH);
             }
@@ -403,7 +409,7 @@ public class FilePanel {
 
     public void doPreviousSearch() {
         SearchHits searchHits = getSearchHits();
-        if (searchHits == null || searchHits.getSearchHits().isEmpty()) { // Check if empty
+        if (searchHits == null) {
             return;
         }
         searchHits.previous();
@@ -416,7 +422,7 @@ public class FilePanel {
         SearchHit currentHit;
         int line;
 
-        if (searchHits == null || searchHits.getSearchHits().isEmpty()) { // Check if empty
+        if (searchHits == null) {
             return;
         }
 
@@ -425,21 +431,13 @@ public class FilePanel {
             line = currentHit.getLine();
 
             diffPanel.getScrollSynchronizer().scrollToLine(fp, line);
-            // Highlight the hit in the editor view
-             try {
-                 editor.setCaretPosition(currentHit.getFromOffset());
-                 editor.moveCaretPosition(currentHit.getToOffset());
-                 editor.getCaret().setSelectionVisible(true);
-             } catch (IllegalArgumentException e) {
-                 System.err.println("Error scrolling to search hit: " + e.getMessage());
-             }
-            diffPanel.setSelectedLine(line); // Keep selected line tracking if needed
+            diffPanel.setSelectedLine(line);
         }
     }
 
     public void doNextSearch() {
         SearchHits searchHits = getSearchHits();
-        if (searchHits == null || searchHits.getSearchHits().isEmpty()) { // Check if empty
+        if (searchHits == null) {
             return;
         }
         searchHits.next();

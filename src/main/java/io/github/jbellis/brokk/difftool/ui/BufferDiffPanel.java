@@ -1,12 +1,12 @@
 package io.github.jbellis.brokk.difftool.ui;
 
-import com.github.difflib.DiffUtils;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Patch;
 import com.jgoodies.forms.layout.CellConstraints;
 import com.jgoodies.forms.layout.FormLayout;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
-import io.github.jbellis.brokk.difftool.doc.StringDocument;
+import io.github.jbellis.brokk.difftool.doc.JMDocumentEvent;
+import io.github.jbellis.brokk.difftool.node.BufferNode;
 import io.github.jbellis.brokk.difftool.node.JMDiffNode;
 import io.github.jbellis.brokk.difftool.scroll.DiffScrollComponent;
 import io.github.jbellis.brokk.difftool.scroll.ScrollSynchronizer;
@@ -16,22 +16,22 @@ import javax.swing.*;
 import javax.swing.text.BadLocationException;
 import java.awt.*;
 import java.util.ArrayList;
-import java.util.Collections;
 
 /**
  * This panel shows the side-by-side file panels, the diff curves, plus search bars.
- * It holds the input documents via a JMDiffNode and calculates the Patch.
+ * It no longer depends on custom JMRevision/JMDelta but rather on a Patch<String>.
  */
 public class BufferDiffPanel extends AbstractContentPanel
 {
     public static final int LEFT = 0;
-    public static final int RIGHT = 1; // Panels are typically indexed 0 and 1
-    public static final int NUMBER_OF_PANELS = 2; // We only manage 2 file panels directly
+    public static final int RIGHT = 2;
+    public static final int NUMBER_OF_PANELS = 3;
 
     private final BrokkDiffPanel mainPanel;
     private final boolean isDarkTheme;
 
-    private Patch<String> patch; // Stores the computed diff result
+    // Instead of JMRevision:
+    private Patch<String> patch; // from JMDiffNode
     private AbstractDelta<String> selectedDelta;
 
     private int selectedLine;
@@ -40,21 +40,12 @@ public class BufferDiffPanel extends AbstractContentPanel
     private JCheckBox caseSensitiveCheckBox;
 
     // The left & right "file panels"
-    private final FilePanel[] filePanels = new FilePanel[NUMBER_OF_PANELS];
+    private FilePanel[] filePanels;
     private int filePanelSelectedIndex = -1;
 
-    private JMDiffNode diffInput; // Holds the left/right BufferDocumentIF
+    private JMDiffNode diffNode; // Where we get the Patch<String>
     private ScrollSynchronizer scrollSynchronizer;
     private JSplitPane splitPane;
-
-    // Placeholder for an empty document, used when a side is missing during diff.
-    private static BufferDocumentIF EMPTY_DOC = null;
-    private static BufferDocumentIF getEmptyDoc() {
-        if (EMPTY_DOC == null) {
-            EMPTY_DOC = new StringDocument("", "<empty>", true); // Read-only empty doc
-        }
-        return EMPTY_DOC;
-    }
 
     public BufferDiffPanel(BrokkDiffPanel mainPanel)
     {
@@ -71,76 +62,61 @@ public class BufferDiffPanel extends AbstractContentPanel
         setFocusable(true);
     }
 
-    /**
-     * Sets the input documents for the diff.
-     * Automatically performs the initial diff.
-     */
-    public void setDiffInput(JMDiffNode diffInput)
+    public void setDiffNode(JMDiffNode diffNode)
     {
-        this.diffInput = diffInput;
-        refreshDocuments(); // Set documents in panels
-        diff(); // Perform initial diff and display
+        this.diffNode = diffNode;
+        refreshDiffNode();
     }
 
-    public JMDiffNode getDiffInput()
+    public JMDiffNode getDiffNode()
     {
-        return diffInput;
+        return diffNode;
     }
 
     /**
-     * Binds the left & right documents from the diff input to the file panels.
+     * Re-read the patch from the node, re-bind the left & right documents, etc.
      */
-    private void refreshDocuments()
+    private void refreshDiffNode()
     {
-        BufferDocumentIF leftDocument = null;
-        BufferDocumentIF rightDocument = null;
-
-        if (diffInput != null) {
-             leftDocument = diffInput.getDocumentLeft();
-             rightDocument = diffInput.getDocumentRight();
+        if (diffNode == null) {
+            return;
         }
+        BufferNode bnLeft = diffNode.getBufferNodeLeft();
+        BufferNode bnRight = diffNode.getBufferNodeRight();
 
-        // Set the documents into our file panels, handle nulls gracefully:
-        if (filePanels[LEFT] != null) {
+        BufferDocumentIF leftDocument = (bnLeft != null ? bnLeft.getDocument() : null);
+        BufferDocumentIF rightDocument = (bnRight != null ? bnRight.getDocument() : null);
+
+        // After calling diff() on JMDiffNode, we get patch from diffNode.getPatch():
+        this.patch = diffNode.getPatch(); // new Patch or null
+
+        // Set the documents into our file panels:
+        if (filePanels[LEFT] != null && leftDocument != null) {
             filePanels[LEFT].setBufferDocument(leftDocument);
         }
-        if (filePanels[RIGHT] != null) {
+        if (filePanels[RIGHT] != null && rightDocument != null) {
             filePanels[RIGHT].setBufferDocument(rightDocument);
         }
+
+        reDisplay();
     }
 
     /**
-     * Rerun the diff calculation using the current documents in the FilePanels.
-     * Stores the result in `patch` and updates the display.
+     * Rerun the diff from scratch, if needed. For Phase 2 we re-run if a doc changed
+     * (the old incremental logic is removed).
      */
     public void diff()
     {
-        BufferDocumentIF leftDoc = (filePanels[LEFT] != null) ? filePanels[LEFT].getBufferDocument() : null;
-        BufferDocumentIF rightDoc = (filePanels[RIGHT] != null) ? filePanels[RIGHT].getBufferDocument() : null;
-
-        // Use placeholder empty document if a side is missing
-        if (leftDoc == null) leftDoc = getEmptyDoc();
-        if (rightDoc == null) rightDoc = getEmptyDoc();
-
-        // Get line lists for diffing
-        var leftLines = leftDoc.getLineList();
-        var rightLines = rightDoc.getLineList();
-
-        // Compute the diff and store it
-        try {
-            this.patch = DiffUtils.diff(leftLines, rightLines);
-        } catch (Exception e) {
-            // Handle potential exceptions from the diff library
-            System.err.println("Error computing diff: " + e.getMessage());
-            this.patch = new Patch<>(); // Assign an empty patch on error
+        // Typically, we'd just re-call diffNode.diff() then re-pull patch.
+        if (diffNode != null) {
+            diffNode.diff();
+            this.patch = diffNode.getPatch();
+            reDisplay();
         }
-        this.selectedDelta = null; // Reset selection after re-diff
-        reDisplay(); // Update UI highlights and curves
     }
 
     /**
-     * Tells each FilePanel to re-apply highlights based on the current patch,
-     * then repaint the parent panel and the DiffScrollComponent.
+     * Tells each FilePanel to re-apply highlights, then repaint the parent panel.
      */
     private void reDisplay()
     {
@@ -151,47 +127,17 @@ public class BufferDiffPanel extends AbstractContentPanel
                 }
             }
         }
-        // Repaint the component drawing the curves
-        if (splitPane != null) {
-            Component centerComponent = findDiffScrollComponent(splitPane);
-            if (centerComponent != null) {
-                centerComponent.repaint();
-            }
-        }
-        mainPanel.repaint(); // Repaint the main container
-        mainPanel.updateUndoRedoButtons(); // Update button states
+        mainPanel.repaint();
     }
-
-    // Helper to find the DiffScrollComponent within the split pane setup
-    private Component findDiffScrollComponent(Container container) {
-        for (Component comp : container.getComponents()) {
-            if (comp instanceof DiffScrollComponent) {
-                return comp;
-            } else if (comp instanceof Container) {
-                // Recurse only if it's not the component we are looking for
-                Component found = findDiffScrollComponent((Container) comp);
-                if (found != null) return found;
-            }
-        }
-        return null; // Not found in this branch
-    }
-
 
     public String getTitle()
     {
-         if (diffInput != null && diffInput.getName() != null && !diffInput.getName().isEmpty()) {
-            return diffInput.getName(); // Use the name from JMDiffNode if available
-         }
-
-        // Fallback to constructing title from documents
         var titles = new ArrayList<String>();
         for (var fp : filePanels) {
             if (fp == null) continue;
             var bd = fp.getBufferDocument();
             if (bd != null) {
                 titles.add(bd.getShortName());
-            } else {
-                titles.add("<No Doc>");
             }
         }
         if (titles.isEmpty()) {
@@ -200,13 +146,10 @@ public class BufferDiffPanel extends AbstractContentPanel
         if (titles.size() == 1) {
             return titles.get(0);
         }
-        // Handle potential null short names
-        String title1 = titles.get(0) != null ? titles.get(0) : "<Left>";
-        String title2 = titles.get(1) != null ? titles.get(1) : "<Right>";
-        if (title1.equals(title2)) {
-            return title1;
+        if (titles.get(0).equals(titles.get(1))) {
+            return titles.get(0);
         }
-        return title1 + " - " + title2;
+        return titles.get(0) + "-" + titles.get(1);
     }
 
     public boolean isDarkTheme()
@@ -215,27 +158,31 @@ public class BufferDiffPanel extends AbstractContentPanel
     }
 
     /**
+     * Do not try incremental updates. We just re-diff the whole thing.
+     */
+    public boolean revisionChanged(JMDocumentEvent de)
+    {
+        // Old incremental logic removed
+        diff();
+        return true;
+    }
+
+    /**
      * The top-level UI for the left & right file panels plus the “diff scroll component”.
      */
     private void init()
     {
-        // Adjusted column layout slightly for the two panels
-        var columns = "3px, pref, 3px, 0:grow, 5px, min, 60px, min, 5px, 0:grow, 3px, pref, 3px";
+        var columns = "3px, pref, 3px, 0:grow, 5px, min, 60px, 0:grow, 25px, min, 3px, pref, 3px";
         var rows = "6px, pref, 3px, fill:0:grow, pref";
 
         setLayout(new BorderLayout());
 
         splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, true, activateBarDialog(), buildFilePanel(columns, rows));
-        splitPane.setResizeWeight(0.05); // Give less space to the top search bar part
-        add(splitPane, BorderLayout.CENTER);
+        add(splitPane);
 
-        // Create the scroll synchronizer AFTER file panels are created
-        if (filePanels[LEFT] != null && filePanels[RIGHT] != null) {
-             scrollSynchronizer = new ScrollSynchronizer(this, filePanels[LEFT], filePanels[RIGHT]);
-             setSelectedPanel(filePanels[LEFT]);
-        } else {
-             System.err.println("Warning: FilePanels not initialized before ScrollSynchronizer.");
-        }
+        // Create the scroll synchronizer for the left & right panels
+        scrollSynchronizer = new ScrollSynchronizer(this, filePanels[LEFT], filePanels[RIGHT]);
+        setSelectedPanel(filePanels[LEFT]);
         mainPanel.updateUndoRedoButtons();
     }
 
@@ -299,7 +246,7 @@ public class BufferDiffPanel extends AbstractContentPanel
         var cc = new CellConstraints();
         var panel = new JPanel(layout);
 
-        // Create FilePanels
+        filePanels = new FilePanel[NUMBER_OF_PANELS];
         filePanels[LEFT] = new FilePanel(this, BufferDocumentIF.ORIGINAL, leftBar);
         filePanels[RIGHT] = new FilePanel(this, BufferDocumentIF.REVISED, rightBar);
 
@@ -307,17 +254,15 @@ public class BufferDiffPanel extends AbstractContentPanel
         panel.add(new RevisionBar(this, filePanels[LEFT], true), cc.xy(2, 4));
         panel.add(new JLabel(""), cc.xy(2, 2)); // for spacing
 
-        panel.add(filePanels[LEFT].getScrollPane(), cc.xy(4, 4)); // Left panel takes column 4
+        panel.add(filePanels[LEFT].getScrollPane(), cc.xyw(4, 4, 3));
 
         // The middle area for drawing the linking curves
-        // Indices are LEFT (0) and RIGHT (1)
         var diffScrollComponent = new DiffScrollComponent(this, LEFT, RIGHT);
-        panel.add(diffScrollComponent, cc.xywh(6, 4, 3, 1)); // Spans columns 6, 7, 8
-
-        panel.add(filePanels[RIGHT].getScrollPane(), cc.xy(10, 4)); // Right panel takes column 10
+        panel.add(diffScrollComponent, cc.xy(7, 4));
 
         // Right side revision bar
         panel.add(new RevisionBar(this, filePanels[RIGHT], false), cc.xy(12, 4));
+        panel.add(filePanels[RIGHT].getScrollPane(), cc.xyw(8, 4, 3));
 
         panel.setMinimumSize(new Dimension(300, 200));
         return panel;
@@ -334,7 +279,7 @@ public class BufferDiffPanel extends AbstractContentPanel
     }
 
     /**
-     * Returns the current diff patch.
+     * We simply retrieve the patch from the node if needed.
      */
     public Patch<String> getPatch()
     {
@@ -356,7 +301,6 @@ public class BufferDiffPanel extends AbstractContentPanel
     {
         this.selectedDelta = newDelta;
         setSelectedLine(newDelta != null ? newDelta.getSource().getPosition() : 0);
-        reDisplay(); // Repaint to show selection change
     }
 
     public void setSelectedLine(int line)
@@ -371,7 +315,8 @@ public class BufferDiffPanel extends AbstractContentPanel
 
     public FilePanel getFilePanel(int index)
     {
-        if (filePanels == null || index < 0 || index >= filePanels.length) return null;
+        if (filePanels == null) return null;
+        if (index < 0 || index >= filePanels.length) return null;
         return filePanels[index];
     }
 
@@ -390,10 +335,9 @@ public class BufferDiffPanel extends AbstractContentPanel
                 filePanels[oldIndex].setSelected(false);
             }
             filePanelSelectedIndex = newIndex;
-            if (newIndex != -1 && filePanels[newIndex] != null) {
+            if (newIndex != -1) {
                 filePanels[newIndex].setSelected(true);
             }
-            mainPanel.updateUndoRedoButtons(); // Update based on newly selected panel's undo state
         }
     }
 
@@ -406,25 +350,22 @@ public class BufferDiffPanel extends AbstractContentPanel
             return;
         }
         var deltas = patch.getDeltas();
-        AbstractDelta<String> deltaToSelect = null;
-
         if (selectedDelta == null) {
             // If nothing selected, pick first or last
-            deltaToSelect = next ? deltas.getFirst() : deltas.getLast();
-        } else {
-            var idx = deltas.indexOf(selectedDelta);
-            if (idx < 0) {
-                // The current selection is not in the patch list (e.g., after merge), pick first/last
-                 deltaToSelect = next ? deltas.getFirst() : deltas.getLast();
-            } else {
-                var newIdx = next ? idx + 1 : idx - 1;
-                // Wrap around
-                if (newIdx < 0) newIdx = deltas.size() - 1;
-                if (newIdx >= deltas.size()) newIdx = 0;
-                deltaToSelect = deltas.get(newIdx);
-            }
+            setSelectedDelta(next ? deltas.get(0) : deltas.get(deltas.size() - 1));
+            showSelectedDelta();
+            return;
         }
-        setSelectedDelta(deltaToSelect);
+        var idx = deltas.indexOf(selectedDelta);
+        if (idx < 0) {
+            // The current selection is not in the patch list, pick first
+            setSelectedDelta(deltas.get(0));
+        } else {
+            var newIdx = next ? idx + 1 : idx - 1;
+            if (newIdx < 0) newIdx = deltas.size() - 1;
+            if (newIdx >= deltas.size()) newIdx = 0;
+            setSelectedDelta(deltas.get(newIdx));
+        }
         showSelectedDelta();
     }
 
@@ -434,12 +375,14 @@ public class BufferDiffPanel extends AbstractContentPanel
      */
     private void showSelectedDelta()
     {
-        if (selectedDelta == null || scrollSynchronizer == null) return;
+        if (selectedDelta == null) return;
         scrollSynchronizer.showDelta(selectedDelta);
     }
 
     /**
      * The “change” operation from left->right or right->left.
+     * We replicate the old logic, then remove the used delta from the patch
+     * so it can’t be applied repeatedly.
      */
     public void runChange(int fromPanelIndex, int toPanelIndex, boolean shift)
     {
@@ -452,93 +395,93 @@ public class BufferDiffPanel extends AbstractContentPanel
 
         var fromDoc = fromFilePanel.getBufferDocument();
         var toDoc = toFilePanel.getBufferDocument();
-        if (fromDoc == null || toDoc == null || toDoc.isReadonly()) return; // Check if target is readonly
+        if (fromDoc == null || toDoc == null) return;
 
-        // Decide which side is "source" vs "target" chunk based on indices
-        var sourceChunk = (fromPanelIndex == LEFT) ? delta.getSource() : delta.getTarget();
-        var targetChunk = (fromPanelIndex == LEFT) ? delta.getTarget() : delta.getSource();
+        // Decide which side is "source" vs "target" chunk
+        var sourceChunk = (fromPanelIndex < toPanelIndex) ? delta.getSource() : delta.getTarget();
+        var targetChunk = (fromPanelIndex < toPanelIndex) ? delta.getTarget() : delta.getSource();
+
+        var fromLine = sourceChunk.getPosition();
+        var size = sourceChunk.size();
+        var fromOffset = fromDoc.getOffsetForLine(fromLine);
+        if (fromOffset < 0) return;
+        var toOffset = fromDoc.getOffsetForLine(fromLine + size);
+        if (toOffset < 0) return;
 
         try {
-            // Get text to insert from the source document
             var fromPlainDoc = fromDoc.getDocument();
-            var sourceStartOffset = fromDoc.getOffsetForLine(sourceChunk.getPosition());
-            var sourceEndOffset = fromDoc.getOffsetForLine(sourceChunk.getPosition() + sourceChunk.size());
-            if (sourceStartOffset < 0 || sourceEndOffset < 0) return; // Invalid source offsets
-            var replacedText = fromPlainDoc.getText(sourceStartOffset, sourceEndOffset - sourceStartOffset);
+            var replacedText = fromPlainDoc.getText(fromOffset, toOffset - fromOffset);
 
-            // Determine offsets in the target document
-            var toPlainDoc = toDoc.getDocument();
-            var targetStartOffset = toDoc.getOffsetForLine(targetChunk.getPosition());
-            var targetEndOffset = toDoc.getOffsetForLine(targetChunk.getPosition() + targetChunk.size());
-            if (targetStartOffset < 0 || targetEndOffset < 0) return; // Invalid target offsets
+            var toLine = targetChunk.getPosition();
+            var toSize = targetChunk.size();
+            var toFromOffset = toDoc.getOffsetForLine(toLine);
+            if (toFromOffset < 0) return;
+            var toToOffset = toDoc.getOffsetForLine(toLine + toSize);
+            if (toToOffset < 0) return;
 
-            // Perform the replacement/insertion in the target document
-            getUndoHandler().start("Apply Change"); // Group edits for undo
+            var toEditor = toFilePanel.getEditor();
+            toEditor.setSelectionStart(toFromOffset);
+            toEditor.setSelectionEnd(toToOffset);
+
+            // SHIFT -> Insert after the existing chunk
             if (!shift) {
-                // Replace the target chunk's content
-                toPlainDoc.remove(targetStartOffset, targetEndOffset - targetStartOffset);
-                toPlainDoc.insertString(targetStartOffset, replacedText, null);
+                toEditor.replaceSelection(replacedText);
             } else {
-                // Append after the target chunk
-                toPlainDoc.insertString(targetEndOffset, replacedText, null);
+                // Insert at the end, effectively appending
+                toEditor.getDocument().insertString(toToOffset, replacedText, null);
             }
-            getUndoHandler().end("Apply Change");
+
+            // Remove this delta so we can't click it again
+            patch.getDeltas().remove(delta);
 
             setSelectedDelta(null);
-            setSelectedLine(targetChunk.getPosition()); // Select target line after change
+            setSelectedLine(sourceChunk.getPosition());
 
-            // Re-diff and display
-            diff(); // Re-calculates patch
-            doSave(); // Save changes
-
+            // Re-display so the chunk disappears immediately
+            reDisplay();
+            doSave();
         } catch (BadLocationException ex) {
-            getUndoHandler().end("Apply Change"); // Ensure undo group is closed on error
             throw new RuntimeException("Error applying change operation", ex);
         }
     }
 
     /**
-     * The “delete” operation: remove the chunk corresponding to the selected delta
-     * from the specified panel index side.
+     * The “delete” operation: remove the chunk from the fromPanel side.
+     * Afterward, remove the delta so it doesn’t stay clickable.
      */
-    public void runDelete(int panelIndexToDeleteFrom, int otherPanelIndex) {
+    public void runDelete(int fromPanelIndex, int toPanelIndex) {
         var delta = getSelectedDelta();
         if (delta == null) return;
 
-        var filePanelToDelete = filePanels[panelIndexToDeleteFrom];
-        if (filePanelToDelete == null) return;
+        var fromFilePanel = filePanels[fromPanelIndex];
+        if (fromFilePanel == null) return;
 
-        var docToDelete = filePanelToDelete.getBufferDocument();
-        if (docToDelete == null || docToDelete.isReadonly()) return; // Check if readonly
+        var fromDoc = fromFilePanel.getBufferDocument();
+        if (fromDoc == null) return;
 
-        // Get the chunk corresponding to the panel we are deleting from
-        var chunkToDelete = (panelIndexToDeleteFrom == LEFT) ? delta.getSource() : delta.getTarget();
+        var chunk = (fromPanelIndex < toPanelIndex) ? delta.getSource() : delta.getTarget();
 
-        var fromLine = chunkToDelete.getPosition();
-        var size = chunkToDelete.size();
-        if (size == 0) return; // Cannot delete zero lines
+        var fromLine = chunk.getPosition();
+        var size = chunk.size();
+        var fromOffset = fromDoc.getOffsetForLine(fromLine);
+        if (fromOffset < 0) return;
+        var toOffset = fromDoc.getOffsetForLine(fromLine + size);
+        if (toOffset < 0) return;
 
-        var fromOffset = docToDelete.getOffsetForLine(fromLine);
-        var toOffset = docToDelete.getOffsetForLine(fromLine + size);
-        if (fromOffset < 0 || toOffset < 0 || toOffset < fromOffset) return; // Invalid offsets
+        var toEditor = fromFilePanel.getEditor();
+        toEditor.setSelectionStart(fromOffset);
+        toEditor.setSelectionEnd(toOffset);
+        toEditor.replaceSelection("");
 
-        try {
-             var plainDocToDelete = docToDelete.getDocument();
-             getUndoHandler().start("Delete Chunk");
-             plainDocToDelete.remove(fromOffset, toOffset - fromOffset);
-             getUndoHandler().end("Delete Chunk");
+        // Remove the just-used delta
+        patch.getDeltas().remove(delta);
 
-             setSelectedDelta(null);
-             setSelectedLine(chunkToDelete.getPosition()); // Keep line selection near deletion point
+        setSelectedDelta(null);
+        setSelectedLine(chunk.getPosition());
 
-             // Re-diff and display
-             diff(); // Re-calculates patch
-             doSave(); // Save changes
-
-        } catch (BadLocationException ex) {
-             getUndoHandler().end("Delete Chunk");
-            throw new RuntimeException("Error applying delete operation", ex);
-        }
+        // Refresh so the UI doesn't show that chunk anymore
+        reDisplay();
+        doSave();
     }
 
     /**
@@ -548,21 +491,21 @@ public class BufferDiffPanel extends AbstractContentPanel
     {
         for (var fp : filePanels) {
             if (fp == null) continue;
+            if (!fp.isDocumentChanged()) continue;
             var doc = fp.getBufferDocument();
-            if (doc == null || !doc.isChanged() || doc.isReadonly()) continue;
             try {
-                doc.write(); // write() now resets the changed flag internally
+                doc.write();
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(mainPanel,
                                               "Can't save file: " + doc.getName() + "\n" + ex.getMessage(),
                                               "Problem writing file", JOptionPane.ERROR_MESSAGE);
             }
         }
-        reDisplay(); // Refresh UI after save (might clear changed status indicators)
     }
 
     /**
      * The “down arrow” in the toolbar calls doDown().
+     * We step to next delta if possible, or re-scroll from top.
      */
     @Override
     public void doDown()
@@ -572,6 +515,7 @@ public class BufferDiffPanel extends AbstractContentPanel
 
     /**
      * The “up arrow” in the toolbar calls doUp().
+     * We step to previous delta if possible, or re-scroll from bottom.
      */
     @Override
     public void doUp()
@@ -582,37 +526,14 @@ public class BufferDiffPanel extends AbstractContentPanel
     @Override
     public void doUndo()
     {
-        if (getUndoHandler().canUndo()) {
-            getUndoHandler().undo();
-            diff(); // Re-diff after undo
-            doSave(); // Save the undone state
-        } else {
-             System.out.println("Cannot undo");
-        }
+        super.doUndo();
+        mainPanel.updateUndoRedoButtons();
     }
 
     @Override
     public void doRedo()
     {
-         if (getUndoHandler().canRedo()) {
-            getUndoHandler().redo();
-            diff(); // Re-diff after redo
-            doSave(); // Save the redone state
-         } else {
-              System.out.println("Cannot redo");
-         }
+        super.doRedo();
+        mainPanel.updateUndoRedoButtons();
     }
-
-     // Override getUndoHandler to provide access to the currently focused panel's undo manager
-     @Override
-     public MyUndoManager getUndoHandler() {
-         FilePanel selectedPanel = getFilePanel(filePanelSelectedIndex);
-         if (selectedPanel != null && selectedPanel.getBufferDocument() != null) {
-             // Return the undo manager associated with the selected panel's document.
-             // Assumes the document's undo listener is correctly wired to this manager.
-             return super.getUndoHandler(); // Return the panel's shared undo manager
-         }
-         // Fallback or default behavior if no panel is selected or doc is null
-         return super.getUndoHandler();
-     }
 }

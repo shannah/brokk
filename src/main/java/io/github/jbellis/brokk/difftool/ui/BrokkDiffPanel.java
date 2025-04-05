@@ -271,7 +271,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
                 .withComparisonType(isTwoFilesComparison, isStringAndFileComparison)
                 .withFiles(leftFile, leftFileTitle, rightFile, rightFileTitle)
                 .withStringAndFile(contentLeft, leftFileTitle, rightFile, rightFileTitle)
-                .withFileAndString(leftFile, leftFileTitle, contentRight, rightFileTitle)
+                .withStringAndFile(leftFile, leftFileTitle, contentRight, rightFileTitle)
                 .withStrings(contentLeft, leftFileTitle, contentRight, rightFileTitle)
                 .withTheme(this.isDarkTheme) // Pass theme state
                 .build();
@@ -290,14 +290,12 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
         if ("state".equals(evt.getPropertyName()) &&
                 SwingWorker.StateValue.DONE.equals(evt.getNewValue())) {
             try {
-                // The FileComparison worker's done() method handles panel creation.
-                // We just need to ensure get() is called to potentially rethrow exceptions
-                // and then clean up the UI in the finally block.
-                ((SwingWorker<?, ?>) evt.getSource()).get();
+                String result = (String) ((SwingWorker<?, ?>) evt.getSource()).get();
+                if (result != null) {
+                    compare(); // Ensure compare() gets the correct parameters
+                }
             } catch (InterruptedException | ExecutionException e) {
-                 // Exceptions are already handled and shown by FileComparison.done()
-                 // so rethrowing or showing another dialog is redundant.
-                 System.err.println("FileComparison worker failed: " + e.getMessage());
+                throw new RuntimeException(e);
             } finally {
                 remove(loadingLabel);
                 revalidate();

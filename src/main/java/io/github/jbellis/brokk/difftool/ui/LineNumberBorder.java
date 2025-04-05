@@ -1,3 +1,4 @@
+
 package io.github.jbellis.brokk.difftool.ui;
 
 import io.github.jbellis.brokk.difftool.utils.ColorUtil;
@@ -6,20 +7,16 @@ import io.github.jbellis.brokk.difftool.utils.Colors;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.text.BadLocationException;
-import javax.swing.text.Utilities;
 import java.awt.*;
 
 /**
  * LineNumberBorder is a custom border used to display line numbers in a text editor.
  * It extends EmptyBorder and is responsible for rendering the line numbers on the side
  * of the text editor while maintaining proper alignment and spacing.
- * Relies on JTextArea's model for line calculation.
  */
 public class LineNumberBorder extends EmptyBorder {
     // Margin space between the line numbers and the text editor
-    private static final int HORIZONTAL_MARGIN = 4;
-    // Default width guess
-    private static final int DEFAULT_WIDTH = 40;
+    private static final int MARGIN = 4;
 
     // Reference to the associated FilePanel containing the text editor
     private final FilePanel filePanel;
@@ -27,10 +24,10 @@ public class LineNumberBorder extends EmptyBorder {
     // Colors for the background and line separator
     private Color background;
     private Color lineColor;
-    private Color numberColor;
 
     // Font settings for displaying line numbers
     private Font font;
+    private int fontWidth;
     private int fontHeight;
 
     /**
@@ -39,8 +36,9 @@ public class LineNumberBorder extends EmptyBorder {
      * @param filePanel The FilePanel associated with this border.
      */
     public LineNumberBorder(FilePanel filePanel) {
-        // Set a default initial left margin width
-        super(0, DEFAULT_WIDTH + HORIZONTAL_MARGIN, 0, 0);
+        // Set the left margin width to accommodate line numbers
+        super(0, 40 + MARGIN, 0, 0);
+
         this.filePanel = filePanel;
         init();
     }
@@ -49,135 +47,87 @@ public class LineNumberBorder extends EmptyBorder {
      * Initializes font and color settings for the line number display.
      */
     private void init() {
-        JTextArea textArea = filePanel.getEditor();
-        Font editorFont = textArea.getFont();
+        FontMetrics fm;
         Color baseColor;
 
-        // Use editor font size, but monospaced family
-        font = new Font(Font.MONOSPACED, Font.PLAIN, editorFont.getSize() - 2); // Slightly smaller
-        FontMetrics fm = textArea.getFontMetrics(font);
-        fontHeight = fm.getHeight();
+        // Get the base panel background color
+        baseColor = Colors.getPanelBackground();
 
-        // Get the base panel background color (consider theme)
-        baseColor = textArea.getBackground(); // Use editor background
+        // Adjust colors for contrast
+        lineColor = ColorUtil.darker(baseColor);
+        background = ColorUtil.brighter(baseColor);
 
-        // Adjust colors for contrast based on editor background
-        lineColor = ColorUtil.darker(baseColor); // Separator line
-        background = ColorUtil.brighter(baseColor); // Bar background
-        // Choose number color for contrast with bar background
-        numberColor = (ColorUtil.getBrightness(background) < 128) ? Color.WHITE : Color.BLACK;
+        // Set a monospaced font for consistent number alignment
+        font = new Font("Monospaced", Font.PLAIN, 10);
 
-        // Adjust left inset based on max line number
-        updateLeftInsets();
-    }
-
-    /** Calculate and update the left inset based on the number of lines */
-    private void updateLeftInsets() {
-        JTextArea textArea = filePanel.getEditor();
-        int lineCount = textArea.getLineCount();
-        int maxDigits = Math.max(1, (int) Math.log10(lineCount) + 1);
-        FontMetrics fm = textArea.getFontMetrics(font);
-        int numberWidth = fm.stringWidth(String.valueOf(lineCount)); // Width of largest number
-        // Alternative: Calculate based on digits * char width
-        // int numberWidth = maxDigits * fm.charWidth('0');
-
-        left = numberWidth + HORIZONTAL_MARGIN * 2; // Margin on both sides of number
-        // No need to call super constructor again, just set the 'left' field inherited from EmptyBorder
+        // Retrieve font metrics for calculating character width and height
+        fm = filePanel.getEditor().getFontMetrics(font);
+        fontWidth = fm.stringWidth("0"); // Width of a single character
+        fontHeight = fm.getHeight(); // Height of the font
     }
 
     /**
-     * Override getBorderInsets to return dynamic insets based on line count.
-     */
-    @Override
-    public Insets getBorderInsets(Component c) {
-         updateLeftInsets(); // Recalculate before returning
-         return new Insets(top, left, bottom, right);
-    }
-
-     /**
-     * Override getBorderInsets to return dynamic insets based on line count.
-     */
-     @Override
-    public Insets getBorderInsets(Component c, Insets insets) {
-        updateLeftInsets(); // Recalculate before setting
-        insets.left = left;
-        insets.top = top;
-        insets.right = right;
-        insets.bottom = bottom;
-        return insets;
-    }
-
-    /**
-     * Paints the border, including the line numbers.
+     * Paints the background area where the line numbers will be displayed.
      *
-     * @param c the component for which this border is being painted
-     * @param g the paint graphics
-     * @param x the x position of the painted border
-     * @param y the y position of the painted border
-     * @param width the width of the painted border
-     * @param height the height of the painted border
+     * @param g The Graphics object used for drawing.
      */
-    @Override
-    public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-        JTextArea textArea = filePanel.getEditor();
+    public void paintBefore(Graphics g) {
         Rectangle clip = g.getClipBounds();
 
-        // Paint background
+        // Set background color and fill the left margin area
         g.setColor(background);
-        g.fillRect(x, y + clip.y, left - HORIZONTAL_MARGIN, clip.height);
+        g.fillRect(0, clip.y, left - MARGIN, clip.y + clip.height);
+    }
 
-        // Draw vertical separator line
-        g.setColor(lineColor);
-        g.drawLine(x + left - HORIZONTAL_MARGIN, y + clip.y, x + left - HORIZONTAL_MARGIN, y + clip.y + clip.height);
-
-        // Set font and color for line numbers
-        g.setFont(font);
-        g.setColor(numberColor);
-
-        // Determine the range of lines to draw
-        int startOffset = textArea.viewToModel2D(new Point(0, clip.y));
-        int endOffset = textArea.viewToModel2D(new Point(0, clip.y + clip.height));
-
+    /**
+     * Paints the line numbers and the separator line.
+     *
+     * @param g            The Graphics object used for drawing.
+     * @param startOffset  The start offset of the visible text.
+     * @param endOffset    The end offset of the visible text.
+     */
+    public void paintAfter(Graphics g, int startOffset, int endOffset) {
+        Rectangle clip;
         int startLine, endLine;
+        int y, lineHeight;
+        String s;
+        int heightCorrection;
+        Rectangle r1;
+        JTextArea textArea;
+
+        clip = g.getClipBounds();
+
         try {
+            // Retrieve the text area from the FilePanel
+            textArea = filePanel.getEditor();
+
+            // Determine the first and last visible line numbers
             startLine = textArea.getLineOfOffset(startOffset);
             endLine = textArea.getLineOfOffset(endOffset);
-        } catch (BadLocationException e) {
-            System.err.println("Error getting line numbers for painting: " + e.getMessage());
-            return; // Cannot paint numbers if offsets are bad
-        }
 
-        FontMetrics editorFm = textArea.getFontMetrics(textArea.getFont());
-        int editorFontHeight = editorFm.getHeight();
-        int editorAscent = editorFm.getAscent();
+            // Get the pixel coordinates of the first visible line
+            r1 = textArea.modelToView(startOffset);
+            y = r1.y;
+            lineHeight = r1.height;
+            heightCorrection = (lineHeight - fontHeight) / 2;
 
-        FontMetrics numberFm = g.getFontMetrics(font);
-        int numberAscent = numberFm.getAscent();
+            // Draw vertical separator line
+            g.setColor(lineColor);
+            g.drawLine(left - MARGIN, clip.y, left - MARGIN, clip.y + clip.height);
 
-        // Iterate through visible lines and draw numbers
-        try {
+            // Set font properties for rendering line numbers
+            g.setFont(font);
+            g.setColor(Color.black);
+
+            // Iterate through visible lines and draw the corresponding numbers
             for (int line = startLine; line <= endLine; line++) {
-                int lineStartOffset = textArea.getLineStartOffset(line);
-                Rectangle lineRect = textArea.modelToView(lineStartOffset);
-                if (lineRect == null) continue; // Skip if view rect is null
-
-                String lineNumberStr = String.valueOf(line + 1);
-                int stringWidth = numberFm.stringWidth(lineNumberStr);
-
-                // Calculate position to draw the number string
-                // Align numbers to the right, near the separator line
-                int drawX = x + left - HORIZONTAL_MARGIN - stringWidth - HORIZONTAL_MARGIN / 2;
-                // Align vertically using ascent information
-                int drawY = y + lineRect.y + editorAscent - (editorFontHeight - fontHeight) / 2 - (editorAscent - numberAscent); // Adjust based on font heights and ascents
-
-                // Only draw if within the visible clip vertically
-                if (drawY + fontHeight >= clip.y && drawY <= clip.y + clip.height) {
-                     g.drawString(lineNumberStr, drawX, drawY);
-                }
+                y += lineHeight;
+                s = Integer.toString(line + 1);
+                g.drawString(s, left - (fontWidth * s.length()) - 1 - MARGIN, y - heightCorrection);
             }
         } catch (BadLocationException ex) {
-            // Should not happen if line numbers are valid
-            System.err.println("Error calculating view for offset in LineNumberBorder: " + ex);
+            // This indicates an issue with offset calculation or document state
+            throw new RuntimeException("Error calculating view for offset in LineNumberBorder", ex);
         }
     }
 }
