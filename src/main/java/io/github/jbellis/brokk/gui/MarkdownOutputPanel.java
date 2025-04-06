@@ -148,7 +148,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     {
         assert text != null;
         if (!text.isEmpty()) {
-            logger.debug("Appending new chunk {}", text);
             markdownBuffer.append(text);
             parseIncremental(text);
             revalidate();
