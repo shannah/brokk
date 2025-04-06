@@ -24,7 +24,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -49,6 +51,40 @@ public final class Models {
 
     // name -> max output tokens
     private static final ConcurrentHashMap<String, Integer> modelMaxOutputTokens = new ConcurrentHashMap<>();
+    
+    // name -> model information map containing capabilities and other metadata
+    private static final ConcurrentHashMap<String, Map<String, Object>> modelInfoMap = new ConcurrentHashMap<>();
+    
+    /**
+     * Gets model-specific information and capabilities
+     * @param model The model to query information for
+     * @return Optional map of model properties, including supports_response_schema
+     */
+    public static Optional<Map<String, Object>> getModelInfo(StreamingChatLanguageModel model) {
+        String modelName = nameOf(model);
+        
+        // If we've already cached this model's info, return it
+        if (modelInfoMap.containsKey(modelName)) {
+            return Optional.of(modelInfoMap.get(modelName));
+        }
+        
+        // Otherwise create a new map with capability information
+        Map<String, Object> modelInfo = new HashMap<>();
+        
+        // Add schema support information based on model type
+        // List models known to support JSON schema in response_format
+        boolean supportsSchema = modelName.contains("gpt-4") || 
+                               modelName.contains("gpt-3.5") || 
+                               modelName.contains("mistral") ||
+                               modelName.contains("claude-3");
+        
+        modelInfo.put("supports_response_schema", supportsSchema);
+        
+        // Cache the result for future calls
+        modelInfoMap.put(modelName, modelInfo);
+        
+        return Optional.of(modelInfo);
+    }
 
     // "quick" default model instance, set in init()
     private static volatile StreamingChatLanguageModel quickModel = null;
@@ -198,6 +234,7 @@ public final class Models {
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
             var builder = OpenAiStreamingChatModel.builder()
+                    .logRequests(true)
                     .strictJsonSchema(true)
                     .maxTokens(getMaxOutputTokens(modelName))
                     .baseUrl(LITELLM_BASE_URL)
