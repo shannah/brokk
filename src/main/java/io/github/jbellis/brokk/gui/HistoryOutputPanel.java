@@ -559,7 +559,7 @@ public class HistoryOutputPanel extends JPanel {
     /**
      * Disables the history panel components.
      */
-    public void disablePanel() {
+    public void disableHistory() {
         SwingUtilities.invokeLater(() -> {
             historyTable.setEnabled(false);
             undoButton.setEnabled(false);
@@ -574,7 +574,7 @@ public class HistoryOutputPanel extends JPanel {
     /**
      * Enables the history panel components.
      */
-    public void enablePanel() {
+    public void enableHistory() {
         SwingUtilities.invokeLater(() -> {
             historyTable.setEnabled(true);
             undoButton.setEnabled(true);

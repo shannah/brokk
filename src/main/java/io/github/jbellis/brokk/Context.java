@@ -56,7 +56,6 @@ public class Context implements Serializable {
     /** description of the action that created this context, can be a future (like PasteFragment) */
     transient final Future<String> action;
     public static final String SUMMARIZING = "(Summarizing)";
-    public static final String IN_PROGRESS_ACTION = "Response in progress";
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
@@ -73,20 +72,6 @@ public class Context implements Serializable {
         this(contextManager, List.of(), List.of(), List.of(), AutoContext.EMPTY, autoContextFileCount, new ArrayList<>(), Map.of(),
              getWelcomeOutput(initialOutputText),
              CompletableFuture.completedFuture(WELCOME_ACTION));
-    }
-
-    /** Constructor for placeholder context */
-    public static Context createInProgressContext(IContextManager contextManager, Context currentContext) {
-        return new Context(contextManager,
-                           currentContext.editableFiles,
-                           currentContext.readonlyFiles,
-                           currentContext.virtualFragments,
-                           currentContext.autoContext, // Keep existing auto-context, don't rebuild yet
-                           currentContext.autoContextFileCount,
-                           currentContext.historyMessages,
-                           Map.of(),
-                           null, // No parsed output for placeholder
-                           CompletableFuture.completedFuture(IN_PROGRESS_ACTION));
     }
 
     private static @NotNull ParsedOutput getWelcomeOutput(String initialOutputText) {

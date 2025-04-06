@@ -7,7 +7,6 @@ import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.difftool.ui.JMHighlightPainter;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewPanel;
 import org.apache.logging.log4j.LogManager;
@@ -46,7 +45,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private JSplitPane topSplitPane;
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
-    public HistoryOutputPanel historyOutputPanel;
+    private HistoryOutputPanel historyOutputPanel;
 
     // Panels:
     private ContextPanel contextPanel;
@@ -337,11 +336,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void loadContext(Context ctx) {
         assert ctx != null;
-        if (ctx.getAction() == Context.IN_PROGRESS_ACTION) {
-            // since context-loading and action execution run in different threads, it's not safe
-            // to reset the output of an in-progress action (and we don't need to update context table)
-            return;
-        }
 
         SwingUtilities.invokeLater(() -> {
             contextPanel.populateContextTable(ctx);
@@ -480,6 +474,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public void llmOutput(String token) {
         SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token));
+    }
+
+    public void setLlmOutput(String text) {
+        SwingUtilities.invokeLater(() -> historyOutputPanel.setLlmOutput(text));
     }
 
     @Override
@@ -746,7 +744,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void disableHistoryPanel() {
         if (historyOutputPanel != null) {
-            historyOutputPanel.disablePanel();
+            historyOutputPanel.disableHistory();
         }
     }
 
@@ -755,7 +753,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void enableHistoryPanel() {
         if (historyOutputPanel != null) {
-            historyOutputPanel.enablePanel();
+            historyOutputPanel.enableHistory();
         }
     }
 }
