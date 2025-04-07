@@ -323,7 +323,7 @@ public final class Models {
 
     public static boolean isLazy(StreamingChatLanguageModel model) {
         String modelName = nameOf(model);
-        return modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro");
+        return !(modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro"));
     }
 
     /**
