@@ -605,11 +605,9 @@ public class Coder {
     }
     
     private static boolean emulatedEditToolInstructionsPresent(List<ChatMessage> messages) {
-        return messages.stream().anyMatch(m -> {
+        return emulatedToolInstructionsPresent(messages) && messages.stream().anyMatch(m -> {
             var t = Models.getText(m);
-            return t.contains("tool_calls") && t.contains("replaceFile") && t.contains("replaceLines")
-                    && t.matches("(?s).*\\d+ available tools:.*")
-                    && t.contains("top-level JSON");
+            return t.contains("tool_calls") && t.contains("replaceFile") && t.contains("replaceLines");
         });
     }
 
