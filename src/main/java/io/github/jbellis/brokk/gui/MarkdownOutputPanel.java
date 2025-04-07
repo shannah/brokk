@@ -112,6 +112,11 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
             }
         }
 
+        // Update spinner background if visible
+        if (spinnerPanel != null) {
+            spinnerPanel.updateBackgroundColor(textBackgroundColor);
+        }
+
         revalidate();
         repaint();
     }
@@ -413,6 +418,51 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
         }
 
         return htmlPane;
+    }
+
+    // --- Spinner Logic ---
+
+    // We keep a reference to the spinner panel itself, so we can remove it later
+    private SpinnerIndicatorPanel spinnerPanel = null;
+
+    /**
+     * Shows a small spinner (or message) at the bottom of the panel,
+     * underneath whatever content the user just appended.
+     * If already showing, does nothing.
+     *
+     * @param message The text to display next to the spinner (e.g. "Thinking...")
+     */
+    public void showSpinner(String message)
+    {
+        if (spinnerPanel != null) {
+            // Already showing, update the message and return
+            spinnerPanel.setMessage(message);
+            return;
+        }
+        // Create a new spinner instance each time
+        spinnerPanel = new SpinnerIndicatorPanel(message, isDarkTheme, textBackgroundColor);
+
+        // Add to the end of this panel. Since we have a BoxLayout (Y_AXIS),
+        // it shows up below the existing text or code blocks.
+        this.add(spinnerPanel);
+
+        this.revalidate();
+        this.repaint();
+    }
+
+    /**
+     * Hides the spinner panel if it is visible, removing it from the UI.
+     */
+    public void hideSpinner()
+    {
+        if (spinnerPanel == null) {
+            return; // not showing
+        }
+        this.remove(spinnerPanel);
+        spinnerPanel = null;
+
+        this.revalidate();
+        this.repaint();
     }
 
     // --- Scrollable interface methods ---

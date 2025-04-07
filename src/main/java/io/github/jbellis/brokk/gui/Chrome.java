@@ -443,7 +443,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Cmd/Ctrl+Shift+Z => redo
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
-                                                   Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK);
+                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
         rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
@@ -658,6 +658,28 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public JFrame getFrame() {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
         return frame;
+    }
+
+    /**
+     * Shows the inline loading spinner in the output panel.
+     */
+    public void showOutputSpinner(String message) {
+        SwingUtilities.invokeLater(() -> {
+            if (historyOutputPanel != null) {
+                historyOutputPanel.showSpinner(message);
+            }
+        });
+    }
+
+    /**
+     * Hides the inline loading spinner in the output panel.
+     */
+    public void hideOutputSpinner() {
+        SwingUtilities.invokeLater(() -> {
+            if (historyOutputPanel != null) {
+                historyOutputPanel.hideSpinner();
+            }
+        });
     }
 
     public void focusInput() {

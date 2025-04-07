@@ -121,6 +121,7 @@ public class Coder {
 
         // Write request details to history
         var tools = request.parameters().toolSpecifications();
+
         writeRequestToHistory(request.messages(), tools);
 
         if (Thread.currentThread().isInterrupted()) {
@@ -131,10 +132,17 @@ public class Coder {
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
-                        if (LLMTools.requiresEmulatedTools(model) && emulatedToolInstructionsPresent(request.messages())) {
-                            io.llmOutput(". ");
+                        boolean isEditToolCall = tools != null && tools.stream().anyMatch(tool ->
+                                "replaceFile".equals(tool.name()) || "replaceLines".equals(tool.name()));
+                        boolean isEmulatedEditToolCall = LLMTools.requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
+                        if (isEditToolCall || isEmulatedEditToolCall) {
+                            io.showOutputSpinner("Editing files ...");
+                            if (!isEmulatedEditToolCall) {
+                                io.llmOutput(token);
+                            }
                         } else {
                             io.llmOutput(token);
+                            io.hideOutputSpinner();
                         }
                     }
                 });
@@ -143,6 +151,7 @@ public class Coder {
             @Override
             public void onCompleteResponse(ChatResponse response) {
                 ifNotCancelled.accept(() -> {
+                    io.hideOutputSpinner();
                     if (echo) {
                         io.llmOutput("\n");
                     }
@@ -165,6 +174,7 @@ public class Coder {
             @Override
             public void onError(Throwable error) {
                 ifNotCancelled.accept(() -> {
+                    io.hideOutputSpinner();
                     io.toolErrorRaw("LLM error: " + error.getMessage());
                     // Instead of interrupting, just record it so we can retry from the caller
                     errorRef.set(error);
@@ -268,6 +278,10 @@ public class Coder {
             logger.debug("Sending request to {} attempt {} [only last message shown]: {}",
                          Models.nameOf(model), attempt, messages.getLast());
 
+            if (echo) {
+                io.showOutputSpinner("Thinking...");    
+            }
+            
             var response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
             if (response.cancelled) {
                 writeToHistory("Cancelled", "LLM request cancelled by user");
@@ -403,11 +417,11 @@ public class Coder {
         for (int attempt = 1; attempt <= maxTries; attempt++) {
             var request = requestBuilder.apply(attemptMessages);
             var singleCallResult = doSingleStreamingCall(model, request, echo);
-            
+
             if (singleCallResult.cancelled) {
                 return singleCallResult; // user interrupt
             }
-            
+
             lastResponse = singleCallResult.chatResponse;
             lastError = singleCallResult.error;
             outputTokenCount = singleCallResult.outputTokenCount;
@@ -416,7 +430,7 @@ public class Coder {
             if (lastError != null) {
                 break;
             }
-            
+
             // If there's no AI message, we can't parse
             if (lastResponse == null || lastResponse.aiMessage() == null) {
                 lastError = new IllegalArgumentException("No valid ChatResponse or AiMessage from model");
@@ -443,15 +457,15 @@ public class Coder {
                     lastError = new RuntimeException("Failed to produce valid tool_calls after " + maxTries + " attempts", e);
                     break;
                 }
-                
+
                 // Otherwise, add a hint and re-try
                 io.systemOutput("Retry " + attempt + "/" + (maxTries-1) + ": Invalid JSON response, requesting proper format.");
                 attemptMessages.add(new AiMessage(lastResponse.aiMessage().text()));
                 String instructions = retryInstructionsProvider.apply(e);
                 attemptMessages.add(new UserMessage(instructions));
-                
+
                 // Record retry in history
-                writeToHistory("Retry Attempt " + attempt, 
+                writeToHistory("Retry Attempt " + attempt,
                                "Invalid JSON: " + lastResponse.aiMessage().text() + "\n\nRetry with: " + instructions);
             }
         }
@@ -499,8 +513,8 @@ public class Coder {
         initialMessages.set(initialMessages.size() - 1, modified);
         logger.debug("Modified messages are {}", initialMessages);
 
-        // Build request creator function 
-        Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages -> 
+        // Build request creator function
+        Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages ->
             ChatRequest.builder()
                 .messages(attemptMessages)
                 .parameters(requestParams)
@@ -519,7 +533,7 @@ public class Coder {
                 ]
               }
             """.formatted(e.getMessage()).stripIndent();
-            
+
         return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
 
@@ -534,7 +548,7 @@ public class Coder {
     {
         var instructionsPresent = emulatedToolInstructionsPresent(messages);
         logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
-        
+
         List<ChatMessage> initialMessages = new ArrayList<>(messages);
         if (!instructionsPresent) {
             // Inject instructions for the model re how to format function calls
@@ -577,7 +591,7 @@ public class Coder {
               ]
             }
             """.formatted(e.getMessage()).stripIndent();
-            
+
         return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
 
@@ -585,6 +599,15 @@ public class Coder {
         return messages.stream().anyMatch(m -> {
             var t = Models.getText(m);
             return t.contains("tool_calls")
+                    && t.matches("(?s).*\\d+ available tools:.*")
+                    && t.contains("top-level JSON");
+        });
+    }
+    
+    private static boolean emulatedEditToolInstructionsPresent(List<ChatMessage> messages) {
+        return messages.stream().anyMatch(m -> {
+            var t = Models.getText(m);
+            return t.contains("tool_calls") && t.contains("replaceFile") && t.contains("replaceLines")
                     && t.matches("(?s).*\\d+ available tools:.*")
                     && t.contains("top-level JSON");
         });
