@@ -43,11 +43,11 @@ libraryDependencies ++= Seq(
   "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.20.0",
 
   // Joern dependencies
-  "io.joern" %% "x2cpg" % "4.0.265",
-  "io.joern" %% "javasrc2cpg" % "4.0.265",
-  "io.joern" %% "pysrc2cpg" % "4.0.265",
-  "io.joern" %% "joern-cli" % "4.0.265",
-  "io.joern" %% "semanticcpg" % "4.0.265",
+  "io.joern" %% "x2cpg" % "4.0.320",
+  "io.joern" %% "javasrc2cpg" % "4.0.320",
+  "io.joern" %% "pysrc2cpg" % "4.0.320",
+  "io.joern" %% "joern-cli" % "4.0.320",
+  "io.joern" %% "semanticcpg" % "4.0.320",
   
   // Utilities
   "com.formdev" % "flatlaf" % "3.5.4",
