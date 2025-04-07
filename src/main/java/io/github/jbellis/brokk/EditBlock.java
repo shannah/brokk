@@ -13,11 +13,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Scanner;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -152,7 +150,7 @@ public class EditBlock {
                 }
              }
          } // End of for loop
- 
+
          if (!succeeded.isEmpty()) {
             io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.");
         }
@@ -240,9 +238,7 @@ public class EditBlock {
     /**
      * Uses a fake GitRepo, only for testing
      */
-    static ParseResult findOriginalUpdateBlocks(String content,
-                                                Set<ProjectFile> filesInContext)
-    {
+    static ParseResult findOriginalUpdateBlocks(String content, Set<ProjectFile> filesInContext) {
         return findOriginalUpdateBlocks(content, filesInContext, Set::of);
     }
 
@@ -268,53 +264,45 @@ public class EditBlock {
 
             // Check if it's a <<<<<<< SEARCH block
             if (HEAD.matcher(trimmed).matches()) {
-                try {
-                    // Attempt to find a filename in the preceding ~3 lines
-                    currentFilename = findFileNameNearby(lines, i, DEFAULT_FENCE, filesInContext, currentFilename, repo);
+                // Attempt to find a filename in the preceding ~3 lines
+                currentFilename = findFileNameNearby(lines, i, DEFAULT_FENCE, filesInContext, currentFilename, repo);
 
-                    // gather "before" lines until divider
+                // gather "before" lines until divider
+                i++;
+                List<String> beforeLines = new ArrayList<>();
+                while (i < lines.length && !DIVIDER.matcher(lines[i].trim()).matches()) {
+                    beforeLines.add(lines[i]);
                     i++;
-                    List<String> beforeLines = new ArrayList<>();
-                    while (i < lines.length && !DIVIDER.matcher(lines[i].trim()).matches()) {
-                        beforeLines.add(lines[i]);
-                        i++;
-                    }
-                    if (i >= lines.length) {
-                        return new ParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
-                    }
-
-                    // gather "after" lines until >>>>>>> REPLACE or another divider
-                    i++; // skip the =======
-                    List<String> afterLines = new ArrayList<>();
-                    while (i < lines.length
-                            && !UPDATED.matcher(lines[i].trim()).matches()
-                            && !DIVIDER.matcher(lines[i].trim()).matches()) {
-                        afterLines.add(lines[i]);
-                        i++;
-                    }
-                    if (i >= lines.length) {
-                        return new ParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
-                    }
-
-                    var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines), currentFilename, DEFAULT_FENCE);
-                    var afterJoined = stripQuotedWrapping(String.join("\n", afterLines), currentFilename, DEFAULT_FENCE);
-
-                    // Append trailing newline if not present
-                    if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
-                        beforeJoined += "\n";
-                    }
-                    if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
-                        afterJoined += "\n";
-                    }
-
-                    blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
-
-                } catch (Exception e) {
-                    // Provide partial context in the error
-                    String partial = String.join("\n", Arrays.copyOfRange(lines, 0, min(lines.length, i + 1)));
-                    logger.error("Error parsing edit block", e);
-                    return new ParseResult(blocks, partial + "\n^^^ " + e.getMessage());
                 }
+                if (i >= lines.length) {
+                    return new ParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
+                }
+
+                // gather "after" lines until >>>>>>> REPLACE or another divider
+                i++; // skip the =======
+                List<String> afterLines = new ArrayList<>();
+                while (i < lines.length
+                        && !UPDATED.matcher(lines[i].trim()).matches()
+                        && !DIVIDER.matcher(lines[i].trim()).matches()) {
+                    afterLines.add(lines[i]);
+                    i++;
+                }
+                if (i >= lines.length) {
+                    return new ParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
+                }
+
+                var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines), currentFilename, DEFAULT_FENCE);
+                var afterJoined = stripQuotedWrapping(String.join("\n", afterLines), currentFilename, DEFAULT_FENCE);
+
+                // Append trailing newline if not present
+                if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
+                    beforeJoined += "\n";
+                }
+                if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
+                    afterJoined += "\n";
+                }
+
+                blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
             }
 
             i++;
@@ -322,56 +310,6 @@ public class EditBlock {
 
         return new ParseResult(blocks, null);
     }
-
-    /**
-     * Attempt to locate beforeText in content and replace it with afterText.
-     * If beforeText is empty, just append afterText. If no match found, return null.
-     */
-    private static String doReplace(ProjectFile file,
-                                    String content,
-                                    String beforeText,
-                                    String afterText,
-                                    String[] fence) {
-        if (file != null && !file.exists() && beforeText.trim().isEmpty()) {
-            // Treat as a brand-new filename with empty original content
-            content = "";
-        }
-
-        assert content != null;
-
-        // Strip any surrounding triple-backticks, optional filename line, etc.
-        beforeText = stripQuotedWrapping(beforeText, file == null ? null : file.toString(), fence);
-        afterText = stripQuotedWrapping(afterText, file == null ? null : file.toString(), fence);
-
-        // If there's no "before" text, just append the after-text
-        if (beforeText.trim().isEmpty()) {
-            return content + afterText;
-        }
-
-        // Attempt the chunk replacement
-        try {
-            return replaceMostSimilarChunk(content, beforeText, afterText);
-        } catch (AmbiguousMatchException | NoMatchException e) {
-            logger.debug("Replacement failed for file {}: {}", file, e.getMessage());
-            return null; // Indicate failure
-        }
-    }
-
-    /**
-     * Called by Coder / applyEditBlocks originally
-     */
-    public static String doReplace(ProjectFile file, String beforeText, String afterText) throws IOException {
-        var content = file.exists() ? file.read() : "";
-        return doReplace(file, content, beforeText, afterText, DEFAULT_FENCE);
-    }
-
-    /**
-     * RepoFile-free overload for testing simplicity
-     */
-    public static String doReplace(String original, String beforeText, String afterText) {
-        return doReplace(null, original, beforeText, afterText, DEFAULT_FENCE);
-    }
-
 
     /**
      * Attempts perfect/whitespace replacements, then tries "...", then fuzzy.
@@ -502,7 +440,11 @@ public class EditBlock {
                                         String[] replaceLines)
             throws AmbiguousMatchException
     {
-        assert targetLines.length > 0; // even empty string will have one entry
+        // special-case append (empty target)
+        if (targetLines.length == 0) {
+            return String.join("", originalLines) + String.join("", replaceLines);
+        }
+
         List<Integer> matches = new ArrayList<>();
 
         outer:
@@ -835,8 +777,9 @@ public class EditBlock {
             content += "\n";
         }
         String[] lines = content.split("\n", -1);
-        // preserve trailing newline by re-adding "\n" to all but last element
-        for (int i = 0; i < lines.length - 1; i++) {
+        lines = Arrays.copyOf(lines, lines.length - 1); // chop off empty element at the end
+        // re-add newlines
+        for (int i = 0; i < lines.length; i++) {
             lines[i] = lines[i] + "\n";
         }
         return new ContentLines(content, lines);

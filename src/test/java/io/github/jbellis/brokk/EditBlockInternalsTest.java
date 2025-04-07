@@ -406,4 +406,16 @@ class EditBlockInternalsTest {
         String updated = EditBlock.replaceMostSimilarChunk(original, search, replace);
         assertEquals("initial content\n", updated);
     }
+
+    @Test
+    void testAmbiguousMatchRejected() {
+        String original = """
+                line1
+                line2
+                line1
+                line3
+                """;
+
+        assertThrows(EditBlock.AmbiguousMatchException.class, () -> EditBlock.replaceMostSimilarChunk(original, "line1\n", "replaced\n"));
+    }
 }

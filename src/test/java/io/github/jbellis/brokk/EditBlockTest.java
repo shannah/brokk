@@ -188,27 +188,6 @@ class EditBlockTest {
     }
 
     @Test
-    void testReplaceFirstOccurrenceOnly() {
-        String original = """
-                line1
-                line2
-                line1
-                line3
-                """;
-        String search = "line1\n";
-        String replace = "new_line\n";
-        String expected = """
-                new_line
-                line2
-                line1
-                line3
-                """;
-
-        String updated = EditBlock.doReplace(original, search, replace);
-        assertEquals(expected, updated);
-    }
-
-    @Test
     void testApplyEditsCreatesNewFile(@TempDir Path tempDir) throws IOException {
         TestConsoleIO io = new TestConsoleIO();
         Path existingFile = tempDir.resolve("fileA.txt");
