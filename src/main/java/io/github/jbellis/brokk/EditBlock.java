@@ -1,14 +1,10 @@
 package io.github.jbellis.brokk;
 
-import com.google.common.annotations.VisibleForTesting;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.git.IGitRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -16,7 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,6 +22,13 @@ import static java.lang.Math.min;
  */
 public class EditBlock {
     private static final Logger logger = LogManager.getLogger(EditBlock.class);
+
+    // Pattern for the start of a search block, capturing the filename
+    private static final Pattern HEAD = Pattern.compile("^(\\S+?)\\s+<{5,9} SEARCH\\W*$", Pattern.MULTILINE);
+    // Pattern for the divider, capturing the filename
+    private static final Pattern DIVIDER = Pattern.compile("^(\\S+?)\\s+={5,9}\\s*$", Pattern.MULTILINE);
+    // Pattern for the end of a replace block, capturing the filename
+    private static final Pattern REPLACE = Pattern.compile("^(\\S+?)\\s+>{5,9} REPLACE\\W*$", Pattern.MULTILINE);
 
     /**
      * Helper that returns the first code block found between triple backticks.
@@ -171,31 +173,34 @@ public class EditBlock {
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("```");
+            sb.append("```\n");
             if (filename != null) {
-                sb.append("\n").append(filename);
+                sb.append(filename);
             }
-            sb.append("\n<<<<<<< SEARCH\n");
+            sb.append("<<<<<<< SEARCH\n");
             sb.append(beforeText);
             if (!beforeText.endsWith("\n")) {
                 sb.append("\n");
+            }
+            if (filename != null) {
+                sb.append(filename);
             }
             sb.append("=======\n");
             sb.append(afterText);
             if (!afterText.endsWith("\n")) {
                 sb.append("\n");
             }
-            sb.append(">>>>>>> REPLACE\n```");
+            if (filename != null) {
+                sb.append(filename);
+            }
+            sb.append(">>>>>>> REPLACE\n");
+            sb.append("```");
 
             return sb.toString();
         }
     }
 
     public record ParseResult(List<SearchReplaceBlock> blocks, String parseError) { }
-
-    private static final Pattern HEAD = Pattern.compile("^<{5,9} SEARCH\\W*$", Pattern.MULTILINE);
-    private static final Pattern DIVIDER = Pattern.compile("^={5,9}\\s*$", Pattern.MULTILINE);
-    private static final Pattern UPDATED = Pattern.compile("^>{5,9} REPLACE\\W*$", Pattern.MULTILINE);
 
     // Default fence to match triple-backtick usage, e.g. ``` ... ```
     static final String[] DEFAULT_FENCE = {"```", "```"};
@@ -236,63 +241,56 @@ public class EditBlock {
     }
 
     /**
-     * Uses a fake GitRepo, only for testing
+     * Parses the given content into ParseResult
      */
-    static ParseResult findOriginalUpdateBlocks(String content, Set<ProjectFile> filesInContext) {
-        return findOriginalUpdateBlocks(content, filesInContext, Set::of);
-    }
-
-    /**
-     * Parses the given content and yields either (filename, before, after, null)
-     * or (null, null, null, shellCommand).
-     *
-     * Important! This does not *restrict* the blocks to `filesInContext`; this
-     * parameter is only used to help find possible filename matches in poorly formed blocks.
-     */
-    public static ParseResult findOriginalUpdateBlocks(String content,
-                                                       Set<ProjectFile> filesInContext,
-                                                       IGitRepo repo)
-    {
+    public static ParseResult parseUpdateBlocks(String content) {
         List<SearchReplaceBlock> blocks = new ArrayList<>();
         String[] lines = content.split("\n", -1);
         int i = 0;
 
-        String currentFilename = null;
-
         while (i < lines.length) {
-            String trimmed = lines[i].trim();
+            Matcher headMatcher = HEAD.matcher(lines[i]);
 
-            // Check if it's a <<<<<<< SEARCH block
-            if (HEAD.matcher(trimmed).matches()) {
-                // Attempt to find a filename in the preceding ~3 lines
-                currentFilename = findFileNameNearby(lines, i, DEFAULT_FENCE, filesInContext, currentFilename, repo);
+            // Check if it's a filename <<<<<<< SEARCH block
+            if (headMatcher.matches()) {
+                String currentFilename = headMatcher.group(1).trim();
+                assert !currentFilename.isBlank(); // regexp construction ensures this
 
-                // gather "before" lines until divider
+                // gather "before" lines until filename ======= divider
                 i++;
                 List<String> beforeLines = new ArrayList<>();
-                while (i < lines.length && !DIVIDER.matcher(lines[i].trim()).matches()) {
+                Matcher dividerMatcher;
+                while (i < lines.length) {
+                    dividerMatcher = DIVIDER.matcher(lines[i]);
+                    if (dividerMatcher.matches() && dividerMatcher.group(1).trim().equals(currentFilename)) {
+                        break; // Found the divider
+                    }
                     beforeLines.add(lines[i]);
                     i++;
                 }
                 if (i >= lines.length) {
-                    return new ParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
+                    return new ParseResult(blocks, "Expected '%s =======' divider after `%s <<<<<<< SEARCH`".formatted(currentFilename, currentFilename));
                 }
 
-                // gather "after" lines until >>>>>>> REPLACE or another divider
-                i++; // skip the =======
+                // gather "after" lines until REPLACE marker
+                i++; // skip the ======= line
                 List<String> afterLines = new ArrayList<>();
-                while (i < lines.length
-                        && !UPDATED.matcher(lines[i].trim()).matches()
-                        && !DIVIDER.matcher(lines[i].trim()).matches()) {
+                Matcher replaceMatcher = null;
+                while (i < lines.length)
+                {
+                    replaceMatcher = REPLACE.matcher(lines[i]);
+                    if (replaceMatcher.matches() && replaceMatcher.group(1).trim().equals(currentFilename)) {
+                        break; // Found the end marker
+                    }
                     afterLines.add(lines[i]);
                     i++;
                 }
                 if (i >= lines.length) {
-                    return new ParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
+                    return new ParseResult(blocks, "Expected '%s >>>>>>> REPLACE' marker after `%s <<<<<<< SEARCH`".formatted(currentFilename, currentFilename));
                 }
 
-                var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines), currentFilename, DEFAULT_FENCE);
-                var afterJoined = stripQuotedWrapping(String.join("\n", afterLines), currentFilename, DEFAULT_FENCE);
+                var beforeJoined = String.join("\n", beforeLines);
+                var afterJoined = String.join("\n", afterLines);
 
                 // Append trailing newline if not present
                 if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
@@ -656,27 +654,30 @@ public class EditBlock {
      * Removes any extra lines containing the filename or triple-backticks fences.
      */
     public static String stripQuotedWrapping(String block, String fname, String[] fence) {
-        if (block == null || block.isEmpty()) {
+        assert block != null;
+        if (block.isEmpty()) {
             return block;
         }
         String[] lines = block.split("\n", -1);
 
-        // If first line ends with the filename’s filename
-        if (fname != null && lines.length > 0) {
-            String fn = new File(fname).getName();
-            if (lines[0].trim().endsWith(fn)) {
-                lines = Arrays.copyOfRange(lines, 1, lines.length);
-            }
-        }
-        // If triple-backtick block
+        // If triple-backtick block, remove the fences
+        // Note: We no longer strip the filename line here, as it's part of the SEARCH/REPLACE markers
         if (lines.length >= 2
-                && lines[0].startsWith(fence[0])
-                && lines[lines.length - 1].startsWith(fence[1])) {
+                && lines[0].trim().equals(fence[0])
+                && lines[lines.length - 1].trim().equals(fence[1])) {
             lines = Arrays.copyOfRange(lines, 1, lines.length - 1);
+        } else if (lines.length >= 1 && lines[0].trim().equals(fence[0])) {
+             // Handle missing closing fence
+             lines = Arrays.copyOfRange(lines, 1, lines.length);
+        } else if (lines.length >= 1 && lines[lines.length - 1].trim().equals(fence[1])) {
+             // Handle missing opening fence
+             lines = Arrays.copyOfRange(lines, 0, lines.length - 1);
         }
+
         String result = String.join("\n", lines);
+        // Ensure trailing newline, primarily for the case where fences were stripped
         if (!result.isEmpty() && !result.endsWith("\n")) {
-            result += "\n";
+             result += "\n";
         }
         return result;
     }
@@ -685,93 +686,8 @@ public class EditBlock {
      * Scanning for a filename up to 3 lines above the HEAD block index. If none found, fallback to
      * currentFilename if it's not null.
      */
-    @VisibleForTesting
-    static String findFileNameNearby(String[] lines,
-                                     int headIndex,
-                                     String[] fence,
-                                     Set<ProjectFile> validFiles,
-                                     String currentPath,
-                                     IGitRepo repo)
-    {
-        // Search up to 3 lines above headIndex
-        int start = Math.max(0, headIndex - 3);
-        var candidates = new ArrayList<String>();
-        for (int i = headIndex - 1; i >= start; i--) {
-            String s = lines[i].trim();
-            String possible = stripFilename(s, fence);
-            if (possible != null && !possible.isBlank()) {
-                candidates.add(possible);
-            }
-            // If not a fence line, break.
-            if (!s.startsWith("```")) {
-                break;
-            }
-        }
-
-        if (candidates.isEmpty()) {
-            return currentPath;
-        }
-
-        // 1) Exact match in validFilenames
-        for (var c : candidates) {
-            if (validFiles.stream().anyMatch(f -> f.toString().equals(c))) {
-                return c;
-            }
-        }
-
-        // 2) Case-insensitive match by basename against validFiles
-        var matches = candidates.stream()
-                .map(c -> Path.of(c).getFileName().toString().toLowerCase())
-                .flatMap(cLower -> validFiles.stream()
-                        .filter(f -> f.getFileName().toLowerCase().equals(cLower))
-                        .findFirst()
-                        .stream())
-                .map(ProjectFile::toString)
-                .toList();
-        if (!matches.isEmpty()) {
-            return matches.getFirst();
-        }
-
-        // 3) substring match vs repo
-        matches = candidates.stream()
-                .flatMap(c -> repo.getTrackedFiles().stream()
-                        .filter(f -> f.toString().contains(c))
-                        .findFirst()
-                        .stream())
-                .map(ProjectFile::toString)
-                .toList();
-        if (!matches.isEmpty()) {
-            return matches.getFirst();
-        }
-
-        // 4) If the candidate has an extension and no better match found, just return that.
-        for (var c : candidates) {
-            if (c.contains(".")) {
-                return c;
-            }
-        }
-
-        // 5) Fallback to the first raw candidate
-        return candidates.getFirst();
-    }
-
-    /**
-     * Ignores lines that are just ``` or ...
-     */
-    private static String stripFilename(String line, String[] fence) {
-        String s = line.trim();
-        if (s.equals("...") || s.equals(fence[0])) {
-            return null;
-        }
-        // remove trailing colons, leading #, etc.
-        s = s.replaceAll(":$", "").replaceFirst("^#", "").trim();
-        s = s.replaceAll("^`+|`+$", "");
-        s = s.replaceAll("^\\*+|\\*+$", "");
-        return s.isBlank() ? null : s;
-    }
-
     private static ContentLines prep(String content) {
-        assert content != null;
+        Objects.requireNonNull(content, "Content cannot be null");
         // ensure it ends with newline
         if (!content.isEmpty() && !content.endsWith("\n")) {
             content += "\n";
@@ -864,7 +780,7 @@ public class EditBlock {
      * @throws SymbolNotFoundException if the file cannot be found.
      * @throws SymbolAmbiguousException if the filename matches multiple files.
      */
-    private static ProjectFile resolveProjectFile(IContextManager cm, String filename, boolean createNew)
+    static ProjectFile resolveProjectFile(IContextManager cm, String filename, boolean createNew)
             throws SymbolNotFoundException, SymbolAmbiguousException
     {
         var file = cm.toFile(filename);
