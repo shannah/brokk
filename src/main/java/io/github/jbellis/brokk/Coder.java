@@ -355,7 +355,7 @@ public class Coder {
         writeRequestToHistory(messages, tools);
 
         if (!tools.isEmpty() && Models.requiresEmulatedTools(model)) {
-            return emulateToolsUsingStructuredOutput(model, messages, tools, toolChoice, echo);
+            return emulateTools(model, messages, tools, toolChoice, echo);
         }
 
         // If no tools, or model can do native function calling, do normal.
@@ -380,11 +380,11 @@ public class Coder {
      * 1. Schema-based: For models that support JSON schema in response_format
      * 2. Text-based: For models without schema support, using text instructions
      */
-    private StreamingResult emulateToolsUsingStructuredOutput(StreamingChatLanguageModel model,
-                                                              List<ChatMessage> messages,
-                                                              List<ToolSpecification> tools,
-                                                              ToolChoice toolChoice,
-                                                              boolean echo)
+    private StreamingResult emulateTools(StreamingChatLanguageModel model,
+                                         List<ChatMessage> messages,
+                                         List<ToolSpecification> tools,
+                                         ToolChoice toolChoice,
+                                         boolean echo)
     {
         if (Models.supportsJsonSchema(model)) {
             return emulateToolsUsingStructuredSchema(model, messages, tools, toolChoice, echo);
@@ -473,7 +473,7 @@ public class Coder {
         // If we get here, we have an error or invalid final response
         if (lastResponse == null) {
             // No final response at all
-            var failMsg = "No valid response after " + maxTries + " attempts: " + (lastError != null ? lastError.getMessage() : "Unknown");
+            var failMsg = "No valid response after " + maxTries + " attempts: " + lastError.getMessage();
             logger.error(failMsg);
             var dummyResponse = ChatResponse.builder().aiMessage(new AiMessage(failMsg)).build();
             return new StreamingResult(dummyResponse, outputTokenCount, false, new RuntimeException(failMsg));

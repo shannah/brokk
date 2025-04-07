@@ -275,6 +275,12 @@ public final class Models {
         if (Models.nameOf(model).contains("gemini")) {
             return true;
         }
+        // hack for o3-mini not being able to combine json schema with argument descriptions in the text body
+        if (Models.nameOf(model).contains("o3-mini")) {
+            return false;
+        }
+
+        // default: believe the litellm metadata
         var b =  (Boolean) info.get("supports_response_schema");
         return b != null && b;
     }
@@ -288,6 +294,7 @@ public final class Models {
         var modelName = nameOf(model);
         var info = modelInfoMap.get(modelName);
 
+        // first check litellm metadata
         var b = info.get("supports_function_calling");
         if (b == null || !(Boolean) b) {
             return true;
