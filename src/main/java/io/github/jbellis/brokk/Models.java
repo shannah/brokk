@@ -297,6 +297,7 @@ public final class Models {
         // first check litellm metadata
         var b = info.get("supports_function_calling");
         if (b == null || !(Boolean) b) {
+            // if it doesn't support function calling then we need to emulate
             return true;
         }
 
