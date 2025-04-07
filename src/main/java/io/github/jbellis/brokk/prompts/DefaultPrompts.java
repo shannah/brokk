@@ -212,6 +212,9 @@ public abstract class DefaultPrompts {
                Keep *SEARCH/REPLACE* blocks concise.
                Break large changes into a series of smaller blocks that each change a small portion.
                Include just the changing lines, plus a few surrounding lines if needed for uniqueness.
+               You should not need to include the entire function or block to change a line or two.
+               
+               Avoid generating overlapping *SEARCH/REPLACE* blocks, combine them into a single edit.
 
                If you want to move code within a filename, use 2 blocks: one to delete from the old location,
                and one to insert in the new location.

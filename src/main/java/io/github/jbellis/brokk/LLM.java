@@ -442,7 +442,7 @@ public class LLM {
                     ## Failed to match in file: `%s` (Reason: %s)
                     ```
                     <<<<<<< SEARCH
-            %s
+                    %s
                     =======
                     %s
                     >>>>>>> REPLACE
@@ -459,14 +459,16 @@ public class LLM {
         var successfulText = succeededCount > 0
                 ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
                 : "";
+        var pluralize = singular ? "" : "s";
         return """
         # %d SEARCH/REPLACE block%s failed to match!
 
         %s
 
-        The SEARCH text must match exactly the lines in the file. If the SEARCH text looks correct,
+        Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
+        please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
         check the filename carefully.
         %s
-        """.stripIndent().formatted(count, singular ? "" : "s", failedText, successfulText);
+        """.formatted(count, pluralize, failedText, pluralize, pluralize, successfulText).stripIndent();
     }
 }
