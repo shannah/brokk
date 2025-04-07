@@ -286,7 +286,15 @@ public final class Models {
 
     public static boolean requiresEmulatedTools(StreamingChatLanguageModel model) {
         var modelName = nameOf(model);
-        return modelName.toLowerCase().contains("deepseek") || modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
+        var info = modelInfoMap.get(modelName);
+
+        var b = info.get("supports_function_calling");
+        if (b == null || !(Boolean) b) {
+            return true;
+        }
+
+        // gemini and o3-mini support function calling but not parallel calls so force them to emulation mode as well
+        return modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
     }
 
     /**
