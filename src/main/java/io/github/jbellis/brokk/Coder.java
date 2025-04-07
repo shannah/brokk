@@ -372,21 +372,7 @@ public class Coder {
                                                               ToolChoice toolChoice,
                                                               boolean echo)
     {
-        // Check if model supports JSON schema in response_format using Models.getModelInfo
-        boolean supportsSchema = Models.getModelInfo(model)
-                .map(info -> {
-                    var schemaSupport = info.getOrDefault("supports_response_schema", Boolean.FALSE);
-                    return Boolean.TRUE.equals(schemaSupport) || "true".equals(schemaSupport);
-                })
-                .orElse(false);
-        // FIXME hack for litellm not knowing about gp2.5 yet
-        if (Models.nameOf(model).contains("gemini")) {
-            supportsSchema = true;
-        }
-
-        logger.debug("Model {} schema support: {}", Models.nameOf(model), supportsSchema);
-
-        if (supportsSchema) {
+        if (Models.supportsJsonSchema(model)) {
             return emulateToolsUsingStructuredSchema(model, messages, tools, toolChoice, echo);
         } else {
             return emulateToolsUsingJsonObject(model, messages, tools, toolChoice, echo);
