@@ -564,14 +564,9 @@ public class LLMTools {
      */
     public List<ToolSpecification> getToolSpecifications(StreamingChatLanguageModel model) {
         var all = ToolSpecifications.toolSpecificationsFrom(this);
-        if (!requiresEmulatedTools(model)) {
+        if (!Models.requiresEmulatedTools(model)) {
             all = all.stream().filter(spec -> !spec.name().equals("explain")).toList();
         }
         return all;
-    }
-
-    public static boolean requiresEmulatedTools(StreamingChatLanguageModel model) {
-        var modelName = Models.nameOf(model);
-        return modelName.toLowerCase().contains("deepseek") || modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
     }
 }

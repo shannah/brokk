@@ -134,7 +134,7 @@ public class Coder {
                     if (echo) {
                         boolean isEditToolCall = tools != null && tools.stream().anyMatch(tool ->
                                 "replaceFile".equals(tool.name()) || "replaceLines".equals(tool.name()));
-                        boolean isEmulatedEditToolCall = LLMTools.requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
+                        boolean isEmulatedEditToolCall = Models.requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
                         if (isEditToolCall || isEmulatedEditToolCall) {
                             io.showOutputSpinner("Editing files ...");
                             if (!isEmulatedEditToolCall) {
@@ -354,7 +354,7 @@ public class Coder {
     {
         writeRequestToHistory(messages, tools);
 
-        if (!tools.isEmpty() && LLMTools.requiresEmulatedTools(model)) {
+        if (!tools.isEmpty() && Models.requiresEmulatedTools(model)) {
             return emulateToolsUsingStructuredOutput(model, messages, tools, toolChoice, echo);
         }
 

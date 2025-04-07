@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
@@ -176,7 +175,7 @@ public class LLM {
                 break;
             }
             
-            if (!LLMTools.requiresEmulatedTools(model)) {
+            if (!Models.requiresEmulatedTools(model)) {
                 // need this whether success or failure or the LLM gets confused seeing that it made a call but no results
                 // ExtToolExecutionResultMessage extends ToolExecutionResultMessage, but we need to convert the collection
                 for (var result : toolResults) {
@@ -202,7 +201,7 @@ public class LLM {
                 logger.debug("Tool requests had errors. Asking LLM to correct them...");
                 io.systemOutput("Tool requests had errors. Asking LLM to correct them...");
                 String msg;
-                if (LLMTools.requiresEmulatedTools(model)) {
+                if (Models.requiresEmulatedTools(model)) {
                     var toolResultMessages = toolResults.stream()
                             .map(LLMTools.ExtendedToolResult::getMessage)
                             .toList();

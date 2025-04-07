@@ -279,6 +279,16 @@ public final class Models {
         return b != null && b;
     }
 
+    public static boolean isLazy(StreamingChatLanguageModel model) {
+        String modelName = nameOf(model);
+        return !(modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro"));
+    }
+
+    public static boolean requiresEmulatedTools(StreamingChatLanguageModel model) {
+        var modelName = nameOf(model);
+        return modelName.toLowerCase().contains("deepseek") || modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
+    }
+
     /**
      * Extracts text content from a ChatMessage.
      */
@@ -319,11 +329,6 @@ public final class Models {
             return new UnavailableSTT();
         }
         return sttModel;
-    }
-
-    public static boolean isLazy(StreamingChatLanguageModel model) {
-        String modelName = nameOf(model);
-        return !(modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro"));
     }
 
     /**
