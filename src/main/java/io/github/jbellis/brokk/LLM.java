@@ -151,7 +151,7 @@ public class LLM {
 
             // Execute tools
             int failures = 0;
-            var resultMessages = new ArrayList<LLMTools.ExtToolExecutionResultMessage>();
+            var toolResults = new ArrayList<LLMTools.ExtendedToolResult>();
             
             // Process all tool requests
             for (var validated : validatedRequests) {
@@ -165,11 +165,11 @@ public class LLM {
                     failures++;
                 }
                 
-                resultMessages.add(result);
+                toolResults.add(result);
             }
             
             // Display tool results in JSON format
-            displayToolResults(resultMessages, io);
+            displayToolResults(toolResults, io);
             
             if (isComplete) {
                 // stop now that we've processed any `explain` tools
@@ -179,9 +179,9 @@ public class LLM {
             if (!LLMTools.requiresEmulatedTools(model)) {
                 // need this whether success or failure or the LLM gets confused seeing that it made a call but no results
                 // ExtToolExecutionResultMessage extends ToolExecutionResultMessage, but we need to convert the collection
-                for (var resultMessage : resultMessages) {
+                for (var result : toolResults) {
                     // Add each message individually to satisfy Java's type system
-                    sessionMessages.add(resultMessage);
+                    sessionMessages.add(result.getMessage());
                 }
             }
 
@@ -203,10 +203,9 @@ public class LLM {
                 io.systemOutput("Tool requests had errors. Asking LLM to correct them...");
                 String msg;
                 if (LLMTools.requiresEmulatedTools(model)) {
-                    // Convert ExtToolExecutionResultMessage list to ToolExecutionResultMessage list
-                    var toolResultMessages = resultMessages.stream()
-                            .map(ext -> (ToolExecutionResultMessage) ext)
-                            .collect(Collectors.toList());
+                    var toolResultMessages = toolResults.stream()
+                            .map(LLMTools.ExtendedToolResult::getMessage)
+                            .toList();
                     
                     msg = """
                     Some of your tool calls could not be applied. Please revisit your changes
@@ -263,13 +262,13 @@ public class LLM {
     /**
      * Groups the tool execution results by file and action, then displays them as JSON objects
      */
-    private static void displayToolResults(List<LLMTools.ExtToolExecutionResultMessage> resultMessages, IConsoleIO io) {
+    private static void displayToolResults(List<LLMTools.ExtendedToolResult> resultMessages, IConsoleIO io) {
         // Group by file, then action, and filter out NONE actions and non-SUCCESS results
         var groupedResults = resultMessages.stream()
                 .filter(r -> r.getAction() != LLMTools.Action.NONE && r.text().equals("SUCCESS"))
                 .collect(Collectors.groupingBy(
-                        LLMTools.ExtToolExecutionResultMessage::getFile,
-                        Collectors.groupingBy(LLMTools.ExtToolExecutionResultMessage::getAction)
+                        LLMTools.ExtendedToolResult::getFile,
+                        Collectors.groupingBy(LLMTools.ExtendedToolResult::getAction)
                 ));
         
         // Create a json object for each file+action group
@@ -290,7 +289,7 @@ public class LLM {
     /**
      * Creates a JSON object for a file+action group
      */
-    private static String createToolCallJson(ProjectFile file, LLMTools.Action action, List<LLMTools.ExtToolExecutionResultMessage> group) {
+    private static String createToolCallJson(ProjectFile file, LLMTools.Action action, List<LLMTools.ExtendedToolResult> group) {
         var firstResult = group.getFirst();
         String fileStr = file.toString().replace("\\", "/"); // Use forward slashes
         String actionStr = action.name().toLowerCase();
@@ -300,7 +299,7 @@ public class LLM {
         if (action == LLMTools.Action.EDIT) {
             // For EDIT, sum all lines in the group
             lines = group.stream()
-                    .map(LLMTools.ExtToolExecutionResultMessage::getLines)
+                    .map(LLMTools.ExtendedToolResult::getLines)
                     .filter(l -> l != null)
                     .mapToInt(Integer::intValue)
                     .sum();
