@@ -838,25 +838,6 @@ public class Coder {
     }
 
     /**
-     * Combines tool request validations and their execution results into a summary string.
-     * Each line is in the format: "description: result text"
-     */
-    public String emulateToolResults(
-            List<LLMTools.ValidatedToolRequest> validatedRequests,
-            List<dev.langchain4j.data.message.ToolExecutionResultMessage> resultMessages) {
-        var sb = new StringBuilder();
-        for (int i = 0; i < validatedRequests.size() && i < resultMessages.size(); i++) {
-            var vr = validatedRequests.get(i);
-            var term = resultMessages.get(i);
-            sb.append(vr.description())
-                    .append(": ")
-                    .append(term.text())
-                    .append("\n");
-        }
-        return sb.toString().trim();
-    }
-
-    /**
      * The result of a streaming call. Usually you only need the final ChatResponse
      * unless cancelled or error is non-null.
      */

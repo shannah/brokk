@@ -1,11 +1,9 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.BuildPrompts;
@@ -20,9 +18,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class LLM {
@@ -31,15 +28,12 @@ public class LLM {
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
-     * Uses the provided model for the initial request, performing a two-pass approach for
-     * any requested code edits (tool calls):
+     * Uses the provided model for the initial request and potentially switches for fixes.
      *
-     *  1) **Preview** and validate each request. Automatically add any new files that are
-     *     not read-only. If a file is read-only, mark that request as failed.
-     *  2) **Apply** only the requests that previewed successfully, saving original file contents
-     *     before each change.
-     *  3) Attempt a build. On success, stop. On build failure, prompt the LLM for fixes.
-     *  4) Repeat until no further progress can be made.
+     * @param coder The Coder instance.
+     * @param io Console IO handler.
+     * @param model The model selected by the user for the main task.
+     * @param userInput The user's goal/instructions.
      */
     public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
         // Track original contents of files before any changes
@@ -47,283 +41,206 @@ public class LLM {
 
         // We'll collect the conversation as ChatMessages to store in context history.
         var sessionMessages = new ArrayList<ChatMessage>();
-        // The user's initial request
+        // The user's initial request, becomes the prompt for the next LLM call
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
 
-        // track repeated tool failures
+        // Reflection loop state tracking
         int parseErrorAttempts = 0;
-        // track build errors to check if we are making progress.
-        var buildErrors = new ArrayList<String>();
+        int blocksAppliedWithoutBuild = 0;
+        List<String> buildErrors = new ArrayList<>();
+        List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>(); // Accumulated blocks from potentially partial responses
 
-        // whether session completed normally
+        // give user some feedback -- this isn't in the main loop because after the first iteration
+        // we give more specific feedback when we need to make another request
+        io.systemOutput("Request sent");
+
         boolean isComplete = false;
 
-        // Provide an initial note to the user (or logs) that the session started
-        io.systemOutput("Request sent to LLM. Processing...");
-
-        var tools = new LLMTools(coder.contextManager);
-        outer:
         while (true) {
+            // Check for interruption before sending to LLM
             if (Thread.currentThread().isInterrupted()) {
+                io.systemOutput("Session interrupted");
                 break;
             }
 
-            // Gather context from the context manager -- need to refresh this since we may have made edits in the last pass
+            // refresh with updated file contents
             var contextManager = (ContextManager) coder.contextManager;
             var reminder = DefaultPrompts.reminderForModel(model);
+            // collect all messages including prior session history
             var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages, reminder);
-            allMessages.add(nextRequest);
+            allMessages.add(nextRequest); // Add the specific request for this turn
 
-            //
-            // Actually send the request to the LLM
-            //
-            var toolSpecs = tools.getToolSpecifications(model);
-            var streamingResult = coder.sendMessage(model, allMessages, toolSpecs, ToolChoice.AUTO, true);
+            // Actually send the message to the LLM and get the response
+            logger.debug("Sending request to model: {}", Models.nameOf(model));
+            var streamingResult = coder.sendStreaming(model, allMessages, true);
+
+            // 1) If user cancelled
             if (streamingResult.cancelled()) {
-                io.systemOutput("Session cancelled.");
+                io.systemOutput("Session interrupted");
                 break;
             }
+
+            // 2) Handle errors or empty responses
             if (streamingResult.error() != null) {
                 logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
-                io.systemOutput("LLM returned an error even after retries. Ending session.");
+                io.systemOutput("LLM returned an error even after retries. Ending session");
                 break;
             }
+
             var llmResponse = streamingResult.chatResponse();
-            if (llmResponse == null || llmResponse.aiMessage() == null) {
+            if (llmResponse == null) {
                 io.systemOutput("Empty LLM response even after retries. Ending session.");
                 break;
             }
 
             String llmText = llmResponse.aiMessage().text();
-            boolean hasTools = llmResponse.aiMessage().hasToolExecutionRequests();
-            if (llmText == null || llmText.isBlank() && !hasTools) {
-                io.systemOutput("Blank LLM response. Ending session.");
+            if (llmText.isBlank()) {
+                io.systemOutput("Blank LLM response even after retries. Ending session.");
                 break;
             }
 
-            // The LLM has responded successfully, so record both sides of the conversation
+            // We got a valid response
+            logger.debug("response:\n{}", llmText);
+
+            // Add the request/response to session history
             sessionMessages.add(nextRequest);
-            sessionMessages.add(streamingResult.originalResponse().aiMessage());
+            sessionMessages.add(llmResponse.aiMessage());
 
-            var toolRequests = llmResponse.aiMessage().toolExecutionRequests();
-            if (isToolsEmpty(toolRequests)) {
-                // LLM thinks we're done
-                isComplete = true;
+            // Gather all edit blocks in the reply
+            var parseResult = EditBlock.findOriginalUpdateBlocks(llmText, contextManager.getEditableFiles(), contextManager.getRepo());
+            var newlyParsedBlocks = parseResult.blocks();
+            blocks.addAll(newlyParsedBlocks); // Add newly parsed blocks to the accumulation
+            logger.debug("{} total unapplied blocks", blocks.size());
+
+            if (parseResult.parseError() != null) {
+                if (newlyParsedBlocks.isEmpty()) {
+                    // Error occurred before *any* blocks were parsed in this response
+                    nextRequest = new UserMessage(parseResult.parseError());
+                    io.systemOutput("Failed to parse LLM response; retrying");
+                } else {
+                    // Error occurred after *some* blocks were parsed - ask to continue
+                    var msg = """
+                    It looks like we got cut off. The last block I successfully parsed was
+                    <block>
+                    %s
+                    </block>
+                    Please continue from there (WITHOUT repeating that one).
+                    """.stripIndent().formatted(newlyParsedBlocks.getLast());
+                    nextRequest = new UserMessage(msg);
+                    io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()));
+                }
+                continue; // Retry the LLM call with the new request asking for continuation/fix
             }
 
-            //
-            // Process tool calls
-            //
-            var validatedRequests = new ArrayList<LLMTools.ValidatedToolRequest>();
-            for (var req : toolRequests == null ? List.<ToolExecutionRequest>of() : toolRequests) {
-                var parsed = tools.parseToolRequest(req);
-                if (parsed.error() != null) {
-                    // Track the error so we can include a Tool Response
-                    logger.debug("Tool request parse error: {}", parsed.error());
-                    validatedRequests.add(parsed);
-                    continue;
-                }
+            // If we reached here, parsing was successful (or no blocks were found in this response)
+            logger.debug("{} total blocks found in current response", newlyParsedBlocks.size());
 
-                // If we get here, we have a valid ProjectFile
-                var pf = parsed.file();
-                if (pf != null) {
-                    // Check read-only status
-                    if (contextManager.getReadonlyFiles().contains(pf)) {
-                        io.systemOutput("Request attempts to edit read-only file: " + pf + ". You should make it editable, or clarify your instructions so the AI doesn't think it needs to edit it.");
-                        sessionMessages.add(new AiMessage("Session aborted: attempt to edit read-only file " + pf));
-                        break outer;
-                    }
-                    // Store original content for potential history or revert
-                    if (!originalContents.containsKey(pf)) {
-                        try {
-                            originalContents.put(pf, pf.exists() ? pf.read() : "");
-                        } catch (IOException e) {
-                            io.toolError("Failed to read source file while applying changes: " + e.getMessage());
-                            // We can either skip or mark an error and break
-                            sessionMessages.add(new AiMessage("Session aborted: unable to read file " + pf));
-                            break outer;
-                        }
-                    }
-                }
-                validatedRequests.add(parsed);
-            }
-
-            // Execute tools
-            int failures = 0;
-            var toolResults = new ArrayList<LLMTools.ExtendedToolResult>();
-            
-            // Process all tool requests
-            for (var validated : validatedRequests) {
-                // Attempt actual edit (handles validation errors internally)
-                var result = tools.executeTool(validated);
-                
-                if (result.toolName().equals("explain") && validated.error() == null) {
-                    io.llmOutput("\n\n%s".formatted(result.text()));
-                } else if (!result.text().equals("SUCCESS")) {
-                    logger.warn("Tool application failure: {}", result.text());
-                    failures++;
-                }
-                
-                toolResults.add(result);
-            }
-            
-            // Display tool results in JSON format
-            displayToolResults(toolResults, io);
-            
-            if (isComplete) {
-                // stop now that we've processed any `explain` tools
+            if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
+                // No blocks found in the latest response AND no blocks were applied in previous reflection loops waiting for a build check
+                // This means the LLM thinks it's done *and* we don't have pending edits waiting for a build check.
+                io.systemOutput("No edits found in response; ending session");
+                isComplete = true; // Assume completion if LLM stops providing edits and we have nothing pending
                 break;
             }
-            
-            if (!Models.requiresEmulatedTools(model)) {
-                // need this whether success or failure or the LLM gets confused seeing that it made a call but no results
-                // ExtToolExecutionResultMessage extends ToolExecutionResultMessage, but we need to convert the collection
-                for (var result : toolResults) {
-                    // Add each message individually to satisfy Java's type system
-                    sessionMessages.add(result.getMessage());
-                }
+            // Check for interruption before proceeding to edit files
+            if (Thread.currentThread().isInterrupted()) {
+                io.systemOutput("Session interrupted");
+                break;
             }
 
-            // If every single request was invalid or failed, increment parseErrorAttempts
-            // as an indication that the LLM's instructions might be problematic.
-            if (failures == validatedRequests.size()) {
-                parseErrorAttempts++;
-                if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
-                    io.systemOutput("Repeated tool request failures. Stopping session.");
+            // auto-add files referenced in search/replace blocks that are not already editable
+            var filesToAdd = blocks.stream()
+                    .map(EditBlock.SearchReplaceBlock::filename)
+                    .filter(Objects::nonNull)
+                    .distinct() // Ensure unique filenames
+                    .map(coder.contextManager::toFile) // Convert to ProjectFile
+                    .filter(file -> !coder.contextManager.getEditableFiles().contains(file)) // Filter out already editable
+                    .toList();
+
+            logger.debug("Auto-adding as editable: {}", filesToAdd);
+            if (!filesToAdd.isEmpty()) {
+                var readOnlyFilesToAdd = filesToAdd.stream()
+                        .filter(file -> coder.contextManager.getReadonlyFiles().contains(file))
+                        .toList();
+                if (!readOnlyFilesToAdd.isEmpty()) {
+                    io.systemOutput("LLM attempted to edit read-only file(s): %s. \nNo edits applied. Mark the files editable or clarify to the LLM how to approach the problem another way.".formatted(readOnlyFilesToAdd));
                     break;
                 }
+                io.systemOutput("Editing additional files " + filesToAdd);
+                coder.contextManager.editFiles(filesToAdd);
             }
-            if (failures > 0) {
-                if (failures < validatedRequests.size()) {
-                    // If at least one succeeded, reset parseErrorAttempts -- we're making progress!
-                    parseErrorAttempts = 0;
-                }
-                logger.debug("Tool requests had errors. Asking LLM to correct them...");
-                io.systemOutput("Tool requests had errors. Asking LLM to correct them...");
-                String msg;
-                if (Models.requiresEmulatedTools(model)) {
-                    var toolResultMessages = toolResults.stream()
-                            .map(LLMTools.ExtendedToolResult::getMessage)
-                            .toList();
-                    
-                    msg = """
-                    Some of your tool calls could not be applied. Please revisit your changes
-                    and provide corrected tool usage or updated instructions.  Here are the tool results,
-                    in the same order that you provided them:
 
-                    %s
-                    """.formatted(coder.emulateToolResults(validatedRequests, toolResultMessages)).stripIndent().stripIndent();
-                } else {
-                    msg = """
-                    Some of your tool calls could not be applied. Please revisit your changes
-                    and provide corrected tool usage or updated instructions.
-                    """.stripIndent();
-                }
-                nextRequest = new UserMessage(msg);
+            // Attempt to apply *all accumulated* code edits from the LLM
+            var editResult = EditBlock.applyEditBlocks(coder.contextManager, io, blocks);
+            editResult.originalContents().forEach(originalContents::putIfAbsent);
+            logger.debug("Failed blocks: {}", editResult.failedBlocks());
+            blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
+
+            // Check for parse/match failures first
+            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
+
+            // Only increase parse error attempts if no blocks were successfully applied
+            if (editResult.failedBlocks().size() == blocks.size()) {
+                parseErrorAttempts++;
+            } else {
+                parseErrorAttempts = 0;
+            }
+            blocks.clear(); // Don't re-apply the same successful ones on the next loop
+            if (!parseReflection.isEmpty()) {
+                io.systemOutput("Attempting to fix apply/match errors...");
+                nextRequest = new UserMessage(parseReflection);
                 continue;
             }
 
-            //
-            // Attempt to build and see if we are done
-            //
-            String buildReflection = getBuildReflection(contextManager, io, buildErrors);
+
+            if (!parseReflection.isEmpty()) {
+                if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
+                    io.systemOutput("Parse/Apply retry limit reached; ending session");
+                    break;
+                }
+                io.systemOutput("Attempting to fix apply/match errors...");
+                nextRequest = new UserMessage(parseReflection);
+                continue;
+            }
+
+            // If we get here, all accumulated blocks were applied successfully in this round.
+
+            // Check for interruption before checking build
+            if (Thread.currentThread().isInterrupted()) {
+                io.systemOutput("Session interrupted");
+                break;
+            }
+
+            // If parsing/application succeeded, check build
+            var buildReflection = getBuildReflection(coder.contextManager, io, buildErrors);
+            blocksAppliedWithoutBuild = 0; // Reset count after build check attempt
             if (buildReflection.isEmpty()) {
-                // Build succeeded!
+                // Build successful!
                 isComplete = true;
                 break;
             }
 
-            // If we got here, we have build errors. Decide if we keep trying or not.
-            if (!shouldContinue(coder, parseErrorAttempts, buildErrors, io)) {
+            // Check if we should continue trying to fix build errors
+            if (!(buildErrors.isEmpty() || isBuildProgressing(coder, buildErrors))) {
+                io.systemOutput("Build errors are not improving; ending session");
                 break;
             }
 
-            // prompt the LLM to fix build errors
-            io.systemOutput("Requesting the LLM to fix build failures...");
+            io.systemOutput("Attempting to fix build errors...");
             nextRequest = new UserMessage(buildReflection);
+            // Loop back to LLM to fix build errors
         }
 
-
-        // If we had any conversation at all, store it in the context history
+        // Add all session messages to history in one batch
         if (!sessionMessages.isEmpty()) {
-            String finalUserInput = isComplete ? userInput : userInput + " [incomplete]";
-            // Tool execution result messages are super ugly but leaving them out means Sonnet won't execute
-            // the next request that tries to include the tool-use messages, so we just throw it in unfiltered
-            coder.contextManager.addToHistory(sessionMessages, originalContents, finalUserInput);
+            if (!isComplete) {
+                userInput += " [incomplete]";
+            }
+            coder.contextManager.addToHistory(sessionMessages, originalContents, userInput);
         }
         if (isComplete) {
             io.systemOutput("Session complete!");
-        } else {
-            io.systemOutput("Session ended without success.");
-        }
-    }
-
-    /**
-     * Groups the tool execution results by file and action, then displays them as JSON objects
-     */
-    private static void displayToolResults(List<LLMTools.ExtendedToolResult> resultMessages, IConsoleIO io) {
-        // Group by file, then action, and filter out NONE actions and non-SUCCESS results
-        var groupedResults = resultMessages.stream()
-                .filter(r -> r.getAction() != LLMTools.Action.NONE && r.text().equals("SUCCESS"))
-                .collect(Collectors.groupingBy(
-                        LLMTools.ExtendedToolResult::getFile,
-                        Collectors.groupingBy(LLMTools.ExtendedToolResult::getAction)
-                ));
-        
-        // Create a json object for each file+action group
-        for (var fileEntry : groupedResults.entrySet()) {
-            var file = fileEntry.getKey();
-            for (var actionEntry : fileEntry.getValue().entrySet()) {
-                var action = actionEntry.getKey();
-                var group = actionEntry.getValue();
-                
-                if (!group.isEmpty()) {
-                    var json = createToolCallJson(file, action, group);
-                    io.llmOutput("\n```toolcall\n%s\n```\n".formatted(json));
-                }
-            }
-        }
-    }
-
-    /**
-     * Creates a JSON object for a file+action group
-     */
-    private static String createToolCallJson(ProjectFile file, LLMTools.Action action, List<LLMTools.ExtendedToolResult> group) {
-        var firstResult = group.getFirst();
-        String fileStr = file.toString().replace("\\", "/"); // Use forward slashes
-        String actionStr = action.name().toLowerCase();
-        
-        // Calculate lines based on action type
-        Integer lines = null;
-        if (action == LLMTools.Action.EDIT) {
-            // For EDIT, sum all lines in the group
-            lines = group.stream()
-                    .map(LLMTools.ExtendedToolResult::getLines)
-                    .filter(l -> l != null)
-                    .mapToInt(Integer::intValue)
-                    .sum();
-        } else if (action == LLMTools.Action.NEW) {
-            // For NEW, use lines from the first result
-            lines = firstResult.getLines();
-        }
-        // For REMOVE, lines remains null
-        
-        // Build the JSON
-        var jsonBuilder = new StringBuilder("{\n");
-        jsonBuilder.append("\t\"action\": \"").append(actionStr).append("\",\n");
-        jsonBuilder.append("\t\"file\": \"").append(fileStr).append("\"");
-        
-        if (lines != null) {
-            jsonBuilder.append(",\n");
-            jsonBuilder.append("\t\"lines\": ").append(lines);
-        }
-        
-        jsonBuilder.append("\n}");
-        return jsonBuilder.toString();
-    }
-
-    private static boolean isToolsEmpty(List<ToolExecutionRequest> toolRequests) {
-        return toolRequests == null || toolRequests.stream().allMatch(tr -> tr.name().equals("explain"));
+        } // otherwise, code that stops the session is responsible for explaining why
     }
 
     /**
@@ -332,7 +249,7 @@ public class LLM {
      * 2) Use QuickEditPrompts to ask for a single fenced code snippet
      * 3) Replace the old text with the new snippet in the file
      *
-     * @return
+     * @return The new text snippet that was applied, or the original file content if failed.
      */
     public static String runQuickSession(ContextManager cm,
                                          IConsoleIO io,
@@ -378,14 +295,14 @@ public class LLM {
             io.toolErrorRaw("Quick edit failed or was cancelled.");
             // Add to history even if canceled, so we can potentially undo any partial changes
             cm.addToHistory(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName());
-            return fileContents;
+            return fileContents; // Return original content
         }
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText == null || responseText.isBlank()) {
             io.toolErrorRaw("LLM returned empty response for quick edit.");
             // Add to history even if it failed
             cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName());
-            return fileContents;
+            return fileContents; // Return original content
         }
 
         // Add the response to pending history
@@ -395,41 +312,60 @@ public class LLM {
         var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
         if (newSnippet.isEmpty()) {
             io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
-            return fileContents;
+            // Add to history even if it failed
+            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName());
+            return fileContents; // Return original content
         }
 
-        // Attempt to replace old snippet in the file
-        // If oldText not found, do nothing
-        String updatedFileContents;
         String newStripped = newSnippet.stripLeading();
         try {
-            if (!fileContents.contains(oldText)) {
-                io.toolErrorRaw("The selected snippet was not found in the file. No changes applied.");
-                // Add to history even if it failed
-                cm.addToHistory(List.of(new UserMessage(instructionsMsg)), originalContents, "Quick Edit (failed): " + file.getFileName());
-                return fileContents;
-            }
-            updatedFileContents = fileContents.replaceFirst(Pattern.quote(oldText.stripLeading()),
-                                                            Matcher.quoteReplacement(newStripped));
-        } catch (Exception ex) {
-            io.toolErrorRaw("Failed to replace text: " + ex.getMessage());
+            // Use EditBlock.replaceInFile for consistency and robustness
+            EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
+
+            // Save to context history - pendingHistory already contains both the instruction and the response
+            var parsed = new Context.ParsedOutput(responseText, new ContextFragment.StringFragment(responseText, "AI Response"));
+            cm.pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
+            return newStripped; // Return the new snippet that was applied
+
+        } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
+            io.toolErrorRaw("Failed to replace text: " + e.getMessage());
             // Add to history even if it failed
-            cm.addToHistory(List.of(new UserMessage(instructionsMsg)), originalContents, "Quick Edit (failed): " + file.getFileName());
-            return fileContents;
+            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName());
+            return fileContents; // Return original content on failure
+        } catch (IOException e) {
+            io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
+            // Add to history even if it failed
+            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName());
+            return fileContents; // Return original content on failure
         }
-
-        // Write the updated file to disk
-        try {
-            file.write(updatedFileContents);
-        } catch (java.io.IOException e) {
-            throw new java.io.UncheckedIOException(e);
-        }
-
-        // Save to context history - pendingHistory already contains both the instruction and the response
-        var parsed = new Context.ParsedOutput(responseText, new ContextFragment.StringFragment(responseText, "ai Response"));
-        cm.pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
-        return newStripped;
     }
+
+
+    /**
+     * Generates a reflection message based on parse/apply errors from failed edit blocks
+     */
+    private static String getParseReflection(List<EditBlock.FailedBlock> failedBlocks,
+                                             List<EditBlock.SearchReplaceBlock> originalBlocks, // All blocks attempted in this round
+                                             IContextManager contextManager,
+                                             IConsoleIO io)
+    {
+        if (failedBlocks.isEmpty()) {
+            return "";
+        }
+
+        // Provide suggestions for failed blocks
+        var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
+
+        // Calculate how many succeeded in this round
+        int succeededCount = originalBlocks.size() - failedBlocks.size();
+
+        // Generate the message for the LLM
+        var failedApplyMessage = handleFailedBlocks(suggestions, succeededCount);
+        io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
+
+        return failedApplyMessage; // Return the message to be sent to the LLM
+    }
+
 
     /**
      * Generates a reflection message for build errors
@@ -446,45 +382,32 @@ public class LLM {
         logger.debug("Build command result: {}", result);
         if (result.error() == null) {
             io.systemOutput("Build successful");
-            buildErrors.clear();
+            buildErrors.clear(); // Reset on successful build
             return "";
         }
 
-        var msg = """
-            %s
-            ```
-            %s
-            ```
-            """.stripIndent().formatted(result.error(), result.output());
-        io.llmOutput(msg);
+        io.llmOutput("""
+        %s
+        ```
+        %s
+        ```
+        """.stripIndent().formatted(result.error(), result.output()));
         io.systemOutput("Build failed (details above)");
         buildErrors.add(result.error() + "\n\n" + result.output());
 
-        return "The build failed:\n%s\n\nPlease fix these build errors.".formatted(msg);
+        StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
+        for (int i = 0; i < buildErrors.size(); i++) {
+            query.append("=== Attempt ").append(i + 1).append(" ===\n")
+                    .append(buildErrors.get(i))
+                    .append("\n\n");
+        }
+        query.append("Please fix these build errors.");
+        return query.toString();
     }
 
     /**
-     * Determines whether to continue with reflection passes
+     * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
      */
-    private static boolean shouldContinue(Coder coder, int parseErrorAttempts, List<String> buildErrors, IConsoleIO io) {
-        // If we have parse errors, limit to MAX_PARSE_ATTEMPTS attempts
-        if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
-            io.systemOutput("Parse retry limit reached, stopping.");
-            return false;
-        }
-
-        // For build errors, check if we're making progress
-        if (buildErrors.size() > 1) {
-            if (isBuildProgressing(coder, buildErrors)) {
-                return true;
-            }
-            io.systemOutput("Build errors are not improving, stopping.");
-            return false;
-        }
-
-        return true;
-    }
-
     private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
         var messages = BuildPrompts.instance.collectMessages(buildResults);
         var response = coder.sendMessage(messages);
@@ -498,5 +421,52 @@ public class LLM {
         }
 
         return response.contains("BROKK_PROGRESSING");
+    }
+
+    /**
+     * Generates a reflection message for failed edit blocks
+     */
+    private static String handleFailedBlocks(Map<EditBlock.FailedBlock, String> failed, int succeededCount) {
+        if (failed.isEmpty()) {
+            return "";
+        }
+
+        // build an error message
+        int count = failed.size();
+        boolean singular = (count == 1);
+        var failedText = failed.entrySet().stream()
+                .map(entry -> {
+                    var f = entry.getKey();
+                    String fname = (f.block().filename() == null ? "(none)" : f.block().filename());
+                    return """
+                    ## Failed to match in file: `%s` (Reason: %s)
+                    ```
+                    <<<<<<< SEARCH
+            %s
+                    =======
+                    %s
+                    >>>>>>> REPLACE
+                    ```
+
+                    %s
+                    """.stripIndent().formatted(fname,
+                                                f.reason(),
+                                                f.block().beforeText(),
+                                                f.block().afterText(),
+                                                entry.getValue());
+                })
+                .collect(Collectors.joining("\n"));
+        var successfulText = succeededCount > 0
+                ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
+                : "";
+        return """
+        # %d SEARCH/REPLACE block%s failed to match!
+
+        %s
+
+        The SEARCH text must match exactly the lines in the file. If the SEARCH text looks correct,
+        check the filename carefully.
+        %s
+        """.stripIndent().formatted(count, singular ? "" : "s", failedText, successfulText);
     }
 }
