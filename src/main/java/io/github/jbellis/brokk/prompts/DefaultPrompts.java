@@ -213,10 +213,10 @@ public abstract class DefaultPrompts {
                and one to insert in the new location.
 
                Pay attention to which filenames the user wants you to edit, especially if they are asking
-               you to create a new filename. If you want to put code in a new file, use a *SEARCH/REPLACE* block with:
-               - The new filename
-               - An empty SEARCH
-               - The new file's contents in REPLACE
+               you to create a new filename. To create a new file or replace an *entire* existing file, use a *SEARCH/REPLACE* block with:
+               - The filename
+               - An empty SEARCH block
+               - The new file's full contents in the REPLACE block
 
                If the user just says something like "ok" or "go ahead" or "do that", they probably want you
                to make SEARCH/REPLACE blocks for the code changes you just proposed.

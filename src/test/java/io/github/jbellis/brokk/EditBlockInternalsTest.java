@@ -247,12 +247,13 @@ class EditBlockInternalsTest {
     }
 
     @Test
-    void testEmptySearchCreatesOrAppends() throws EditBlock.AmbiguousMatchException, EditBlock.NoMatchException {
-        // If beforeText is empty, treat it as create/append
+    void testEmptySearchReplacesContent() throws EditBlock.AmbiguousMatchException, EditBlock.NoMatchException {
+        // If beforeText is empty, replace the entire content
         String original = "one\ntwo\n";
         String search = "";
         String replace = "new content\n";
-        String expected = "one\ntwo\nnew content\n";
+        // Expected behavior: original content is replaced entirely
+        String expected = "new content\n";
 
         String updated = EditBlock.replaceMostSimilarChunk(original, search, replace);
         assertEquals(expected, updated);

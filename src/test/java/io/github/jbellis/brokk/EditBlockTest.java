@@ -348,30 +348,30 @@ class EditBlockTest {
     }
 
     @Test
-    void testApplyEditsEmptySearchAppends(@TempDir Path tempDir) throws IOException {
+    void testApplyEditsEmptySearchReplacesFile(@TempDir Path tempDir) throws IOException {
         TestConsoleIO io = new TestConsoleIO();
-        Path testFile = tempDir.resolve("appendTest.txt");
+        Path testFile = tempDir.resolve("replaceTest.txt");
         String originalContent = "Initial content.\n";
         Files.writeString(testFile, originalContent);
 
+        String replacementContent = "Replacement text.\n";
         String response = """
-        appendTest.txt <<<<<<< SEARCH
-        appendTest.txt =======
-        Appended text.
-        appendTest.txt >>>>>>> REPLACE
-        """;
+        replaceTest.txt <<<<<<< SEARCH
+        replaceTest.txt =======
+        %s
+        replaceTest.txt >>>>>>> REPLACE
+        """.formatted(replacementContent.trim()); // Use trim because EditBlock adds newline
 
-        TestContextManager ctx = new TestContextManager(tempDir, Set.of("appendTest.txt"));
+        TestContextManager ctx = new TestContextManager(tempDir, Set.of("replaceTest.txt"));
         var blocks = EditBlock.parseUpdateBlocks(response).blocks();
         assertEquals(1, blocks.size());
         assertTrue(blocks.getFirst().beforeText().isEmpty()); // Verify search block is empty
 
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
-        // Verify the file content is original + appended text
+        // Verify the file content is now *only* the replacement text
         String actualContent = Files.readString(testFile);
-        String expectedContent = originalContent + "Appended text.\n";
-        assertEquals(expectedContent, actualContent);
+        assertEquals(replacementContent, actualContent); // Expected content is exactly the replacement
 
         // Verify no failures
         assertTrue(result.failedBlocks().isEmpty(), "No failures expected");

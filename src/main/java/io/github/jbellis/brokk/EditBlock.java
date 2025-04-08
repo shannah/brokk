@@ -438,9 +438,9 @@ public class EditBlock {
                                         String[] replaceLines)
             throws AmbiguousMatchException
     {
-        // special-case append (empty target)
+        // special-case replace entire file (empty target)
         if (targetLines.length == 0) {
-            return String.join("", originalLines) + String.join("", replaceLines);
+            return String.join("", replaceLines);
         }
 
         List<Integer> matches = new ArrayList<>();
