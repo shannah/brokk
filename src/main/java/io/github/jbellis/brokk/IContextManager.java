@@ -5,6 +5,7 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.tools.ToolRegistry;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -65,6 +66,10 @@ public interface IContextManager {
     default void addToGit(List<ProjectFile> files) throws IOException {}
 
     default IConsoleIO getIo() {
+        throw new UnsupportedOperationException();
+    }
+
+    default ToolRegistry getToolRegistry() {
         throw new UnsupportedOperationException();
     }
 }

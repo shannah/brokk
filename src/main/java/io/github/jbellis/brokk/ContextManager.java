@@ -17,6 +17,8 @@ import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.tools.AnalysisTools;
+import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.SwingUtil;
@@ -116,6 +118,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     private Project project; // Initialized in resolveCircularReferences
     private final Path root;
+    private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
@@ -176,6 +179,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
+        this.toolRegistry = new ToolRegistry(this);
+        this.toolRegistry.register(new AnalysisTools(this));
 
         // Load saved context or create a new one
         var welcomeMessage = buildWelcomeMessage();
@@ -415,8 +420,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                  return;
              }
              try {
-                 // run a search agent, passing the specific model
-                 var agent = new SearchAgent(query, this, coder, io, model);
+                 // run a search agent, passing the specific model and tool registry
+                 var agent = new SearchAgent(query, this, coder, io, model, getToolRegistry());
                  var result = agent.execute();
                  if (result == null) {
                      // Agent execution was likely cancelled or errored, agent should log details
@@ -1728,5 +1733,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public IConsoleIO getIo() {
         return io;
+    }
+
+    @Override
+    public ToolRegistry getToolRegistry() {
+        assert toolRegistry != null : "ToolRegistry accessed before initialization";
+        return toolRegistry;
     }
 }

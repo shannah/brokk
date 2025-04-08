@@ -16,7 +16,7 @@ import java.util.Set;
 
 public class AnalyzerUtil {
     @NotNull
-    static AnalyzerWrapper.CodeWithSource processUsages(IAnalyzer analyzer, List<CodeUnit> uses) {
+    public static AnalyzerWrapper.CodeWithSource processUsages(IAnalyzer analyzer, List<CodeUnit> uses) {
         StringBuilder code = new StringBuilder();
         Set<CodeUnit> sources = new HashSet<>();
 
