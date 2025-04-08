@@ -536,7 +536,7 @@ public class AnalysisTools {
      * @param symbols A list of fully qualified symbol names
      * @return A tuple containing: 1) the common package prefix, 2) the list of compressed symbol names
      */
-    private Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
+    static Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
         if (symbols == null || symbols.isEmpty()) {
             return new Tuple2<>("", List.of());
         }

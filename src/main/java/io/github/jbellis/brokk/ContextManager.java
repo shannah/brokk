@@ -415,8 +415,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                  return;
              }
              try {
-                 // run a search agent, passing the specific model
-                 var agent = new SearchAgent(query, this, coder, io, model);
+                 // run a search agent, passing the specific model and tool registry
+                 var agent = new SearchAgent(query, this, coder, io, model, getToolRegistry());
                  var result = agent.execute();
                  if (result == null) {
                      // Agent execution was likely cancelled or errored, agent should log details

@@ -200,7 +200,6 @@ public class SearchAgent {
      */
     public ContextFragment.VirtualFragment execute() {
         // Initialize
-        var analyzer = contextManager.getProject().getAnalyzer();
         var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {
             String text;
             try {
@@ -216,9 +215,11 @@ public class SearchAgent {
             """.stripIndent().formatted(f.description(),
                                         (f.sources(contextManager.getProject()).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
                                         text);
-        }).filter(Objects::nonNull).collect(Collectors.joining("\n"));
-        if (!contextWithClasses.isBlank()) {
-            io.systemOutput("Evaluating context");
+        }).filter(Objects::nonNull).collect(Collectors.joining("\n\n")); // Separate fragments better
+
+        // If context exists, ask LLM to evaluate its relevance and kick off async summary
+        if (!contextWithClasses.isBlank()) { 
+            io.systemOutput("Evaluating context..."); // Updated log message
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
             You are an expert software architect.
@@ -331,24 +332,6 @@ public class SearchAgent {
                  // Return the abort explanation as a simple fragment
                  return new ContextFragment.StringFragment(firstResult.execResult.resultText(), "Search Aborted: " + query);
             }
-
-                    // Coalesce inner classes whose parents are also present
-                    var coalesced = classNames.stream()
-                            .filter(c -> classNames.stream().noneMatch(c2 -> c.startsWith(c2 + "$")))
-                            .toList();
-
-                    var sources = coalesced.stream()
-                            .filter(fqcn -> {
-                                var fileOption = analyzer.getFileFor(fqcn);
-                                if (fileOption.isEmpty()) {
-                                    logger.warn("No file found for class: {}", fqcn);
-                                    return false;
-                                }
-                                return true;
-                            })
-                            .map(fqcn -> CodeUnit.cls(analyzer.getFileFor(fqcn).get(), fqcn))
-                            .collect(Collectors.toSet());
-            // actionHistory updated above, loop continues
         }
 
         logger.debug("Search ended because we hit the tokens cutoff or we were interrupted");
@@ -406,33 +389,7 @@ public class SearchAgent {
         allowPagerank = true;
         // don't reset allowTextSearch
     }
-
-    /*
-     * Gets an explanation for a tool name with parameter information from a history entry.
-     */
-    private String getExplanationForTool(String toolName, ToolHistoryEntry historyEntry) {
-         String paramInfo = getToolParameterInfo(historyEntry); // Use ToolHistoryEntry
-         String baseExplanation = switch (toolName) {
-             case "searchSymbols" -> "Searching for symbols";
-             case "searchSubstrings" -> "Searching for substrings";
-             case "searchFilenames" -> "Searching for filenames";
-             case "getFileContents" -> "Getting file contents";
-             case "getUsages" -> "Finding usages";
-             case "getRelatedClasses" -> "Finding related code";
-             case "getClassSkeletons" -> "Getting class overview";
-             case "getClassSources" -> "Fetching class source";
-             case "getMethodSources" -> "Fetching method source";
-             case "answer" -> "Answering the question";
-             case "abort" -> "Abort the search";
-             default -> {
-                 logger.debug("Unknown tool name: {}", toolName);
-                 yield  "Processing request";
-             }
-         };
-
-         return paramInfo.isBlank() ? baseExplanation : baseExplanation + " (" + paramInfo + ")";
-     }
-
+    
     /**
      * Gets human-readable parameter information from a tool call
      */
@@ -634,13 +591,11 @@ public class SearchAgent {
         }
         """.formatted(toJsonArray(classList));
 
-        // Create a new ToolExecutionRequest and ToolCall
-        var request = ToolExecutionRequest.builder()
-                .name("getRelatedClasses")
-                .arguments(argumentsJson)
-                .build();
-
-        return request; // Return the ToolExecutionRequest directly
+        // Create a new ToolExecutionRequest
+         return ToolExecutionRequest.builder()
+                 .name("getRelatedClasses")
+                 .arguments(argumentsJson)
+                 .build();
     }
 
     private String toJsonArray(List<String> items)
@@ -655,19 +610,7 @@ public class SearchAgent {
             return "[]";
         }
     }
-
-    private String toJsonString(String s)
-    {
-        // Wrap a string in quotes, escaping as needed
-        var mapper = new ObjectMapper();
-        try {
-            return mapper.writeValueAsString(s);
-        } catch (JsonProcessingException e) {
-            logger.error("Error serializing string", e);
-            return "\"\"";
-        }
-    }
-
+    
     /**
      * Determine the next action(s) to take for the current query by calling the LLM.
      * Returns a list of ToolExecutionRequests.
@@ -879,9 +822,304 @@ public class SearchAgent {
          return requests;
      }
 
-     // --- Inner Class for History Storage ---
-     // Restoring the definition of ToolHistoryEntry
-     private static class ToolHistoryEntry {
+    // --- Helper methods for executing tools and managing state ---
+
+     /** Executes the tool calls via the registry and prepares history entries. */
+     private List<ToolHistoryEntry> executeToolCalls(List<ToolExecutionRequest> toolRequests) {
+         // Execute sequentially for now, as parallel execution might complicate
+         // state updates (e.g., allowTextSearch) and summarization logic.
+         // Could revisit parallel execution later if performance becomes an issue.
+         return toolRequests.stream()
+                 .map(request -> {
+                     io.actionOutput(getExplanationForToolRequest(request)); // Show user what's happening
+                     ToolExecutionResult execResult = toolRegistry.executeTool(request); // CALL REGISTRY
+                     var historyEntry = new ToolHistoryEntry(request, execResult);
+
+                     // Handle post-execution logic like summarization/compression
+                     handlePostExecution(historyEntry);
+
+                     // Agent-specific state updates based on the *result*
+                     handleToolExecutionResult(execResult); // Updates agent state like allowTextSearch
+
+                     return historyEntry;
+                 })
+                 .collect(Collectors.toList()); // Ensure collection happens to force execution
+     }
+
+     /** Generates a user-friendly explanation for a tool request. */
+     private String getExplanationForToolRequest(ToolExecutionRequest request) {
+        String paramInfo = getToolParameterInfoFromRequest(request); // Need a version for requests
+        String baseExplanation = switch (request.name()) {
+             case "searchSymbols" -> "Searching for symbols";
+             case "searchSubstrings" -> "Searching for substrings";
+             case "searchFilenames" -> "Searching for filenames";
+             case "getFileContents" -> "Getting file contents";
+             case "getUsages" -> "Finding usages";
+             case "getRelatedClasses" -> "Finding related code";
+             case "getClassSkeletons" -> "Getting class overview";
+             case "getClassSources" -> "Fetching class source";
+             case "getMethodSources" -> "Fetching method source";
+             case "getCallGraphTo" -> "Getting call graph TO";
+             case "getCallGraphFrom" -> "Getting call graph FROM";
+             case "answer" -> "Answering the question";
+             case "abort" -> "Aborting the search";
+             default -> {
+                 logger.warn("Unknown tool name for explanation: {}", request.name());
+                 yield "Processing request";
+             }
+         };
+         return paramInfo.isBlank() ? baseExplanation : baseExplanation + " (" + paramInfo + ")";
+     }
+
+     /** Gets parameter info directly from a request for explanation purposes. */
+     private String getToolParameterInfoFromRequest(ToolExecutionRequest request) {
+         try {
+             var mapper = new ObjectMapper();
+             var arguments = mapper.readValue(request.arguments(), new TypeReference<Map<String, Object>>() {});
+
+             return switch (request.name()) {
+                 case "searchSymbols", "searchSubstrings", "searchFilenames" -> formatListParameter(arguments, "patterns");
+                 case "getFileContents" -> formatListParameter(arguments, "filenames");
+                 case "getUsages" -> formatListParameter(arguments, "symbols");
+                 case "getRelatedClasses", "getClassSkeletons",
+                      "getClassSources" -> formatListParameter(arguments, "classNames");
+                 case "getMethodSources" -> formatListParameter(arguments, "methodNames");
+                 case "getCallGraphTo", "getCallGraphFrom" -> arguments.getOrDefault("methodName", "").toString();
+                 case "answer", "abort" -> "finalizing";
+                 default -> ""; // Avoid exception for unknown tools
+             };
+         } catch (Exception e) {
+             logger.error("Error getting parameter info for request {}: {}", request.name(), e);
+             return "";
+         }
+     }
+
+
+    /** Handles summarization or compression after a tool has executed. */
+    private void handlePostExecution(ToolHistoryEntry historyEntry) {
+        var request = historyEntry.request;
+        var execResult = historyEntry.execResult;
+
+        // Only process successful executions
+        if (execResult.status() != ToolExecutionResult.Status.SUCCESS) {
+            return;
+        }
+
+        String toolName = request.name();
+        String resultText = execResult.resultText(); // Null check done in factory/constructor
+        var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings", "searchFilenames", "getFileContents", "getRelatedClasses");
+
+        if (toolsRequiringSummaries.contains(toolName) && Models.getApproximateTokens(resultText) > SUMMARIZE_THRESHOLD) {
+             logger.debug("Queueing summarization for tool {}", toolName);
+            historyEntry.summarizeFuture = summarizeResultAsync(query, historyEntry);
+        } else if (toolName.equals("searchSymbols") || toolName.equals("getRelatedClasses")) {
+            // Apply prefix compression if not summarizing for searchSymbols and getRelatedClasses
+             if (!resultText.startsWith("No ") && !resultText.startsWith("[")) { // Check if not empty/error/already compressed
+                 // AnalysisTools now returns raw comma-separated list for these.
+                 try {
+                     List<String> rawSymbols = Arrays.asList(resultText.split(",\\s*"));
+                     String label = toolName.equals("searchSymbols") ? "Relevant symbols" : "Related classes";
+                     historyEntry.setCompressedResult(formatCompressedSymbolsForDisplay(label, rawSymbols));
+                     logger.debug("Applied compression for tool {}", toolName);
+                 } catch (Exception e) {
+                     logger.error("Error during symbol compression for {}: {}", toolName, e.getMessage());
+                     // Fallback: use raw result text - already stored in execResult
+                 }
+             } else {
+                  logger.debug("Skipping compression for {} (result: '{}')", toolName, resultText);
+             }
+        }
+    }
+
+     /** Formats symbols for display, applying compression. */
+     private String formatCompressedSymbolsForDisplay(String label, List<String> symbols) {
+         if (symbols == null || symbols.isEmpty()) {
+             return label + ": None found";
+         }
+         var compressionResult = AnalysisTools.compressSymbolsWithPackagePrefix(symbols); // Use static helper
+         String commonPrefix = compressionResult._1();
+         List<String> compressedSymbols = compressionResult._2();
+
+         if (commonPrefix.isEmpty()) {
+             return label + ": " + String.join(", ", symbols.stream().sorted().toList());
+         }
+         return AnalysisTools.formatCompressedSymbolsInternal(label, compressedSymbols.stream().sorted().toList(), commonPrefix); // Use static helper
+     }
+
+
+    /**
+     * Handles agent-specific state updates and logic after a tool executes.
+     * This is where the "composition" happens.
+     */
+    private void handleToolExecutionResult(ToolExecutionResult execResult) {
+        // Check for execution errors first
+         if (execResult.status() == ToolExecutionResult.Status.FAILURE) {
+             logger.warn("Tool execution failed or returned error: {} - {}", execResult.toolName(), execResult.resultText());
+             // Potentially update agent state based on error (e.g., disable a tool?)
+             return;
+         }
+
+        // Tool-specific state updates
+        switch (execResult.toolName()) {
+            case "searchSymbols":
+                // Logic specific to AFTER searchSymbols runs successfully
+                this.allowTextSearch = true; // Enable text search capability
+                // Check if the result indicates symbols were actually found
+                if (!execResult.resultText().startsWith("No definitions found")) {
+                    this.symbolsFound = true;
+                    // Track names ONLY if symbols were found
+                    trackClassNamesFromResult(execResult.resultText());
+                }
+                break;
+
+            // Track class names from results of various tools
+            case "getUsages":
+            case "getRelatedClasses":
+            case "getClassSkeletons":
+            case "getClassSources":
+            case "getMethodSources":
+                 trackClassNamesFromResult(execResult.resultText());
+                 break;
+
+            // Add cases for other tools needing specific post-execution logic
+
+            default:
+                // No specific post-execution logic for this tool
+                break;
+        }
+
+        // Common logic after any successful tool execution?
+        // e.g., update token counts, log generic success
+    }
+
+    /**
+     * Parses a tool result text to find and track class/symbol names.
+     * Implementation needs to be robust to different tool output formats.
+     */
+    private void trackClassNamesFromResult(String resultText) {
+         if (resultText == null || resultText.isBlank() || resultText.startsWith("No ") || resultText.startsWith("Error:")) return;
+
+         Set<String> potentialNames = new HashSet<>();
+
+         // Attempt to parse comma-separated list (common for searchSymbols, getRelatedClasses)
+         // Handle compressed format "[Common package prefix: 'prefix'] item1, item2"
+         String effectiveResult = resultText;
+         String prefix = "";
+         if (resultText.startsWith("[")) {
+              int prefixEnd = resultText.indexOf("] ");
+              if (prefixEnd > 0) {
+                  // Extract prefix carefully, handling potential nested quotes/brackets? Unlikely here.
+                  int prefixStart = resultText.indexOf("'");
+                  int prefixEndQuote = resultText.lastIndexOf("'", prefixEnd);
+                  if (prefixStart != -1 && prefixEndQuote != -1 && prefixStart < prefixEndQuote) {
+                      prefix = resultText.substring(prefixStart + 1, prefixEndQuote);
+                  }
+                  effectiveResult = resultText.substring(prefixEnd + 2).trim();
+              }
+         }
+
+         // Add prefix back if needed
+         String finalPrefix = prefix; // Final for lambda
+         potentialNames.addAll(Arrays.stream(effectiveResult.split("[,\\s]+"))
+                 .map(String::trim)
+                 .filter(s -> !s.isEmpty())
+                 .map(s -> finalPrefix.isEmpty() ? s : finalPrefix + s) // Re-add prefix
+                 .filter(s -> s.contains(".") && Character.isJavaIdentifierStart(s.charAt(0))) // Basic FQCN check
+                 .toList());
+
+         // Regex for "Source code of X:" or "class X"
+         Pattern classPattern = Pattern.compile("(?:Source code of |class )([\\w.$]+)"); // Include $ for inner classes
+         var matcher = classPattern.matcher(resultText);
+         while (matcher.find()) {
+             potentialNames.add(matcher.group(1));
+         }
+
+         // Add FQCNs extracted from symbols found in usage reports
+         Pattern usagePattern = Pattern.compile("Usage in ([\\w.$]+)\\."); // Match FQCN before method name
+         matcher = usagePattern.matcher(resultText);
+         while (matcher.find()) {
+              potentialNames.add(matcher.group(1));
+         }
+
+         if (!potentialNames.isEmpty()) {
+             // Filter again for plausible FQCNs before adding
+             var validNames = potentialNames.stream()
+                                            .map(this::extractClassNameFromSymbol) // Normalize FQCNs
+                                            .collect(Collectors.toSet());
+             if (!validNames.isEmpty()) {
+                 logger.debug("Tracking potential class names from result: {}", validNames);
+                 trackedClassNames.addAll(validNames);
+                 logger.debug("Total tracked class names: {}", trackedClassNames);
+             }
+         }
+     }
+
+
+    /** Generates the final context fragment based on the last successful action (answer/abort). */
+    private ContextFragment.VirtualFragment createFinalFragment(ToolHistoryEntry finalStep) {
+        var request = finalStep.request;
+        var execResult = finalStep.execResult;
+
+        if (!request.name().equals("answer") || execResult.status() != ToolExecutionResult.Status.SUCCESS) {
+            // Should not happen if called correctly, but handle gracefully
+            logger.error("createFinalFragment called with non-answer or failed step: {}", request.name());
+            return new ContextFragment.StringFragment(execResult.resultText(), "Search Error: " + query);
+        }
+
+        try {
+            var arguments = finalStep.argumentsMap(); // Use helper
+             // Ensure classNames is treated as List<String>
+             Object classNamesObj = arguments.get("classNames");
+             List<String> classNames = new ArrayList<>();
+             if (classNamesObj instanceof List<?> list) {
+                 list.forEach(item -> {
+                     if (item instanceof String s) {
+                         classNames.add(s);
+                     }
+                 });
+             } else if (classNamesObj != null) {
+                  logger.warn("Expected 'classNames' to be a List<String>, but got: {}", classNamesObj.getClass());
+             }
+
+            logger.debug("LLM-determined relevant classes for final answer are {}", classNames);
+
+            // Combine LLM list with all tracked names for broader context, then coalesce
+            Set<String> combinedNames = new HashSet<>(classNames);
+            combinedNames.addAll(trackedClassNames);
+            logger.debug("Combined tracked and LLM classes before coalesce: {}", combinedNames);
+
+            var coalesced = combinedNames.stream()
+                    .map(this::extractClassNameFromSymbol) // Normalize before filtering
+                    .distinct() // Ensure uniqueness after normalization
+                    .filter(c -> combinedNames.stream() // Coalesce inner classes
+                                    .map(this::extractClassNameFromSymbol)
+                                    .noneMatch(c2 -> !c.equals(c2) && c.startsWith(c2 + "$")))
+                    .sorted() // Consistent order
+                    .toList();
+             logger.debug("Coalesced relevant classes: {}", coalesced);
+
+            // Map final classes to CodeUnits representing the files they are in
+            var sources = coalesced.stream()
+                    .map(analyzer::getFileFor) // Get Option<ProjectFile>
+                    .filter(Option::isDefined) // Filter out classes where file couldn't be found
+                    .map(Option::get)          // Get ProjectFile
+                    .distinct()                // Get unique files
+                    .map(pf -> CodeUnit.cls(pf, pf.toString())) // Create CodeUnit representing the file
+                    .collect(Collectors.toSet());
+
+             logger.debug("Final sources identified (files): {}", sources.stream().map(CodeUnit::source).toList());
+            // Use the explanation from the result text
+            return new ContextFragment.SearchFragment(query, execResult.resultText(), sources);
+        } catch (Exception e) {
+            logger.error("Error creating final SearchFragment", e);
+            // Fallback to string fragment with the explanation
+            return new ContextFragment.StringFragment(execResult.resultText(), "Search Result (error processing sources): " + query);
+        }
+    }
+
+    // --- Inner Class for History Storage ---
+    // Restoring the definition of ToolHistoryEntry
+    private static class ToolHistoryEntry {
          final ToolExecutionRequest request;
          final ToolExecutionResult execResult;
          String compressedResult; // For searchSymbols/getRelatedClasses non-summarized case
@@ -910,12 +1148,11 @@ public class SearchAgent {
          Map<String, Object> argumentsMap() {
               try {
                  var mapper = new ObjectMapper();
-                 return mapper.readValue(request.arguments(), new TypeReference<Map<String, Object>>() {});
+                 return mapper.readValue(request.arguments(), new TypeReference<>() {});
               } catch (JsonProcessingException e) {
                  logger.error("Error parsing arguments for request {}: {}", request.name(), e.getMessage());
                   return Map.of(); // Return empty map on error
                }
           }
       }
-  // Ensure the class closing brace is present and not commented out
  }
