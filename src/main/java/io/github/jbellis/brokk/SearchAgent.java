@@ -56,6 +56,7 @@ public class SearchAgent {
     private final Coder coder;
     private final IConsoleIO io;
     private final StreamingChatLanguageModel model;
+    // ToolRegistry field is added by another block, no change needed here
 
     // Budget and action control state
     private boolean allowSearch;
@@ -73,21 +74,31 @@ public class SearchAgent {
     private final Set<String> toolCallSignatures = new HashSet<>();
     private final Set<String> trackedClassNames = new HashSet<>();
     private CompletableFuture<String> initialContextSummary = null;
+    private final ToolRegistry toolRegistry; // Added field
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
 
-    public SearchAgent(String query, ContextManager contextManager, Coder coder, IConsoleIO io, StreamingChatLanguageModel model) {
+    // Constructor now requires a ToolRegistry
+    public SearchAgent(String query,
+                       ContextManager contextManager,
+                       Coder coder,
+                       IConsoleIO io,
+                       StreamingChatLanguageModel model,
+                       ToolRegistry toolRegistry) { // Added parameter
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
         this.coder = coder;
         this.io = io;
         this.model = model;
-        allowSearch = true;
-        allowInspect = true;
-        allowPagerank = true;
-        allowAnswer = true;
-        allowTextSearch = analyzer.isEmpty(); // otherwise, allowed after symbols search
+        this.toolRegistry = toolRegistry; // Assign registry from parameter
+
+        // Set initial state based on analyzer presence
+        allowSearch = !analyzer.isEmpty();
+        allowInspect = !analyzer.isEmpty();
+        allowPagerank = !analyzer.isEmpty();
+        allowAnswer = true; // Can always answer/abort initially if context exists
+        allowTextSearch = analyzer.isEmpty(); // Enable text search only if no analyzer
         symbolsFound = false;
         beastMode = false;
     }
@@ -109,12 +120,18 @@ public class SearchAgent {
         if (step.summarizeFuture != null) {
             try {
                 // block
-                step.learnings = step.summarizeFuture.get();
+                // Correctly wait for the future associated with ToolHistoryEntry
+                ToolHistoryEntry historyEntry = (ToolHistoryEntry) step; // Cast needed if step is still ToolCall type
+                historyEntry.learnings = historyEntry.summarizeFuture.get();
             } catch (ExecutionException e) {
                 logger.error("Error waiting for summary", e);
-                step.learnings = step.result;
+                // Store raw result as learnings on error
+                // Need to cast `step` to the correct type if it's not already ToolHistoryEntry
+                 ((ToolHistoryEntry) step).learnings = ((ToolHistoryEntry) step).execResult.resultText();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                // Store raw result if interrupted
+                 ((ToolHistoryEntry) step).learnings = ((ToolHistoryEntry) step).execResult.resultText();
             }
         }
     }
@@ -690,77 +707,8 @@ public class SearchAgent {
         return parseResponse(response.aiMessage());
     }
 
-    /**
-     * Create tool specifications for the LLM based on allowed actions.
-     */
-    private List<ToolSpecification> createToolSpecifications() {
-        List<ToolSpecification> tools = new ArrayList<>();
-
-        if (allowAnswer) {
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("answer")));
-
-            // Always allow abort when answer is allowed
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("abort")));
-        }
-
-        if (beastMode) {
-            return tools;
-        }
-
-        if (!analyzer.isEmpty()) {
-            if (allowSearch) {
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("searchSymbols")));
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getUsages")));
-            }
-            if (allowPagerank) {
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getRelatedClasses")));
-            }
-            if (allowInspect) {
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getClassSkeletons")));
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getClassSources")));
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getMethodSources")));
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getCallGraphTo")));
-                tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                        getMethodByName("getCallGraphFrom")));
-            }
-        }
-
-        if (allowTextSearch) {
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("searchSubstrings")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("searchFilenames")));
-            tools.add(dev.langchain4j.agent.tool.ToolSpecifications.toolSpecificationFrom(
-                    getMethodByName("getFileContents")));
-        }
-
-        logger.debug("Available tools are {}", tools);
-        return tools;
-    }
-
-    /**
-     * Helper method to get a Method by name.
-     *
-     * @param methodName The name of the method to find
-     * @return The Method object or null if not found
-     */
-    private java.lang.reflect.Method getMethodByName(String methodName) {
-        for (java.lang.reflect.Method method : getClass().getMethods()) {
-            if (method.getName().equals(methodName)) {
-                return method;
-            }
-        }
-        throw new IllegalArgumentException("Method not found: " + methodName);
-    }
+    // Removed createToolSpecifications and getMethodByName as they are no longer needed.
+    // Tool specifications are now retrieved from the ToolRegistry.
 
     /**
      * Build the system prompt for determining the next action.
@@ -1440,97 +1388,113 @@ public class SearchAgent {
         if (commonPrefix.isEmpty()) {
             return label + ": " + String.join(", ", symbols);
         }
-        return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
-                .formatted(label, commonPrefix, String.join(", ", compressedSymbols));
+        // Use the helper method we defined earlier in this class
+        return formatCompressedSymbolsInternal(label, compressedSymbols, commonPrefix);
     }
 
-    /**
-     * Represents a single tool execution request and its result.
-     */
-    public class ToolCall {
-        private final ToolExecutionRequest request;
-        private String result; // initially null
-        private String learnings; // initially null
-        private CompletableFuture<String> summarizeFuture;
-
-        public ToolCall(ToolExecutionRequest request) {
-            this(request, null);
-        }
-
-        public ToolCall(ToolExecutionRequest request, String result) {
-            this.request = request;
-            this.result = result;
-        }
-
-        public ToolExecutionRequest getRequest() {
-            return request;
-        }
-
-        /**
-         * Parse the JSON arguments into a map
-         */
-        public Map<String, Object> argumentsMap() {
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-                return mapper.readValue(request.arguments(), new TypeReference<>() {});
-            } catch (JsonProcessingException e) {
-                logger.error("Error parsing arguments", e);
-                return Map.of();
-            }
-        }
-
-        /**
-         * Executes the tool call by using reflection.  `result` will be modified.
-         */
-        public void execute() {
-            if (result != null) {
-                return;
-            }
-
-            try {
-                // Use TER's tool name as the method name
-                String methodName = request.name();
-                java.lang.reflect.Method method = getMethodByName(methodName);
-
-                // Prepare arguments array from method parameters
-                var arguments = argumentsMap();
-                var params = method.getParameters();
-                logger.debug("Extracting {} from {}", params, arguments);
-                Object[] args = new Object[params.length];
-                for (int i = 0; i < params.length; i++) {
-                    String paramName = params[i].getName(); // requires compilation with -parameters
-                    Object value = arguments.get(paramName);
-                    if (value == null) {
-                        throw new IllegalArgumentException("Missing required parameter: " + paramName);
-                    }
-                    args[i] = value;
-                }
-
-                // Invoke the method
-                Object res = method.invoke(SearchAgent.this, args);
-                result = res != null ? res.toString() : "";
-            } catch (IllegalArgumentException e) {
-                logger.error("Tool method parameter error for {}: {}", request.name(), e.getMessage());
-                result = "Error: " + e.getMessage();
-            }
-            catch (Exception e) {
-                // Catch reflection invocation target exceptions specifically
-                var cause = e.getCause() != null ? e.getCause() : e;
-                logger.error("Tool method invocation error for {}: {}", request.name(), cause.getMessage(), cause);
-                result = "Error executing tool " + request.name() + ": " + cause.getMessage();
-            } finally {
-                logger.debug("Tool call completed: {}", result);
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "ToolCall{" +
-                    "toolName=" + request.name() +
-                    ", arguments=" + request.arguments() +
-                    ", result=" + (result != null ? "'" + result + "'" : "null") +
-                    ", learnings=" + (learnings != null ? "'" + learnings + "'" : "null") +
-                    '}';
-        }
+    // Internal helper extracted for clarity, matching the logic previously in AnalysisTools
+    private String formatCompressedSymbolsInternal(String label, List<String> compressedSymbols, String commonPrefix) {
+         if (commonPrefix.isEmpty()) {
+             // Sort for consistent output when no compression happens
+             return label + ": " + compressedSymbols.stream().sorted().collect(Collectors.joining(", "));
+         }
+         // Sort compressed symbols too
+         return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
+                 .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
     }
+
+     // --- New History Storage Class ---
+     private static class ToolHistoryEntry {
+         final ToolExecutionRequest request;
+         final ToolExecutionResult execResult;
+         String compressedResult; // For searchSymbols/getRelatedClasses non-summarized case
+         String learnings; // Summarization result
+         CompletableFuture<String> summarizeFuture;
+
+         ToolHistoryEntry(ToolExecutionRequest request, ToolExecutionResult execResult) {
+             this.request = request;
+             this.execResult = execResult;
+         }
+
+         // Determines what to display in the prompt history
+         String getDisplayResult() {
+             if (learnings != null) return "<learnings>\n%s\n</learnings>".formatted(learnings);
+             if (compressedResult != null) return "<result>\n%s\n</result>".formatted(compressedResult);
+             // Use resultText which holds success output or error message
+             String resultKind = (execResult.status() == ToolExecutionResult.Status.SUCCESS) ? "result" : "error";
+             return "<%s>\n%s\n</%s>".formatted(resultKind, execResult.resultText(), resultKind);
+         }
+
+         void setCompressedResult(String compressed) {
+             this.compressedResult = compressed;
+         }
+     }
+
+    // --- Helper methods for symbol compression (previously in AnalysisTools) ---
+     /**
+      * Compresses a list of fully qualified symbol names by finding the longest common package prefix
+      * and removing it from each symbol.
+      * @param symbols A list of fully qualified symbol names
+      * @return A tuple containing: 1) the common package prefix, 2) the list of compressed symbol names
+      */
+     private Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
+         if (symbols == null || symbols.isEmpty()) {
+             return new Tuple2<>("", List.of());
+         }
+
+         List<String[]> packageParts = symbols.stream()
+                 .filter(Objects::nonNull) // Filter nulls just in case
+                 .map(s -> s.split("\\."))
+                 .filter(arr -> arr.length > 0) // Ensure split resulted in something
+                 .toList();
+
+         if (packageParts.isEmpty()) {
+              return new Tuple2<>("", List.of());
+         }
+
+         String[] firstParts = packageParts.getFirst();
+         int maxPrefixLength = 0;
+
+         for (int i = 0; i < firstParts.length - 1; i++) { // Stop before last part (class/method)
+             boolean allMatch = true;
+             for (String[] parts : packageParts) {
+                 // Ensure current part exists and matches
+                 if (i >= parts.length - 1 || !parts[i].equals(firstParts[i])) {
+                     allMatch = false;
+                     break;
+                 }
+             }
+             if (allMatch) {
+                 maxPrefixLength = i + 1;
+             } else {
+                 break;
+             }
+         }
+
+         if (maxPrefixLength > 0) {
+             String commonPrefix = String.join(".", Arrays.copyOfRange(firstParts, 0, maxPrefixLength)) + ".";
+             List<String> compressedSymbols = symbols.stream()
+                     .map(s -> s != null && s.startsWith(commonPrefix) ? s.substring(commonPrefix.length()) : s)
+                     .collect(Collectors.toList());
+             return new Tuple2<>(commonPrefix, compressedSymbols);
+         }
+
+         return new Tuple2<>("", symbols); // Return original list if no common prefix
+     }
+
+     /**
+      * Formats a list of symbols with prefix compression if applicable.
+      * @param label The label to use in the output (e.g., "Relevant symbols", "Related classes")
+      * @param symbols The list of symbols to format
+      * @return A formatted string with compressed symbols if possible
+      */
+     private String formatCompressedSymbols(String label, List<String> symbols) {
+         if (symbols == null || symbols.isEmpty()) {
+             return label + ": None found";
+         }
+         var compressionResult = compressSymbolsWithPackagePrefix(symbols);
+         String commonPrefix = compressionResult._1();
+         List<String> compressedSymbols = compressionResult._2();
+         return formatCompressedSymbolsInternal(label, compressedSymbols, commonPrefix);
+     }
 }
