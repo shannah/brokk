@@ -251,9 +251,10 @@ public final class Models {
 
     public static boolean supportsJsonSchema(StreamingChatLanguageModel model) {
         var info = modelInfoMap.get(nameOf(model));
-        // FIXME hack for litellm not knowing about gp2.5 yet
         if (Models.nameOf(model).contains("gemini")) {
-            return true;
+            // buildToolCallsSchema can't build a valid properties map for `arguments` without `oneOf` schema support.
+            // o3mini is fine with this but gemini models are not.
+            return false;
         }
         // hack for o3-mini not being able to combine json schema with argument descriptions in the text body
         if (Models.nameOf(model).contains("o3-mini")) {

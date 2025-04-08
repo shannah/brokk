@@ -400,7 +400,7 @@ public class Coder {
                                          boolean echo)
     {
         if (Models.supportsJsonSchema(model)) {
-            return emulateToolsUsingStructuredSchema(model, messages, tools, toolChoice, echo);
+            return emulateToolsUsingJsonSchema(model, messages, tools, toolChoice, echo);
         } else {
             return emulateToolsUsingJsonObject(model, messages, tools, toolChoice, echo);
         }
@@ -574,11 +574,11 @@ public class Coder {
     /**
      * Emulates function calling for models that support structured output with JSON schema
      */
-    private StreamingResult emulateToolsUsingStructuredSchema(StreamingChatLanguageModel model,
-                                                              List<ChatMessage> messages,
-                                                              List<ToolSpecification> tools,
-                                                              ToolChoice toolChoice,
-                                                              boolean echo)
+    private StreamingResult emulateToolsUsingJsonSchema(StreamingChatLanguageModel model,
+                                                        List<ChatMessage> messages,
+                                                        List<ToolSpecification> tools,
+                                                        ToolChoice toolChoice,
+                                                        boolean echo)
     {
         // Build a top-level JSON schema with "tool_calls" as an array of objects
         var toolNames = tools.stream().map(ToolSpecification::name).distinct().toList();
@@ -716,6 +716,7 @@ public class Coder {
                 .build();
 
         // arguments => free-form object
+        // FIXME this should really use anyOf, but that's not supported by LLMs today
         var argumentsSchema = JsonObjectSchema.builder()
                 .description("Tool arguments object (specific structure depends on the tool).")
                 .build();
