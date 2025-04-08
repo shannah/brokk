@@ -55,8 +55,7 @@ public class ToolRegistry {
                 String toolName = toolAnnotation.name().isEmpty() ? method.getName() : toolAnnotation.name();
 
                 if (toolMap.containsKey(toolName)) {
-                    logger.warn("Duplicate tool name registration attempted: '{}'. Ignoring registration from {}",
-                                toolName, clazz.getName());
+                    throw new IllegalArgumentException("Duplicate tool name registration attempted: '%s'".formatted(toolName));
                 } else {
                     logger.debug("Registering tool: '{}' from class {}", toolName, clazz.getName());
                     toolMap.put(toolName, new ToolInvocationTarget(method, toolProviderInstance));

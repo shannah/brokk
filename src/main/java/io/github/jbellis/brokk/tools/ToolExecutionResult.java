@@ -13,7 +13,6 @@ import java.util.Objects;
 public record ToolExecutionResult(
         ToolExecutionRequest request,
         Status status,
-        // ActionType removed
         String resultText // Contains the primary output on SUCCESS, or error message on FAILURE.
 ) {
     /**
@@ -34,7 +33,6 @@ public record ToolExecutionResult(
     public ToolExecutionResult {
         Objects.requireNonNull(request, "request cannot be null");
         Objects.requireNonNull(status, "status cannot be null");
-        // actionType removed
         Objects.requireNonNull(resultText, "resultText cannot be null"); // Store error message here on failure
     }
 
