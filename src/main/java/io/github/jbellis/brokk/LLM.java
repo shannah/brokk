@@ -410,7 +410,7 @@ public class LLM {
      */
     private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
         var messages = BuildPrompts.instance.collectMessages(buildResults);
-        var response = coder.sendMessage(messages);
+        var response = coder.sendMessage(Models.quickModel(), messages).chatResponse().aiMessage().text().trim();
 
         // Keep trying until we get one of our expected tokens
         while (!response.contains("BROKK_PROGRESSING") && !response.contains("BROKK_FLOUNDERING")) {

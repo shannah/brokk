@@ -640,8 +640,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 return null;
             }
 
-            // Use the quick model for commit message generation
-            String commitMsg = coder.sendMessage(messages); // sendMessage uses quickModel by default
+            String commitMsg = coder.sendMessage(messages); // sendMessage uses quickestModel by default
             if (commitMsg == null || commitMsg.isEmpty() || commitMsg.equals(Models.UNAVAILABLE)) {
                 SwingUtilities.invokeLater(() -> io.systemOutput("LLM did not provide a commit message or is unavailable."));
                 return null;
@@ -1442,7 +1441,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                 // Use quickModel for summarization
-                var result = coder.sendMessage(Models.quickModel(), msgs);
+                var result = coder.sendMessage(Models.quickestModel(), msgs);
                  if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                     logger.warn("Summarization failed or was cancelled.");
                     return "Summarization failed.";
@@ -1467,7 +1466,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
                  // Use quickModel for summarization
-                var result = coder.sendMessage(Models.quickModel(), msgs);
+                var result = coder.sendMessage(Models.quickestModel(), msgs);
                  if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                      logger.warn("Summarization failed or was cancelled.");
                      return "Summarization failed.";
@@ -1546,7 +1545,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 String responseText;
                 try {
                     // Use quickModel for inference
-                    var result = coder.sendMessage(Models.quickModel(), messages);
+                    var result = coder.sendMessage(Models.quickestModel(), messages);
                      if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                          logger.warn("Failed to infer build command: {}", result.error() != null ? result.error().getMessage() : "No response");
                          return BuildCommand.failure("LLM failed to respond.");

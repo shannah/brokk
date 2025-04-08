@@ -212,10 +212,10 @@ public class Coder {
     }
 
     /**
-     * Convenience method to send messages to the "quick" model without tools or streaming echo.
+     * Convenience method to send messages to the "quickest" model without tools or streaming echo.
      */
     public String sendMessage(List<ChatMessage> messages) {
-        var result = sendMessage(Models.quickModel(), messages, List.of(), ToolChoice.AUTO, false);
+        var result = sendMessage(Models.quickestModel(), messages, List.of(), ToolChoice.AUTO, false);
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
             throw new IllegalStateException("LLM returned null or error: " + result.error());
         }

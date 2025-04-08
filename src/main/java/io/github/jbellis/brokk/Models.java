@@ -56,7 +56,8 @@ public final class Models {
     private static final ConcurrentHashMap<String, Map<String, Object>> modelInfoMap = new ConcurrentHashMap<>();
     
     // Default models
-    private static volatile StreamingChatLanguageModel quickModel = null;
+    private static StreamingChatLanguageModel quickModel;
+    private static volatile StreamingChatLanguageModel quickestModel = null;
     private static volatile SpeechToTextModel sttModel = null;
 
     // Initialize at class load time
@@ -92,10 +93,9 @@ public final class Models {
         // No models? LiteLLM must be down. Add a placeholder.
         if (modelLocations.isEmpty()) {
             modelLocations.put(UNAVAILABLE, "not_a_model");
+        } else {
+            initializeDefaultModels();
         }
-
-        // Setup default models
-        initializeDefaultModels();
     }
     
     private static void fetchAvailableModels() throws IOException {
@@ -115,8 +115,9 @@ public final class Models {
             if (responseBodyObj == null) {
                 throw new IOException("Received empty response body");
             }
-            
+
             String responseBody = responseBodyObj.string();
+            logger.debug("Models info: {}", responseBody);
             JsonNode rootNode = objectMapper.readTree(responseBody);
             JsonNode dataNode = rootNode.path("data");
 
@@ -192,34 +193,10 @@ public final class Models {
     }
     
     private static void initializeDefaultModels() {
-        // Try to find a preferred quick model
-        String preferredModelLocation = "gemini/gemini-2.0-flash-lite";
-
-        // If we see our preferred model in the discovered values, use that
-        if (modelLocations.containsValue(preferredModelLocation)) {
-            var matchingEntry = modelLocations.entrySet().stream()
-                    .filter(e -> e.getValue().equals(preferredModelLocation))
-                    .findFirst()
-                    .orElse(null);
-
-            if (matchingEntry != null) {
-                quickModel = get(matchingEntry.getKey());
-                logger.info("Initialized quickModel with {} => {}", 
-                          matchingEntry.getKey(), preferredModelLocation);
-                
-                // Initialize STT model with a similar model
-                sttModel = new GeminiSTT("gemini/gemini-2.0-flash", httpClient);
-                return;
-            }
-        }
-        
-        // Fallback to first available model
-        logger.warn("Preferred quick model unavailable, using first available");
-        var firstEntry = modelLocations.entrySet().iterator().next();
-        quickModel = get(firstEntry.getKey());
-        logger.info("Using first available model: {} => {}", firstEntry.getKey(), firstEntry.getValue());
-        
-        // Initialize STT with UnavailableSTT if we couldn't find Gemini
+        // looking up by model name
+        quickModel = get("gemini-2.0-flash");
+        quickestModel = get("gemini-2.0-flash-lite");
+        // hardcoding raw location for STT
         sttModel = new GeminiSTT("gemini/gemini-2.0-flash", httpClient);
     }
 
@@ -245,7 +222,10 @@ public final class Models {
     public static StreamingChatLanguageModel get(String modelName) {
         return loadedModels.computeIfAbsent(modelName, key -> {
             String location = modelLocations.get(modelName);
-            logger.info("Creating new model instance for '{}' at location '{}' via LiteLLM", modelName, location);
+            logger.debug("Creating new model instance for '{}' at location '{}' via LiteLLM", modelName, location);
+            if (location == null) {
+                throw new IllegalArgumentException("Model not found: " + modelName);
+            }
 
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
@@ -328,9 +308,11 @@ public final class Models {
         return tokenizer.encode(text).size();
     }
 
-    /**
-     * Returns the default quick model instance.
-     */
+    public static StreamingChatLanguageModel quickestModel() {
+        assert quickestModel != null;
+        return quickestModel;
+    }
+
     public static StreamingChatLanguageModel quickModel() {
         assert quickModel != null;
         return quickModel;
