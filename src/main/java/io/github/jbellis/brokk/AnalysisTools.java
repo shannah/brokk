@@ -219,8 +219,9 @@ public class AnalysisTools {
         for (String className : classNames) {
             if (!className.isBlank()) {
                 // analyzer.getClassSource returns Option<String>
-                var classSource = analyzer.getClassSource(className);
-                if (classSource != null) { // Check the Option
+                var sourceOpt = analyzer.getClassSource(className);
+                if (sourceOpt.isDefined()) { // Check the Option
+                    String classSource = sourceOpt.get(); // Get from the Option
                      if (!classSource.isEmpty() && processedSources.add(classSource)) {
                          if (!result.isEmpty()) {
                              result.append("\n\n");
@@ -536,7 +537,7 @@ public class AnalysisTools {
      * @param symbols A list of fully qualified symbol names
      * @return A tuple containing: 1) the common package prefix, 2) the list of compressed symbol names
      */
-    static Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
+    private Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
         if (symbols == null || symbols.isEmpty()) {
             return new Tuple2<>("", List.of());
         }
@@ -604,16 +605,5 @@ public class AnalysisTools {
         // Sort compressed symbols too
         return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
                 .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
-     }
-
-    // Internal helper for formatting the compressed string. Public static.
-     public static String formatCompressedSymbolsInternal(String label, List<String> compressedSymbols, String commonPrefix) {
-          if (commonPrefix.isEmpty()) {
-              // Sort for consistent output when no compression happens
-              return label + ": " + compressedSymbols.stream().sorted().collect(Collectors.joining(", "));
-          }
-          // Sort compressed symbols too
-          return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
-                  .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
-     }
+    }
 }

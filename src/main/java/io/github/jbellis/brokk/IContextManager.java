@@ -67,8 +67,4 @@ public interface IContextManager {
     default IConsoleIO getIo() {
         throw new UnsupportedOperationException();
     }
-
-    default ToolRegistry getToolRegistry() {
-        throw new UnsupportedOperationException();
-    }
 }
