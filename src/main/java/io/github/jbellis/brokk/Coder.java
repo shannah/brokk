@@ -673,8 +673,30 @@ public class Coder {
         try {
             root = mapper.readTree(rawText);
         } catch (JsonProcessingException e) {
-            logger.debug("Invalid JSON", e);
-            throw new IllegalArgumentException("Invalid JSON: " + e.getMessage());
+            // Sometimes the model wraps the JSON in markdown fences ```json ... ```
+            int firstFence = rawText.indexOf("```");
+            // Find the closing fence after the opening one
+            int lastFence = rawText.lastIndexOf("```");
+            if (lastFence <= firstFence) {
+                logger.debug("Invalid JSON", e);
+                throw new IllegalArgumentException("Invalid JSON response: " + e.getMessage());
+            }
+
+            // Extract text between fences, removing potential language identifier and trimming whitespace
+            String fencedText = rawText.substring(firstFence + 3, lastFence).strip();
+            // Handle optional language identifier like "json"
+            if (fencedText.toLowerCase().startsWith("json")) {
+                fencedText = fencedText.substring(4).stripLeading();
+            }
+
+            // Try parsing the fenced content
+            try {
+                root = mapper.readTree(fencedText);
+            } catch (JsonProcessingException e2) {
+                // Fenced content is also invalid JSON
+                logger.debug("Invalid JSON inside fences", e2);
+                throw new IllegalArgumentException("Invalid JSON inside ``` fences: " + e2.getMessage());
+            }
         }
 
         JsonNode toolCallsNode;
