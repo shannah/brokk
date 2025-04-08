@@ -24,11 +24,11 @@ public class EditBlock {
     private static final Logger logger = LogManager.getLogger(EditBlock.class);
 
     // Pattern for the start of a search block, capturing the filename
-    private static final Pattern HEAD = Pattern.compile("^(\\S+?)\\s+<{5,9} SEARCH\\W*$", Pattern.MULTILINE);
+    private static final Pattern HEAD = Pattern.compile("^\\s*<{5,9} SEARCH\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
     // Pattern for the divider, capturing the filename
-    private static final Pattern DIVIDER = Pattern.compile("^(\\S+?)\\s+={5,9}\\s*$", Pattern.MULTILINE);
+    private static final Pattern DIVIDER = Pattern.compile("^\\s*={5,9}\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
     // Pattern for the end of a replace block, capturing the filename
-    private static final Pattern REPLACE = Pattern.compile("^(\\S+?)\\s+>{5,9} REPLACE\\W*$", Pattern.MULTILINE);
+    private static final Pattern REPLACE = Pattern.compile("^\\s*>{5,9} REPLACE\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
 
     /**
      * Helper that returns the first code block found between triple backticks.

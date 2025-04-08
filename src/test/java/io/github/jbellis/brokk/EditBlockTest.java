@@ -70,11 +70,11 @@ class EditBlockTest {
                 Here's the change:
 
                 ```text
-                foo.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 Two
-                foo.txt =======
+                ======= foo.txt
                 Tooooo
-                foo.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE foo.txt
                 ```
 
                 Hope you like it!
@@ -93,19 +93,19 @@ class EditBlockTest {
                 Here's the change:
 
                 ```text
-                foo.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 one
-                foo.txt =======
+                ======= foo.txt
                 two
-                foo.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE foo.txt
 
                 ...
 
-                foo.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 three
-                foo.txt =======
+                ======= foo.txt
                 four
-                foo.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE foo.txt
                 ```
 
                 Hope you like it!
@@ -126,17 +126,17 @@ class EditBlockTest {
     @Test
     void testParseUpdateBlocksNoFinalNewline() {
         String edit = """
-                aider/coder.py <<<<<<< SEARCH
+                <<<<<<< SEARCH aider/coder.py
                 lineA
-                aider/coder.py =======
+                ======= aider/coder.py
                 lineB
-                aider/coder.py >>>>>>> REPLACE
+                >>>>>>> REPLACE aider/coder.py
 
-                aider/coder.py <<<<<<< SEARCH
+                <<<<<<< SEARCH aider/coder.py
                 lineC
-                aider/coder.py =======
+                ======= aider/coder.py
                 lineD
-                aider/coder.py >>>>>>> REPLACE"""; // no newline at the end
+                >>>>>>> REPLACE aider/coder.py"""; // no newline at the end
 
         EditBlock.SearchReplaceBlock[] blocks = parseBlocks(edit, Set.of("aider/coder.py"));
         assertEquals(2, blocks.length);
@@ -152,20 +152,20 @@ class EditBlockTest {
                 Here's the change:
 
                 ```python
-                filename/to/a/file2.txt <<<<<<< SEARCH
-                filename/to/a/file2.txt =======
+                <<<<<<< SEARCH filename/to/a/file2.txt
+                ======= filename/to/a/file2.txt
                 three
-                filename/to/a/file2.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE filename/to/a/file2.txt
                 ```
 
                 another change
 
                 ```python
-                filename/to/a/file1.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH filename/to/a/file1.txt
                 one
-                filename/to/a/file1.txt =======
+                ======= filename/to/a/file1.txt
                 two
-                filename/to/a/file1.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE filename/to/a/file1.txt
                 ```
 
                 Hope you like it!
@@ -188,16 +188,16 @@ class EditBlockTest {
         Files.writeString(existingFile, "Original text\n");
 
         String response = """
-                fileA.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH fileA.txt
                 Original text
-                fileA.txt =======
+                ======= fileA.txt
                 Updated text
-                fileA.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE fileA.txt
 
-                newFile.txt <<<<<<< SEARCH
-                newFile.txt =======
+                <<<<<<< SEARCH newFile.txt
+                ======= newFile.txt
                 Created content
-                newFile.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE newFile.txt
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
@@ -225,11 +225,11 @@ class EditBlockTest {
         Files.writeString(existingFile, "Line X\n");
 
         String response = """
-                unknownFile.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH unknownFile.txt
                 replacement
-                unknownFile.txt =======
+                ======= unknownFile.txt
                 replacement
-                unknownFile.txt >>>>>>> REPLACE
+                >>>>>>> REPLACE unknownFile.txt
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
@@ -249,12 +249,12 @@ class EditBlockTest {
                 Here's the change:
 
                 ```text
-                foo.txt <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 Two
-                foo.txt =======
+                ======= foo.txt
                 Tooooo
 
-                oops! no trailing >>>>>> REPLACE
+                oops! no trailing >>>>>> REPLACE foo.txt
                 """;
 
         var files = Set.of("foo.txt").stream().map(f -> new ProjectFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
@@ -306,11 +306,11 @@ class EditBlockTest {
 
         // The "beforeText" is too different from anything in the file
         String response = """
-            fileA.txt <<<<<<< SEARCH
+            <<<<<<< SEARCH fileA.txt
             replacement
-            fileA.txt =======
+            ======= fileA.txt
             replacement
-            fileA.txt >>>>>>> REPLACE
+            >>>>>>> REPLACE fileA.txt
             """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
@@ -327,11 +327,11 @@ class EditBlockTest {
         Files.writeString(existingFile, originalContent);
 
         String response = """
-        fileA.txt <<<<<<< SEARCH
+        <<<<<<< SEARCH fileA.txt
         Original text
-        fileA.txt =======
+        ======= fileA.txt
         Updated text
-        fileA.txt >>>>>>> REPLACE
+        >>>>>>> REPLACE fileA.txt
         """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
@@ -356,10 +356,10 @@ class EditBlockTest {
 
         String replacementContent = "Replacement text.\n";
         String response = """
-        replaceTest.txt <<<<<<< SEARCH
-        replaceTest.txt =======
+        <<<<<<< SEARCH replaceTest.txt
+        ======= replaceTest.txt
         %s
-        replaceTest.txt >>>>>>> REPLACE
+        >>>>>>> REPLACE replaceTest.txt
         """.formatted(replacementContent.trim()); // Use trim because EditBlock adds newline
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("replaceTest.txt"));

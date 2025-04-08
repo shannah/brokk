@@ -97,7 +97,7 @@ public abstract class DefaultPrompts {
                 
                 2. Explain the needed changes in a few short sentences.
                 
-                3. Describe each change with a *SEARCH/REPLACE* block per the examples below.
+                3. Describe each change with a *SEARCH/REPLACE* block.
 
                 All changes to files must use this *SEARCH/REPLACE* block format.
 
@@ -116,61 +116,61 @@ public abstract class DefaultPrompts {
                   3. Update get_factorial() to call math.factorial instead.
                   
                   Here are the *SEARCH/REPLACE* blocks:
-                  
+
                   ```
-                  mathweb/flask/app.py <<<<<<< SEARCH
+                  <<<<<<< SEARCH mathweb/flask/app.py
                   from flask import Flask
-                  mathweb/flask/app.py =======
+                  ======= mathweb/flask/app.py
                   import math
                   from flask import Flask
-                  mathweb/flask/app.py >>>>>>> REPLACE
+                  >>>>>>> REPLACE mathweb/flask/app.py
                   ```
-                  
+
                   ```
-                  mathweb/flask/app.py <<<<<<< SEARCH
+                  <<<<<<< SEARCH mathweb/flask/app.py
                   def factorial(n):
                       "compute factorial"
                       if n == 0:
                           return 1
                       else:
                           return n * factorial(n-1)
-                  mathweb/flask/app.py =======
-                  mathweb/flask/app.py >>>>>>> REPLACE
+                  ======= mathweb/flask/app.py
+                  >>>>>>> REPLACE mathweb/flask/app.py
                   ```
-                  
+
                   ```
-                  mathweb/flask/app.py <<<<<<< SEARCH
+                  <<<<<<< SEARCH mathweb/flask/app.py
                       return str(factorial(n))
-                  mathweb/flask/app.py =======
+                  ======= mathweb/flask/app.py
                       return str(math.factorial(n))
-                  mathweb/flask/app.py >>>>>>> REPLACE
+                  >>>>>>> REPLACE mathweb/flask/app.py
                   ```
                   """.stripIndent()),
                 new UserMessage("Refactor hello() into its own filename."),
                 new AiMessage("""
                   To make this change we need to modify `main.py` and make a new filename `hello.py`:
-                  
+
                   1. Make a new hello.py filename with hello() in it.
                   2. Remove hello() from main.py and replace it with an import.
-                  
+
                   Here are the *SEARCH/REPLACE* blocks:
                   ```
-                  hello.py <<<<<<< SEARCH
-                  hello.py =======
+                  <<<<<<< SEARCH hello.py
+                  ======= hello.py
                   def hello():
                       "print a greeting"
                       print("hello")
-                  hello.py >>>>>>> REPLACE
+                  >>>>>>> REPLACE hello.py
                   ```
-                  
+
                   ```
-                  main.py <<<<<<< SEARCH
+                  <<<<<<< SEARCH main.py
                   def hello():
                       "print a greeting"
                       print("hello")
-                  main.py =======
+                  ======= main.py
                   from hello import hello
-                  main.py >>>>>>> REPLACE
+                  >>>>>>> REPLACE main.py
                   ```
                   """.stripIndent())
             );
@@ -178,62 +178,71 @@ public abstract class DefaultPrompts {
 
     private String editReminder(String reminder) {
         return """
-               <rules>
-               # *SEARCH/REPLACE block* Rules:
+        <rules>
+        # *SEARCH/REPLACE blocks*
 
-               Every *SEARCH/REPLACE* block must use this format:
-               1. The opening fence of backticks: ```
-               2. The *FULL* filename, verbatim, followed by the start of search block: <<<<<<< SEARCH
-               4. A contiguous chunk of lines to search for in the existing source code
-               5. The *FULL* filename again, followed by the dividing line: =======
-               6. The lines to replace in the source code
-               7. The *FULL* filename agin, followed by the end of the replace block: >>>>>>> REPLACE
-               8. The closing fence: ```
+        *SEARCH/REPLACE* blocks describe how to edit files. They are composed of 2 fences
+        and 3 delimiting markers. Each marker repeats the FULL filename being edited.
+        For example,
+        ```
+        <<<<<<<< SEARCH io/github/jbellis/Foo.java
+        ======== io/github/jbellis/Foo.java
+        >>>>>>>> REPLACE io/github/jbellis/Foo.java
+        ```
+        
+        These markers (the hardcoded tokens, plus the filename) are referred to as the search, dividing,
+        and replace markers, respectively.
 
-               Use the *FULL* filename, as shown to you by the user. This appears on each of three lines with the
-               SEARCH marker, the dividing line, and the REPLACE marker.  (`<<<<<<< SEARCH`, `=======`, `>>>>>>> REPLACE`.
-               The SEARCH and REPLACE lines should end immediately after the SEARCH or REPLACE keyword, respectively.
+        Every *SEARCH/REPLACE* block must use this format:
+        1. The opening fence of backticks: ```
+        2. The search marker, followed by the full filename: <<<<<<< SEARCH $filename
+        4. A contiguous chunk of lines to search for in the existing source code
+        5. The dividing marker, followed by the full filename: ======= $filename
+        6. The lines to replace in the source code
+        7. The replace marker, followed by the full filename: >>>>>>> REPLACE $filename
+        8. The closing fence: ```
 
-               Every *SEARCH* block must *EXACTLY MATCH* the existing filename content, character for character,
-               including all comments, docstrings, indentation, etc.
-               If the filename contains code or other data wrapped in json/xml/quotes or other containers,
-               you need to propose edits to the literal contents, including that container markup.
+        Use the *FULL* filename, as shown to you by the user. This appears on each of the three marker lines.
+        No other text should appear on the marker lines.
 
-               *SEARCH/REPLACE* blocks will *fail* to apply if the SEARCH text matches multiple occurrences.
-               Include enough lines to uniquely match each set of lines that need to change.
+        Every *SEARCH* block must *EXACTLY MATCH* the existing filename content, character for character,
+        including all comments, docstrings, indentation, etc.
+        If the filename contains code or other data wrapped in json/xml/quotes or other containers,
+        you need to propose edits to the literal contents, including that container markup.
 
-               Keep *SEARCH/REPLACE* blocks concise.
-               Break large changes into a series of smaller blocks that each change a small portion.
-               Include just the changing lines, plus a few surrounding lines if needed for uniqueness.
-               You should not need to include the entire function or block to change a line or two.
-               
-               Avoid generating overlapping *SEARCH/REPLACE* blocks, combine them into a single edit.
+        *SEARCH/REPLACE* blocks will *fail* to apply if the SEARCH text matches multiple occurrences.
+        Include enough lines to uniquely match each set of lines that need to change.
 
-               If you want to move code within a filename, use 2 blocks: one to delete from the old location,
-               and one to insert in the new location.
+        Keep *SEARCH/REPLACE* blocks concise.
+        Break large changes into a series of smaller blocks that each change a small portion.
+        Include just the changing lines, plus a few surrounding lines if needed for uniqueness.
+        You should not need to include the entire function or block to change a line or two.
+       
+        Avoid generating overlapping *SEARCH/REPLACE* blocks, combine them into a single edit.
 
-               Pay attention to which filenames the user wants you to edit, especially if they are asking
-               you to create a new filename. To create a new file or replace an *entire* existing file, use a *SEARCH/REPLACE* block with:
-               - The filename
-               - An empty SEARCH block
-               - The new file's full contents in the REPLACE block
+        If you want to move code within a filename, use 2 blocks: one to delete from the old location,
+        and one to insert in the new location.
 
-               If the user just says something like "ok" or "go ahead" or "do that", they probably want you
-               to make SEARCH/REPLACE blocks for the code changes you just proposed.
-               The user will say when they've applied your edits.
-               If they haven't explicitly confirmed the edits have been applied, they probably want proper SEARCH/REPLACE blocks.
-              
-               NEVER use smart quotes in your *SEARCH/REPLACE* blocks, not even in comments.  ALWAYS
-               use vanilla ascii single and double quotes.
-               
-               # General
-               Always write elegant, well-encapsulated code that is easy to maintain and use without mistakes.
-               
-               Follow the existing code style, and ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
-               
-               
-               3. %s
-               </rules>
-               """.formatted(reminder).stripIndent();
+        Pay attention to which filenames the user wants you to edit, especially if they are asking
+        you to create a new filename. To create a new file or replace an *entire* existing file, use a *SEARCH/REPLACE* 
+        block with nothing in between the search and divider marker lines, and the new file's full contents between
+        the divider and replace marker lines.
+ 
+        If the user just says something like "ok" or "go ahead" or "do that", they probably want you
+        to make SEARCH/REPLACE blocks for the code changes you just proposed.
+        The user will say when they've applied your edits.
+        If they haven't explicitly confirmed the edits have been applied, they probably want proper SEARCH/REPLACE blocks.
+      
+        NEVER use smart quotes in your *SEARCH/REPLACE* blocks, not even in comments.  ALWAYS
+        use vanilla ascii single and double quotes.
+        
+        # General
+        Always write elegant, well-encapsulated code that is easy to maintain and use without mistakes.
+       
+        Follow the existing code style, and ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
+       
+        %s
+        </rules>
+        """.formatted(reminder).stripIndent();
     }
 }
