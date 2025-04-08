@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
@@ -41,6 +42,7 @@ public class Project implements IProject, AutoCloseable {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
+    private static final String BUILD_DETAILS_KEY = "buildDetailsJson";
 
     // --- Static paths ---
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
@@ -185,9 +187,35 @@ public class Project implements IProject, AutoCloseable {
     }
 
     @Override
-    public String getBuildCommand() {
-        return projectProps.getProperty("buildCommand");
+    public BuildAgent.BuildDetails getBuildDetails() {
+        String json = workspaceProps.getProperty(BUILD_DETAILS_KEY);
+        if (json != null && !json.isEmpty()) {
+            try {
+                return objectMapper.readValue(json, BuildAgent.BuildDetails.class);
+            } catch (JsonProcessingException e) {
+                logger.error("Failed to deserialize BuildDetails from JSON: {}", json, e);
+            }
+        }
+        return null;
     }
+
+    public void saveBuildDetails(BuildAgent.BuildDetails details) {
+        if (details == null || details.equals(BuildAgent.BuildDetails.EMPTY)) {
+            workspaceProps.remove(BUILD_DETAILS_KEY);
+            logger.debug("Removing empty build details from workspace properties.");
+        } else {
+            try {
+                String json = objectMapper.writeValueAsString(details);
+                workspaceProps.setProperty(BUILD_DETAILS_KEY, json);
+                logger.debug("Saving build details to workspace properties.");
+            } catch (JsonProcessingException e) {
+                logger.error("Failed to serialize BuildDetails to JSON: {}", details, e);
+                return; // Don't save if serialization fails
+            }
+        }
+        saveWorkspaceProperties();
+    }
+
 
     public Language getAnalyzerLanguage() {
         String lang = projectProps.getProperty("code_intelligence_language");
@@ -199,11 +227,6 @@ public class Project implements IProject, AutoCloseable {
         } catch (IllegalArgumentException e) {
             return Language.None;
         }
-    }
-
-    public void setBuildCommand(String command) {
-        projectProps.setProperty("buildCommand", command);
-        saveProjectProperties();
     }
 
     /**

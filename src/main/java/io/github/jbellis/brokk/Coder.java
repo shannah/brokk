@@ -820,7 +820,6 @@ public class Coder {
             toolExecutionRequests.add(toolExecutionRequest);
         }
 
-        assert !toolExecutionRequests.isEmpty();
         logger.debug("Generated tool execution requests: {}", toolExecutionRequests);
 
         // Create a properly formatted AiMessage with tool execution requests

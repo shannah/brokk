@@ -6,6 +6,8 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.BuildAgent.BuildDetails;
+import io.github.jbellis.brokk.BuildAgent.BuildInfoTools;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
@@ -26,6 +28,7 @@ import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
+import io.github.jbellis.brokk.prompts.DefaultPrompts; // Add missing import
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
@@ -35,7 +38,6 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -180,7 +182,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
         this.toolRegistry = new ToolRegistry(this);
+        // Register standard tools
         this.toolRegistry.register(new SearchTools(this));
+        this.toolRegistry.register(new BuildInfoTools()); // Register the build report/abort tools
 
         // Load saved context or create a new one
         var welcomeMessage = buildWelcomeMessage();
@@ -194,8 +198,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         contextHistory.setInitialContext(initialContext);
         chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
 
+        // Ensure style guide and build details are loaded/generated asynchronously
         ensureStyleGuide();
-        ensureBuildCommand();
+        ensureBuildDetailsAsync(); // Changed from ensureBuildCommand
     }
 
     @Override
@@ -1485,6 +1490,77 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
+     * Asynchronously determines the best verification command based on the user goal,
+     * workspace summary, and stored BuildDetails. Uses the quickest model.
+     *
+     * @param userGoal The original user goal for the session.
+     * @return A CompletableFuture containing the suggested verification command string (or empty if none/error).
+     */
+    public CompletableFuture<String> determineVerificationCommandAsync(String userGoal) {
+        return CompletableFuture.supplyAsync(() -> {
+            BuildDetails details = project.getBuildDetails();
+            if (details == null) {
+                logger.warn("No build details available, cannot determine verification command.");
+                return ""; // Return empty string to skip verification
+            }
+
+            String workspaceSummary = DefaultPrompts.formatWorkspaceSummary(this);
+
+            // Construct the prompt for the quick model
+            var systemMessage = new SystemMessage("""
+            You are a build assistant. Based on the user's goal, the project structure, and known build details (commands & invocation instructions), determine the best single shell command to verify the changes achieve the goal.
+            - If the goal involves specific tests, construct a command to run only those tests using the provided instructions.
+            - If the goal is general compilation or refactoring without specific tests mentioned, provide the compile/build command.
+            - If unsure, provide the command to run all tests.
+            - Respond ONLY with the raw shell command, no explanation, formatting, or markdown. If no verification is needed or possible, respond with an empty string.
+            """.stripIndent());
+
+            var userMessage = new UserMessage("""
+            **Build Details:**
+            Commands: %s
+            Instructions: %s
+
+            **Workspace Summary:**
+            %s
+
+            **User Goal:**
+            %s
+
+            **Verification Command:**
+            """.stripIndent().formatted(
+                    details.buildLintCommand(),
+                    details.instructions(),
+                    workspaceSummary,
+                    userGoal
+            ));
+
+            List<ChatMessage> messages = List.of(systemMessage, userMessage);
+
+            // Call the quick model synchronously within the async task
+            var result = coder.sendMessage(Models.quickestModel(), messages);
+
+            if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+                logger.warn("Failed to determine verification command: {}",
+                            result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
+                return ""; // Return empty on error
+            }
+
+            String command = result.chatResponse().aiMessage().text();
+            if (command == null || command.isBlank() || command.equals(Models.UNAVAILABLE)) {
+                 logger.warn("LLM returned unusable verification command: '{}'", command);
+                 return ""; // Return empty if LLM gives nothing useful
+             }
+
+            // Basic cleanup: remove potential markdown backticks
+            command = command.trim().replace("```", "");
+            logger.info("Determined verification command: `{}`", command);
+            return command;
+
+        }, backgroundTasks); // Run this on the backgroundTasks executor
+    }
+
+
+    /**
      * Submits a background task to the internal background executor (non-user actions).
      */
     @Override
@@ -1519,68 +1595,38 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Ensures a build command is set, inferring one if necessary using the quick model.
+     * Ensures build details are loaded or inferred using BuildAgent if necessary.
+     * Runs asynchronously in the background.
      */
-    private void ensureBuildCommand() {
-        var loadedCommand = project.getBuildCommand();
-        if (loadedCommand != null && !loadedCommand.isBlank()) {
-            io.systemOutput("Using saved build command `%s`".formatted(loadedCommand));
-        } else {
-            // do background inference
-            var tracked = project.getRepo().getTrackedFiles();
-            var filenames = tracked.stream()
-                .map(ProjectFile::toString)
-                    .filter(s -> !s.contains(File.separator))
-                    .collect(Collectors.toList());
-            if (filenames.isEmpty()) {
-                filenames = tracked.stream().map(ProjectFile::toString).toList();
+    private void ensureBuildDetailsAsync() {
+        BuildDetails currentDetails = project.getBuildDetails();
+        if (currentDetails != null) {
+            logger.debug("Loaded existing build details {}", currentDetails);
+            return;
+        }
+
+        // No details found, run the BuildAgent asynchronously
+        submitBackgroundTask("Inferring build details", () -> {
+            BuildAgent agent = new BuildAgent(coder, toolRegistry);
+            BuildDetails inferredDetails = null;
+            try {
+                inferredDetails = agent.execute(); // This runs the agent loop
+            } catch (Exception e) {
+                logger.error("BuildAgent execution failed", e);
+                io.toolError("Build Information Agent failed: " + e.getMessage());
             }
 
-            var messages = List.of(
-                    new SystemMessage("You are a build assistant. Suggest a single, minimal command for an incremental compile check based on the project files. Respond with ONLY the shell command, no explanation or markup."),
-                    new UserMessage("Project Files:\n" + String.join("\n", filenames.subList(0, Math.min(filenames.size(), 50)))) // Limit filenames sent
-            );
-
-            submitBackgroundTask("Inferring build command", () -> {
-                String responseText;
-                try {
-                    // Use quickModel for inference
-                    var result = coder.sendMessage(Models.quickestModel(), messages);
-                     if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
-                         logger.warn("Failed to infer build command: {}", result.error() != null ? result.error().getMessage() : "No response");
-                         return BuildCommand.failure("LLM failed to respond.");
-                     }
-                    responseText = result.chatResponse().aiMessage().text();
-                     if (responseText == null || responseText.isBlank()) {
-                          logger.warn("LLM returned empty build command.");
-                         return BuildCommand.failure("LLM returned empty command.");
-                     }
-                    responseText = responseText.trim();
-                    // Basic sanity check
-                    if (responseText.lines().count() > 1 || responseText.contains("```")) {
-                         logger.warn("LLM returned multi-line or formatted build command: {}", responseText);
-                         // Try to extract if possible, otherwise fail
-                         var lines = responseText.lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
-                         if (lines.size() == 1 && !lines.getFirst().contains(" ")) { // Simple command likely ok
-                             responseText = lines.getFirst();
-                         } else {
-                             return BuildCommand.failure("LLM response format incorrect.");
-                         }
-                     }
-                } catch (Throwable th) {
-                    logger.error("Error inferring build command", th);
-                    return BuildCommand.failure(th.getMessage());
-                }
-                if (responseText.equals(Models.UNAVAILABLE)) {
-                    return BuildCommand.failure(Models.UNAVAILABLE);
-                }
-                var inferred = responseText;
-                project.setBuildCommand(inferred);
-                io.systemOutput("Inferred build command: " + inferred);
-                return BuildCommand.success(inferred);
-            });
-        }
+            if (inferredDetails == null) {
+                logger.warn("BuildAgent did not complete successfully (aborted or errored). Build details not saved.");
+            } else {
+                project.saveBuildDetails(inferredDetails);
+                io.systemOutput("Build details inferred and saved.");
+                logger.debug("Successfully inferred and saved build details.");
+            }
+            return inferredDetails; // Return details for potential chaining, though not used here
+        });
     }
+
 
     @FunctionalInterface
     public interface TaskRunner {
@@ -1595,14 +1641,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         <T> Future<T> submit(String taskDescription, Callable<T> task);
     }
 
-    private record BuildCommand(String command, String message) {
-        static BuildCommand success(String cmd) {
-            return new BuildCommand(cmd, cmd);
-        }
-        static BuildCommand failure(String message) {
-            return new BuildCommand(null, message);
-        }
-    }
+    // Removed BuildCommand record
 
     /**
      * Ensure style guide exists, generating if needed

@@ -20,6 +20,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 public class LLM {
@@ -43,6 +47,10 @@ public class LLM {
         var sessionMessages = new ArrayList<ChatMessage>();
         // The user's initial request, becomes the prompt for the next LLM call
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
+        var contextManager = (ContextManager) coder.contextManager;
+
+        // Start verification command inference concurrently
+        CompletableFuture<String> verificationCommandFuture = contextManager.determineVerificationCommandAsync(userInput);
 
         // Reflection loop state tracking
         int parseErrorAttempts = 0;
@@ -64,7 +72,6 @@ public class LLM {
             }
 
             // refresh with updated file contents
-            var contextManager = (ContextManager) coder.contextManager;
             var reminder = DefaultPrompts.reminderForModel(model);
             // collect all messages including prior session history
             var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages, reminder);
@@ -211,10 +218,21 @@ public class LLM {
                 break;
             }
 
-            // If parsing/application succeeded, check build
-            var buildReflection = getBuildReflection(coder.contextManager, io, buildErrors);
+            // If parsing/application succeeded, check build using the asynchronously inferred command
+            String verificationCommand;
+            try {
+                // Wait for the command inference, with a timeout
+                verificationCommand = verificationCommandFuture.get(30, TimeUnit.SECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                logger.error("Failed to get verification command", e);
+                io.toolError("Failed to determine verification command: " + e.getMessage());
+                verificationCommand = null; // Proceed without verification
+            }
+
+            boolean buildSucceeded = checkBuild(verificationCommand, contextManager, io, buildErrors);
             blocksAppliedWithoutBuild = 0; // Reset count after build check attempt
-            if (buildReflection.isEmpty()) {
+
+            if (buildSucceeded) {
                 // Build successful!
                 isComplete = true;
                 break;
@@ -227,7 +245,8 @@ public class LLM {
             }
 
             io.systemOutput("Attempting to fix build errors...");
-            nextRequest = new UserMessage(buildReflection);
+            // Construct the reflection message based on the stored build errors
+            nextRequest = new UserMessage(formatBuildErrorsForLLM(buildErrors));
             // Loop back to LLM to fix build errors
         }
 
@@ -340,6 +359,20 @@ public class LLM {
         }
     }
 
+    /** Formats the history of build errors for the LLM reflection prompt. */
+    private static String formatBuildErrorsForLLM(List<String> buildErrors) {
+        if (buildErrors.isEmpty()) {
+            return ""; // Should not happen if checkBuild returned false, but defensive check.
+        }
+        StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
+        for (int i = 0; i < buildErrors.size(); i++) {
+            query.append("=== Attempt ").append(i + 1).append(" ===\n")
+                 .append(buildErrors.get(i))
+                 .append("\n\n");
+        }
+        query.append("Please fix these build errors.");
+        return query.toString();
+    }
 
     /**
      * Generates a reflection message based on parse/apply errors from failed edit blocks
@@ -368,42 +401,39 @@ public class LLM {
 
 
     /**
-     * Generates a reflection message for build errors
+     * Executes the verification command and updates build error history.
+     * @return true if the build was successful or skipped, false otherwise.
      */
-    private static String getBuildReflection(IContextManager cm, IConsoleIO io, List<String> buildErrors) {
-        var cmd = cm.getProject().getBuildCommand();
-        if (cmd == null || cmd.isBlank()) {
-            io.systemOutput("No build command configured");
-            return "";
+    private static boolean checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io, List<String> buildErrors) {
+        if (verificationCommand == null || verificationCommand.isBlank()) {
+            io.systemOutput("No verification command specified, skipping build check.");
+            buildErrors.clear(); // Clear errors if skipping
+            return true; // Treat skipped build as success for workflow purposes
         }
 
-        io.systemOutput("Running " + cmd);
-        var result = Environment.instance.captureShellCommand(cmd, cm.getProject().getRoot());
-        logger.debug("Build command result: {}", result);
+        io.systemOutput("Running verification command: " + verificationCommand);
+        var result = Environment.instance.captureShellCommand(verificationCommand, cm.getProject().getRoot());
+        logger.debug("Verification command result: {}", result);
+
         if (result.error() == null) {
-            io.systemOutput("Build successful");
+            io.systemOutput("Verification successful!");
             buildErrors.clear(); // Reset on successful build
-            return "";
+            return true;
         }
 
+        // Build failed
         io.llmOutput("""
-        %s
+        **Verification Failed:** %s
         ```
         %s
         ```
         """.stripIndent().formatted(result.error(), result.output()));
-        io.systemOutput("Build failed (details above)");
+        io.systemOutput("Verification failed (details above)");
+        // Add the combined error and output to the history for reflection
         buildErrors.add(result.error() + "\n\n" + result.output());
-
-        StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
-        for (int i = 0; i < buildErrors.size(); i++) {
-            query.append("=== Attempt ").append(i + 1).append(" ===\n")
-                    .append(buildErrors.get(i))
-                    .append("\n\n");
-        }
-        query.append("Please fix these build errors.");
-        return query.toString();
+        return false;
     }
+
 
     /**
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving

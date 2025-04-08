@@ -47,11 +47,14 @@ public abstract class DefaultPrompts {
         return messages;
     }
 
-    protected String formatIntro(ContextManager cm, String reminder) {
+    /**
+     * Generates a concise summary of the workspace contents.
+     * @param cm The ContextManager.
+     * @return A string summarizing editable files, read-only snippets, etc.
+     */
+    public static String formatWorkspaceSummary(ContextManager cm) {
         var editableContents = cm.getEditableSummary();
         var readOnlyContents = cm.getReadOnlySummary();
-        var styleGuide = cm.getProject().getStyleGuide();
-
         var workspaceBuilder = new StringBuilder();
         workspaceBuilder.append("- Root: ").append(cm.getRoot().getFileName());
         if (!editableContents.isBlank()) {
@@ -60,6 +63,13 @@ public abstract class DefaultPrompts {
         if (!readOnlyContents.isBlank()) {
             workspaceBuilder.append("\n- Read-only snippets: ").append(readOnlyContents);
         }
+        return workspaceBuilder.toString();
+    }
+
+
+    protected String formatIntro(ContextManager cm, String reminder) {
+        var workspaceSummary = formatWorkspaceSummary(cm);
+        var styleGuide = cm.getProject().getStyleGuide();
 
         return """
                         <instructions>
@@ -71,7 +81,7 @@ public abstract class DefaultPrompts {
                         <style_guide>
                         %s
                         </style_guide>
-                """.stripIndent().formatted(systemIntro(reminder), workspaceBuilder.toString(), styleGuide).trim();
+                """.stripIndent().formatted(systemIntro(reminder), workspaceSummary, styleGuide).trim();
     }
 
     public String systemIntro(String reminder) {

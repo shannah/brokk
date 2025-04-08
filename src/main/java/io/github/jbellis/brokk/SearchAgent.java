@@ -318,7 +318,7 @@ public class SearchAgent {
             }
             var firstResult = results.getFirst(); // This is now a ToolHistoryEntry
             String firstToolName = firstResult.request.name();
-            if (firstToolName.equals("answer")) {
+            if (firstToolName.equals("answerSearch")) {
                  logger.debug("Search complete");
                  assert results.size() == 1 : "Answer action should be solitary";
                  // Validate explanation before creating fragment
@@ -328,7 +328,7 @@ public class SearchAgent {
                      return new ContextFragment.StringFragment("Error: Agent failed to generate a valid answer explanation.", "Search Error: " + query);
                  }
                  return createFinalFragment(firstResult); // Takes ToolHistoryEntry
-            } else if (firstToolName.equals("abort")) {
+            } else if (firstToolName.equals("abortSearch")) {
                  logger.debug("Search aborted by agent");
                  assert results.size() == 1 : "Abort action should be solitary";
                  // Validate explanation before creating fragment
@@ -435,7 +435,7 @@ public class SearchAgent {
                      "getClassSources" -> formatListParameter(arguments, "classNames");
                  case "getMethodSources" -> formatListParameter(arguments, "methodNames");
                  case "getCallGraphTo", "getCallGraphFrom" -> arguments.getOrDefault("methodName", "").toString(); // Added graph tools
-                 case "answer", "abort" -> "finalizing";
+                 case "answerSearch", "abortSearch" -> "finalizing";
                 default -> throw new IllegalArgumentException("Unknown tool name " + request.name()); // Use request.name()
              };
          } catch (Exception e) {
@@ -463,7 +463,7 @@ public class SearchAgent {
                 case "getRelatedClasses", "getClassSkeletons",
                      "getClassSources" -> getParameterListSignatures(toolName, arguments, "classNames");
                 case "getMethodSources" -> getParameterListSignatures(toolName, arguments, "methodNames");
-                case "answer", "abort" -> List.of(toolName + ":finalizing");
+                case "answerSearch", "abortSearch" -> List.of(toolName + ":finalizing");
                 default -> List.of(toolName + ":unknown");
             };
         } catch (Exception e) {
@@ -660,8 +660,8 @@ public class SearchAgent {
      private List<String> calculateAllowedToolNames() {
          List<String> names = new ArrayList<>();
          if (allowAnswer) {
-             names.add("answer"); // Assumes tool is registered with this name
-             names.add("abort");  // Assumes tool is registered with this name
+             names.add("answerSearch"); // Assumes tool is registered with this name
+             names.add("abortSearch");  // Assumes tool is registered with this name
          }
          if (beastMode) return names; // Only answer/abort in beast mode
 
@@ -809,7 +809,7 @@ public class SearchAgent {
 
          // If we have an Answer or Abort action, it must be the only one
          var answerOrAbort = requests.stream()
-                 .filter(req -> req.name().equals("answer") || req.name().equals("abort"))
+                 .filter(req -> req.name().equals("answerSearch") || req.name().equals("abortSearch"))
                  .findFirst();
 
          if (answerOrAbort.isPresent()) {
@@ -867,8 +867,8 @@ public class SearchAgent {
              case "getMethodSources" -> "Fetching method source";
              case "getCallGraphTo" -> "Getting call graph TO";
              case "getCallGraphFrom" -> "Getting call graph FROM";
-             case "answer" -> "Answering the question";
-             case "abort" -> "Aborting the search";
+             case "answerSearch" -> "Answering the question";
+             case "abortSearch" -> "Aborting the search";
              default -> {
                  logger.warn("Unknown tool name for explanation: {}", request.name());
                  yield "Processing request";
@@ -891,7 +891,7 @@ public class SearchAgent {
                       "getClassSources" -> formatListParameter(arguments, "classNames");
                  case "getMethodSources" -> formatListParameter(arguments, "methodNames");
                  case "getCallGraphTo", "getCallGraphFrom" -> arguments.getOrDefault("methodName", "").toString();
-                 case "answer", "abort" -> "finalizing";
+                 case "answerSearch", "abortSearch" -> "finalizing";
                  default -> ""; // Avoid exception for unknown tools
              };
          } catch (Exception e) {
@@ -1068,7 +1068,7 @@ public class SearchAgent {
         var explanationText = execResult.resultText();
 
         // Basic validation (should have been caught earlier, but assert for safety)
-        assert request.name().equals("answer") : "createFinalFragment called with wrong tool: " + request.name();
+        assert request.name().equals("answerSearch") : "createFinalFragment called with wrong tool: " + request.name();
         assert execResult.status() == ToolExecutionResult.Status.SUCCESS : "createFinalFragment called with failed step";
         assert explanationText != null && !explanationText.isBlank() && !explanationText.equals("Success") : "createFinalFragment called with blank/default explanation";
 

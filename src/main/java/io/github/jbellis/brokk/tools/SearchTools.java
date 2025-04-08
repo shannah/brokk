@@ -554,8 +554,55 @@ public class SearchTools {
                 .collect(Collectors.joining("\n\n"));
     }
 
+    // Only includes project files. Is this what we want?
+    @Tool(value = """
+    Lists files within a specified directory relative to the project root.
+    Use '.' for the root directory.
+    """)
+    public String listFiles(
+            @P("Directory path relative to the project root (e.g., '.', 'src/main/java')")
+            String directoryPath
+    ) {
+        if (directoryPath == null || directoryPath.isBlank()) {
+            return "Error: Directory path cannot be empty.";
+        }
+
+        // Normalize path for filtering (remove leading/trailing slashes, handle '.')
+        String normalizedPath = directoryPath.equals(".") ? "" : directoryPath.replaceFirst("^/+", "").replaceFirst("/+$", "");
+        String prefix = normalizedPath.isEmpty() ? "" : normalizedPath + "/";
+
+        logger.debug("Listing files for directory path: '{}' (normalized prefix: '{}')", directoryPath, prefix);
+
+        try {
+            var files = contextManager.getProject().getFiles().stream().parallel()
+                    .map(ProjectFile::toString) // Get relative path string
+                    .filter(path -> {
+                        if (prefix.isEmpty()) { // Root directory case
+                            // Only include files directly in root, not in subdirs
+                            return !path.contains("/");
+                        } else { // Subdirectory case
+                            // Must start with the prefix, but not be the prefix itself (if it's a dir entry somehow)
+                            // and only include files directly within that dir
+                            return path.startsWith(prefix) && path.length() > prefix.length() && !path.substring(prefix.length()).contains("/");
+                        }
+                    })
+                    .sorted()
+                    .collect(Collectors.joining(", "));
+
+            if (files.isEmpty()) {
+                return "No files found in directory: " + directoryPath;
+            }
+
+            return "Files in " + directoryPath + ": " + files;
+        } catch (Exception e) {
+            logger.error("Error listing files for directory '{}': {}", directoryPath, e.getMessage(), e);
+            return "Error listing files: " + e.getMessage();
+        }
+    }
+
+
     @Tool(value = "Provide a final answer to the query. Use this when you have enough information to fully address the query.")
-    public String answer(
+    public String answerSearch(
             @P("Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query. Format the entire explanation with Markdown.")
             String explanation,
             @P("List of fully qualified class names (FQCNs) of ALL classes relevant to the explanation. Do not skip even minor details!")
@@ -571,7 +618,7 @@ public class SearchTools {
     Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found.
     Use this as a last resort when you're confident no useful answer can be provided.
     """)
-    public String abort(
+    public String abortSearch(
             @P("Explanation of why the question cannot be answered or is not relevant to this codebase")
             String explanation
     ) {
