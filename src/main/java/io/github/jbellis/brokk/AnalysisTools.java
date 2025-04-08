@@ -219,9 +219,8 @@ public class AnalysisTools {
         for (String className : classNames) {
             if (!className.isBlank()) {
                 // analyzer.getClassSource returns Option<String>
-                var sourceOpt = analyzer.getClassSource(className);
-                if (sourceOpt.isDefined()) { // Check the Option
-                    String classSource = sourceOpt.get(); // Get from the Option
+                var classSource = analyzer.getClassSource(className);
+                if (classSource != null) { // Check the Option
                      if (!classSource.isEmpty() && processedSources.add(classSource)) {
                          if (!result.isEmpty()) {
                              result.append("\n\n");
@@ -605,5 +604,16 @@ public class AnalysisTools {
         // Sort compressed symbols too
         return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
                 .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
-    }
+     }
+
+    // Internal helper for formatting the compressed string. Public static.
+     public static String formatCompressedSymbolsInternal(String label, List<String> compressedSymbols, String commonPrefix) {
+          if (commonPrefix.isEmpty()) {
+              // Sort for consistent output when no compression happens
+              return label + ": " + compressedSymbols.stream().sorted().collect(Collectors.joining(", "));
+          }
+          // Sort compressed symbols too
+          return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
+                  .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
+     }
 }
