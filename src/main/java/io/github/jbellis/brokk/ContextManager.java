@@ -17,7 +17,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.tools.AnalysisTools;
+import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.LoggingExecutorService;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
@@ -180,7 +180,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
         this.toolRegistry = new ToolRegistry(this);
-        this.toolRegistry.register(new AnalysisTools(this));
+        this.toolRegistry.register(new SearchTools(this));
 
         // Load saved context or create a new one
         var welcomeMessage = buildWelcomeMessage();

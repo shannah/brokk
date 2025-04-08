@@ -14,7 +14,7 @@ import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.tools.AnalysisTools;
+import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
@@ -942,14 +942,14 @@ public class SearchAgent {
          if (symbols == null || symbols.isEmpty()) {
              return label + ": None found";
          }
-         var compressionResult = AnalysisTools.compressSymbolsWithPackagePrefix(symbols); // Use static helper
+         var compressionResult = SearchTools.compressSymbolsWithPackagePrefix(symbols); // Use static helper
          String commonPrefix = compressionResult._1();
          List<String> compressedSymbols = compressionResult._2();
 
          if (commonPrefix.isEmpty()) {
              return label + ": " + String.join(", ", symbols.stream().sorted().toList());
          }
-         return AnalysisTools.formatCompressedSymbolsInternal(label, compressedSymbols.stream().sorted().toList(), commonPrefix); // Use static helper
+         return SearchTools.formatCompressedSymbolsInternal(label, compressedSymbols.stream().sorted().toList(), commonPrefix); // Use static helper
      }
 
 

@@ -27,12 +27,12 @@ import java.util.stream.Collectors;
  * Contains tool implementations related to code analysis and searching,
  * designed to be registered with the ToolRegistry.
  */
-public class AnalysisTools {
-    private static final Logger logger = LogManager.getLogger(AnalysisTools.class);
+public class SearchTools {
+    private static final Logger logger = LogManager.getLogger(SearchTools.class);
 
     private final IContextManager contextManager; // Needed for file operations
 
-    public AnalysisTools(IContextManager contextManager) {
+    public SearchTools(IContextManager contextManager) {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
     
@@ -40,7 +40,96 @@ public class AnalysisTools {
         return contextManager.getAnalyzer();
     }
 
-    // --- Tool Methods (mostly moved from SearchAgent) ---
+    // --- Helper Methods
+
+    /**
+     * Compresses a list of fully qualified symbol names by finding the longest common package prefix
+     * and removing it from each symbol.
+     * @param symbols A list of fully qualified symbol names
+     * @return A tuple containing: 1) the common package prefix, 2) the list of compressed symbol names
+     */
+    public static Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
+        if (symbols == null || symbols.isEmpty()) {
+            return new Tuple2<>("", List.of());
+        }
+
+        List<String[]> packageParts = symbols.stream()
+                .filter(Objects::nonNull) // Filter nulls just in case
+                .map(s -> s.split("\\."))
+                .filter(arr -> arr.length > 0) // Ensure split resulted in something
+                .toList();
+
+        if (packageParts.isEmpty()) {
+            return new Tuple2<>("", List.of());
+        }
+
+        String[] firstParts = packageParts.getFirst();
+        int maxPrefixLength = 0;
+
+        for (int i = 0; i < firstParts.length - 1; i++) { // Stop before last part (class/method)
+            boolean allMatch = true;
+            for (String[] parts : packageParts) {
+                // Ensure current part exists and matches
+                if (i >= parts.length - 1 || !parts[i].equals(firstParts[i])) {
+                    allMatch = false;
+                    break;
+                }
+            }
+            if (allMatch) {
+                maxPrefixLength = i + 1;
+            } else {
+                break;
+            }
+        }
+
+        if (maxPrefixLength > 0) {
+            String commonPrefix = String.join(".", Arrays.copyOfRange(firstParts, 0, maxPrefixLength)) + ".";
+            List<String> compressedSymbols = symbols.stream()
+                    .map(s -> s != null && s.startsWith(commonPrefix) ? s.substring(commonPrefix.length()) : s)
+                    .collect(Collectors.toList());
+            return new Tuple2<>(commonPrefix, compressedSymbols);
+        }
+
+        return new Tuple2<>("", symbols); // Return original list if no common prefix
+    }
+
+    /**
+     * Formats a list of symbols with prefix compression if applicable.
+     * @param label The label to use in the output (e.g., "Relevant symbols", "Related classes")
+     * @param symbols The list of symbols to format
+     * @return A formatted string with compressed symbols if possible
+     */
+    private String formatCompressedSymbols(String label, List<String> symbols) {
+        if (symbols == null || symbols.isEmpty()) {
+            return label + ": None found";
+        }
+
+        var compressionResult = compressSymbolsWithPackagePrefix(symbols);
+        String commonPrefix = compressionResult._1();
+        List<String> compressedSymbols = compressionResult._2();
+
+        if (commonPrefix.isEmpty()) {
+            // Sort for consistent output when no compression happens
+            return label + ": " + symbols.stream().sorted().collect(Collectors.joining(", "));
+        }
+
+        // Sort compressed symbols too
+        return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
+                .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
+    }
+
+    // Internal helper for formatting the compressed string. Public static.
+    public static String formatCompressedSymbolsInternal(String label, List<String> compressedSymbols, String commonPrefix) {
+        if (commonPrefix.isEmpty()) {
+            // Sort for consistent output when no compression happens
+            return label + ": " + compressedSymbols.stream().sorted().collect(Collectors.joining(", "));
+        }
+        // Sort compressed symbols too
+        return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
+                .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
+    }
+
+    // --- Tool Methods requiring analyzer
 
     @Tool(value = """
     Search for symbols (class/method/field definitions) using Joern.
@@ -52,9 +141,7 @@ public class AnalysisTools {
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
             String reasoning
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot search definitions: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot search definitions: Code analyzer is not available.";
         if (patterns.isEmpty()) {
             return "Cannot search definitions: patterns list is empty";
         }
@@ -95,9 +182,7 @@ public class AnalysisTools {
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
             String reasoning
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot search usages: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot search usages: Code analyzer is not available.";
         if (symbols.isEmpty()) {
             return "Cannot search usages: symbols list is empty";
         }
@@ -129,9 +214,7 @@ public class AnalysisTools {
             @P("List of fully qualified class names to use as seeds for finding related classes.")
             List<String> classNames
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot find related classes: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot find related classes: Code analyzer is not available.";
         if (classNames.isEmpty()) {
             return "Cannot search pagerank: classNames is empty";
         }
@@ -175,9 +258,7 @@ public class AnalysisTools {
             @P("Fully qualified class names to get the skeleton structures for")
             List<String> classNames
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot get skeletons: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot get skeletons: Code analyzer is not available.";
         if (classNames.isEmpty()) {
             return "Cannot get skeletons: class names list is empty";
         }
@@ -205,9 +286,7 @@ public class AnalysisTools {
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
             String reasoning
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot get class sources: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot get class sources: Code analyzer is not available.";
         if (classNames.isEmpty()) {
             return "Cannot get class sources: class names list is empty";
         }
@@ -251,9 +330,7 @@ public class AnalysisTools {
             @P("Fully qualified method names (package name, class name, method name) to retrieve sources for")
             List<String> methodNames
     ) {
-         if (getAnalyzer().isEmpty()) {
-            return "Cannot get method sources: Code analyzer is not available.";
-        }
+         assert !getAnalyzer().isEmpty() : "Cannot get method sources: Code analyzer is not available.";
         if (methodNames.isEmpty()) {
             return "Cannot get method sources: method names list is empty";
         }
@@ -293,9 +370,7 @@ public class AnalysisTools {
             @P("Fully qualified method name (package name, class name, method name) to find callers for")
             String methodName
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot get call graph: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot get call graph: Code analyzer is not available.";
         if (methodName.isBlank()) {
             return "Cannot get call graph: method name is empty";
         }
@@ -312,9 +387,7 @@ public class AnalysisTools {
             @P("Fully qualified method name (package name, class name, method name) to find callees for")
             String methodName
     ) {
-        if (getAnalyzer().isEmpty()) {
-            return "Cannot get call graph: Code analyzer is not available.";
-        }
+        assert !getAnalyzer().isEmpty() : "Cannot get call graph: Code analyzer is not available.";
         if (methodName.isBlank()) {
             return "Cannot get call graph: method name is empty";
         }
@@ -323,7 +396,8 @@ public class AnalysisTools {
         return AnalyzerUtil.formatCallGraph(graph, methodName, true);
     }
 
-    // Text search tools remain largely the same but need contextManager
+    // --- Text search tools
+
     @Tool(value = """
     Returns file names whose text contents match Java regular expression patterns.
     This is slower than searchSymbols but can find references to external dependencies and comment strings.
@@ -506,94 +580,4 @@ public class AnalysisTools {
         logger.debug("Abort tool selected with explanation: {}", explanation);
         return explanation;
     }
-
-
-    // --- Helper Methods (also moved from SearchAgent) ---
-
-    /**
-     * Compresses a list of fully qualified symbol names by finding the longest common package prefix
-     * and removing it from each symbol.
-     * @param symbols A list of fully qualified symbol names
-     * @return A tuple containing: 1) the common package prefix, 2) the list of compressed symbol names
-     */
-    public static Tuple2<String, List<String>> compressSymbolsWithPackagePrefix(List<String> symbols) {
-        if (symbols == null || symbols.isEmpty()) {
-            return new Tuple2<>("", List.of());
-        }
-
-        List<String[]> packageParts = symbols.stream()
-                .filter(Objects::nonNull) // Filter nulls just in case
-                .map(s -> s.split("\\."))
-                .filter(arr -> arr.length > 0) // Ensure split resulted in something
-                .toList();
-
-        if (packageParts.isEmpty()) {
-             return new Tuple2<>("", List.of());
-        }
-
-        String[] firstParts = packageParts.getFirst();
-        int maxPrefixLength = 0;
-
-        for (int i = 0; i < firstParts.length - 1; i++) { // Stop before last part (class/method)
-            boolean allMatch = true;
-            for (String[] parts : packageParts) {
-                // Ensure current part exists and matches
-                if (i >= parts.length - 1 || !parts[i].equals(firstParts[i])) {
-                    allMatch = false;
-                    break;
-                }
-            }
-            if (allMatch) {
-                maxPrefixLength = i + 1;
-            } else {
-                break;
-            }
-        }
-
-        if (maxPrefixLength > 0) {
-            String commonPrefix = String.join(".", Arrays.copyOfRange(firstParts, 0, maxPrefixLength)) + ".";
-            List<String> compressedSymbols = symbols.stream()
-                    .map(s -> s != null && s.startsWith(commonPrefix) ? s.substring(commonPrefix.length()) : s)
-                    .collect(Collectors.toList());
-            return new Tuple2<>(commonPrefix, compressedSymbols);
-        }
-
-        return new Tuple2<>("", symbols); // Return original list if no common prefix
-    }
-
-    /**
-     * Formats a list of symbols with prefix compression if applicable.
-     * @param label The label to use in the output (e.g., "Relevant symbols", "Related classes")
-     * @param symbols The list of symbols to format
-     * @return A formatted string with compressed symbols if possible
-     */
-    private String formatCompressedSymbols(String label, List<String> symbols) {
-        if (symbols == null || symbols.isEmpty()) {
-            return label + ": None found";
-        }
-
-        var compressionResult = compressSymbolsWithPackagePrefix(symbols);
-        String commonPrefix = compressionResult._1();
-        List<String> compressedSymbols = compressionResult._2();
-
-        if (commonPrefix.isEmpty()) {
-            // Sort for consistent output when no compression happens
-            return label + ": " + symbols.stream().sorted().collect(Collectors.joining(", "));
-        }
-
-        // Sort compressed symbols too
-        return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
-                .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
-     }
-
-    // Internal helper for formatting the compressed string. Public static.
-     public static String formatCompressedSymbolsInternal(String label, List<String> compressedSymbols, String commonPrefix) {
-          if (commonPrefix.isEmpty()) {
-              // Sort for consistent output when no compression happens
-              return label + ": " + compressedSymbols.stream().sorted().collect(Collectors.joining(", "));
-          }
-          // Sort compressed symbols too
-          return "%s: [Common package prefix: '%s'. IMPORTANT: you MUST use full symbol names including this prefix for subsequent tool calls] %s"
-                  .formatted(label, commonPrefix, compressedSymbols.stream().sorted().collect(Collectors.joining(", ")));
-     }
 }
