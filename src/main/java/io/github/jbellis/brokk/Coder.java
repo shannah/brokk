@@ -7,6 +7,7 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.exception.HttpException;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
@@ -28,6 +29,7 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -52,6 +54,7 @@ import java.util.stream.Collectors;
  */
 public class Coder {
     private static final Logger logger = LogManager.getLogger(Coder.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final IConsoleIO io;
     private final Path historyFile;
@@ -354,12 +357,21 @@ public class Coder {
     {
         writeRequestToHistory(messages, tools);
 
-        if (!tools.isEmpty() && Models.requiresEmulatedTools(model)) {
-            return emulateTools(model, messages, tools, toolChoice, echo);
+        var messagesToSend = messages;
+        // Preprocess messages *only* if no tools are being requested for this call.
+        // This handles the case where prior TERMs exist in history but the current
+        // request doesn't involve tools (which makes Anthropic unhappy if it sees it).
+        if (tools.isEmpty()) {
+            messagesToSend = Coder.emulateToolExecutionResults(messages);
         }
 
-        // If no tools, or model can do native function calling, do normal.
-        var builder = ChatRequest.builder().messages(messages);
+        if (!tools.isEmpty() && Models.requiresEmulatedTools(model)) {
+            // Emulation handles its own preprocessing
+            return emulateTools(model, messagesToSend, tools, toolChoice, echo);
+        }
+
+        // If native tools are used, or no tools, send the (potentially preprocessed if tools were empty) messages.
+        var builder = ChatRequest.builder().messages(messagesToSend);
         if (!tools.isEmpty()) {
             logger.debug("Performing native tool calls");
             var params = OpenAiChatRequestParameters.builder()
@@ -406,13 +418,16 @@ public class Coder {
     {
         assert !tools.isEmpty();
 
+        // Preprocess messages to combine tool results with subsequent user messages for emulation
+        List<ChatMessage> initialProcessedMessages = Coder.emulateToolExecutionResults(messages);
+
         // We'll do up to 3 tries
         int maxTries = 3;
-        ObjectMapper mapper = new ObjectMapper();
         ChatResponse lastResponse = null;
         Throwable lastError = null;
         int outputTokenCount = -1;
-        List<ChatMessage> attemptMessages = new ArrayList<>(messages);
+        // Use a mutable list for potential retries
+        List<ChatMessage> attemptMessages = new ArrayList<>(initialProcessedMessages);
 
         for (int attempt = 1; attempt <= maxTries; attempt++) {
             var request = requestBuilder.apply(attemptMessages);
@@ -439,11 +454,11 @@ public class Coder {
 
             // Now parse the JSON
             try {
-                StreamingResult parseResult = parseJsonToToolRequests(singleCallResult, mapper);
+                StreamingResult parseResult = parseJsonToToolRequests(singleCallResult, objectMapper);
                 // If we got tool calls, we are done
                 if (parseResult.chatResponse.aiMessage().hasToolExecutionRequests()) {
                     return parseResult;
-                }
+                } // <-- This closing brace was missing
                 // else if no tool calls, but toolChoice= AUTO => it's acceptable
                 if (toolChoice == ToolChoice.AUTO) {
                     return singleCallResult;
@@ -458,15 +473,17 @@ public class Coder {
                     break;
                 }
 
-                // Otherwise, add a hint and re-try
+                // Otherwise, add the failed AI message and a new user message with retry instructions
                 io.systemOutput("Retry " + attempt + "/" + (maxTries-1) + ": Invalid JSON response, requesting proper format.");
+                // Add the raw response that failed parsing
                 attemptMessages.add(new AiMessage(lastResponse.aiMessage().text()));
+                // Add the user message requesting correction
                 String instructions = retryInstructionsProvider.apply(e);
                 attemptMessages.add(new UserMessage(instructions));
 
                 // Record retry in history
                 writeToHistory("Retry Attempt " + attempt,
-                               "Invalid JSON: " + lastResponse.aiMessage().text() + "\n\nRetry with: " + instructions);
+                               "Invalid JSON: " + lastResponse.aiMessage().text() + "\nRetry instructions:\n" + instructions);
             }
         }
 
@@ -485,6 +502,73 @@ public class Coder {
         logger.error("Emulated function calling failed: {}", lastError.getMessage());
         return new StreamingResult(fail, outputTokenCount, false, lastError);
     }
+
+    /**
+     * Preprocesses messages for models requiring tool emulation by combining
+     * sequences of ToolExecutionResultMessages with the *subsequent* UserMessage.
+     * <p>
+     * If a sequence of one or more ToolExecutionResultMessages is immediately
+     * followed by a UserMessage, the results are formatted as text and prepended
+     * to the UserMessage's content. If the results are followed by a different
+     * message type or are at the end of the list. Throws IllegalArgumentException
+     * if this condition is violated.
+     *
+     * @param originalMessages The original list of messages.
+     * @return A new list with tool results folded into subsequent UserMessages,
+     *         or the original list if no modifications were needed.
+     * @throws IllegalArgumentException if ToolExecutionResultMessages are not followed by a UserMessage.
+     */
+    static List<ChatMessage> emulateToolExecutionResults(List<ChatMessage> originalMessages) {
+        var processedMessages = new ArrayList<ChatMessage>();
+        var pendingTerms = new ArrayList<ToolExecutionResultMessage>();
+        for (var msg : originalMessages) {
+            if (msg instanceof ToolExecutionResultMessage term) {
+                // Collect consecutive tool results
+                pendingTerms.add(term);
+                continue;
+            }
+            // Current message is not a tool result. Check if we have pending results.
+            if (!pendingTerms.isEmpty()) {
+                String formattedResults = formatToolResults(pendingTerms);
+                if (msg instanceof UserMessage userMessage) {
+                    // Combine pending results with this user message
+                    String combinedContent = formattedResults + "\n" + Models.getText(userMessage);
+                    // Preserve name if any
+                    UserMessage updatedUserMessage = new UserMessage(userMessage.name(), combinedContent);
+                    processedMessages.add(updatedUserMessage);
+                    logger.debug("Prepended {} tool result(s) to subsequent user message.", pendingTerms.size());
+                } else {
+                    // Create a UserMessage to hold the tool calls
+                    processedMessages.add(new UserMessage(formattedResults));
+                    processedMessages.add(msg);
+                }
+                // Clear pending results as they've been handled
+                pendingTerms.clear();
+            } else {
+                // No pending tool results, just add the current message
+                processedMessages.add(msg);
+            }
+        }
+
+        // Handle any trailing tool results - this is invalid.
+        if (!pendingTerms.isEmpty()) {
+            var formattedResults = formatToolResults(pendingTerms);
+            processedMessages.add(new UserMessage(formattedResults));
+        }
+
+        return processedMessages;
+    }
+
+    private static @NotNull String formatToolResults(ArrayList<ToolExecutionResultMessage> pendingTerms) {
+        return pendingTerms.stream()
+                .map(tr -> """
+                        <toolcall id="%s" name="%s">
+                        %s
+                        </toolcall>
+                        """.formatted(tr.id(), tr.toolName(), tr.text()).stripIndent())
+                .collect(Collectors.joining("\n"));
+    }
+
 
     /**
      * Emulates function calling for models that support structured output with JSON schema
