@@ -376,8 +376,6 @@ public final class Models {
 
         @Override
         public String transcribe(Path audioFile, Set<String> symbols) throws IOException {
-            logger.info("Beginning transcription for file: {} using model {}", audioFile, modelLocation);
-
             byte[] audioBytes = Files.readAllBytes(audioFile);
             String encodedString = Base64.getEncoder().encodeToString(audioBytes);
             String audioFormat = getAudioFormat(audioFile.getFileName().toString());
@@ -407,8 +405,7 @@ public final class Models {
                     .post(body)
                     .build();
 
-            logger.debug("Sending Gemini STT request to LiteLLM endpoint /chat/completions for model {}", modelLocation);
-
+            logger.debug("Beginning transcription for file {}: {}", audioFile, jsonBody);
             try (Response response = httpClient.newCall(request).execute()) {
                 ResponseBody responseBodyObj = response.body();
                 String bodyStr = responseBodyObj != null ? responseBodyObj.string() : "";

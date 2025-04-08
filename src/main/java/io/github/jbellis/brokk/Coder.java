@@ -162,7 +162,7 @@ public class Coder {
                     if (response == null) {
                         // I think this isn't supposed to happen, but seeing it when litellm throws back a 400.
                         // Fake an exception so the caller can treat it like other errors
-                        errorRef.set(new HttpException(400, "BadRequestError"));
+                        errorRef.set(new HttpException(400, "BadRequestError (no further information, the response was null; check litellm logs)"));
                     } else {
                         if (response.tokenUsage() == null) {
                             logger.warn("Null token usage !? in {}", response);
@@ -175,12 +175,13 @@ public class Coder {
             }
 
             @Override
-            public void onError(Throwable error) {
+            public void onError(Throwable th) {
                 ifNotCancelled.accept(() -> {
+                    logger.debug("LLM error", th);
                     io.hideOutputSpinner();
-                    io.toolErrorRaw("LLM error: " + error.getMessage());
+                    io.toolErrorRaw("LLM error: " + th.getMessage());
                     // Instead of interrupting, just record it so we can retry from the caller
-                    errorRef.set(error);
+                    errorRef.set(th);
                     latch.countDown();
                 });
             }
@@ -491,7 +492,7 @@ public class Coder {
         if (lastResponse == null) {
             // No final response at all
             var failMsg = "No valid response after " + maxTries + " attempts: " + lastError.getMessage();
-            logger.error(failMsg);
+            logger.warn(failMsg, lastError);
             var dummyResponse = ChatResponse.builder().aiMessage(new AiMessage(failMsg)).build();
             return new StreamingResult(dummyResponse, outputTokenCount, false, new RuntimeException(failMsg));
         }
