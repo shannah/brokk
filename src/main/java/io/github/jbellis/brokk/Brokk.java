@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.dialogs.SettingsDialog; // Import SettingsDialog
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -121,7 +122,24 @@ public class Brokk {
         var coder = new Coder(io, projectPath, contextManager);
 
         contextManager.resolveCircularReferences(io, coder);
-        io.onComplete();
+
+        // Check and potentially force setting Data Retention Policy *before* showing main window fully
+        // but *after* the project and UI frame are created
+        var project = contextManager.getProject();
+        if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
+            logger.info("Project {} has no Data Retention Policy set. Showing dialog.", projectPath.getFileName());
+            // Run the dialog on the EDT after the main frame setup might have happened
+            SwingUtilities.invokeLater(() -> {
+                 SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
+                 // After dialog is closed (policy is set), ensure UI reflects any consequences if needed
+                 // e.g., update model list if policy affects it. (Future enhancement)
+                 // Models.refreshAvailableModels(); // TODO: Implement model refresh based on policy
+                 io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
+                 io.focusInput(); // Re-focus input after dialog closes
+            });
+        }
+
+        io.onComplete(); // Finalize UI setup
         io.systemOutput("Opened project at " + projectPath);
         io.focusInput();
 

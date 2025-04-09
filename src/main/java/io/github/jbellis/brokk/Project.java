@@ -739,6 +739,67 @@ public class Project implements IProject, AutoCloseable {
         return analyzerWrapper.get();
     }
 
+    /**
+     * Enum defining the data retention policies.
+     */
+    public enum DataRetentionPolicy {
+        IMPROVE_BROKK("Make Brokk Better for Everyone"),
+        MINIMAL("Essential Use Only"),
+        UNSET("Unset");
+
+        private final String displayName;
+
+        DataRetentionPolicy(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
+
+        public static DataRetentionPolicy fromString(String value) {
+            if (value == null) return UNSET;
+            for (DataRetentionPolicy policy : values()) {
+                if (policy.name().equalsIgnoreCase(value)) {
+                    return policy;
+                }
+            }
+            return UNSET;
+        }
+    }
+
+    private static final String DATA_RETENTION_POLICY_KEY = "dataRetentionPolicy";
+
+    /**
+     * Gets the data retention policy for the project.
+     * Defaults to UNSET if not explicitly set.
+     *
+     * @return The current DataRetentionPolicy.
+     */
+    public DataRetentionPolicy getDataRetentionPolicy() {
+        String value = projectProps.getProperty(DATA_RETENTION_POLICY_KEY);
+        return DataRetentionPolicy.fromString(value);
+    }
+
+    /**
+     * Sets the data retention policy for the project and saves it.
+     *
+     * @param policy The DataRetentionPolicy to set. Must not be UNSET or null.
+     */
+    public void setDataRetentionPolicy(DataRetentionPolicy policy) {
+        assert policy != null && policy != DataRetentionPolicy.UNSET : "Cannot set policy to UNSET or null";
+        projectProps.setProperty(DATA_RETENTION_POLICY_KEY, policy.name());
+        saveProjectProperties();
+        logger.info("Set Data Retention Policy to {} for project {}", policy, root.getFileName());
+        // TODO: Potentially invalidate/update available models based on policy change here or elsewhere
+    }
+
+
     // --- Static methods for managing projects.properties ---
 
     /**
