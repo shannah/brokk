@@ -222,7 +222,7 @@ public class LLM {
             String verificationCommand;
             try {
                 // Wait for the command inference, with a timeout
-                verificationCommand = verificationCommandFuture.get(30, TimeUnit.SECONDS);
+                verificationCommand = verificationCommandFuture.get(5, TimeUnit.SECONDS);
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
                 logger.error("Failed to get verification command", e);
                 io.toolError("Failed to determine verification command: " + e.getMessage());
@@ -405,7 +405,7 @@ public class LLM {
      * @return true if the build was successful or skipped, false otherwise.
      */
     private static boolean checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io, List<String> buildErrors) {
-        if (verificationCommand == null || verificationCommand.isBlank()) {
+        if (verificationCommand == null) {
             io.systemOutput("No verification command specified, skipping build check.");
             buildErrors.clear(); // Clear errors if skipping
             return true; // Treat skipped build as success for workflow purposes

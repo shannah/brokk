@@ -66,6 +66,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.regex.Pattern; // Add missing import for Pattern
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -124,6 +125,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
+
+    // Cache for identified test files
+    private volatile List<ProjectFile> cachedTestFiles = null; // Use volatile for visibility across threads
 
     /**
      * Minimal constructor called from Brokk
@@ -1501,18 +1505,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
             BuildDetails details = project.getBuildDetails();
             if (details == null) {
                 logger.warn("No build details available, cannot determine verification command.");
-                return ""; // Return empty string to skip verification
+                return null;
             }
 
             String workspaceSummary = DefaultPrompts.formatWorkspaceSummary(this);
 
             // Construct the prompt for the quick model
             var systemMessage = new SystemMessage("""
-            You are a build assistant. Based on the user's goal, the project structure, and known build details (commands & invocation instructions), determine the best single shell command to verify the changes achieve the goal.
-            - If the goal involves specific tests, construct a command to run only those tests using the provided instructions.
-            - If the goal is general compilation or refactoring without specific tests mentioned, provide the compile/build command.
-            - If unsure, provide the command to run all tests.
-            - Respond ONLY with the raw shell command, no explanation, formatting, or markdown. If no verification is needed or possible, respond with an empty string.
+            You are a build assistant. Based on the user's goal, the project workspace, and known build details,
+            determine the best single shell command to run as a minimal "smoke test" verifying that the changes achieve the goal.
+            This should usually involve a few specific tests, but if the project is small, running all tests is reasonable;
+            if no tests look relevant, just compile or lint the project.
             """.stripIndent());
 
             var userMessage = new UserMessage("""
@@ -1522,15 +1525,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
             **Workspace Summary:**
             %s
+            
+            **Test files**
+            %s
 
             **User Goal:**
             %s
 
-            **Verification Command:**
+            Respond ONLY with the raw shell command, no explanation, formatting, or markdown. If no verification is needed or possible, respond with an empty string.
             """.stripIndent().formatted(
                     details.buildLintCommand(),
                     details.instructions(),
                     workspaceSummary,
+                    getTestFiles().stream().map(ProjectFile::toString).collect(Collectors.joining("\\n")),
                     userGoal
             ));
 
@@ -1559,6 +1566,70 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }, backgroundTasks); // Run this on the backgroundTasks executor
     }
 
+    /**
+     * Identifies test files within the project using the quickest LLM and caches the result.
+     * The cache is invalidated when repository changes are detected.
+     *
+     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found or an error occurs.
+     */
+    private synchronized List<ProjectFile> getTestFiles() {
+        // Return cached result if available
+        if (cachedTestFiles != null) {
+            return cachedTestFiles;
+        }
+
+        // Get all files from the project
+        Set<ProjectFile> allProjectFiles = project.getFiles();
+        if (allProjectFiles.isEmpty()) {
+            return List.of();
+        }
+
+        // Format file paths for the LLM prompt
+        String fileListString = allProjectFiles.stream()
+                .map(ProjectFile::toString) // Use relative path
+                .sorted()
+                .collect(Collectors.joining("\n"));
+
+        // Construct the prompt for the quick model
+        var systemMessage = new SystemMessage("""
+        You are a file analysis assistant. Your task is to identify test files from the provided list.
+        Analyze the file paths and names. Return ONLY the paths of the files that appear to be test files.
+        Each test file path should be on a new line. Do not include any explanation, headers, or formatting.
+        If no test files are found, return an empty response.
+        """.stripIndent());
+
+        var userMessage = new UserMessage("""
+        Project Files:
+        %s
+
+        Identify the test files from the list above and return their full paths, one per line.
+        """.stripIndent().formatted(fileListString));
+
+        List<ChatMessage> messages = List.of(systemMessage, userMessage);
+
+        // Call the quick model (synchronously, as this might be called from various threads)
+        var result = coder.sendMessage(Models.quickestModel(), messages);
+
+        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+            logger.error("Failed to get test files from LLM: {}",
+                         result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
+            return List.of();
+        }
+
+        String responseText = result.chatResponse().aiMessage().text();
+        if (responseText == null || responseText.isBlank()) {
+            logger.debug("LLM did not identify any test files.");
+            cachedTestFiles = List.of();
+        } else {
+            cachedTestFiles = allProjectFiles.stream()
+                    .parallel()
+                    .filter(filename -> responseText.contains(filename.toString()))
+                    .toList();
+            logger.debug("Identified {} test files via LLM.", cachedTestFiles.size());
+        }
+
+        return cachedTestFiles;
+    }
 
     /**
      * Submits a background task to the internal background executor (non-user actions).
@@ -1713,8 +1784,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                // Use quickModel for style guide generation
-                var result = coder.sendMessage(Models.quickModel(), messages);
+                var result = coder.sendMessage(Models.quickestModel(), messages);
                  if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                      io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                      project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
