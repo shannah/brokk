@@ -121,6 +121,10 @@ public class GitCommitTab extends JPanel {
         var editFileItem = new JMenuItem("Edit File(s)");
         uncommittedContextMenu.add(editFileItem);
 
+        // Add "View History" item
+        var viewHistoryItem = new JMenuItem("View History"); // Declare the variable
+        uncommittedContextMenu.add(viewHistoryItem);
+
         // Select row under right-click
         uncommittedContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
             @Override
@@ -133,7 +137,7 @@ public class GitCommitTab extends JPanel {
                         uncommittedFilesTable.setRowSelectionInterval(row, row);
                     }
                     // Update menu items
-                    updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem);
+                    updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem); // Add viewHistoryItem here
                 });
             }
             @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
@@ -167,10 +171,23 @@ public class GitCommitTab extends JPanel {
             }
         });
 
+        // Add action listener for the view history item
+        viewHistoryItem.addActionListener(e -> {
+            int row = uncommittedFilesTable.getSelectedRow();
+            if (row >= 0) {
+                String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
+                String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
+                String filePath = path.isEmpty() ? filename : path + "/" + filename;
+                // Call the parent GitPanel to show the history
+                var file = contextManager.toFile(filePath);
+                gitPanel.addFileHistoryTab(file);
+            }
+        });
+
         // Selection => update context menu item states
         uncommittedFilesTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem);
+                updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem);
             }
         });
 
@@ -497,7 +514,7 @@ public class GitCommitTab extends JPanel {
      * Updates the enabled state of context menu items for the uncommitted files table
      * based on the current selection.
      */
-    private void updateUncommittedContextMenuState(JMenuItem captureDiffItem, JMenuItem viewDiffItem, JMenuItem editFileItem) {
+    private void updateUncommittedContextMenuState(JMenuItem captureDiffItem, JMenuItem viewDiffItem, JMenuItem editFileItem, JMenuItem viewHistoryItem) {
         int[] selectedRows = uncommittedFilesTable.getSelectedRows();
         int selectionCount = selectedRows.length;
 
@@ -509,6 +526,8 @@ public class GitCommitTab extends JPanel {
             viewDiffItem.setToolTipText("Select a file to view its diff");
             editFileItem.setEnabled(false);
             editFileItem.setToolTipText("Select a file to edit");
+            viewHistoryItem.setEnabled(false);
+            viewHistoryItem.setToolTipText("Select a single existing file to view its history");
         } else if (selectionCount == 1) {
             // Exactly one file selected
             captureDiffItem.setEnabled(true);
@@ -516,18 +535,27 @@ public class GitCommitTab extends JPanel {
             viewDiffItem.setEnabled(true);
             viewDiffItem.setToolTipText("View diff of selected file");
 
-            // Conditionally enable Edit File
+            // Get file details for conditional enablement
             int row = selectedRows[0];
             String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
             String path = (String) uncommittedFilesTable.getValueAt(row, 1);
             String filePath = path.isEmpty() ? filename : path + "/" + filename;
             var file = contextManager.toFile(filePath);
-            boolean alreadyEditable = contextManager.getEditableFiles().contains(file);
+            String status = fileStatusMap.get(filePath);
 
+            // Conditionally enable Edit File
+            boolean alreadyEditable = contextManager.getEditableFiles().contains(file);
             editFileItem.setEnabled(!alreadyEditable);
             editFileItem.setToolTipText(alreadyEditable ?
                                                 "File is already in editable context" :
                                                 "Edit this file");
+
+            // Conditionally enable View History (disable for new files)
+            boolean isNew = "new".equals(status);
+            viewHistoryItem.setEnabled(!isNew);
+            viewHistoryItem.setToolTipText(isNew ?
+                                                   "Cannot view history for a new file" :
+                                                   "View commit history for this file");
         } else {
             // More than one file selected
             captureDiffItem.setEnabled(true);
@@ -536,6 +564,8 @@ public class GitCommitTab extends JPanel {
             viewDiffItem.setToolTipText("Select a single file to view its diff");
             editFileItem.setEnabled(false); // Disable Edit File for multiple files
             editFileItem.setToolTipText("Select a single file to edit");
+            viewHistoryItem.setEnabled(false); // Disable View History for multiple files
+            viewHistoryItem.setToolTipText("Select a single existing file to view its history");
         }
     }
 
