@@ -217,7 +217,6 @@ public class MenuBar {
                 if (dialog.isConfirmed() && dialog.getSelectedFile() != null) {
                     var selectedBrokkFile = dialog.getSelectedFile();
             if (selectedBrokkFile instanceof io.github.jbellis.brokk.analyzer.ProjectFile selectedFile) {
-                // Use the static method in PreviewPanel
                 PreviewPanel.showInFrame(chrome.getFrame(), cm, selectedFile, SyntaxConstants.SYNTAX_STYLE_JAVA, chrome.themeManager);
             } else {
                 // Handle case where selected file is not a ProjectFile (e.g., external file if allowExternalFiles was true)

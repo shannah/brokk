@@ -56,7 +56,7 @@ public interface ContextFragment extends Serializable {
     }
 
     sealed interface PathFragment extends ContextFragment
-            permits ProjectPathFragment, ExternalPathFragment
+            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment // Add GitHistoryFragment here
     {
         BrokkFile file();
 
@@ -113,9 +113,60 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String toString() {
-            return "RepoPathFragment('%s')".formatted(file);
+            return "ProjectPathFragment('%s')".formatted(file);
         }
     }
+
+    /**
+     * Represents a specific revision of a ProjectFile from Git history.
+     */
+    record GitFileFragment(ProjectFile file, String revision) implements PathFragment {
+        private static final long serialVersionUID = 1L;
+
+        private String shortRevision() {
+            return (revision.length() > 7) ? revision.substring(0, 7) : revision;
+        }
+
+        @Override
+        public String shortDescription() {
+            return "%s @%s".formatted(file().getFileName(), shortRevision());
+        }
+
+        @Override
+        public String description() {
+             String parentDir = file.getParent();
+             return parentDir.isEmpty()
+                    ? shortDescription()
+                    : "%s [%s]".formatted(shortDescription(), parentDir);
+        }
+
+        @Override
+        public Set<CodeUnit> sources(IProject project) {
+            // Treat historical content as potentially different from current; don't claim sources
+            return Set.of();
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            // Content is historical, not suitable for auto-context
+            return false;
+        }
+
+        @Override
+        public String format() throws IOException {
+             return """
+             <file path="%s" revision="%s">
+             %s
+             </file>
+             """.formatted(file().toString(), revision(), text()).stripIndent();
+        }
+
+        @Override
+        public String toString() {
+            return "GitHistoryFragment('%s' @%s)".formatted(file, shortRevision());
+        }
+    }
+
 
     record ExternalPathFragment(ExternalFile file) implements PathFragment {
         private static final long serialVersionUID = 1L;

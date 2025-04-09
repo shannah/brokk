@@ -533,12 +533,21 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
         try {
-            if (fragment instanceof ContextFragment.ProjectPathFragment(ProjectFile file)) {
-                PreviewPanel.showInFrame(frame, contextManager, file, syntaxType, themeManager);
+            // Use fragment.description() for title, handle specific fragment types for PreviewPanel
+            String title = "Preview: " + fragment.description();
+            String content = fragment.text();
+
+            if (fragment instanceof ContextFragment.GitFileFragment ghf) {
+                // Pass the GitHistoryFragment itself to the panel constructor/frame
+                PreviewPanel previewPanel = new PreviewPanel(contextManager, ghf.file(), content, syntaxType, themeManager, ghf);
+                PreviewPanel.showFrame(contextManager, title, previewPanel);
+            } else if (fragment instanceof ContextFragment.ProjectPathFragment(ProjectFile file)) {
+                // Pass the ProjectFile for regular project path fragments
+                PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxType, themeManager, null);
+                PreviewPanel.showFrame(contextManager, title, previewPanel);
             } else {
-                String content = fragment.text();
-                String title = "Preview: " + fragment.description();
-                PreviewPanel previewPanel = new PreviewPanel(contextManager, null, content, syntaxType, themeManager);
+                 // Pass null for file and fragment for other types (like StringFragment)
+                PreviewPanel previewPanel = new PreviewPanel(contextManager, null, content, syntaxType, themeManager, null);
                 PreviewPanel.showFrame(contextManager, title, previewPanel);
             }
         } catch (IOException ex) {

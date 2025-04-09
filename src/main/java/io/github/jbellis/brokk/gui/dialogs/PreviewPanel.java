@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import io.github.jbellis.brokk.ContextFragment; // Add this import
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.LLM;
@@ -42,6 +43,7 @@ public class PreviewPanel extends JPanel
     private final JButton nextButton;
     private final JButton previousButton;
     private JButton editButton; // Added Edit File button
+    private JButton captureButton; // Added Capture this Revision button
     private final ContextManager contextManager;
 
     // Theme manager reference
@@ -49,12 +51,14 @@ public class PreviewPanel extends JPanel
 
     // Nullable
     private final ProjectFile file;
+    private final ContextFragment fragment; // Store the fragment if provided
 
     public PreviewPanel(ContextManager contextManager,
                         ProjectFile file,
                         String content,
                         String syntaxStyle,
-                        GuiTheme guiTheme)
+                        GuiTheme guiTheme,
+                        ContextFragment fragment) // Add fragment parameter
     {
         super(new BorderLayout());
         assert contextManager != null;
@@ -63,6 +67,7 @@ public class PreviewPanel extends JPanel
         this.contextManager = contextManager;
         this.themeManager = guiTheme;
         this.file = file;
+        this.fragment = fragment; // Store the provided fragment
 
         // === Top search/action bar ===
         JPanel topPanel = new JPanel(new BorderLayout(8, 4)); // Use BorderLayout
@@ -79,12 +84,29 @@ public class PreviewPanel extends JPanel
 
         topPanel.add(searchControlsPanel, BorderLayout.CENTER); // Search controls on the left/center
 
-        // Edit button panel (conditionally added)
+        // Button panel for actions on the right
+        JPanel actionButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0)); // Use FlowLayout, add some spacing
+
+        // Capture button (conditionally added for GitHistoryFragment)
+        captureButton = null;
+        if (fragment instanceof ContextFragment.GitFileFragment ghf) {
+            captureButton = new JButton("Capture this Revision");
+            captureButton.addActionListener(e -> {
+                // Add the GitHistoryFragment to the read-only context
+                contextManager.addReadOnlyFragment(ghf); // Use the new method
+                captureButton.setEnabled(false); // Disable after capture
+                captureButton.setToolTipText("Revision captured");
+                 // Optionally close the preview window after capture
+                 // SwingUtilities.getWindowAncestor(this).dispose();
+            });
+            actionButtonPanel.add(captureButton); // Add capture button first
+        }
+
+        // Edit button (conditionally added for ProjectFile)
         editButton = null; // Initialize to null
         if (file != null) {
-            JPanel editButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0)); // Panel to align button right
-            editButton = new JButton("Edit File");
-
+            var text = fragment instanceof ContextFragment.GitFileFragment ? "Edit Current Version" : "Edit File";
+            editButton = new JButton(text);
             if (contextManager.getEditableFiles().contains(file)) {
                 editButton.setEnabled(false);
                 editButton.setToolTipText("File is in Edit context");
@@ -95,8 +117,12 @@ public class PreviewPanel extends JPanel
                     editButton.setToolTipText("File is in Edit context");
                 });
             }
-            editButtonPanel.add(editButton);
-            topPanel.add(editButtonPanel, BorderLayout.EAST);
+            actionButtonPanel.add(editButton); // Add edit button to the action panel
+        }
+
+        // Add the action button panel to the top panel if it has any buttons
+        if (actionButtonPanel.getComponentCount() > 0) {
+            topPanel.add(actionButtonPanel, BorderLayout.EAST);
         }
 
         // === Text area with syntax highlighting ===
@@ -198,14 +224,27 @@ public class PreviewPanel extends JPanel
      * @param guiTheme       The GUI theme manager.
      */
     public static void showInFrame(JFrame parentFrame, ContextManager contextManager, ProjectFile file, String syntaxStyle, GuiTheme guiTheme) {
-        try {
-            String content = file.read();
-            String title = "View File: " + file;
-            PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxStyle, guiTheme);
-            showFrame(contextManager, title, previewPanel);
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(parentFrame, "Error reading file: " + ex.getMessage(), "File Read Error", JOptionPane.ERROR_MESSAGE);
-        }
+        showInFrame(parentFrame, contextManager, file, syntaxStyle, guiTheme, null);
+    }
+
+    /**
+     * Displays a non-modal preview dialog for the given project file or fragment.
+     * @param parentFrame    The parent frame.
+     * @param contextManager The context manager.
+     * @param file           The project file (can be null if fragment is provided).
+     * @param syntaxStyle    The syntax style (e.g., SyntaxConstants.SYNTAX_STYLE_JAVA).
+     * @param guiTheme       The GUI theme manager.
+     * @param fragment       The fragment being previewed (can be null).
+     */
+     public static void showInFrame(JFrame parentFrame, ContextManager contextManager, ProjectFile file, String syntaxStyle, GuiTheme guiTheme, ContextFragment fragment) {
+         try {
+             String content = (fragment != null) ? fragment.text() : (file != null ? file.read() : ""); // Get content from fragment or file
+             String title = (fragment != null) ? "Preview: " + fragment.description() : (file != null ? "View File: " + file : "Preview");
+             PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxStyle, guiTheme, fragment);
+             showFrame(contextManager, title, previewPanel);
+         } catch (IOException ex) {
+             JOptionPane.showMessageDialog(parentFrame, "Error reading content: " + ex.getMessage(), "Read Error", JOptionPane.ERROR_MESSAGE);
+         }
     }
 
     public static void showFrame(ContextManager contextManager, String title, PreviewPanel previewPanel) {

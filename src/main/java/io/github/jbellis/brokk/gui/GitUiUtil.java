@@ -178,11 +178,8 @@ public final class GitUiUtil
                 chrome.systemOutput("File not found in this revision or is empty.");
                 return;
             }
-            String finalContent = content;
             SwingUtilities.invokeLater(() -> {
-                var shortHash = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
-                var title = "%s at %s".formatted(file.getFileName(), shortHash);
-                var fragment = new ContextFragment.StringFragment(finalContent, title);
+                var fragment = new ContextFragment.GitFileFragment(file, commitId);
                 chrome.openFragmentPreview(fragment, SyntaxConstants.SYNTAX_STYLE_JAVA);
             });
         });

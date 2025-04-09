@@ -1063,6 +1063,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
+     * Adds a specific PathFragment (like GitHistoryFragment) to the read-only context.
+     *
+     * @param fragment The PathFragment to add.
+     */
+    public void addReadOnlyFragment(PathFragment fragment)
+    {
+        // Use the existing addReadonlyFiles method in Context, which takes a collection
+        pushContext(ctx -> ctx.addReadonlyFiles(List.of(fragment)));
+    }
+
+    /**
      * Captures text from the LLM output area and adds it to the context.
      * Called from Chrome's capture button.
      */
