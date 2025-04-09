@@ -1,9 +1,13 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Completions;
+import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.AutoCompleteUtil;
 import io.github.jbellis.brokk.gui.FileTree;
@@ -35,141 +39,113 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * A file selection dialog that presents a tree view and a text input with autocomplete
- * for selecting MULTIPLE files.
+ * A selection dialog that presents a tabbed interface for selecting
+ * MULTIPLE files and/or MULTIPLE classes.
  */
-public class MultiFileSelectionDialog extends JDialog { // Renamed class
-    private static final Logger logger = LogManager.getLogger(MultiFileSelectionDialog.class); // Updated logger
+public class MultiFileSelectionDialog extends JDialog {
+    private static final Logger logger = LogManager.getLogger(MultiFileSelectionDialog.class);
+
+    /**
+     * Enum to specify which selection modes are available.
+     */
+    public enum SelectionMode {
+        FILES, CLASSES
+    }
+
+    /**
+     * Record to hold the results of the selection.
+     * Usually, only one list will be non-null, but callers should handle the case where both might be populated.
+     * If neither is populated, the dialog was cancelled.
+     *
+     * @param files   List of selected BrokkFile objects, or null.
+     * @param classes List of selected CodeUnit objects (classes), or null.
+     */
+    public record Selection(List<BrokkFile> files, List<CodeUnit> classes) {
+        public boolean isEmpty() {
+            return (files == null || files.isEmpty()) && (classes == null || classes.isEmpty());
+        }
+    }
 
     private final Path rootPath;
-    private final FileTree fileTree; // Uses FileTree
-    private final JTextArea fileInput; // Still JTextArea for multiple files
-    private final AutoCompletion autoCompletion;
-    private final JButton okButton;
-    private final JButton cancelButton;
     private final Project project;
+    private final IAnalyzer analyzer;
     private final boolean allowExternalFiles;
     private final Set<ProjectFile> completableFiles;
+    private final Set<SelectionMode> modes;
 
-    // The selected files
-    private List<BrokkFile> selectedFiles = new ArrayList<>();
+    // UI Components - Files Tab
+    private FileTree fileTree;
+    private JTextArea fileInput;
+    private AutoCompletion fileAutoCompletion;
+
+    // UI Components - Classes Tab
+    private JTextArea classInput;
+    private AutoCompletion classAutoCompletion;
+
+    // Common UI Components
+    private JTabbedPane tabbedPane;
+    private final JButton okButton;
+    private final JButton cancelButton;
+
+    // Result
+    private Selection selectionResult = null; // Store the result here
 
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
     /**
-     * Constructor for multiple file selection.
+     * Constructor for multiple source selection.
      *
      * @param parent             Parent frame.
-     * @param project            The current project (can be null if allowExternalFiles is true and no repo context needed).
+     * @param project            The current project.
+     * @param analyzer           The code analyzer for class lookups.
      * @param title              Dialog title.
-     * @param allowExternalFiles If true, shows the full file system and allows selecting files outside the project.
-     * @param completableFiles
+     * @param allowExternalFiles If true, shows the full file system and allows selecting files outside the project (Files tab only).
+     * @param completableFiles   Set of project files for file completion.
+     * @param modes              Set of allowed selection modes (determines which tabs are shown).
      */
-    public MultiFileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles, Set<ProjectFile> completableFiles) {
+    public MultiFileSelectionDialog(Frame parent, Project project, IAnalyzer analyzer, String title,
+                                    boolean allowExternalFiles, Set<ProjectFile> completableFiles,
+                                    Set<SelectionMode> modes) {
         super(parent, title, true); // modal dialog
-        this.completableFiles = completableFiles;
+        assert parent != null;
         assert project != null;
-        this.rootPath = project.getRoot();
+        assert analyzer != null;
+        assert title != null;
+        assert completableFiles != null;
+        assert modes != null && !modes.isEmpty();
+
         this.project = project;
+        this.analyzer = analyzer;
+        this.rootPath = project.getRoot();
         this.allowExternalFiles = allowExternalFiles;
+        this.completableFiles = completableFiles;
+        this.modes = modes;
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // Build text input with autocomplete at the top
-        fileInput = new JTextArea(3, 30); // Keep JTextArea
-        fileInput.setLineWrap(true);
-        fileInput.setWrapStyleWord(true);
-        var provider = (CompletionProvider) new FileCompletionProvider(this.completableFiles, List.of());
-        autoCompletion = new AutoCompletion(provider);
-        // Trigger with Ctrl+Space
-        autoCompletion.setAutoActivationEnabled(false);
-        autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE,
-                                                            InputEvent.CTRL_DOWN_MASK));
-        autoCompletion.install(fileInput);
-        AutoCompleteUtil.bindCtrlEnter(autoCompletion, fileInput);
+        tabbedPane = new JTabbedPane();
 
-        fileTree = new FileTree(project, allowExternalFiles, f -> true);
+        // --- Create Files Tab (if requested) ---
+        if (modes.contains(SelectionMode.FILES)) {
+            tabbedPane.addTab("Files", createFileSelectionPanel());
+        }
 
-        JPanel inputPanel = new JPanel(new BorderLayout());
-        inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-        inputPanel.add(new JScrollPane(fileInput), BorderLayout.CENTER);
+        // --- Create Classes Tab (if requested) ---
+        if (modes.contains(SelectionMode.CLASSES)) {
+            tabbedPane.addTab("Classes", createClassSelectionPanel());
+        }
 
-        JPanel labelsPanel = new JPanel(new GridLayout(2, 1));
-        // Updated hint text as external candidates are not pre-filled
-        String hintText = allowExternalFiles ?
-                "Ctrl-space to autocomplete project files. External files may be selected from the tree." :
-                "Ctrl-space to autocomplete project files.";
-        labelsPanel.add(new JLabel(hintText));
-        labelsPanel.add(new JLabel("*/? to glob (project files only); ** to glob recursively"));
-        inputPanel.add(labelsPanel, BorderLayout.SOUTH);
-        mainPanel.add(inputPanel, BorderLayout.NORTH);
+        mainPanel.add(tabbedPane, BorderLayout.CENTER);
 
-        // Add FileTree to scroll pane
-        JScrollPane treeScrollPane = new JScrollPane(fileTree);
-        treeScrollPane.setPreferredSize(new Dimension(500, 450));
-        mainPanel.add(treeScrollPane, BorderLayout.CENTER);
-
-        // Make tree selection append to the text field (Multi-file behavior)
-        fileTree.addTreeSelectionListener(e -> {
-            TreePath path = e.getPath();
-            if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
-                if (node.getUserObject() instanceof FileTree.FileTreeNode fileNode) {
-                    appendFilenameToInput(fileNode.getFile().getAbsolutePath());
-                } else if (!allowExternalFiles && node.getUserObject() instanceof String) {
-                    StringBuilder rel = new StringBuilder();
-                    for (int i = 1; i < path.getPathCount(); i++) {
-                        String seg = path.getPathComponent(i).toString();
-                        if (i > 1) rel.append("/");
-                        rel.append(seg);
-                    }
-                    appendFilenameToInput(rel.toString());
-                }
-            }
-        });
-
-        // Double-click handler appends to input
-        fileTree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    TreePath path = fileTree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null) {
-                        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-                        if (node.isLeaf()) { // Only act on leaf nodes (files)
-                            fileTree.setSelectionPath(path); // Select visually
-                            // Logic mirrors the TreeSelectionListener for appending
-                            if (node.getUserObject() instanceof FileTree.FileTreeNode fileNode) {
-                                appendFilenameToInput(fileNode.getFile().getAbsolutePath());
-                            } else if (!allowExternalFiles && node.getUserObject() instanceof String) {
-                                StringBuilder rel = new StringBuilder();
-                                for (int i = 1; i < path.getPathCount(); i++) { // Skip root
-                                    if (i > 1) rel.append("/");
-                                    rel.append(path.getPathComponent(i).toString());
-                                }
-                                appendFilenameToInput(rel.toString());
-                            }
-                            // Don't call doOk() on double-click for multi-select
-                        } else {
-                            // Double-clicked a directory, toggle expansion
-                            if (fileTree.isExpanded(path)) {
-                                fileTree.collapsePath(path);
-                            } else {
-                                fileTree.expandPath(path);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-
-        // Buttons at the bottom
+        // --- Buttons at the bottom ---
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         okButton = new JButton("OK");
         okButton.addActionListener(e -> doOk()); // doOk handles multi-file parsing
@@ -186,111 +162,381 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
         KeyStroke escapeKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
         getRootPane().registerKeyboardAction(e -> {
             confirmed = false;
-            selectedFiles.clear();
+            selectionResult = null; // Clear result on escape
             dispose();
         }, escapeKeyStroke, JComponent.WHEN_IN_FOCUSED_WINDOW);
 
         // Set OK as default
         getRootPane().setDefaultButton(okButton);
 
-        // Tooltip
-        fileInput.setToolTipText("Enter filenames separated by spaces. Press Enter or click OK to confirm.");
-
-        // Focus input on open
+        // Focus input on open - focus the input of the initially selected tab
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
-                fileInput.requestFocusInWindow();
+                SwingUtilities.invokeLater(() -> { // Ensure components are ready
+                    Component selectedComponent = tabbedPane.getSelectedComponent();
+                    if (selectedComponent != null) {
+                        // Find the relevant JTextArea within the selected tab's panel
+                        if (selectedComponent.getName() != null && selectedComponent.getName().equals("FilesPanel") && fileInput != null) {
+                            fileInput.requestFocusInWindow();
+                        } else if (selectedComponent.getName() != null && selectedComponent.getName().equals("ClassesPanel") && classInput != null) {
+                            classInput.requestFocusInWindow();
+                        }
+                    }
+                });
             }
         });
 
 
         setContentPane(mainPanel);
         pack();
+        // Adjust size slightly - might need tweaking based on content
+        setSize(Math.max(600, getWidth()), Math.max(550, getHeight()));
         setLocationRelativeTo(parent);
     }
 
     /**
-     * Appends a filename to the input text area with space separator.
+     * Creates the panel containing components for file selection.
+     */
+    private JPanel createFileSelectionPanel() {
+        JPanel filesPanel = new JPanel(new BorderLayout(8, 8));
+        filesPanel.setName("FilesPanel"); // For focusing logic
+
+        // Build text input with autocomplete at the top
+        fileInput = new JTextArea(3, 30);
+        fileInput.setLineWrap(true);
+        fileInput.setWrapStyleWord(true);
+        var provider = new FileCompletionProvider(this.completableFiles, List.of());
+        fileAutoCompletion = new AutoCompletion(provider);
+        // Trigger with Ctrl+Space
+        fileAutoCompletion.setAutoActivationEnabled(false);
+        fileAutoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
+        fileAutoCompletion.install(fileInput);
+        AutoCompleteUtil.bindCtrlEnter(fileAutoCompletion, fileInput); // Bind Ctrl+Enter to OK action for this input
+        fileInput.setToolTipText("Enter filenames (space-separated, use quotes for spaces). Ctrl+Space for autocomplete. Enter/Ctrl+Enter to confirm.");
+
+
+        fileTree = new FileTree(project, allowExternalFiles, f -> true);
+
+        JPanel inputPanel = new JPanel(new BorderLayout());
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        inputPanel.add(new JScrollPane(fileInput), BorderLayout.CENTER);
+
+        JPanel labelsPanel = new JPanel(new GridLayout(2, 1));
+        String hintText = allowExternalFiles ?
+                "Ctrl-space to autocomplete project files. External files may be selected from the tree." :
+                "Ctrl-space to autocomplete project files.";
+        labelsPanel.add(new JLabel(hintText));
+        labelsPanel.add(new JLabel("*/? to glob (project files only); ** to glob recursively"));
+        inputPanel.add(labelsPanel, BorderLayout.SOUTH);
+        filesPanel.add(inputPanel, BorderLayout.NORTH);
+
+        // Add FileTree to scroll pane
+        JScrollPane treeScrollPane = new JScrollPane(fileTree);
+        treeScrollPane.setPreferredSize(new Dimension(500, 350)); // Adjusted size for tab
+        filesPanel.add(treeScrollPane, BorderLayout.CENTER);
+
+        // Make tree selection append to the text field
+        fileTree.addTreeSelectionListener(e -> {
+            TreePath path = e.getPath();
+            if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
+                handleFileTreeNodeSelection(node);
+            }
+        });
+
+        // Double-click handler appends to input
+        fileTree.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    TreePath path = fileTree.getPathForLocation(e.getX(), e.getY());
+                    if (path != null) {
+                        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+                        if (node.isLeaf()) {
+                            fileTree.setSelectionPath(path);
+                            handleFileTreeNodeSelection(node);
+                        } else {
+                            if (fileTree.isExpanded(path)) fileTree.collapsePath(path);
+                            else fileTree.expandPath(path);
+                        }
+                    }
+                }
+            }
+        });
+
+        return filesPanel;
+    }
+
+    /**
+     * Creates the panel containing components for class selection.
+     */
+    private JPanel createClassSelectionPanel() {
+        JPanel classesPanel = new JPanel(new BorderLayout(8, 8));
+        classesPanel.setName("ClassesPanel"); // For focusing logic
+
+        // Text input area for classes
+        classInput = new JTextArea(3, 30);
+        classInput.setLineWrap(true);
+        classInput.setWrapStyleWord(true);
+
+        // Autocomplete for classes
+        var provider = new SymbolCompletionProvider(analyzer);
+        classAutoCompletion = new AutoCompletion(provider);
+        classAutoCompletion.setAutoActivationEnabled(false);
+        classAutoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
+        classAutoCompletion.install(classInput);
+        AutoCompleteUtil.bindCtrlEnter(classAutoCompletion, classInput); // Bind Ctrl+Enter to OK action
+        classInput.setToolTipText("Enter fully qualified class names (space-separated). Ctrl+Space for autocomplete. Enter/Ctrl+Enter to confirm.");
+
+
+        JPanel inputPanel = new JPanel(new BorderLayout());
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        inputPanel.add(new JScrollPane(classInput), BorderLayout.CENTER);
+
+        JPanel labelsPanel = new JPanel(new GridLayout(1, 1)); // Simpler label for classes
+        labelsPanel.add(new JLabel("Ctrl-space to autocomplete class names."));
+        inputPanel.add(labelsPanel, BorderLayout.SOUTH);
+        classesPanel.add(inputPanel, BorderLayout.NORTH);
+
+        // Add some empty space perhaps, or a different component later if needed
+        classesPanel.add(new Box.Filler(new Dimension(0,0), new Dimension(500, 350), new Dimension( Short.MAX_VALUE, Short.MAX_VALUE)), BorderLayout.CENTER);
+
+
+        return classesPanel;
+    }
+
+
+    /**
+     * Handles selection of a node in the file tree (single or double click).
+     */
+    private void handleFileTreeNodeSelection(DefaultMutableTreeNode node) {
+        if (node.getUserObject() instanceof FileTree.FileTreeNode fileNode) {
+            appendFilenameToInput(fileNode.getFile().getAbsolutePath());
+        } else if (!allowExternalFiles && node.getUserObject() instanceof String filename) {
+            // This case might be simplified if FileTreeNode is always used
+            // Reconstruct relative path (assuming this logic is still needed)
+            Object[] pathComponents = node.getPath();
+            StringBuilder rel = new StringBuilder();
+            for (int i = 1; i < pathComponents.length; i++) { // Skip root
+                if (i > 1) rel.append("/");
+                rel.append(pathComponents[i].toString());
+            }
+             appendFilenameToInput(rel.toString());
+         }
+    }
+
+    /**
+     * Appends a filename to the file input text area with space separator.
      * Handles quoting for paths with spaces.
      */
     private void appendFilenameToInput(String filename) {
         String currentText = fileInput.getText();
         String formattedFilename = filename.contains(" ") ? "\"" + filename + "\"" : filename;
-        if (currentText.isEmpty()) {
-            fileInput.setText(formattedFilename + " ");
-        } else if (currentText.endsWith(" ")) {
-            fileInput.setText(currentText + formattedFilename + " ");
+        String textToAppend = formattedFilename + " "; // Always add trailing space
+
+        int caretPos = fileInput.getCaretPosition();
+        // If caret is at the end, or text ends with space, just append
+        if (caretPos == currentText.length() || currentText.endsWith(" ")) {
+             fileInput.insert(textToAppend, caretPos);
         } else {
-            fileInput.setText(currentText + " " + formattedFilename + " ");
-        }
+             // Insert with a leading space if needed
+             fileInput.insert(" " + textToAppend, caretPos);
+         }
+
         fileInput.requestFocusInWindow();
+        // Move caret after the inserted text
+        // fileInput.setCaretPosition(caretPos + textToAppend.length() + (currentText.endsWith(" ") ? 0 : 1));
+        // Simpler: move caret to end after insertion
         fileInput.setCaretPosition(fileInput.getDocument().getLength());
     }
 
     /**
-     * When OK is pressed, parse the text input to get multiple selected files.
-     * This logic remains largely the same as the original FileSelectionDialog.
+     * Appends a fully qualified class name to the class input text area.
+     */
+    private void appendClassNameToInput(String fqn) {
+        String currentText = classInput.getText();
+        String textToAppend = fqn + " "; // Always add trailing space
+
+        int caretPos = classInput.getCaretPosition();
+         // If caret is at the end, or text ends with space, just append
+         if (caretPos == currentText.length() || currentText.endsWith(" ")) {
+              classInput.insert(textToAppend, caretPos);
+         } else {
+              // Insert with a leading space if needed
+              classInput.insert(" " + textToAppend, caretPos);
+          }
+
+        classInput.requestFocusInWindow();
+        classInput.setCaretPosition(classInput.getDocument().getLength());
+    }
+
+    // Removed duplicate appendFilenameToInput method
+
+    /**
+     * When OK is pressed, determine the active tab and parse its input.
+     * Populates the selectionResult record.
      */
     private void doOk() {
-        confirmed = true;
-        selectedFiles.clear();
-        String typed = fileInput.getText().trim();
+        Component selectedComponent = tabbedPane.getSelectedComponent();
+        List<BrokkFile> filesResult = null;
+        List<CodeUnit> classesResult = null;
 
-        if (!typed.isEmpty()) {
-            // Split by whitespace, handling quoted paths
-            List<String> filenames = new ArrayList<>();
-            StringBuilder currentToken = new StringBuilder();
-            boolean inQuotes = false;
-            for (char c : typed.toCharArray()) {
-                if (c == '"') {
-                    inQuotes = !inQuotes;
-                } else if (Character.isWhitespace(c) && !inQuotes) {
-                    if (currentToken.length() > 0) {
-                        filenames.add(currentToken.toString());
-                        currentToken.setLength(0);
-                    }
-                } else {
-                    currentToken.append(c);
-                }
-            }
-            if (currentToken.length() > 0) {
-                filenames.add(currentToken.toString());
-            }
-
-            logger.debug("Raw files: {}", filenames);
-            Map<Path, BrokkFile> uniqueFiles = new HashMap<>();
-            for (String filename : filenames) {
-                if (filename.isBlank()) continue;
-
-                Path potentialPath = Path.of(filename);
-                if (allowExternalFiles && potentialPath.isAbsolute()) {
-                    if (Files.exists(potentialPath)) {
-                        if (rootPath != null && potentialPath.startsWith(rootPath)) {
-                            Path relPath = rootPath.relativize(potentialPath);
-                            uniqueFiles.put(potentialPath, new ProjectFile(rootPath, relPath));
-                        } else {
-                            uniqueFiles.put(potentialPath, new ExternalFile(potentialPath));
-                        }
-                    } else {
-                        logger.warn("Absolute path provided does not exist: {}", filename);
-                    }
-                } else {
-                    // Assume relative path or glob within repo
-                    try {
-                        var expanded = Completions.expandPath(project, filename);
-                        for (BrokkFile file : expanded) {
-                            uniqueFiles.put(file.absPath(), file);
-                        }
-                    } catch (Exception e) {
-                        logger.error("Error expanding path/glob: {}", filename, e);
-                    }
-                }
-            }
-            logger.debug("Unique files: {}", uniqueFiles);
-            selectedFiles.addAll(uniqueFiles.values());
+        if (selectedComponent == null) {
+            logger.warn("No tab selected in MultiFileSelectionDialog");
+            confirmed = false;
+            selectionResult = null;
+            dispose();
+            return;
         }
+
+        String componentName = selectedComponent.getName();
+
+        if ("FilesPanel".equals(componentName) && fileInput != null) {
+            // --- Parse Files Tab ---
+            String typedFiles = fileInput.getText().trim();
+            if (!typedFiles.isEmpty()) {
+                filesResult = parseAndResolveFiles(typedFiles);
+            }
+        } else if ("ClassesPanel".equals(componentName) && classInput != null) {
+            // --- Parse Classes Tab ---
+            String typedClasses = classInput.getText().trim();
+            if (!typedClasses.isEmpty()) {
+                classesResult = parseAndResolveClasses(typedClasses);
+            }
+        } else {
+             logger.warn("Unknown or unexpected tab selected: {}", componentName);
+             // Default to trying files tab if available, otherwise classes
+             if (modes.contains(SelectionMode.FILES) && fileInput != null) {
+                 String typedFiles = fileInput.getText().trim();
+                 if (!typedFiles.isEmpty()) filesResult = parseAndResolveFiles(typedFiles);
+             } else if (modes.contains(SelectionMode.CLASSES) && classInput != null) {
+                 String typedClasses = classInput.getText().trim();
+                 if (!typedClasses.isEmpty()) classesResult = parseAndResolveClasses(typedClasses);
+             }
+        }
+
+        // Create the result record
+        selectionResult = new Selection(
+                (filesResult != null && !filesResult.isEmpty()) ? List.copyOf(filesResult) : null,
+                (classesResult != null && !classesResult.isEmpty()) ? List.copyOf(classesResult) : null
+        );
+
+        // Only confirm if we actually got some selection
+        confirmed = !selectionResult.isEmpty();
+
+        if (!confirmed) {
+            selectionResult = null; // Ensure null result if nothing was selected/resolved
+        }
+
         dispose();
+    }
+
+    /**
+     * Parses space-separated filenames (handling quotes) and resolves them to BrokkFile objects.
+     */
+    private List<BrokkFile> parseAndResolveFiles(String inputText) {
+        // Split by whitespace, handling quoted paths
+        List<String> filenames = splitQuotedString(inputText);
+        logger.debug("Raw files parsed: {}", filenames);
+
+        Map<Path, BrokkFile> uniqueFiles = new HashMap<>();
+        for (String filename : filenames) {
+            if (filename.isBlank()) continue;
+
+            Path potentialPath = Path.of(filename);
+            if (allowExternalFiles && potentialPath.isAbsolute()) {
+                if (Files.exists(potentialPath)) {
+                    if (rootPath != null && potentialPath.startsWith(rootPath)) {
+                        // Convert absolute path within project back to ProjectFile
+                        Path relPath = rootPath.relativize(potentialPath);
+                        uniqueFiles.put(potentialPath, new ProjectFile(rootPath, relPath));
+                    } else {
+                        uniqueFiles.put(potentialPath, new ExternalFile(potentialPath));
+                    }
+                } else {
+                    logger.warn("Absolute path provided does not exist: {}", filename);
+                }
+            } else {
+                // Assume relative path or glob within project
+                try {
+                    var expanded = Completions.expandPath(project, filename);
+                    for (BrokkFile file : expanded) {
+                        // Ensure we store ProjectFiles correctly even if expanded from abs path within project
+                        if (file instanceof ExternalFile && file.absPath().startsWith(rootPath)) {
+                             Path relPath = rootPath.relativize(file.absPath());
+                             uniqueFiles.put(file.absPath(), new ProjectFile(rootPath, relPath));
+                        } else {
+                             uniqueFiles.put(file.absPath(), file);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("Error expanding path/glob: {}", filename, e);
+                }
+            }
+        }
+        logger.debug("Resolved unique files: {}", uniqueFiles.values());
+        return new ArrayList<>(uniqueFiles.values());
+    }
+
+    /**
+     * Parses space-separated class names and resolves them to CodeUnit objects using the IAnalyzer.
+     */
+    private List<CodeUnit> parseAndResolveClasses(String inputText) {
+        List<String> classNames = splitQuotedString(inputText); // Use same splitting logic
+        logger.debug("Raw class names parsed: {}", classNames);
+
+        List<CodeUnit> resolvedClasses = new ArrayList<>();
+        if (analyzer == null || analyzer.isEmpty()) {
+            logger.warn("Analyzer is not available or empty, cannot resolve class names.");
+            return resolvedClasses;
+        }
+
+        // Get all potential code units using Completions utility and filter for classes
+        // This aligns with how SymbolCompletionProvider works and avoids assuming IAnalyzer.getClasses()
+        Map<String, CodeUnit> knownClasses = Completions.completeClassesAndMembers("", analyzer).stream()
+                .filter(cu -> cu.kind() == CodeUnitType.CLASS)
+                .collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
+
+        for (String className : classNames) {
+            if (className.isBlank()) continue;
+
+            CodeUnit found = knownClasses.get(className);
+            if (found != null) {
+                resolvedClasses.add(found);
+            } else {
+                 // Maybe it's a short name? Try completing and finding exact match.
+                 // This adds complexity; for now, require FQN.
+                 logger.warn("Could not resolve class name: {}", className);
+            }
+        }
+        logger.debug("Resolved unique classes: {}", resolvedClasses.stream().map(CodeUnit::fqName).toList());
+        return resolvedClasses;
+    }
+
+    /**
+     * Splits a string by whitespace, respecting double quotes.
+     */
+    private List<String> splitQuotedString(String input) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder currentToken = new StringBuilder();
+        boolean inQuotes = false;
+        for (char c : input.toCharArray()) {
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (Character.isWhitespace(c) && !inQuotes) {
+                if (currentToken.length() > 0) {
+                    tokens.add(currentToken.toString());
+                    currentToken.setLength(0); // Reset
+                }
+            } else {
+                currentToken.append(c);
+            }
+        }
+        // Add the last token if any
+        if (currentToken.length() > 0) {
+            tokens.add(currentToken.toString());
+        }
+        return tokens;
     }
 
 
@@ -302,140 +548,186 @@ public class MultiFileSelectionDialog extends JDialog { // Renamed class
     }
 
     /**
-     * Gets the list of selected files.
+     * Gets the selection result (files and/or classes).
+     * Returns null if the dialog was cancelled or no valid selection was made.
      */
-    public List<BrokkFile> getSelectedFiles() {
-        return selectedFiles;
+    public Selection getSelection() {
+        return selectionResult;
     }
 
     /**
-     * Custom CompletionProvider for files. Handles RepoFiles and potentially external Paths if logic changes.
-     * Crucially, overrides getAlreadyEnteredText for multi-file input area.
+     * Extracts the text of the token currently being typed in a JTextComponent,
+     * respecting double quotes. Used by completion providers.
+     */
+    private String getCurrentTokenText(JTextComponent comp) {
+        String text = comp.getText();
+        int caretPos = comp.getCaretPosition();
+        int start = caretPos;
+        boolean inQuotes = false;
+
+        // Find start of current token, respecting quotes
+        while (start > 0) {
+            char c = text.charAt(start - 1);
+            if (c == '"') {
+                // Count quotes between start-1 and caretPos to determine if we are inside quotes
+                long quoteCount = text.substring(start - 1, caretPos).chars().filter(ch -> ch == '"').count();
+                inQuotes = (quoteCount % 2 != 0);
+            } else if (Character.isWhitespace(c) && !inQuotes) {
+                // Stop if we hit whitespace outside of quotes
+                break;
+            }
+            start--;
+        }
+
+        // If the token starts with a quote, and the caret is inside the quotes, advance start
+        if (start < caretPos && text.charAt(start) == '"') {
+            long quoteCountToCaret = text.substring(start, caretPos).chars().filter(ch -> ch == '"').count();
+             if (quoteCountToCaret % 2 == 0) { // If an even number of quotes between start and caret, caret is effectively inside
+                 // We might need to check if the quote at 'start' is truly the *opening* quote relative to caret
+                 // This logic gets tricky. Let's simplify: if token starts with quote, advance start.
+                 start++;
+            }
+        }
+
+        // Return text from adjusted start to caret
+        if (start < caretPos) {
+            return text.substring(start, caretPos);
+        } else {
+            return "";
+        }
+    }
+
+
+    // ========================================================================
+    // Completion Providers
+    // ========================================================================
+
+    /**
+     * Custom CompletionProvider for project files.
+     * Overrides getAlreadyEnteredText for multi-file input area.
      */
     public class FileCompletionProvider extends DefaultCompletionProvider {
         private final Collection<ProjectFile> projectFiles;
-        private final Collection<Path> externalCandidates; // Kept in signature, but expected to be empty for MFSD
 
-        public FileCompletionProvider(Collection<ProjectFile> projectFiles, Collection<Path> externalCandidates) {
+        public FileCompletionProvider(Collection<ProjectFile> projectFiles, Collection<Path> externalCandidatesIgnored) {
             super();
             assert projectFiles != null;
-            assert externalCandidates != null;
             this.projectFiles = projectFiles;
-            this.externalCandidates = externalCandidates;
-            // Assert externalCandidates is empty if this provider is strictly for MFSD use
-            assert this.externalCandidates.isEmpty() : "MultiFileSelectionDialog should not have pre-filled external candidates";
+            // External candidates are not directly completed in this version's text area
         }
 
-        // Override to complete only the current token (word separated by whitespace, respecting quotes)
-        // This is essential for the multi-file JTextArea.
         @Override
-        public String getAlreadyEnteredText(javax.swing.text.JTextComponent comp) {
-            String text = comp.getText();
-            int caretPos = comp.getCaretPosition();
-            int start = caretPos;
-            boolean inQuotes = false;
-
-            // Find start of current token, respecting quotes
-            while (start > 0) {
-                char c = text.charAt(start - 1);
-                if (c == '"') {
-                    // Simple toggle; assumes non-escaped quotes define token boundaries
-                    // If the character *before* start is a quote, we might be inside quoted text
-                    // Need to check if the quote *opens* or *closes* the quoted section relative to caret
-                    // This simple approach works okay if caret is *after* the opening quote.
-                    boolean balanced = true;
-                    for(int i = start - 1; i < caretPos; i++) {
-                        if (text.charAt(i) == '"') balanced = !balanced;
-                    }
-                    inQuotes = !balanced; // If unbalanced up to caret, we are inside quotes
-
-                } else if (Character.isWhitespace(c) && !inQuotes) {
-                    // Stop if we hit whitespace outside of quotes
-                    break;
-                }
-                start--;
-            }
-
-            // If the first char of the found token is a quote, advance start
-            if (start < text.length() && text.charAt(start) == '"') {
-                // Check if caret is also inside these quotes
-                boolean caretInQuotes = false;
-                boolean quoteOpen = false;
-                for(int i=start; i < caretPos; i++) {
-                    if (text.charAt(i) == '"') quoteOpen = !quoteOpen;
-                }
-                if (quoteOpen) { // Caret is inside the quotes that start at 'start'
-                    start++; // Start completing *after* the opening quote
-                }
-            }
-
-
-            // Return text from adjusted start to caret
-            if (start < caretPos) {
-                return text.substring(start, caretPos);
-            } else {
-                return "";
-            }
+        public String getAlreadyEnteredText(JTextComponent comp) {
+            // Delegate to the shared token extraction logic
+            return getCurrentTokenText(comp);
         }
-
 
         @Override
         public List<Completion> getCompletions(JTextComponent tc) {
             var input = getAlreadyEnteredText(tc);
-            // No external candidates to check for MFSD based on current design
-            if (input.isEmpty() && projectFiles.isEmpty()) {
+            if (projectFiles.isEmpty()) {
                 return Collections.emptyList();
             }
 
             List<ShorthandCompletion> completions = new ArrayList<>();
 
-            if (!projectFiles.isEmpty()) {
+            if (!input.isEmpty()) { // Require some input
                 if (input.contains("*") || input.contains("?")) {
+                    // Handle globs
                     try {
-                        // Completions.expandPath might be too slow/broad for interactive completion.
-                        // Consider limiting depth or using a simpler glob matcher if performance is an issue.
-                        // For now, stick with existing logic but limit results.
                         completions.addAll(Completions.expandPath(project, input).stream()
-                                                   .filter(bf -> bf instanceof ProjectFile)
-                                                   .map(bf -> createRepoCompletion((ProjectFile)bf))
+                                                   .filter(bf -> bf instanceof ProjectFile) // Only complete project files via text
+                                                   .map(bf -> createRepoCompletion((ProjectFile) bf))
                                                    .limit(100) // Limit glob results
                                                    .toList());
                     } catch (Exception e) {
                         logger.warn("Error during glob completion: {}", e.getMessage());
                     }
-                } else if (!input.isEmpty()) { // Only do prefix matching if there's non-glob input
+                } else {
                     // Simple prefix matching for repo files otherwise
                     completions.addAll(Completions.getFileCompletions(input, projectFiles).stream()
                                                .map(this::createRepoCompletion)
                                                .limit(100) // Limit prefix results
                                                .toList());
                 }
-                // If input is empty, we might want to show top-level repo dirs/files? For now, require some input.
             }
+            // Consider showing top-level files/dirs if input is empty? Maybe too noisy.
 
             // Dynamically size the popup windows
-            AutoCompleteUtil.sizePopupWindows(autoCompletion, tc, completions);
+            AutoCompleteUtil.sizePopupWindows(fileAutoCompletion, tc, completions);
+
+            // Deduplicate and sort (using replacement text as key)
+             return completions.stream()
+                     .distinct() // ShorthandCompletion should have equals based on replacement
+                     .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text
+                     .map(shc -> (Completion) shc)
+                     .toList();
+        }
+
+        /** Creates a completion item for a ProjectFile. */
+        private ShorthandCompletion createRepoCompletion(ProjectFile file) {
+            String relativePath = file.toString();
+            // Replacement text includes quotes if needed, and a trailing space
+            String replacement = (relativePath.contains(" ") ? "\"" + relativePath + "\"" : relativePath) + " ";
+            // Display text is the filename, summary is the full relative path
+            return new ShorthandCompletion(this, file.getFileName(), replacement, relativePath);
+        }
+    }
+
+
+    /**
+     * Custom CompletionProvider for Java classes using the IAnalyzer.
+     * Overrides getAlreadyEnteredText for multi-class input area.
+     */
+    public class SymbolCompletionProvider extends DefaultCompletionProvider {
+        private final IAnalyzer analyzer;
+
+        public SymbolCompletionProvider(IAnalyzer analyzer) {
+            super();
+            assert analyzer != null;
+            this.analyzer = analyzer;
+        }
+
+        @Override
+        public String getAlreadyEnteredText(JTextComponent comp) {
+            // Delegate to the shared token extraction logic
+             return getCurrentTokenText(comp);
+        }
+
+        @Override
+        public List<Completion> getCompletions(JTextComponent comp) {
+            String text = getAlreadyEnteredText(comp);
+
+            if (text.isEmpty() || analyzer == null || analyzer.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // Get completions using the brokk Completions utility, limited to classes
+            var completions = Completions.completeClassesAndMembers(text, analyzer).stream()
+                    .filter(c -> c.kind() == CodeUnitType.CLASS) // Filter for classes ONLY
+                    .map(this::createClassCompletion)
+                    .limit(100) // Limit results
+                    .toList();
+
+            // Dynamically size the popup windows
+            AutoCompleteUtil.sizePopupWindows(classAutoCompletion, comp, completions);
 
             // Deduplicate and sort
             return completions.stream()
-                    .collect(Collectors.toMap(
-                            Completion::getReplacementText,
-                            c -> c,
-                            (existing, replacement) -> existing
-                    ))
-                    .values().stream()
+                    .distinct()
+                    .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text (short name)
                     .map(shc -> (Completion) shc)
-                    .sorted(Comparator.comparing(Completion::getInputText))
                     .toList();
         }
 
-        // Creates a completion item for a RepoFile.
-        private ShorthandCompletion createRepoCompletion(ProjectFile file) {
-            String relativePath = file.toString();
-            // Add trailing space, quote if needed. Replacement should replace the token + add space.
-            String replacement = relativePath.contains(" ") ? "\"" + relativePath + "\" " : relativePath + " ";
-            // Display filename, summary is relative path, replacement is quoted/spaced relative path
-            return new ShorthandCompletion(this, file.getFileName(), replacement, relativePath);
-        }
+        /** Creates a completion item for a CodeUnit (Class). */
+        private ShorthandCompletion createClassCompletion(CodeUnit codeUnit) {
+             String fqn = codeUnit.fqName();
+             String shortName = codeUnit.shortName();
+             // Replacement text is the FQN plus a trailing space
+             String replacement = fqn + " ";
+             // Display text is the short name, summary is the FQN
+             return new ShorthandCompletion(this, shortName, replacement, fqn);
+         }
     }
 }

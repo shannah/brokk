@@ -17,21 +17,22 @@ import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.tools.SearchTools;
-import io.github.jbellis.brokk.tools.ToolRegistry;
-import io.github.jbellis.brokk.util.LoggingExecutorService;
-import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
+import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
+import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
-import io.github.jbellis.brokk.prompts.DefaultPrompts; // Add missing import
+import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
+import io.github.jbellis.brokk.tools.SearchTools;
+import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
+import io.github.jbellis.brokk.util.LoggingExecutorService;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -45,7 +46,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -66,7 +66,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import java.util.regex.Pattern; // Add missing import for Pattern
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -536,14 +535,23 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Show the custom file selection dialog
+     * Show the multi-source selection dialog with configurable modes.
+     *
+     * @param title              Dialog title.
+     * @param allowExternalFiles Allow selection of external files in the Files tab.
+     * @param completions        Set of completable project files.
+     * @param modes              Set of selection modes (FILES, CLASSES) to enable.
+     * @return The Selection record containing lists of files and/or classes, or null if cancelled.
      */
-    private List<BrokkFile> showFileSelectionDialog(String title, boolean allowExternalFiles, Set<ProjectFile> completions)
+    private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Set<ProjectFile> completions, Set<SelectionMode> modes)
     {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
+        var analyzer = project.getAnalyzer(); // Get analyzer here
+
         SwingUtil.runOnEDT(() -> {
-            var dialog = new MultiFileSelectionDialog(io.getFrame(), project, title, allowExternalFiles, completions);
-            dialog.setSize((int) (io.getFrame().getWidth() * 0.9), 400);
+            var dialog = new MultiFileSelectionDialog(io.getFrame(), project, analyzer, title, allowExternalFiles, completions, modes);
+            // Use dialog's preferred size after packing, potentially adjust width
+            dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));
             dialog.setLocationRelativeTo(io.getFrame());
             dialog.setVisible(true);
             dialogRef.set(dialog);
@@ -551,19 +559,26 @@ public class ContextManager implements IContextManager, AutoCloseable {
         try {
             var dialog = dialogRef.get();
             if (dialog != null && dialog.isConfirmed()) {
-                return dialog.getSelectedFiles();
+                return dialog.getSelection(); // Return the Selection record
             }
-            return List.of();
+            return null; // Indicate cancellation or no selection
         } finally {
             io.focusInput();
         }
     }
 
     /**
-     * Cast BrokkFile to RepoFile. Will throw if ExternalFiles are present.
+     * Cast BrokkFile to ProjectFile. Will throw if ExternalFiles are present.
+     * Use with caution, only when external files are disallowed or handled separately.
      */
-    private List<ProjectFile> toRepoFiles(List<BrokkFile> files) {
-        return files.stream().map(f -> (ProjectFile) f).toList();
+    private List<ProjectFile> toProjectFilesUnsafe(List<BrokkFile> files) {
+        if (files == null) return List.of();
+        return files.stream().map(f -> {
+            if (f instanceof ProjectFile pf) {
+                return pf;
+            }
+            throw new ClassCastException("Expected only ProjectFile but got " + f.getClass().getName());
+        }).toList();
     }
 
     /**
@@ -664,33 +679,53 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
+    /** Edit Action: Only allows selecting Project Files */
     private void doEditAction(List<ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
-            var files = toRepoFiles(showFileSelectionDialog("Add Context", false, project.getRepo().getTrackedFiles()));
-            if (!files.isEmpty()) {
-                editFiles(files);
+            // Show dialog allowing ONLY file selection (no external)
+            var selection = showMultiSourceSelectionDialog("Edit Files",
+                                                          false, // No external files for edit
+                                                          project.getRepo().getTrackedFiles(), // Only tracked files
+                                                          Set.of(SelectionMode.FILES)); // Only FILES mode
+
+            if (selection != null && selection.files() != null && !selection.files().isEmpty()) {
+                 // We disallowed external files, so this cast should be safe
+                 var projectFiles = toProjectFilesUnsafe(selection.files());
+                 editFiles(projectFiles);
             } else {
-                io.systemOutput("No files selected.");
+                io.systemOutput("No files selected for editing.");
             }
         } else {
+            // Edit files from selected fragments
             var files = new HashSet<ProjectFile>();
             for (var fragment : selectedFragments) {
                 files.addAll(fragment.files(project));
             }
-            editFiles(files);
+             editFiles(files);
         }
     }
 
+    /** Read Action: Allows selecting Files (internal/external) */
     private void doReadAction(List<ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
-            var files = showFileSelectionDialog("Read Context", true, project.getFiles());
-            if (!files.isEmpty()) {
-                addReadOnlyFiles(files);
-            } else {
+            // Show dialog allowing ONLY file selection (internal + external)
+            // TODO when we can extract a single class from a source file, enable classes as well
+            var selection = showMultiSourceSelectionDialog("Add Read-Only Context",
+                                                           true, // Allow external files
+                                                           project.getFiles(), // All project files for completion
+                                                           Set.of(SelectionMode.FILES)); // FILES mode only
+
+            if (selection == null || selection.files() == null || selection.files().isEmpty()) {
                 io.systemOutput("No files selected.");
+                return;
             }
+
+            addReadOnlyFiles(selection.files());
+            io.systemOutput("Added " + selection.files().size() + " file(s) as read-only context.");
         } else {
-            var files = new HashSet<ProjectFile>();
+            // Add files from selected fragments
+            // FIXME this is intended to allow non-project files but files() returns ProjectFile not BrokkFile
+            var files = new HashSet<BrokkFile>();
             for (var fragment : selectedFragments) {
                 files.addAll(fragment.files(project));
             }
@@ -853,31 +888,42 @@ public class ContextManager implements IContextManager, AutoCloseable {
             io.toolErrorRaw("Code Intelligence is empty; nothing to add");
             return;
         }
-        
-        HashSet<CodeUnit> sources = new HashSet<>();
-        String sourceDescription;
 
+        HashSet<CodeUnit> sources = new HashSet<>();
         if (selectedFragments.isEmpty()) {
-            // Show file selection dialog when nothing is selected
-            var completions = project.getFiles().stream()
+            // Show dialog allowing selection of files OR classes for summarization
+            // Only allow selecting project files that contain classes for the Files tab
+            var completableProjectFiles = project.getFiles().stream()
                     .filter(f -> !getAnalyzer().getClassesInFile(f).isEmpty())
                     .collect(Collectors.toSet());
-            var files = toRepoFiles(showFileSelectionDialog("Summarize Files", false, completions));
-            if (files.isEmpty()) {
-                io.systemOutput("No files selected for summarization");
-                return;
+
+            var selection = showMultiSourceSelectionDialog("Summarize Sources",
+                                                           false, // No external files for summarize
+                                                           completableProjectFiles, // Project files with classes
+                                                           Set.of(SelectionMode.FILES, SelectionMode.CLASSES)); // Both modes
+
+            if (selection == null || selection.isEmpty()) {
+                 io.systemOutput("No files or classes selected for summarization.");
+                 return;
+             }
+
+            // Process selected files
+            if (selection.files() != null) {
+                 var projectFiles = toProjectFilesUnsafe(selection.files()); // Should be safe
+                 for (var file : projectFiles) {
+                     sources.addAll(getAnalyzer().getClassesInFile(file));
+                 }
             }
 
-            for (var file : files) {
-                sources.addAll(getAnalyzer().getClassesInFile(file));
+            // Process selected classes
+            if (selection.classes() != null) {
+                 sources.addAll(selection.classes());
             }
-            sourceDescription = files.size() + " files";
         } else {
             // Extract sources from selected fragments
             for (var frag : selectedFragments) {
                 sources.addAll(frag.sources(project));
             }
-            sourceDescription = selectedFragments.size() + " fragments";
         }
 
         if (sources.isEmpty()) {
@@ -887,9 +933,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         boolean success = summarizeClasses(sources);
         if (success) {
-            io.systemOutput("Summarized " + sources.size() + " classes from " + sourceDescription);
+            io.systemOutput("Summarized " + sources.size() + " classes");
         } else {
-            io.toolErrorRaw("Failed to summarize classes");
+            io.toolErrorRaw("No summarizable classes found");
         }
     }
 
@@ -1208,21 +1254,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /** Summarize classes => adds skeleton fragments */
-    public boolean summarizeClasses(Set<CodeUnit> classes)
-    {
+    public boolean summarizeClasses(Set<CodeUnit> classes) {
         if (getAnalyzer().isEmpty()) {
             io.toolErrorRaw("Code Intelligence is empty; nothing to add");
             return false;
         }
-        
-        var skeletons = new HashMap<CodeUnit, String>();
+
         var coalescedUnits = coalesceInnerClasses(classes);
-        for (var cu : coalescedUnits) {
-            var skeleton = getAnalyzer().getSkeleton(cu.fqName());
-            if (skeleton.isDefined()) {
-                skeletons.put(cu, skeleton.get());
-            }
-        }
+        var skeletons = coalescedUnits.stream()
+            .map(cu -> Map.entry(cu, getAnalyzer().getSkeleton(cu.fqName())))
+            .filter(entry -> entry.getValue().isDefined())
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get()));
         if (skeletons.isEmpty()) {
             return false;
         }
