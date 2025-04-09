@@ -2,11 +2,13 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiTokenizer;
@@ -26,6 +28,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,11 +64,6 @@ public final class Models {
     private static volatile SpeechToTextModel sttModel = null;
     private static StreamingChatLanguageModel systemModel;
 
-    // Initialize at class load time
-    static {
-        init();
-    }
-
     /**
      * Returns the display name for a given model instance
      */
@@ -94,14 +92,18 @@ public final class Models {
         // No models? LiteLLM must be down. Add a placeholder.
         if (modelLocations.isEmpty()) {
             modelLocations.put(UNAVAILABLE, "not_a_model");
-            return;
+            loadedModels.put(UNAVAILABLE, new UnavailableStreamingModel());
         }
 
         // these should always be available
         quickModel = get("gemini-2.0-flash");
-        assert quickModel != null;
+        if (quickModel == null) {
+            quickModel = new UnavailableStreamingModel();
+        }
         quickestModel = get("gemini-2.0-flash-lite");
-        assert quickestModel != null;
+        if (quickestModel == null) {
+            quickestModel = new UnavailableStreamingModel();
+        }
 
         // this may be available depending on account status
         // TODO update for full release 2.5
@@ -360,6 +362,37 @@ public final class Models {
         @Override
         public String transcribe(Path audioFile, Set<String> symbols) {
             return "Speech-to-text is unavailable (unable to connect to Brokk).";
+        }
+    }
+
+    public static class UnavailableStreamingModel implements StreamingChatLanguageModel {
+        public UnavailableStreamingModel() {
+        }
+
+        public void generate(String userMessage, StreamingResponseHandler<AiMessage> handler) {
+            handler.onComplete(new dev.langchain4j.model.output.Response<>(new AiMessage(UNAVAILABLE)));
+        }
+
+        public void generate(List<ChatMessage> messages, StreamingResponseHandler<AiMessage> handler) {
+            handler.onComplete(new dev.langchain4j.model.output.Response<>(new AiMessage(UNAVAILABLE)));
+        }
+
+        public void generate(List<ChatMessage> messages, List<ToolSpecification> toolSpecifications, StreamingResponseHandler<AiMessage> handler) {
+            handler.onComplete(new dev.langchain4j.model.output.Response<>(new AiMessage(UNAVAILABLE)));
+        }
+
+        public void generate(List<ChatMessage> messages, ToolSpecification toolSpecification, StreamingResponseHandler<AiMessage> handler) {
+            handler.onComplete(new dev.langchain4j.model.output.Response<>(new AiMessage(UNAVAILABLE)));
+        }
+
+        @Override
+        public int hashCode() {
+            return 1;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof UnavailableStreamingModel;
         }
     }
 
