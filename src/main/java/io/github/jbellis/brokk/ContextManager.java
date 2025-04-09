@@ -1568,7 +1568,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             You are a build assistant. Based on the user's goal, the project workspace, and known build details,
             determine the best single shell command to run as a minimal "smoke test" verifying that the changes achieve the goal.
             This should usually involve a few specific tests, but if the project is small, running all tests is reasonable;
-            if no tests look relevant, just compile or lint the project.
+            if no tests look relevant, it's fine to simply compile or lint the project without tests.
             """.stripIndent());
 
             var userMessage = new UserMessage("""
