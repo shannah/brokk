@@ -201,7 +201,15 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         buildPanel.add(instructionsScrollPane, gbc);
-        
+
+        // Add vertical glue to push components to the top
+        gbc.gridx = 0;
+        gbc.gridy = ++row; // Move to next row
+        gbc.gridwidth = 2; // Span across both columns
+        gbc.weighty = 1.0; // Take up remaining vertical space
+        gbc.fill = GridBagConstraints.VERTICAL;
+        buildPanel.add(Box.createVerticalGlue(), gbc);
+
         // ----- Other Tab -----
         var otherPanel = new JPanel(new GridBagLayout());
         otherPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -222,10 +230,19 @@ public class SettingsDialog extends JDialog {
         cpgRefreshComboBox.setSelectedItem(currentRefresh == Project.CpgRefresh.UNSET ?
             Project.CpgRefresh.AUTO : currentRefresh);
         gbc.gridx = 1;
-        gbc.gridy = row;
+        gbc.gridy = row++; // Increment row after adding combo box
         gbc.weightx = 1.0;
         otherPanel.add(cpgRefreshComboBox, gbc);
-        
+
+        // Add vertical glue to push components to the top
+        gbc.gridx = 0;
+        gbc.gridy = row; // Use the incremented row
+        gbc.gridwidth = 2; // Span across both columns
+        gbc.weighty = 1.0; // Take up remaining vertical space
+        gbc.fill = GridBagConstraints.VERTICAL;
+        otherPanel.add(Box.createVerticalGlue(), gbc);
+
+
         subTabbedPane.addTab("Build", buildPanel);
         subTabbedPane.addTab("Other", otherPanel);
         
