@@ -159,7 +159,8 @@ public class SettingsDialog extends JDialog {
         // Initialize Build fields for new BuildDetails
         buildCleanCommandField = new JTextField(); // used for Build/Lint Command
         allTestsCommandField = new JTextField(); // used for Test All Command
-        buildInstructionsArea = new JTextArea(5, 20);
+        // Set the text area for build instructions to be 10 lines tall
+        buildInstructionsArea = new JTextArea(10, 20);
         buildInstructionsArea.setWrapStyleWord(true);
         buildInstructionsArea.setLineWrap(true);
         var instructionsScrollPane = new JScrollPane(buildInstructionsArea);
