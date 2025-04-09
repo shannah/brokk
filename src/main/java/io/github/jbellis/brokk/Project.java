@@ -695,6 +695,29 @@ public class Project implements IProject, AutoCloseable {
     }
 
     /**
+     * Gets the saved Brokk API key from global settings.
+     * @return The saved key, or an empty string if not set.
+     */
+    public static String getBrokkKey() {
+        var props = loadGlobalProperties();
+        return props.getProperty("brokkApiKey", ""); // Default to empty string
+    }
+
+    /**
+     * Sets the global Brokk API key.
+     * @param key The API key to save.
+     */
+    public static void setBrokkKey(String key) {
+        var props = loadGlobalProperties();
+        if (key == null || key.isBlank()) {
+            props.remove("brokkApiKey"); // Remove key if blank
+        } else {
+            props.setProperty("brokkApiKey", key.trim());
+        }
+        saveGlobalProperties(props);
+    }
+
+    /**
      * Sets the global UI theme
      * @param theme "dark" or "light"
      */

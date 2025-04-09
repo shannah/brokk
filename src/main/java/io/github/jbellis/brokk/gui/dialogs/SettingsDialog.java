@@ -12,7 +12,9 @@ public class SettingsDialog extends JDialog {
     private final Chrome chrome;
     private final JTabbedPane tabbedPane;
     private final JPanel projectPanel; // Keep a reference to enable/disable
-    // Removed buildCommandField
+    // Brokk Key field (Global)
+    private JTextField brokkKeyField;
+    // Project fields
     private JComboBox<Project.CpgRefresh> cpgRefreshComboBox; // ComboBox for CPG refresh
     private JTextField buildCleanCommandField;
     private JTextField allTestsCommandField;
@@ -66,12 +68,36 @@ public class SettingsDialog extends JDialog {
     }
 
     private JPanel createGlobalPanel() {
-        var panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        var panel = new JPanel(new GridBagLayout()); // Use GridBagLayout for better alignment
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        var gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 2, 2, 2);
+        gbc.anchor = GridBagConstraints.WEST; // Align components to the left
+        int row = 0;
 
-        // Theme Selection
-        panel.add(new JLabel("Theme:"));
+        // Brokk Key Input
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        panel.add(new JLabel("Brokk Key:"), gbc);
+
+        brokkKeyField = new JTextField(20); // Initialize the field
+        brokkKeyField.setText(Project.getBrokkKey()); // Populate with existing key
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Make field expand horizontally
+        panel.add(brokkKeyField, gbc);
+
+        // Reset fill for the label
+        gbc.fill = GridBagConstraints.NONE;
+
+        // Theme Selection (now on one line)
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        panel.add(new JLabel("Theme:"), gbc);
+
         var lightRadio = new JRadioButton("Light");
         var darkRadio = new JRadioButton("Dark");
         var themeGroup = new ButtonGroup();
@@ -79,21 +105,34 @@ public class SettingsDialog extends JDialog {
         themeGroup.add(darkRadio);
 
         // Select the currently active theme
-        if (UIManager.getLookAndFeel().getName().toLowerCase().contains("dark")) {
+        if (Project.getTheme().equals("dark")) { // Use Project.getTheme()
             darkRadio.setSelected(true);
         } else {
             lightRadio.setSelected(true);
         }
 
-        // Add listeners later in applySettings to avoid triggering during setup
-        lightRadio.putClientProperty("theme", false); // Store theme value
-        darkRadio.putClientProperty("theme", true); // Store theme value
+        // Store theme value (false for light, true for dark)
+        lightRadio.putClientProperty("theme", false);
+        darkRadio.putClientProperty("theme", true);
 
-        var themePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        themePanel.add(lightRadio);
-        themePanel.add(darkRadio);
-        panel.add(themePanel);
-        panel.add(Box.createVerticalGlue()); // Pushes components to the top
+        // Panel to hold radio buttons together
+        var themeRadioPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)); // No gaps
+        themeRadioPanel.add(lightRadio);
+        themeRadioPanel.add(darkRadio);
+
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0; // Let the radio button panel take remaining space if needed
+        // No fill needed here as FlowLayout handles sizing
+        panel.add(themeRadioPanel, gbc);
+
+        // Add vertical glue to push components to the top
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.gridwidth = 2; // Span across both columns
+        gbc.weighty = 1.0; // Take up remaining vertical space
+        gbc.fill = GridBagConstraints.VERTICAL;
+        panel.add(Box.createVerticalGlue(), gbc);
 
         return panel;
     }
@@ -198,14 +237,41 @@ public class SettingsDialog extends JDialog {
     private void applySettings() {
         // Apply Global Settings
         var globalPanel = (JPanel) tabbedPane.getComponentAt(0); // Assuming Global is the first tab
-        var themePanel = (JPanel) globalPanel.getComponent(1); // Assuming themePanel is the second component
-        for (Component comp : themePanel.getComponents()) {
-            if (comp instanceof JRadioButton radio && radio.isSelected()) {
-                boolean useDark = (Boolean) radio.getClientProperty("theme");
-                chrome.switchTheme(useDark);
-                break;
+
+        // -- Apply Brokk Key --
+        String currentBrokkKey = Project.getBrokkKey();
+        String newBrokkKey = brokkKeyField.getText().trim(); // Read from the new field
+        if (!newBrokkKey.equals(currentBrokkKey)) {
+            Project.setBrokkKey(newBrokkKey);
+        }
+
+        // -- Apply Theme --
+        // Find the themeRadioPanel (it's the component at gridx=1, gridy=1 based on GridBagLayout)
+        Component themeComponent = null;
+        for (Component comp : globalPanel.getComponents()) {
+            var constraints = ((GridBagLayout) globalPanel.getLayout()).getConstraints(comp);
+            if (constraints.gridx == 1 && constraints.gridy == 1 && comp instanceof JPanel) { // Find the panel holding radio buttons
+                 themeComponent = comp;
+                 break;
             }
         }
+
+        if (themeComponent instanceof JPanel themeRadioPanel) {
+            for (Component radioComp : themeRadioPanel.getComponents()) {
+                if (radioComp instanceof JRadioButton radio && radio.isSelected()) {
+                    boolean useDark = (Boolean) radio.getClientProperty("theme");
+                    // Only switch theme if it actually changed
+                    if (useDark != Project.getTheme().equals("dark")) {
+                        chrome.switchTheme(useDark); // switchTheme calls Project.setTheme internally
+                    }
+                    break;
+                }
+            }
+        } else {
+            // Log error or handle case where theme panel wasn't found as expected
+             System.err.println("Could not find theme radio button panel in SettingsDialog.");
+        }
+
 
         // Apply Project Settings (if project is open and tab is enabled)
         var project = chrome.getProject();
