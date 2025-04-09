@@ -224,9 +224,9 @@ public class LLM {
                 // Wait for the command inference, with a timeout
                 verificationCommand = verificationCommandFuture.get(5, TimeUnit.SECONDS);
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                logger.error("Failed to get verification command", e);
-                io.toolError("Failed to determine verification command: " + e.getMessage());
-                verificationCommand = null; // Proceed without verification
+                logger.warn("Failed to get verification command", e);
+                var bd = contextManager.getProject().getBuildDetails();
+                verificationCommand = bd == null ? null : bd.buildLintCommand();
             }
 
             boolean buildSucceeded = checkBuild(verificationCommand, contextManager, io, buildErrors);

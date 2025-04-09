@@ -1549,13 +1549,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
             if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 logger.warn("Failed to determine verification command: {}",
                             result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
-                return ""; // Return empty on error
+                return details.buildLintCommand();
             }
 
             String command = result.chatResponse().aiMessage().text();
             if (command == null || command.isBlank() || command.equals(Models.UNAVAILABLE)) {
                  logger.warn("LLM returned unusable verification command: '{}'", command);
-                 return ""; // Return empty if LLM gives nothing useful
+                 return details.buildLintCommand();
              }
 
             // Basic cleanup: remove potential markdown backticks
