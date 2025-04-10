@@ -113,6 +113,8 @@ public abstract class DefaultPrompts {
                 All changes to files must use this *SEARCH/REPLACE* block format.
 
                 If a file is read-only or unavailable, ask the user to add it or make it editable.
+                
+                If you are struggling to use a dependency or API correctly, stop and ask the user for help.
                 """.formatted(reminder).stripIndent();
     }
 
