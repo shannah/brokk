@@ -52,7 +52,7 @@ public class ContextSerializationTest {
         assertNull(deserialized.contextManager);
          assertNotNull(deserialized.parsedOutput); // Empty ParsedOutput
          assertNotNull(deserialized.originalContents); // Empty Map
-         assertNotNull(deserialized.taskHistory); // Empty List (changed from historyMessages)
+         assertNotNull(deserialized.taskEntry); // Empty List (changed from historyMessages)
 
          // AutoContext should have been preserved
          assertNotNull(deserialized.getAutoContext());

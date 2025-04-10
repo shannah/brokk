@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
@@ -570,18 +569,18 @@ public interface ContextFragment extends Serializable {
 
     class ConversationFragment extends VirtualFragment {
         private static final long serialVersionUID = 2L;
-        private final List<TaskHistory> taskHistory;
+        private final List<TaskEntry> taskEntry;
 
-        public ConversationFragment(List<TaskHistory> taskHistory) {
+        public ConversationFragment(List<TaskEntry> taskEntry) {
             super();
-            assert taskHistory != null;
-            this.taskHistory = List.copyOf(taskHistory);
+            assert taskEntry != null;
+            this.taskEntry = List.copyOf(taskEntry);
         }
 
         @Override
         public String text() {
-            return taskHistory.stream()
-                    .map(TaskHistory::toString)
+            return taskEntry.stream()
+                    .map(TaskEntry::toString)
                     .collect(Collectors.joining("\n\n"));
         }
 
@@ -597,7 +596,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            return "Conversation History (" + taskHistory.size() + " task%s)".formatted(taskHistory.size() > 1 ? "s" : "");
+            return "Conversation History (" + taskEntry.size() + " task%s)".formatted(taskEntry.size() > 1 ? "s" : "");
         }
 
         @Override
@@ -617,7 +616,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String toString() {
-            return "ConversationFragment(" + taskHistory.size() + " tasks)";
+            return "ConversationFragment(" + taskEntry.size() + " tasks)";
         }
     }
 

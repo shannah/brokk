@@ -4,7 +4,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -16,11 +15,11 @@ import java.util.stream.Collectors;
  * @param log           The uncompressed list of chat messages for this task. Null if compressed.
  * @param compressedLog The compressed representation of the chat messages. Null if uncompressed.
  */
-public record TaskHistory(int sequence, String description, List<ChatMessage> log, String compressedLog) {
-    private static final System.Logger logger = System.getLogger(TaskHistory.class.getName());
+public record TaskEntry(int sequence, String description, List<ChatMessage> log, String compressedLog) {
+    private static final System.Logger logger = System.getLogger(TaskEntry.class.getName());
 
     /** Enforce that exactly one of log or compressedLog is non-null */
-    public TaskHistory {
+    public TaskEntry {
         assert description != null && !description.isBlank();
         assert (log == null) != (compressedLog == null) : "Exactly one of log or compressedLog must be non-null";
         assert log == null || !log.isEmpty();
@@ -36,13 +35,13 @@ public record TaskHistory(int sequence, String description, List<ChatMessage> lo
      * @param sessionMessages The list of messages from the session. Must not be empty and the first message must be a UserMessage.
      * @return A new TaskHistory instance.
      */
-    public static TaskHistory fromSession(int sequence, List<ChatMessage> sessionMessages) {
+    public static TaskEntry fromSession(int sequence, List<ChatMessage> sessionMessages) {
         assert sessionMessages != null && !sessionMessages.isEmpty();
 
         ChatMessage firstMessage = sessionMessages.getFirst();
         assert firstMessage instanceof UserMessage : firstMessage;
         String job = Models.getText(firstMessage);
-        return new TaskHistory(sequence, job, sessionMessages.subList(1, sessionMessages.size()), null);
+        return new TaskEntry(sequence, job, sessionMessages.subList(1, sessionMessages.size()), null);
     }
 
     // TODO: Implement compress() method

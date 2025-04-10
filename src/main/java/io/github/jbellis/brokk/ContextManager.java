@@ -1343,7 +1343,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
  
          // Concatenate the string representation of each TaskHistory
          String historyString = taskHistory.stream()
-                                           .map(TaskHistory::toString)
+                                           .map(TaskEntry::toString)
                                            .collect(Collectors.joining("\n\n"));
  
          // Create the UserMessage containing the history and the AI acknowledgment
