@@ -439,6 +439,10 @@ public class CodeAgent {
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
      */
     private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
+        if (buildResults.size() < 2) {
+            return true;
+        }
+
         var messages = BuildPrompts.instance.collectMessages(buildResults);
         var response = coder.sendMessage(coder.contextManager.getModels().quickModel(), messages).chatResponse().aiMessage().text().trim();
 
