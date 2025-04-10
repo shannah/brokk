@@ -55,6 +55,10 @@ public interface IContextManager {
         return getProject().getRepo();
     }
 
+    default Models getModels() {
+        throw new UnsupportedOperationException();
+    }
+
     default void editFiles(Collection<ProjectFile> path) {
         throw new UnsupportedOperationException();
     }

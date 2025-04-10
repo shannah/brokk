@@ -26,8 +26,9 @@ public abstract class DefaultPrompts {
             Do comment new code, but if existing comments are adequate, do not rewrite them.
             """;
 
-    public static String reminderForModel(StreamingChatLanguageModel model) {
-        return Models.isLazy(model)
+    // Now takes a Models instance
+    public static String reminderForModel(Models models, StreamingChatLanguageModel model) {
+        return models.isLazy(model)
                 ? LAZY_REMINDER
                 : OVEREAGER_REMINDER;
     }
@@ -37,12 +38,12 @@ public abstract class DefaultPrompts {
 
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
         messages.addAll(exampleMessages());
-        messages.addAll(cm.getReadOnlyMessages());
+        messages.addAll(cm.getReadOnlyMessages()); // Depends on Models.getText via ContextManager
         messages.addAll(cm.getHistoryMessages()); // Previous full sessions
         messages.addAll(sessionMessages);         // Messages from *this* session
         messages.add(new UserMessage(editReminder(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
-        messages.addAll(cm.getEditableMessages());
+        messages.addAll(cm.getEditableMessages()); // Depends on Models.getText via ContextManager
 
         return messages;
     }

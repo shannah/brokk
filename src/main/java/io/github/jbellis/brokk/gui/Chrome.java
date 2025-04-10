@@ -737,6 +737,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return gitPanel;
     }
 
+    public InstructionsPanel getInstructionsPanel() {
+        return instructionsPanel;
+    }
+
     public void showSetAutoContextSizeDialog() {
         var dialog = new JDialog(getFrame(), "Set AutoContext Size", true);
         dialog.setLayout(new BorderLayout());

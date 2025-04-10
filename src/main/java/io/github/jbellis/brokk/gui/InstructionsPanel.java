@@ -40,7 +40,7 @@ public class InstructionsPanel extends JPanel {
     private final JLabel commandResultLabel; // Moved from HistoryOutputPanel
 
     public InstructionsPanel(Chrome chrome) {
-        super(new BorderLayout(2, 2)); // Main layout is BorderLayout
+        super(new BorderLayout(2, 2));
         setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
                                                    "Instructions",
                                                    TitledBorder.DEFAULT_JUSTIFICATION,
@@ -139,8 +139,8 @@ public class InstructionsPanel extends JPanel {
     }
 
     private JPanel buildTopBarPanel() {
-        JPanel topBarPanel = new JPanel(new BorderLayout(5, 0)); // Use BorderLayout
-        topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 5)); // Add padding
+        JPanel topBarPanel = new JPanel(new BorderLayout(5, 0));
+        topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 5));
 
         // Left Panel (Mic + History) (West)
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
@@ -164,7 +164,7 @@ public class InstructionsPanel extends JPanel {
     }
 
     private JPanel buildCenterPanel() {
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 2)); // Vertical layout
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 2));
 
         // Command Input Field (Top)
         JScrollPane commandScrollPane = new JScrollPane(commandInputField);
@@ -176,7 +176,7 @@ public class InstructionsPanel extends JPanel {
         // System Messages + Command Result (Bottom)
         // Create a panel to hold system messages and the command result label
         var topInfoPanel = new JPanel();
-        topInfoPanel.setLayout(new BoxLayout(topInfoPanel, BoxLayout.PAGE_AXIS)); // Use vertical BoxLayout
+        topInfoPanel.setLayout(new BoxLayout(topInfoPanel, BoxLayout.PAGE_AXIS));
         topInfoPanel.add(commandResultLabel);
         topInfoPanel.add(systemScrollPane);
         centerPanel.add(topInfoPanel, BorderLayout.SOUTH);
@@ -186,8 +186,8 @@ public class InstructionsPanel extends JPanel {
 
     private JPanel buildBottomPanel() {
         JPanel bottomPanel = new JPanel();
-        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.LINE_AXIS)); // Use horizontal BoxLayout
-        bottomPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2)); // Add padding
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.LINE_AXIS));
+        bottomPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
         // Action Button Bar
         JPanel actionButtonBar = buildActionBar();
@@ -201,7 +201,7 @@ public class InstructionsPanel extends JPanel {
     // Helper to build just the action buttons (Code, Ask, Search, Run)
     private JPanel buildActionBar() {
         JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder()); // No border needed
+        actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
         actionButtonsPanel.add(codeButton);
         actionButtonsPanel.add(askButton);
         actionButtonsPanel.add(searchButton);
@@ -243,7 +243,7 @@ public class InstructionsPanel extends JPanel {
     private JLabel buildCommandResultLabel() {
         var label = new JLabel(" "); // Start with a space to ensure height
         label.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        label.setBorder(new EmptyBorder(2, 5, 2, 5)); // Padding
+        label.setBorder(new EmptyBorder(2, 5, 2, 5));
         return label;
     }
 
@@ -353,8 +353,10 @@ public class InstructionsPanel extends JPanel {
             return;
         }
 
+        // Use the Models instance from ContextManager
+        var models = chrome.getContextManager().getModels();
         chrome.getContextManager().submitBackgroundTask("Fetching available models", () -> {
-            var modelLocationMap = Models.getAvailableModels();
+            var modelLocationMap = models.getAvailableModels();
             SwingUtilities.invokeLater(() -> {
                 modelDropdown.removeAllItems();
                 modelLocationMap.forEach((k, v) -> logger.debug("Available modelName={} => location={}", k, v));
@@ -402,11 +404,12 @@ public class InstructionsPanel extends JPanel {
             logger.warn("No valid model selected in dropdown.");
             return null;
         }
+        var models = chrome.getContextManager().getModels();
         try {
-            var model = Models.get(selectedName);
-            // Save the successfully selected model
-            if (chrome.getProject() != null) {
-                 // chrome.getProject().saveLastUsedModel(selectedName); // Method missing in Project class
+            var model = models.get(selectedName); // Use instance method
+            // Save the successfully selected model name
+            if (chrome.getProject() != null && model != null) { // Check model is not null
+                chrome.getProject().setLastUsedModel(selectedName); // Use the correct setter
             }
             return model;
         } catch (Exception e) {

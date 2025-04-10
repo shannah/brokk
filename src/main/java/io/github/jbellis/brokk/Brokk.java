@@ -54,8 +54,7 @@ public class Brokk {
             System.setProperty("apple.awt.application.name", "Brokk");
         }
 
-        // Ensure models are initialized (fetches from litellm) before any code that might call its static methods
-        Models.init();
+        // Models are now initialized within ContextManager after instantiation
 
         SwingUtilities.invokeLater(() -> {
             // Check for --no-project flag

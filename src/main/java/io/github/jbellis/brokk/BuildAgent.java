@@ -43,7 +43,8 @@ public class BuildAgent {
         assert toolRegistry != null : "toolRegistry cannot be null";
         this.coder = coder;
         this.toolRegistry = toolRegistry;
-        this.model = Models.quickModel();
+        // Get Models instance from coder and call instance method
+        this.model = coder.contextManager.getModels().quickModel();
     }
 
     /**

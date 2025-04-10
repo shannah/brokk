@@ -87,7 +87,7 @@ public class SettingsDialog extends JDialog {
         panel.add(new JLabel("Brokk Key:"), gbc);
 
         brokkKeyField = new JTextField(20); // Initialize the field
-        brokkKeyField.setText(Project.getBrokkKey()); // Populate with existing key
+        brokkKeyField.setText(Project.getBrokkKey());
         gbc.gridx = 1;
         gbc.gridy = row++;
         gbc.weightx = 1.0;
@@ -109,14 +109,12 @@ public class SettingsDialog extends JDialog {
         themeGroup.add(lightRadio);
         themeGroup.add(darkRadio);
 
-        // Select the currently active theme
         if (Project.getTheme().equals("dark")) { // Use Project.getTheme()
             darkRadio.setSelected(true);
         } else {
             lightRadio.setSelected(true);
         }
 
-        // Store theme value (false for light, true for dark)
         lightRadio.putClientProperty("theme", false);
         darkRadio.putClientProperty("theme", true);
 
@@ -301,7 +299,6 @@ public class SettingsDialog extends JDialog {
             // --- Improve Brokk Description Label ---
             var improveDescLabel = new JLabel("<html>Allow Brokk and/or its partners to use requests from this project " +
                                               "to train models and improve the Brokk service.</html>");
-            // Set font to slightly smaller and italic
             improveDescLabel.setFont(improveDescLabel.getFont().deriveFont(Font.ITALIC, improveDescLabel.getFont().getSize() * 0.9f));
             gbc.gridx = 0;
             gbc.gridy = y++;
@@ -320,7 +317,6 @@ public class SettingsDialog extends JDialog {
             // --- Minimal Description Label ---
             var minimalDescLabel = new JLabel("<html>Brokk will not share data from this project with anyone and " +
                                              "will restrict its use to the minimum necessary to provide the Brokk service.</html>");
-            // Set font to slightly smaller and italic
             minimalDescLabel.setFont(minimalDescLabel.getFont().deriveFont(Font.ITALIC, minimalDescLabel.getFont().getSize() * 0.9f));
             gbc.gridx = 0;
             gbc.gridy = y++;
@@ -343,7 +339,6 @@ public class SettingsDialog extends JDialog {
             gbc.fill = GridBagConstraints.VERTICAL;
             add(Box.createVerticalGlue(), gbc);
 
-            // Load initial state
             loadPolicy();
         }
 
@@ -456,7 +451,18 @@ public class SettingsDialog extends JDialog {
 
             // Apply Data Retention Policy
             if (dataRetentionPanel != null) { // Check if the panel was created
+                var oldPolicy = project.getDataRetentionPolicy();
                 dataRetentionPanel.applyPolicy();
+                var newPolicy = project.getDataRetentionPolicy();
+                // Refresh models if the policy changed, as it might affect availability
+                if (oldPolicy != newPolicy && newPolicy != Project.DataRetentionPolicy.UNSET) {
+                    // Submit as background task so it doesn't block the settings dialog closing
+                    chrome.getContextManager().submitBackgroundTask("Refreshing models due to policy change", () -> {
+                        chrome.getContextManager().getModels().initialize(); // Re-initialize models
+                        SwingUtilities.invokeLater(chrome.getInstructionsPanel()::initializeModels); // Refresh dropdown UI using getter
+                        return null;
+                    });
+                }
             }
         }
     }
@@ -469,12 +475,12 @@ public class SettingsDialog extends JDialog {
      * @param owner   The parent frame for the dialog.
      */
     public static void showStandaloneDataRetentionDialog(Project project, Frame owner) {
-        var dialog = new JDialog(owner, "Data Retention Policy Required", true); // Modal
+        var dialog = new JDialog(owner, "Data Retention Policy Required", true);
         dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE); // Prevent closing without selection initially
-        dialog.setSize(450, 350); // Adjusted size
+        dialog.setSize(450, 350);
         dialog.setLocationRelativeTo(owner);
 
-        var retentionPanel = new DataRetentionPanel(project); // Create the panel
+        var retentionPanel = new DataRetentionPanel(project);
 
         var contentPanel = new JPanel(new BorderLayout(10, 10));
         contentPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -502,8 +508,8 @@ public class SettingsDialog extends JDialog {
                                               JOptionPane.WARNING_MESSAGE);
             } else {
                 // Only apply and close if a valid policy is selected.
-                retentionPanel.applyPolicy(); // Save the selected policy
-                dialog.dispose();             // Close the dialog
+                retentionPanel.applyPolicy();
+                dialog.dispose();
             }
         };
 

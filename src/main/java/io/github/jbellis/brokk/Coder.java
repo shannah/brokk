@@ -85,7 +85,7 @@ public class Coder {
      * Transcribes an audio file using an STT model. Returns text or empty if error.
      */
     public String transcribeAudio(Path audioFile, Set<String> symbols) {
-        var sttModel = Models.sttModel();
+        var sttModel = contextManager.getModels().sttModel();
         try {
             return sttModel.transcribe(audioFile, symbols);
         } catch (Exception e) {
@@ -137,7 +137,7 @@ public class Coder {
                     if (echo) {
                         boolean isEditToolCall = tools != null && tools.stream().anyMatch(tool ->
                                 "replaceFile".equals(tool.name()) || "replaceLines".equals(tool.name()));
-                        boolean isEmulatedEditToolCall = Models.requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
+                        boolean isEmulatedEditToolCall = contextManager.getModels().requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
                         if (isEditToolCall || isEmulatedEditToolCall) {
                             io.showOutputSpinner("Editing files ...");
                             if (!isEmulatedEditToolCall) {
@@ -216,9 +216,11 @@ public class Coder {
      * Convenience method to send messages to the "quickest" model without tools or streaming echo.
      */
     public String sendMessage(List<ChatMessage> messages) {
-        var result = sendMessage(Models.quickestModel(), messages, List.of(), ToolChoice.AUTO, false);
+        var result = sendMessage(contextManager.getModels().quickestModel(), messages, List.of(), ToolChoice.AUTO, false);
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-            throw new IllegalStateException("LLM returned null or error: " + result.error());
+             // Include the error message in the exception if available
+             String errorMsg = result.error() != null ? ": " + result.error().getMessage() : "";
+             throw new IllegalStateException("LLM returned null or error" + errorMsg, result.error());
         }
         return result.chatResponse().aiMessage().text().trim();
     }
@@ -277,10 +279,12 @@ public class Coder {
     {
         Throwable lastError = null;
         int attempt = 0;
+        // Get model name once using instance field
+        String modelName = contextManager.getModels().nameOf(model);
 
         while (attempt++ < maxAttempts) {
             logger.debug("Sending request to {} attempt {} [only last message shown]: {}",
-                         Models.nameOf(model), attempt, messages.getLast());
+                         modelName, attempt, messages.getLast());
 
             if (echo) {
                 io.showOutputSpinner("Thinking...");    
@@ -366,7 +370,7 @@ public class Coder {
             messagesToSend = Coder.emulateToolExecutionResults(messages);
         }
 
-        if (!tools.isEmpty() && Models.requiresEmulatedTools(model)) {
+        if (!tools.isEmpty() && contextManager.getModels().requiresEmulatedTools(model)) {
             // Emulation handles its own preprocessing
             return emulateTools(model, messagesToSend, tools, toolChoice, echo);
         }
@@ -399,7 +403,7 @@ public class Coder {
                                          ToolChoice toolChoice,
                                          boolean echo)
     {
-        if (Models.supportsJsonSchema(model)) {
+        if (contextManager.getModels().supportsJsonSchema(model)) {
             return emulateToolsUsingJsonSchema(model, messages, tools, toolChoice, echo);
         } else {
             return emulateToolsUsingJsonObject(model, messages, tools, toolChoice, echo);

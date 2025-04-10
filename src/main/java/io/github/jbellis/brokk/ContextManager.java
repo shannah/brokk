@@ -121,6 +121,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private Project project; // Initialized in resolveCircularReferences
     private final Path root;
     private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
+    private final Models models; // Instance of Models
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
@@ -135,6 +136,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         this.root = root.toAbsolutePath().normalize();
         this.contextHistory = new ContextHistory();
+        this.models = new Models();
         userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
         });
@@ -184,6 +186,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
+        this.models.initialize(); // Initialize models after project is created but before use
         this.toolRegistry = new ToolRegistry(this);
         // Register standard tools
         this.toolRegistry.register(new SearchTools(this));
@@ -246,6 +249,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Path getRoot()
     {
         return root;
+    }
+
+    /** Returns the Models instance associated with this context manager. */
+    @Override
+    public Models getModels() {
+        return models;
     }
 
     public Future<?> runRunCommandAsync(String input)
@@ -353,7 +362,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> runCodeCommandAsync(StreamingChatLanguageModel model, String input)
     {
         assert io != null;
-        var modelName = Models.nameOf(model);
+        var modelName = models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
         return submitAction("Code", input, () -> {
             project.pauseAnalyzerRebuilds();
@@ -373,7 +382,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public Future<?> runAskAsync(StreamingChatLanguageModel model, String question)
     {
-        var modelName = Models.nameOf(model);
+        var modelName = models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
         return submitAction("Ask", question, () -> {
             try {
@@ -420,11 +429,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> runSearchAsync(StreamingChatLanguageModel model, String query)
     {
         assert io != null;
-        var modelName = Models.nameOf(model);
+        var modelName = models.nameOf(model);
         project.setLastUsedModel(modelName); // Save before starting task
          return submitAction("Search", query, () -> {
-             if (query.isBlank()) {
-                 io.toolErrorRaw("Please provide a search query");
+              if (query.isBlank()) {
+                  io.toolErrorRaw("Please provide a search query");
                  return;
              }
              try {
@@ -1343,14 +1352,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var version = props.getProperty("version", "unknown");
 
         // Get available models for display
-        var availableModels = Models.getAvailableModels();
+        var availableModels = models.getAvailableModels(); // Use instance field
         String modelsList = availableModels.isEmpty()
                 ? "  - No models loaded (Check network connection)"
                 : availableModels.entrySet().stream()
                     .map(e -> "  - %s (%s)".formatted(e.getKey(), e.getValue()))
                     .sorted()
                     .collect(Collectors.joining("\n"));
-        String quickModelName = Models.nameOf(Models.quickModel());
+        String quickModelName = models.nameOf(models.quickModel()); // Use instance field
 
         return """
             %s
@@ -1370,6 +1379,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
                           project.getFiles().size(),
                           project.getAnalyzerLanguage(),
                           modelsList);
+        /* Duplicate declaration removed:
+        String quickModelName = models.nameOf(models.quickModel()); // Use instance field
+        */
+
+        // Unreachable return block removed
     }
 
     /**
@@ -1503,7 +1517,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                 // Use quickModel for summarization
-                var result = coder.sendMessage(Models.quickestModel(), msgs);
+                var result = coder.sendMessage(models.quickestModel(), msgs); // Use instance field
                  if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                     logger.warn("Summarization failed or was cancelled.");
                     return "Summarization failed.";
@@ -1528,7 +1542,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
                  // Use quickModel for summarization
-                var result = coder.sendMessage(Models.quickestModel(), msgs);
+                var result = coder.sendMessage(models.quickestModel(), msgs); // Use instance field
                  if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                      logger.warn("Summarization failed or was cancelled.");
                      return "Summarization failed.";
@@ -1597,7 +1611,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             List<ChatMessage> messages = List.of(systemMessage, userMessage);
 
             // Call the quick model synchronously within the async task
-            var result = coder.sendMessage(Models.quickestModel(), messages);
+            var result = coder.sendMessage(models.quickestModel(), messages); // Use instance field
 
             if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 logger.warn("Failed to determine verification command: {}",
@@ -1661,7 +1675,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         List<ChatMessage> messages = List.of(systemMessage, userMessage);
 
         // Call the quick model (synchronously, as this might be called from various threads)
-        var result = coder.sendMessage(Models.quickestModel(), messages);
+        var result = coder.sendMessage(models.quickestModel(), messages); // Use instance field
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.error("Failed to get test files from LLM: {}",
@@ -1837,7 +1851,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                var result = coder.sendMessage(Models.quickestModel(), messages);
+                var result = coder.sendMessage(models.quickestModel(), messages); // Use instance field
                  if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                      io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                      project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");

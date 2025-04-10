@@ -8,7 +8,6 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,6 @@ import static java.lang.Math.min;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -44,19 +42,20 @@ public class CoderTest {
     }
 
     private static Coder coder;
+    private static ContextManager contextManager; // Add field for ContextManager
 
     @TempDir
     static Path tempDir; // JUnit Jupiter provides a temporary directory
 
     @BeforeAll
     static void setUp() {
-        // Initialize models once for all tests in this class
-        // This relies on Models.init() finding models via LiteLLM
-        Models.init();
+        // Create ContextManager, which initializes Models internally
+        contextManager = new ContextManager(tempDir);
+        // Initialize models directly, bypassing resolveCircularReferences which needs Chrome
+        contextManager.getModels().initialize();
 
-        // Create a Coder instance using the temp directory and dummy IO/ContextManager
+        // Create a Coder instance using the temp directory and the real ContextManager
         var consoleIO = new NoOpConsoleIO();
-        var contextManager = new IContextManager() {};
         coder = new Coder(consoleIO, tempDir, contextManager);
     }
 
@@ -71,7 +70,9 @@ public class CoderTest {
     // uncomment when you need it, this makes live API calls
 //    @Test
     void testModels() {
-        var availableModels = Models.getAvailableModels();
+        // Get Models instance from ContextManager
+        var models = contextManager.getModels();
+        var availableModels = models.getAvailableModels();
         Assumptions.assumeFalse(availableModels.isEmpty(), "No models available via LiteLLM, skipping testModels test.");
 
         var messages = List.<ChatMessage>of(new UserMessage("hello world"));
@@ -80,7 +81,8 @@ public class CoderTest {
         availableModels.keySet().parallelStream().forEach(modelName -> {
             try {
                 System.out.println("Testing model: " + modelName);
-                StreamingChatLanguageModel model = Models.get(modelName);
+                // Get model instance via the Models object
+                StreamingChatLanguageModel model = models.get(modelName);
                 assertNotNull(model, "Failed to get model instance for: " + modelName);
 
                 // Use the non-streaming sendMessage variant for simplicity in testing basic connectivity
@@ -121,7 +123,8 @@ public class CoderTest {
     // uncomment when you need it, this makes live API calls
 //    @Test
     void testToolCalling() {
-        var availableModels = Models.getAvailableModels();
+        var models = contextManager.getModels();
+        var availableModels = models.getAvailableModels();
         Assumptions.assumeFalse(availableModels.isEmpty(), "No models available via LiteLLM, skipping testToolCalling test.");
 
         var weatherTool = new WeatherTool();
@@ -135,7 +138,7 @@ public class CoderTest {
                 .forEach(modelName -> {
             try {
                 System.out.println("Testing tool calling for model: " + modelName);
-                StreamingChatLanguageModel model = Models.get(modelName);
+                StreamingChatLanguageModel model = models.get(modelName);
                 assertNotNull(model, "Failed to get model instance for: " + modelName);
 
                 // Use the sendMessage variant that includes tools

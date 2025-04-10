@@ -72,14 +72,14 @@ public class LLM {
             }
 
             // refresh with updated file contents
-            var reminder = DefaultPrompts.reminderForModel(model);
+            var reminder = DefaultPrompts.reminderForModel(contextManager.getModels(), model);
             // collect all messages including prior session history
             var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages, reminder);
             allMessages.add(nextRequest); // Add the specific request for this turn
 
             // Actually send the message to the LLM and get the response
-            logger.debug("Sending request to model: {}", Models.nameOf(model));
-            var streamingResult = coder.sendStreaming(model, allMessages, true);
+        logger.debug("Sending request to model: {}", contextManager.getModels().nameOf(model));
+        var streamingResult = coder.sendStreaming(model, allMessages, true);
 
             // 1) If user cancelled
             if (streamingResult.cancelled()) {
@@ -307,8 +307,8 @@ public class LLM {
         var pendingHistory = new ArrayList<ChatMessage>();
         pendingHistory.add(new UserMessage(instructionsMsg));
 
-        // No echo for Quick Edit, use static quickModel
-        var result = coder.sendStreaming(Models.quickModel(), messages, false);
+        // No echo for Quick Edit, use instance quickModel
+        var result = coder.sendStreaming(cm.getModels().quickModel(), messages, false);
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
             io.toolErrorRaw("Quick edit failed or was cancelled.");
@@ -440,7 +440,7 @@ public class LLM {
      */
     private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
         var messages = BuildPrompts.instance.collectMessages(buildResults);
-        var response = coder.sendMessage(Models.quickModel(), messages).chatResponse().aiMessage().text().trim();
+        var response = coder.sendMessage(coder.contextManager.getModels().quickModel(), messages).chatResponse().aiMessage().text().trim();
 
         // Keep trying until we get one of our expected tokens
         while (!response.contains("BROKK_PROGRESSING") && !response.contains("BROKK_FLOUNDERING")) {

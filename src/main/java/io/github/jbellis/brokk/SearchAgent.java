@@ -224,7 +224,7 @@ public class SearchAgent {
             Make sure to include the fully qualified source (class, method, etc) as well as the code.
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var result = coder.sendMessage(model, messages); // Use searchModel
+            var result = coder.sendMessage(model, messages);
             if (result.cancelled()) {
                 io.systemOutput("Cancelled context evaluation; stopping search");
                 return null; // Propagate cancellation
@@ -382,7 +382,7 @@ public class SearchAgent {
                 .mapToObj(actionHistory::get)
                 .map(h -> formatHistory(h, -1))
                 .collect(Collectors.joining());
-        return Models.getApproximateTokens(historyString);
+        return Models.getApproximateTokens(historyString); // Static method
     }
 
     /**
@@ -449,7 +449,7 @@ public class SearchAgent {
      * Each signature is typically of the form toolName:paramName=paramValue.
      */
      private List<String> createToolCallSignatures(ToolExecutionRequest request) {
-         String toolName = request.name(); // Use request directly
+         String toolName = request.name();
          try {
              // Reuse the argument parsing logic from ToolHistoryEntry if possible,
              // but ToolHistoryEntry isn't created yet. Parse arguments directly here.
@@ -493,7 +493,7 @@ public class SearchAgent {
          try {
              var mapper = new ObjectMapper();
              var arguments = mapper.readValue(request.arguments(), new TypeReference<Map<String, Object>>() {});
-             String toolName = request.name(); // Use request directly
+             String toolName = request.name();
 
              switch (toolName) {
                 case "getClassSkeletons", "getClassSources", "getRelatedClasses" -> {
@@ -564,7 +564,7 @@ public class SearchAgent {
          }
 
         // Get signatures for this request
-         var requestSignatures = createToolCallSignatures(request); // Use request
+         var requestSignatures = createToolCallSignatures(request);
 
         // If we already have seen any of these signatures, forge a replacement call
         if (toolCallSignatures.stream().anyMatch(requestSignatures::contains)) {
@@ -791,7 +791,7 @@ public class SearchAgent {
      * Parse the LLM response into a list of ToolExecutionRequest objects.
      * Handles duplicate detection and ensures answer/abort are singular.
      */
-     private List<ToolExecutionRequest> parseResponseToRequests(AiMessage response) { // Returns ToolExecutionRequest
+     private List<ToolExecutionRequest> parseResponseToRequests(AiMessage response) {
          if (!response.hasToolExecutionRequests()) {
              logger.debug("No tool execution requests found in LLM response.");
               // This might happen if the LLM just returns text despite ToolChoice.REQUIRED
@@ -803,7 +803,7 @@ public class SearchAgent {
 
          // Process each request with duplicate detection
          var requests = response.toolExecutionRequests().stream()
-                 .map(this::handleDuplicateRequestIfNeeded) // Operates on request, returns original or forged
+                 .map(this::handleDuplicateRequestIfNeeded)
                  .filter(Objects::nonNull) // Filter out skipped duplicates if handleDuplicate decided to skip
                  .toList();
 
