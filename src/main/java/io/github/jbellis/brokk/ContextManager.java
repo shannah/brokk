@@ -377,7 +377,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return submitAction("Code", input, () -> {
             project.pauseAnalyzerRebuilds();
             try {
-                LLM.runSession(coder, io, model, input);
+                CodeAgent.runSession(coder, io, model, input);
             } finally {
                 project.resumeAnalyzerRebuilds();
             }

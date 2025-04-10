@@ -46,8 +46,8 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
         return new TaskEntry(sequence, job, sessionMessages.subList(1, sessionMessages.size()), null);
     }
 
-    public static TaskEntry fromCompressed(int sequence, String description, String compressedLog) {
-        return new TaskEntry(sequence, description, null, compressedLog);
+    public static TaskEntry fromCompressed(int sequence, String compressedLog) {
+        return new TaskEntry(sequence, null, null, compressedLog);
     }
 
     /**

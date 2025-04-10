@@ -26,8 +26,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-public class LLM {
-    private static final Logger logger = LogManager.getLogger(LLM.class);
+public class CodeAgent {
+    private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
 
     /**

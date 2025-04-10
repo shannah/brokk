@@ -3,7 +3,7 @@ package io.github.jbellis.brokk.gui.dialogs;
 import io.github.jbellis.brokk.ContextFragment; // Add this import
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.LLM;
+import io.github.jbellis.brokk.CodeAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
@@ -597,11 +597,11 @@ public class PreviewPanel extends JPanel
 
         // Submit the quick edit task.
         var future = contextManager.submitUserTask("Quick Edit", () -> {
-            return LLM.runQuickSession(contextManager,
-                                       resultsIo,
-                                       file,
-                                       selectedText,
-                                       instructions);
+            return CodeAgent.runQuickSession(contextManager,
+                                             resultsIo,
+                                             file,
+                                             selectedText,
+                                             instructions);
         });
 
         // Stop button cancels the task and closes the dialog.
