@@ -1,12 +1,15 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
-import io.github.jbellis.brokk.ContextFragment; // Add this import
+import io.github.jbellis.brokk.CodeAgent;
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.CodeAgent;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
@@ -22,6 +25,9 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.Future; // Import Future
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -38,12 +44,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class PreviewPanel extends JPanel
 {
+    private static final Logger logger = LogManager.getLogger(PreviewPanel.class);
     private final PreviewTextArea textArea;
     private final JTextField searchField;
     private final JButton nextButton;
     private final JButton previousButton;
-    private JButton editButton; // Added Edit File button
-    private JButton captureButton; // Added Capture this Revision button
+    private JButton editButton;
+    private JButton captureButton;
     private final ContextManager contextManager;
 
     // Theme manager reference
@@ -51,14 +58,14 @@ public class PreviewPanel extends JPanel
 
     // Nullable
     private final ProjectFile file;
-    private final ContextFragment fragment; // Store the fragment if provided
+    private final ContextFragment fragment;
 
     public PreviewPanel(ContextManager contextManager,
                         ProjectFile file,
                         String content,
                         String syntaxStyle,
                         GuiTheme guiTheme,
-                        ContextFragment fragment) // Add fragment parameter
+                        ContextFragment fragment)
     {
         super(new BorderLayout());
         assert contextManager != null;
@@ -67,7 +74,7 @@ public class PreviewPanel extends JPanel
         this.contextManager = contextManager;
         this.themeManager = guiTheme;
         this.file = file;
-        this.fragment = fragment; // Store the provided fragment
+        this.fragment = fragment;
 
         // === Top search/action bar ===
         JPanel topPanel = new JPanel(new BorderLayout(8, 4)); // Use BorderLayout
@@ -96,8 +103,6 @@ public class PreviewPanel extends JPanel
                 contextManager.addReadOnlyFragment(ghf); // Use the new method
                 captureButton.setEnabled(false); // Disable after capture
                 captureButton.setToolTipText("Revision captured");
-                 // Optionally close the preview window after capture
-                 // SwingUtilities.getWindowAncestor(this).dispose();
             });
             actionButtonPanel.add(captureButton); // Add capture button first
         }
@@ -224,27 +229,14 @@ public class PreviewPanel extends JPanel
      * @param guiTheme       The GUI theme manager.
      */
     public static void showInFrame(JFrame parentFrame, ContextManager contextManager, ProjectFile file, String syntaxStyle, GuiTheme guiTheme) {
-        showInFrame(parentFrame, contextManager, file, syntaxStyle, guiTheme, null);
-    }
-
-    /**
-     * Displays a non-modal preview dialog for the given project file or fragment.
-     * @param parentFrame    The parent frame.
-     * @param contextManager The context manager.
-     * @param file           The project file (can be null if fragment is provided).
-     * @param syntaxStyle    The syntax style (e.g., SyntaxConstants.SYNTAX_STYLE_JAVA).
-     * @param guiTheme       The GUI theme manager.
-     * @param fragment       The fragment being previewed (can be null).
-     */
-     public static void showInFrame(JFrame parentFrame, ContextManager contextManager, ProjectFile file, String syntaxStyle, GuiTheme guiTheme, ContextFragment fragment) {
-         try {
-             String content = (fragment != null) ? fragment.text() : (file != null ? file.read() : ""); // Get content from fragment or file
-             String title = (fragment != null) ? "Preview: " + fragment.description() : (file != null ? "View File: " + file : "Preview");
-             PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxStyle, guiTheme, fragment);
-             showFrame(contextManager, title, previewPanel);
-         } catch (IOException ex) {
-             JOptionPane.showMessageDialog(parentFrame, "Error reading content: " + ex.getMessage(), "Read Error", JOptionPane.ERROR_MESSAGE);
-         }
+        try {
+            String content = file == null ? "" : file.read(); // Get content file
+            String title = file == null ? "Preview" : "View File: " + file;
+            PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxStyle, guiTheme, null);
+            showFrame(contextManager, title, previewPanel);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(parentFrame, "Error reading content: " + ex.getMessage(), "Read Error", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     public static void showFrame(ContextManager contextManager, String title, PreviewPanel previewPanel) {
@@ -407,12 +399,24 @@ public class PreviewPanel extends JPanel
         var inputPanel = new JPanel(new GridBagLayout());
         var gbc = new GridBagConstraints();
 
-        // Voice input button setup
+        // Start calculation of symbols specific to the current file in the background
+        Future<Set<String>> symbolsFuture = null;
+        // Only try to get symbols if we have a file and its corresponding fragment is a PathFragment
+        if (file != null) {
+            // Submit the task to fetch symbols in the background
+            symbolsFuture = contextManager.submitBackgroundTask("Fetch File Symbols", () -> {
+                IAnalyzer analyzer = contextManager.getAnalyzer();
+                return analyzer.getSymbols(analyzer.getClassesInFile(file));
+            });
+        }
+
+        // Voice input button setup, passing the Future for file-specific symbols
         VoiceInputButton micButton = new VoiceInputButton(
                 editArea,
                 contextManager,
                 () -> { /* no action on record start */ },
-                error -> { /* no special error handling */ }
+                error -> { /* no special error handling */ },
+                symbolsFuture // Pass the Future<Set<String>>
         );
 
         // infoLabel at row=0

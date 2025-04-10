@@ -4,15 +4,25 @@ import io.github.jbellis.brokk.ContextManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Set;
-import java.util.function.Consumer;
-
-import javax.sound.sampled.*;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.TargetDataLine;
 import javax.swing.*;
 import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -25,7 +35,8 @@ public class VoiceInputButton extends JButton {
     private final ContextManager contextManager;
     private final Consumer<String> onError;
     private final Runnable onRecordingStart;
-    
+    private final Future<Set<String>> customSymbolsFuture;
+
     // For STT (mic) usage
     private volatile TargetDataLine micLine = null;
     private volatile ByteArrayOutputStream micBuffer = null;
@@ -40,19 +51,24 @@ public class VoiceInputButton extends JButton {
      * @param contextManager the context manager for speech-to-text processing
      * @param onRecordingStart callback when recording starts
      * @param onError callback for error handling
+     * @param customSymbolsFuture Optional Future providing a set of symbols to prioritize for transcription hints. Can be null.
      */
     public VoiceInputButton(JTextArea targetTextArea,
                             ContextManager contextManager,
-                            Runnable onRecordingStart,
-                            Consumer<String> onError)
+                                Runnable onRecordingStart,
+                                Consumer<String> onError,
+                                Future<Set<String>> customSymbolsFuture)
     {
         assert targetTextArea != null;
+        assert onRecordingStart != null;
+        assert onError != null;
 
         this.targetTextArea = targetTextArea;
         this.contextManager = contextManager;
         this.onRecordingStart = onRecordingStart;
         this.onError = onError;
-        
+        this.customSymbolsFuture = customSymbolsFuture;
+
         // Load mic icons
         try {
             micOnIcon = new ImageIcon(getClass().getResource("/mic-on.png"));
@@ -96,8 +112,25 @@ public class VoiceInputButton extends JButton {
             }
         });
 
+        // Enable the button only if a context manager is available (needed for transcription)
         model.setEnabled(contextManager != null);
     }
+
+    /**
+     * Convenience constructor without custom symbols.
+     *
+     * @param targetTextArea the text area where transcribed text will be placed
+     * @param contextManager the context manager for speech-to-text processing
+     * @param onRecordingStart callback when recording starts
+     * @param onError callback for error handling
+     */
+     public VoiceInputButton(JTextArea targetTextArea,
+                             ContextManager contextManager,
+                             Runnable onRecordingStart,
+                             Consumer<String> onError)
+      {
+          this(targetTextArea, contextManager, onRecordingStart, onError, null);
+      }
 
     /**
      * Starts capturing audio from the default microphone to micBuffer on a background thread.
@@ -176,32 +209,66 @@ public class VoiceInputButton extends JButton {
                     var tempFile = Files.createTempFile("brokk-stt-", ".wav");
                     AudioSystem.write(ais, AudioFileFormat.Type.WAVE, tempFile.toFile());
 
-                    // Attempt to get symbols from editable files in context
-                    var sources = contextManager.selectedContext().allFragments()
-                            .flatMap(f -> f.sources(contextManager.getProject()).stream())
-                            .collect(Collectors.toSet());
+                    // Determine which symbols to use, waiting for the future if necessary
+                    Set<String> symbolsForTranscription = null;
+                    if (this.customSymbolsFuture != null) {
+                        try {
+                            // Wait max 5 seconds for symbols to be calculated
+                            Set<String> customSymbols = this.customSymbolsFuture.get(5, TimeUnit.SECONDS);
+                            if (customSymbols != null && !customSymbols.isEmpty()) {
+                                symbolsForTranscription = customSymbols;
+                                logger.debug("Using custom symbols: {}", symbolsForTranscription);
+                            } else {
+                                logger.debug("Custom symbols future resolved to null or empty set.");
+                            }
+                        } catch (TimeoutException e) {
+                            logger.warn("Timed out waiting for custom symbols future.", e);
+                        } catch (ExecutionException e) {
+                            logger.warn("Error executing custom symbols future.", e.getCause());
+                        } catch (InterruptedException e) {
+                             logger.warn("Interrupted while waiting for custom symbols future.", e);
+                             Thread.currentThread().interrupt();
+                         }
+                     }
 
-                    // Get full symbols first
-                    var fullSymbols = contextManager.getAnalyzer().getSymbols(sources);
+                    // If custom symbols weren't retrieved or were empty, fall back to context symbols
+                    if (symbolsForTranscription == null) {
+                        logger.debug("Falling back to context symbols for transcription.");
+                        var sources = contextManager.selectedContext().allFragments()
+                                .flatMap(f -> f.sources(contextManager.getProject()).stream())
+                                .collect(Collectors.toSet());
 
-                    // Extract short names from sources and returned symbols
-                    Set<String> shortSymbols = sources.stream()
-                            .map(io.github.jbellis.brokk.analyzer.CodeUnit::shortName)
-                            .collect(Collectors.toSet());
-                    fullSymbols.stream()
-                            .map(s -> {
-                                var parts = s.split("\\.");
-                                return parts.length > 0 ? parts[parts.length - 1] : null;
-                            })
-                            .filter(java.util.Objects::nonNull)
-                            .forEach(shortSymbols::add);
+                        var analyzer = contextManager.getAnalyzer();
+                        if (analyzer != null) {
+                             // Get full symbols first
+                            var fullSymbols = analyzer.getSymbols(sources);
 
-                    var transcript = contextManager.getCoder().transcribeAudio(tempFile, shortSymbols);
-                    logger.debug("Successfully transcribed audio with symbols: {}", transcript);
+                            // Extract short names from sources and returned symbols
+                            symbolsForTranscription = sources.stream()
+                                    .map(io.github.jbellis.brokk.analyzer.CodeUnit::shortName)
+                                    .collect(Collectors.toSet());
+                            fullSymbols.stream()
+                                    .map(s -> {
+                                        var parts = s.split("\\.");
+                                        // Get last part as short name
+                                        return parts.length > 0 ? parts[parts.length - 1] : null;
+                                    })
+                                    .filter(java.util.Objects::nonNull)
+                                    // Add to the same set
+                                    .forEach(symbolsForTranscription::add);
+                            logger.debug("Using context symbols for transcription: {}", symbolsForTranscription.size());
+                        } else {
+                              logger.warn("Analyzer not available, cannot fetch context symbols.");
+                              symbolsForTranscription = Collections.emptySet();
+                         }
+                     }
+
+                    // Perform transcription
+                    var transcript = contextManager.getCoder().transcribeAudio(tempFile, symbolsForTranscription);
+                    logger.debug("Successfully transcribed audio: {}", transcript);
 
                     // put it in the target text area
                     SwingUtilities.invokeLater(() -> {
-                        targetTextArea.setEnabled(true);
                         if (!transcript.isBlank()) {
                             // If user typed something already, put a space
                             if (!targetTextArea.getText().isBlank()) {
@@ -212,11 +279,15 @@ public class VoiceInputButton extends JButton {
                     });
 
                     // cleanup
-                    try { Files.deleteIfExists(tempFile); } catch (IOException ignore) {}
+                    try { Files.deleteIfExists(tempFile); } catch (IOException ignore) { logger.trace("Could not delete temp STT file: {}", tempFile); }
                 }
-            } catch (IOException e) {
-                logger.error("Error writing audio data: {}", e.getMessage(), e);
-                onError.accept("Error writing audio data: " + e.getMessage());
+            } catch (IOException ex) { // Catch specific IO errors from file writing/reading
+                logger.error("Error processing audio file for transcription: {}", ex.getMessage(), ex);
+                onError.accept("Error processing audio file: " + ex.getMessage());
+            } catch (Exception ex) { // Catch broader exceptions during transcription API call etc.
+                logger.error("Error during transcription process: {}", ex.getMessage(), ex);
+                onError.accept("Error during transcription: " + ex.getMessage());
+            } finally {
                 SwingUtilities.invokeLater(() -> targetTextArea.setEnabled(true));
             }
         });
