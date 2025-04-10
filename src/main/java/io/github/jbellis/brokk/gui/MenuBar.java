@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Brokk;
+import io.github.jbellis.brokk.ContextFragment; // Added import
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.PreviewPanel; // Added import
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
@@ -9,6 +10,7 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import java.awt.*;
+import io.github.jbellis.brokk.gui.ContextPanel.ContextAction; // Added import
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
@@ -142,7 +144,7 @@ public class MenuBar {
         copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         copyMenuItem.addActionListener(e -> {
             var selectedFragments = chrome.getSelectedFragments();
-            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
+            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.COPY, selectedFragments);
         });
         copyMenuItem.setEnabled(hasProject);
         editMenu.add(copyMenuItem);
@@ -150,7 +152,7 @@ public class MenuBar {
         var pasteMenuItem = new JMenuItem("Paste");
         pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         pasteMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
+            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
         });
         pasteMenuItem.setEnabled(hasProject);
         editMenu.add(pasteMenuItem);
@@ -163,8 +165,8 @@ public class MenuBar {
         var editFilesItem = new JMenuItem("Edit Files");
         editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editFilesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
-                    Chrome.ContextAction.EDIT, List.of());
+            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+                    ContextPanel.ContextAction.EDIT, List.of());
         });
         editFilesItem.setEnabled(hasProject && chrome.getProject().hasGit());
         contextMenu.add(editFilesItem);
@@ -172,8 +174,8 @@ public class MenuBar {
         var readFilesItem = new JMenuItem("Read Files");
         readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         readFilesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
-                    Chrome.ContextAction.READ, List.of());
+            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+                    ContextPanel.ContextAction.READ, List.of());
         });
         readFilesItem.setEnabled(hasProject);
         contextMenu.add(readFilesItem);
@@ -181,8 +183,8 @@ public class MenuBar {
         var summarizeFilesItem = new JMenuItem("Summarize Files");
         summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         summarizeFilesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
-                    Chrome.ContextAction.SUMMARIZE, List.of());
+            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+                    ContextPanel.ContextAction.SUMMARIZE, List.of());
         });
         summarizeFilesItem.setEnabled(hasProject);
         contextMenu.add(summarizeFilesItem);
@@ -200,8 +202,8 @@ public class MenuBar {
                 // Autocomplete with all project files, transforming Set<ProjectFile> to List<Path>
                 var allFilesFuture = cm.submitBackgroundTask("Fetching project files", () -> {
                     return project.getFiles().stream()
-                           .map(io.github.jbellis.brokk.analyzer.BrokkFile::absPath)
-                           .toList();
+                            .map(io.github.jbellis.brokk.analyzer.BrokkFile::absPath)
+                            .toList();
                 });
 
                 FileSelectionDialog dialog = new FileSelectionDialog(
@@ -216,12 +218,12 @@ public class MenuBar {
 
                 if (dialog.isConfirmed() && dialog.getSelectedFile() != null) {
                     var selectedBrokkFile = dialog.getSelectedFile();
-            if (selectedBrokkFile instanceof io.github.jbellis.brokk.analyzer.ProjectFile selectedFile) {
-                PreviewPanel.showInFrame(chrome.getFrame(), cm, selectedFile, SyntaxConstants.SYNTAX_STYLE_JAVA, chrome.themeManager);
-            } else {
-                // Handle case where selected file is not a ProjectFile (e.g., external file if allowExternalFiles was true)
-                chrome.toolErrorRaw("Cannot view non-project files this way.");
-            }
+                    if (selectedBrokkFile instanceof io.github.jbellis.brokk.analyzer.ProjectFile selectedFile) {
+                        PreviewPanel.showInFrame(chrome.getFrame(), cm, selectedFile, SyntaxConstants.SYNTAX_STYLE_JAVA, chrome.themeManager);
+                    } else {
+                        // Handle case where selected file is not a ProjectFile (e.g., external file if allowExternalFiles was true)
+                        chrome.toolErrorRaw("Cannot view non-project files this way.");
+                    }
                 }
             });
         });
@@ -231,35 +233,34 @@ public class MenuBar {
         contextMenu.addSeparator(); // Add separator before Symbol Usage
 
         var symbolUsageItem = new JMenuItem("Symbol Usage");
-        symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        symbolUsageItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.findSymbolUsageAsync();
-        });
-        symbolUsageItem.setEnabled(hasProject);
-        contextMenu.add(symbolUsageItem);
+            symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+            symbolUsageItem.addActionListener(e -> {
+                chrome.currentUserTask = chrome.getContextPanel().findSymbolUsageAsync(); // Call via ContextPanel
+            });
+            symbolUsageItem.setEnabled(hasProject);
+            contextMenu.add(symbolUsageItem);
 
         var callersItem = new JMenuItem("Call graph to function");
-        callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        callersItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.findMethodCallersAsync();
-        });
-        callersItem.setEnabled(hasProject);
-        contextMenu.add(callersItem);
+            callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+            callersItem.addActionListener(e -> {
+                chrome.currentUserTask = chrome.getContextPanel().findMethodCallersAsync(); // Call via ContextPanel
+            });
+            callersItem.setEnabled(hasProject);
+            contextMenu.add(callersItem);
 
         var calleesItem = new JMenuItem("Call graph from function");
-        calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        calleesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.contextManager.findMethodCalleesAsync();
-        });
-        calleesItem.setEnabled(hasProject);
-        contextMenu.add(calleesItem);
+            calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+            calleesItem.addActionListener(e -> {
+                chrome.currentUserTask = chrome.getContextPanel().findMethodCalleesAsync(); // Call via ContextPanel
+            });
+            calleesItem.setEnabled(hasProject);
+            contextMenu.add(calleesItem);
 
         var dropAllItem = new JMenuItem("Drop All");
         dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         dropAllItem.addActionListener(e -> {
-
-            chrome.currentUserTask = chrome.contextManager.performContextActionAsync(
-                    Chrome.ContextAction.DROP, List.of());
+            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+                    ContextPanel.ContextAction.DROP, List.of());
         });
         dropAllItem.setEnabled(hasProject);
         contextMenu.add(dropAllItem);

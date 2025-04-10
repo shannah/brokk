@@ -1,7 +1,15 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.CodeAgent;
+import io.github.jbellis.brokk.Context.ParsedOutput;
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.SearchAgent;
+import io.github.jbellis.brokk.prompts.AskPrompts;
+import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -12,7 +20,11 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -407,6 +419,123 @@ public class InstructionsPanel extends JPanel {
         }
     }
 
+    // --- Private Execution Logic ---
+
+    /**
+     * Executes the core logic for the "Code" command.
+     * This runs inside the Runnable passed to contextManager.submitAction.
+     */
+    private void executeCodeCommand(StreamingChatLanguageModel model, String input) {
+        var contextManager = chrome.getContextManager();
+        var project = contextManager.getProject();
+        project.pauseAnalyzerRebuilds();
+        try {
+            // Pass chrome (IConsoleIO) instead of contextManager directly
+            CodeAgent.runSession(contextManager.getCoder(), chrome, model, input);
+        } finally {
+            project.resumeAnalyzerRebuilds();
+        }
+    }
+
+    /**
+     * Executes the core logic for the "Ask" command.
+     * This runs inside the Runnable passed to contextManager.submitAction.
+     */
+    private void executeAskCommand(StreamingChatLanguageModel model, String question) {
+        try {
+            var contextManager = chrome.getContextManager();
+            if (question.isBlank()) {
+                chrome.toolErrorRaw("Please provide a question");
+                return;
+            }
+            // Provide the prompt messages
+            var messages = new LinkedList<>(AskPrompts.instance.collectMessages(contextManager));
+            messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
+
+            // stream from coder using the provided model
+            var response = contextManager.getCoder().sendStreaming(model, messages, true);
+            if (response.cancelled()) {
+                chrome.systemOutput("Ask command cancelled!");
+            } else if (response.error() != null) {
+                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
+             } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
+                var aiResponse = response.chatResponse().aiMessage();
+                // Check if the response is valid before adding to history
+                if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
+                    // Pass empty map for originalContents as Ask doesn't modify files
+                    contextManager.addToHistory(List.of(messages.getLast(), aiResponse), Map.of(), question);
+                } else {
+                    chrome.systemOutput("Ask command completed with an empty response.");
+                }
+            } else {
+                chrome.systemOutput("Ask command completed with no response data.");
+            }
+        } catch (CancellationException cex) {
+             chrome.systemOutput("Ask command cancelled.");
+         } catch (Exception e) {
+             logger.error("Error during 'Ask' execution", e);
+             chrome.toolErrorRaw("Internal error during ask command: " + e.getMessage());
+         }
+    }
+
+    /**
+     * Executes the core logic for the "Search" command.
+     * This runs inside the Runnable passed to contextManager.submitAction.
+     */
+    private void executeSearchCommand(StreamingChatLanguageModel model, String query) {
+         if (query.isBlank()) {
+             chrome.toolErrorRaw("Please provide a search query");
+             return;
+         }
+         try {
+             var contextManager = chrome.getContextManager();
+             // run a search agent, passing the specific model and tool registry
+             // Pass chrome (IConsoleIO) instead of contextManager directly
+             var agent = new SearchAgent(query, contextManager, contextManager.getCoder(), chrome, model, contextManager.getToolRegistry());
+             var result = agent.execute();
+             if (result == null) {
+                 // Agent execution was likely cancelled or errored, agent should log details
+                 chrome.systemOutput("Search did not complete successfully.");
+             } else {
+                 chrome.clear();
+                 String textResult = result.text();
+                 chrome.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, textResult));
+                 contextManager.addSearchFragment(result);
+             }
+         } catch (CancellationException cex) {
+             chrome.systemOutput("Search command cancelled.");
+         } catch (Exception e) {
+             logger.error("Error during 'Search' execution", e);
+             chrome.toolErrorRaw("Internal error during search command: " + e.getMessage());
+         }
+    }
+
+    /**
+     * Executes the core logic for the "Run in Shell" command.
+     * This runs inside the Runnable passed to contextManager.submitAction.
+     */
+    private void executeRunCommand(String input) {
+        var contextManager = chrome.getContextManager();
+        var result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
+        String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
+        chrome.llmOutput("\n```\n" + output + "\n```");
+
+        var llmOutputText = chrome.getLlmOutputText();
+        if (llmOutputText == null) {
+            chrome.systemOutput("Interrupted!");
+            return;
+        }
+
+        // Add to context history with the output text
+        contextManager.pushContext(ctx -> {
+            var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
+            var parsed = new ParsedOutput(llmOutputText, runFrag);
+            return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
+        });
+    }
+
+    // --- Action Handlers ---
+
     // Private helper to get the selected model.
     private StreamingChatLanguageModel getSelectedModel() {
         var selectedName = (String) modelDropdown.getSelectedItem();
@@ -429,7 +558,10 @@ public class InstructionsPanel extends JPanel {
         }
     }
 
-    // Methods for running commands.
+    // Methods for running commands. These prepare the input and model, then delegate
+    // the core logic execution to contextManager.submitAction, which calls back
+    // into the private execute* methods above.
+
     public void runCodeCommand() {
         var input = commandInputField.getText();
         if (input.isBlank()) {
@@ -444,7 +576,12 @@ public class InstructionsPanel extends JPanel {
         chrome.getProject().addToTextHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        chrome.setCurrentUserTask(chrome.getContextManager().runCodeCommandAsync(selectedModel, input));
+        // Save model before submitting task
+        var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
+        chrome.getProject().setLastUsedModel(modelName);
+        // Submit the action, calling the private execute method inside the lambda
+        var future = chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(selectedModel, input));
+        chrome.setCurrentUserTask(future);
     }
 
     public void runAskCommand() {
@@ -461,7 +598,12 @@ public class InstructionsPanel extends JPanel {
         chrome.getProject().addToTextHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        chrome.setCurrentUserTask(chrome.getContextManager().runAskAsync(selectedModel, input));
+        // Save model before submitting task
+        var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
+        chrome.getProject().setLastUsedModel(modelName);
+        // Submit the action, calling the private execute method inside the lambda
+        var future = chrome.getContextManager().submitAction("Ask", input, () -> executeAskCommand(selectedModel, input));
+        chrome.setCurrentUserTask(future);
     }
 
     public void runSearchCommand() {
@@ -480,7 +622,12 @@ public class InstructionsPanel extends JPanel {
         chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         clearCommandInput();
         disableButtons();
-        chrome.setCurrentUserTask(chrome.getContextManager().runSearchAsync(selectedModel, input));
+        // Save model before submitting task
+        var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
+        chrome.getProject().setLastUsedModel(modelName);
+        // Submit the action, calling the private execute method inside the lambda
+        var future = chrome.getContextManager().submitAction("Search", input, () -> executeSearchCommand(selectedModel, input));
+        chrome.setCurrentUserTask(future);
     }
 
     public void runRunCommand() {
@@ -492,7 +639,9 @@ public class InstructionsPanel extends JPanel {
         chrome.getProject().addToTextHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        chrome.setCurrentUserTask(chrome.getContextManager().runRunCommandAsync(input));
+        // Submit the action, calling the private execute method inside the lambda
+        var future = chrome.getContextManager().submitAction("Run", input, () -> executeRunCommand(input));
+        chrome.setCurrentUserTask(future);
     }
 
     // Methods to disable and enable buttons.

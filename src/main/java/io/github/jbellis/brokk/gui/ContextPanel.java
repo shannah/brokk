@@ -1,10 +1,23 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.data.message.AiMessage;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.ContextFragment.PathFragment;
+import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.analyzer.BrokkFile;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
+import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
+import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
+import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
+import io.github.jbellis.brokk.prompts.ArchitectPrompts;
+import io.github.jbellis.brokk.util.HtmlToMarkdown;
+import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -18,13 +31,26 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 public class ContextPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(ContextPanel.class);
+
+    /**
+     * Enum representing the different types of context actions that can be performed.
+     */
+    public enum ContextAction {
+        EDIT, READ, SUMMARIZE, DROP, COPY, PASTE
+    }
 
     // Columns
     private final int FILES_REFERENCED_COLUMN = 2;
@@ -281,21 +307,21 @@ public class ContextPanel extends JPanel {
 
                             JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
                             editAllRefsItem.addActionListener(e1 -> {
-                                var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, selectedFragments);
-                            });
+                            var selectedFragments = getSelectedFragments();
+                            chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, selectedFragments);
+                        });
 
-                            JMenuItem readAllRefsItem = new JMenuItem("Read All References");
-                            readAllRefsItem.addActionListener(e1 -> {
-                                var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.READ, selectedFragments);
-                            });
+                        JMenuItem readAllRefsItem = new JMenuItem("Read All References");
+                        readAllRefsItem.addActionListener(e1 -> {
+                            var selectedFragments = getSelectedFragments();
+                            chrome.currentUserTask = performContextActionAsync(ContextAction.READ, selectedFragments);
+                        });
 
-                            JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
-                            summarizeAllRefsItem.addActionListener(e1 -> {
-                                var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.SUMMARIZE, selectedFragments);
-                            });
+                        JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
+                        summarizeAllRefsItem.addActionListener(e1 -> {
+                            var selectedFragments = getSelectedFragments();
+                            chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
+                        });
 
                             contextMenu.add(editAllRefsItem);
                             contextMenu.add(readAllRefsItem);
@@ -307,14 +333,14 @@ public class ContextPanel extends JPanel {
                         JMenuItem copySelectionItem = new JMenuItem("Copy");
                         copySelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, selectedFragments);
+                            chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, selectedFragments);
                         });
                         contextMenu.add(copySelectionItem);
 
                         JMenuItem dropSelectionItem = new JMenuItem("Drop");
                         dropSelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, selectedFragments);
+                            chrome.currentUserTask = performContextActionAsync(ContextAction.DROP, selectedFragments);
                         });
                         contextMenu.add(dropSelectionItem);
 
@@ -341,11 +367,11 @@ public class ContextPanel extends JPanel {
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         // Add Ctrl+V shortcut for paste in the table
-        contextTable.registerKeyboardAction(
-                e -> chrome.getContextManager().performContextActionAsync(Chrome.ContextAction.PASTE, List.of()),
-                KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
-                JComponent.WHEN_FOCUSED
-        );
+            contextTable.registerKeyboardAction(
+                    e -> chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of()),
+                    KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+                    JComponent.WHEN_FOCUSED
+            );
 
         // Setup right-click popup menu for when no rows are selected
         tablePopupMenu = new JPopupMenu();
@@ -354,65 +380,65 @@ public class ContextPanel extends JPanel {
         JMenu addMenu = new JMenu("Add");
 
         JMenuItem editMenuItem = new JMenuItem("Edit Files");
-        editMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.EDIT, List.of());
-        });
-        // Only add Edit Files when git is present
-        if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
+            editMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, List.<ContextFragment>of());
+            });
+            // Only add Edit Files when git is present
+            if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
             addMenu.add(editMenuItem);
         }
 
         JMenuItem readMenuItem = new JMenuItem("Read Files");
-        readMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.READ, List.of());
-        });
-        addMenu.add(readMenuItem);
+            readMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = performContextActionAsync(ContextAction.READ, List.<ContextFragment>of());
+            });
+            addMenu.add(readMenuItem);
 
-        JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
-        summarizeMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.SUMMARIZE, List.of());
-        });
-        addMenu.add(summarizeMenuItem);
+            JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
+            summarizeMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, List.<ContextFragment>of());
+            });
+            addMenu.add(summarizeMenuItem);
 
         JMenuItem symbolMenuItem = new JMenuItem("Symbol Usage");
-        symbolMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.findSymbolUsageAsync();
-        });
-        addMenu.add(symbolMenuItem);
+            symbolMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = findSymbolUsageAsync();
+            });
+            addMenu.add(symbolMenuItem);
 
         JMenuItem callersMenuItem = new JMenuItem("Callers");
-        callersMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.findMethodCallersAsync();
-        });
-        addMenu.add(callersMenuItem);
+            callersMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = findMethodCallersAsync();
+            });
+            addMenu.add(callersMenuItem);
 
         JMenuItem calleesMenuItem = new JMenuItem("Callees");
-        calleesMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.findMethodCalleesAsync();
-        });
-        addMenu.add(calleesMenuItem);
+            calleesMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = findMethodCalleesAsync();
+            });
+            addMenu.add(calleesMenuItem);
 
         tablePopupMenu.add(addMenu);
         tablePopupMenu.addSeparator();
 
         JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
-        dropAllMenuItem.addActionListener(e -> {
+            dropAllMenuItem.addActionListener(e -> {
 
-            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.DROP, List.of());
-        });
-        tablePopupMenu.add(dropAllMenuItem);
+                chrome.currentUserTask = performContextActionAsync(ContextAction.DROP, List.<ContextFragment>of());
+            });
+            tablePopupMenu.add(dropAllMenuItem);
 
-        JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
-        copyAllMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.COPY, List.of());
-        });
-        tablePopupMenu.add(copyAllMenuItem);
+            JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
+            copyAllMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, List.<ContextFragment>of());
+            });
+            tablePopupMenu.add(copyAllMenuItem);
 
-        JMenuItem pasteMenuItem = new JMenuItem("Paste");
-        pasteMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = contextManager.performContextActionAsync(Chrome.ContextAction.PASTE, List.of());
-        });
-        tablePopupMenu.add(pasteMenuItem);
+            JMenuItem pasteMenuItem = new JMenuItem("Paste");
+            pasteMenuItem.addActionListener(e -> {
+                chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of());
+            });
+            tablePopupMenu.add(pasteMenuItem);
 
         // Register the popup menu with the theme manager
         if (chrome.themeManager != null) {
@@ -646,12 +672,12 @@ public class ContextPanel extends JPanel {
         JMenuItem editItem = new JMenuItem("Edit " + fileRef.getFullPath());
         editItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
-                chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
-                        Chrome.ContextAction.EDIT,
+                chrome.currentUserTask = performContextActionAsync(
+                        ContextAction.EDIT,
                         List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
             } else {
-                chrome.toolErrorRaw("Cannot add file: " + fileRef.getFullPath() + " - no RepoFile available");
+                chrome.toolErrorRaw("Cannot edit file: " + fileRef.getFullPath() + " - no ProjectFile available"); // Corrected message
             }
         });
         // Disable for dependency projects
@@ -669,12 +695,12 @@ public class ContextPanel extends JPanel {
         JMenuItem readItem = new JMenuItem("Read " + fileRef.getFullPath());
         readItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
-                chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
-                        Chrome.ContextAction.READ,
+                chrome.currentUserTask = performContextActionAsync(
+                        ContextAction.READ,
                         List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
             } else {
-                chrome.toolErrorRaw("Cannot read file: " + fileRef.getFullPath() + " - no RepoFile available");
+                chrome.toolErrorRaw("Cannot read file: " + fileRef.getFullPath() + " - no ProjectFile available"); // Corrected message
             }
         });
         return readItem;
@@ -694,21 +720,494 @@ public class ContextPanel extends JPanel {
         JMenuItem summarizeItem = new JMenuItem("Summarize " + fileRef.getFullPath());
         summarizeItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
-                chrome.currentUserTask = chrome.getContextManager().performContextActionAsync(
-                        Chrome.ContextAction.SUMMARIZE,
+                chrome.currentUserTask = performContextActionAsync(
+                        ContextAction.SUMMARIZE,
                         List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
             } else {
-                chrome.toolErrorRaw("Cannot summarize: " + fileRef.getFullPath() + " - file information not available");
+                chrome.toolErrorRaw("Cannot summarize: " + fileRef.getFullPath() + " - ProjectFile information not available"); // Corrected message
             }
         });
         return summarizeItem;
     }
 
+    // ------------------------------------------------------------------
+    // Context Action Logic
+    // ------------------------------------------------------------------
+
+    /**
+     * Shows the symbol selection dialog and adds usage information for the selected symbol.
+     */
+    public Future<?> findSymbolUsageAsync()
+    {
+        // Use contextManager's task submission
+        return contextManager.submitContextTask("Find Symbol Usage", () -> {
+            try {
+                var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+                if (analyzer.isEmpty()) {
+                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
+                    return;
+                }
+
+                String symbol = showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL);
+                if (symbol != null && !symbol.isBlank()) {
+                    contextManager.usageForIdentifier(symbol); // Use contextManager
+                } else {
+                    chrome.systemOutput("No symbol selected."); // Use chrome
+                }
+            } catch (CancellationException cex) {
+                chrome.systemOutput("Symbol selection canceled."); // Use chrome
+            }
+            // No finally needed, submitContextTask handles enabling buttons
+        });
+    }
+
+    /**
+     * Shows the method selection dialog and adds callers information for the selected method.
+     */
+    public Future<?> findMethodCallersAsync()
+    {
+        // Use contextManager's task submission
+        return contextManager.submitContextTask("Find Method Callers", () -> {
+            try {
+                var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+                if (analyzer.isEmpty()) {
+                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
+                    return;
+                }
+
+                var dialog = showCallGraphDialog("Select Method", true);
+                if (dialog == null || !dialog.isConfirmed()) { // Check confirmed state
+                    chrome.systemOutput("No method selected."); // Use chrome
+                } else {
+                    // Use contextManager
+                    contextManager.callersForMethod(dialog.getSelectedMethod(), dialog.getDepth(), dialog.getCallGraph());
+                }
+            } catch (CancellationException cex) {
+                chrome.systemOutput("Method selection canceled."); // Use chrome
+            }
+            // No finally needed, submitContextTask handles enabling buttons
+        });
+    }
+
+    /**
+     * Shows the call graph dialog and adds callees information for the selected method.
+     */
+    public Future<?> findMethodCalleesAsync()
+    {
+        // Use contextManager's task submission
+        return contextManager.submitContextTask("Find Method Callees", () -> {
+            try {
+                var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+                if (analyzer.isEmpty()) {
+                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
+                    return;
+                }
+
+                var dialog = showCallGraphDialog("Select Method for Callees", false);
+                 if (dialog == null || !dialog.isConfirmed() || dialog.getSelectedMethod() == null || dialog.getSelectedMethod().isBlank()) {
+                    chrome.systemOutput("No method selected."); // Use chrome
+                } else {
+                    // Use contextManager
+                    contextManager.calleesForMethod(dialog.getSelectedMethod(), dialog.getDepth(), dialog.getCallGraph());
+                }
+            } catch (CancellationException cex) {
+                chrome.systemOutput("Method selection canceled."); // Use chrome
+            }
+            // No finally needed, submitContextTask handles enabling buttons
+        });
+    }
+
+    /**
+     * Show the symbol selection dialog with a type filter
+     */
+    private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter)
+    {
+        var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+        var dialogRef = new AtomicReference<SymbolSelectionDialog>();
+        SwingUtil.runOnEDT(() -> {
+            var dialog = new SymbolSelectionDialog(chrome.getFrame(), analyzer, title, typeFilter); // Use chrome
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight()); // Use chrome
+            dialog.setLocationRelativeTo(chrome.getFrame()); // Use chrome
+            dialog.setVisible(true);
+            dialogRef.set(dialog);
+        });
+        try {
+            var dialog = dialogRef.get();
+            if (dialog != null && dialog.isConfirmed()) {
+                return dialog.getSelectedSymbol();
+            }
+            return null;
+        } finally {
+            chrome.focusInput(); // Use chrome
+        }
+    }
+
+    /**
+     * Show the call graph dialog for configuring method and depth
+     */
+    private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph)
+    {
+        var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+        var dialogRef = new AtomicReference<CallGraphDialog>();
+        SwingUtil.runOnEDT(() -> {
+            var dialog = new CallGraphDialog(chrome.getFrame(), analyzer, title, isCallerGraph); // Use chrome
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight()); // Use chrome
+            dialog.setLocationRelativeTo(chrome.getFrame()); // Use chrome
+            dialog.setVisible(true);
+            dialogRef.set(dialog);
+        });
+        try {
+            var dialog = dialogRef.get();
+            if (dialog != null && dialog.isConfirmed()) {
+                return dialog;
+            }
+            return null;
+        } finally {
+            chrome.focusInput(); // Use chrome
+        }
+    }
+
+    /**
+     * Performed by the action buttons/menus in the context panel: "edit / read / copy / drop / summarize / paste"
+     * If selectedFragments is empty, it means "All". We handle logic accordingly.
+     */
+    public Future<?> performContextActionAsync(ContextAction action, List<? extends ContextFragment> selectedFragments) // Use wildcard
+    {
+        // Use submitContextTask from ContextManager to run the action on the appropriate executor
+        return contextManager.submitContextTask(action + " action", () -> { // Qualify contextManager
+            try {
+                switch (action) {
+                    case EDIT -> doEditAction(selectedFragments);
+                    case READ -> doReadAction(selectedFragments);
+                    case COPY -> doCopyAction(selectedFragments);
+                    case DROP -> doDropAction(selectedFragments);
+                    case SUMMARIZE -> doSummarizeAction(selectedFragments);
+                    case PASTE -> doPasteAction();
+                }
+            } catch (CancellationException cex) {
+                chrome.systemOutput(action + " canceled."); // Qualify chrome
+            }
+            // No finally block needed here as submitContextTask handles enabling buttons
+        });
+    }
+
+
+    /** Edit Action: Only allows selecting Project Files */
+    private void doEditAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
+        var project = contextManager.getProject(); // Qualify contextManager
+        if (selectedFragments.isEmpty()) {
+            // Show dialog allowing ONLY file selection (no external)
+            var selection = showMultiSourceSelectionDialog("Edit Files",
+                                                           false, // No external files for edit
+                                                           project.getRepo().getTrackedFiles(), // Only tracked files
+                                                           Set.of(SelectionMode.FILES)); // Only FILES mode
+
+            if (selection != null && selection.files() != null && !selection.files().isEmpty()) {
+                // We disallowed external files, so this cast should be safe
+                var projectFiles = toProjectFilesUnsafe(selection.files());
+                contextManager.editFiles(projectFiles); // Qualify contextManager
+            } else {
+                chrome.systemOutput("No files selected for editing."); // Qualify chrome
+            }
+        } else {
+            // Edit files from selected fragments
+            var files = new HashSet<ProjectFile>();
+            for (var fragment : selectedFragments) {
+                files.addAll(fragment.files(project));
+            }
+            contextManager.editFiles(files); // Qualify contextManager
+        }
+    }
+
+    /** Read Action: Allows selecting Files (internal/external) */
+    private void doReadAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
+        var project = contextManager.getProject(); // Qualify contextManager
+        if (selectedFragments.isEmpty()) {
+            // Show dialog allowing ONLY file selection (internal + external)
+            // TODO when we can extract a single class from a source file, enable classes as well
+            var selection = showMultiSourceSelectionDialog("Add Read-Only Context",
+                                                           true, // Allow external files
+                                                           project.getFiles(), // All project files for completion
+                                                           Set.of(SelectionMode.FILES)); // FILES mode only
+
+            if (selection == null || selection.files() == null || selection.files().isEmpty()) {
+                chrome.systemOutput("No files selected."); // Qualify chrome
+                return;
+            }
+
+            contextManager.addReadOnlyFiles(selection.files()); // Qualify contextManager
+            chrome.systemOutput("Added " + selection.files().size() + " file(s) as read-only context."); // Qualify chrome
+        } else {
+            // Add files from selected fragments
+            var files = new HashSet<BrokkFile>();
+            for (var fragment : selectedFragments) {
+                files.addAll(fragment.files(project));
+            }
+            contextManager.addReadOnlyFiles(files); // Qualify contextManager
+        }
+    }
+
+    private void doCopyAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
+        String content;
+        if (selectedFragments.isEmpty()) {
+            // gather entire context
+            var msgs = ArchitectPrompts.instance.collectMessages(contextManager); // Qualify contextManager
+            var combined = new StringBuilder();
+            for (var m : msgs) {
+                if (!(m instanceof AiMessage)) {
+                    combined.append(Models.getText(m)).append("\n\n");
+                }
+            }
+
+            // Get instructions from context
+            combined.append("\n<goal>\n").append(chrome.getInputText()).append("\n</goal>"); // Qualify chrome
+            content = combined.toString();
+        } else {
+            // copy only selected fragments
+            var sb = new StringBuilder();
+            for (var frag : selectedFragments) {
+                try {
+                    sb.append(frag.text()).append("\n\n");
+                } catch (IOException e) {
+                    contextManager.removeBadFragment(frag, e); // Qualify contextManager
+                    chrome.toolErrorRaw("Error reading fragment: " + e.getMessage()); // Qualify chrome
+                }
+            }
+            content = sb.toString();
+        }
+
+        var sel = new java.awt.datatransfer.StringSelection(content);
+        var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        cb.setContents(sel, sel);
+        chrome.systemOutput("Content copied to clipboard"); // Qualify chrome
+    }
+
+    private void doPasteAction() {
+        // Get text from clipboard
+        String clipboardText;
+        try {
+            var clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+            var contents = clipboard.getContents(null);
+            if (contents == null || !contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
+                chrome.toolErrorRaw("No text on clipboard"); // Qualify chrome
+                return;
+            }
+            clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
+            if (clipboardText.isBlank()) {
+                chrome.toolErrorRaw("Clipboard is empty"); // Qualify chrome
+                return;
+            }
+        } catch (Exception e) {
+            chrome.toolErrorRaw("Failed to read clipboard: " + e.getMessage()); // Qualify chrome
+            return;
+        }
+
+        // Process the clipboard text
+        clipboardText = clipboardText.trim();
+        String content = clipboardText;
+        boolean wasUrl = false;
+
+        if (isUrl(clipboardText)) {
+            try {
+                chrome.systemOutput("Fetching " + clipboardText); // Qualify chrome
+                content = fetchUrlContent(clipboardText);
+                content = HtmlToMarkdown.maybeConvertToMarkdown(content);
+                wasUrl = true;
+                chrome.actionComplete(); // Qualify chrome
+            } catch (IOException e) {
+                chrome.toolErrorRaw("Failed to fetch URL content: " + e.getMessage()); // Qualify chrome
+                // Continue with the URL as text if fetch fails
+            }
+        }
+
+        // Try to parse as stacktrace
+        var stacktrace = StackTrace.parse(content);
+        if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) { // Qualify contextManager
+            return;
+        }
+
+        // Add as string fragment (possibly converted from HTML)
+        Future<String> summaryFuture = contextManager.submitSummarizeTaskForPaste(content); // Qualify contextManager
+        String finalContent = content;
+        contextManager.pushContext(ctx -> { // Qualify contextManager
+            var fragment = new ContextFragment.PasteFragment(finalContent, summaryFuture);
+            return ctx.addPasteFragment(fragment, summaryFuture);
+        });
+
+        // Inform the user about what happened
+        String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
+        chrome.systemOutput(message); // Qualify chrome
+    }
+
+    private void doDropAction(List<? extends ContextFragment> selectedFragments) // Use wildcard
+    {
+        if (selectedFragments.isEmpty()) {
+            if (contextManager.topContext().isEmpty()) { // Qualify contextManager
+                chrome.toolErrorRaw("No context to drop"); // Qualify chrome
+                return;
+            }
+            contextManager.dropAll(); // Qualify contextManager
+        } else {
+            var pathFragsToRemove = new ArrayList<PathFragment>();
+            var virtualToRemove = new ArrayList<VirtualFragment>();
+            boolean clearHistory = false;
+
+            for (var frag : selectedFragments) {
+                if (frag instanceof ContextFragment.ConversationFragment) {
+                    clearHistory = true;
+                } else if (frag instanceof ContextFragment.AutoContext) {
+                    contextManager.setAutoContextFiles(0); // Qualify contextManager
+                } else if (frag instanceof ContextFragment.PathFragment pf) {
+                    pathFragsToRemove.add(pf);
+                } else {
+                    assert frag instanceof ContextFragment.VirtualFragment : frag;
+                    virtualToRemove.add((VirtualFragment) frag);
+                }
+            }
+
+            if (clearHistory) {
+                contextManager.clearHistory(); // Qualify contextManager
+                chrome.systemOutput("Cleared conversation history"); // Qualify chrome
+            }
+
+            contextManager.drop(pathFragsToRemove, virtualToRemove); // Qualify contextManager
+
+            if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
+                chrome.systemOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items"); // Qualify chrome
+            }
+        }
+    }
+
+    private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
+        var project = contextManager.getProject(); // Qualify contextManager
+        var analyzer = project.getAnalyzer();
+        if (analyzer.isEmpty()) {
+            chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Qualify chrome
+            return;
+        }
+
+        HashSet<CodeUnit> sources = new HashSet<>();
+        if (selectedFragments.isEmpty()) {
+            // Show dialog allowing selection of files OR classes for summarization
+            // Only allow selecting project files that contain classes for the Files tab
+            var completableProjectFiles = project.getFiles().stream()
+                    .filter(f -> !analyzer.getClassesInFile(f).isEmpty())
+                    .collect(Collectors.toSet());
+
+            var selection = showMultiSourceSelectionDialog("Summarize Sources",
+                                                           false, // No external files for summarize
+                                                           completableProjectFiles, // Project files with classes
+                                                           Set.of(SelectionMode.FILES, SelectionMode.CLASSES)); // Both modes
+
+            if (selection == null || selection.isEmpty()) {
+                chrome.systemOutput("No files or classes selected for summarization."); // Qualify chrome
+                return;
+            }
+
+            // Process selected files
+            if (selection.files() != null) {
+                var projectFiles = toProjectFilesUnsafe(selection.files()); // Should be safe
+                for (var file : projectFiles) {
+                    sources.addAll(analyzer.getClassesInFile(file));
+                }
+            }
+
+            // Process selected classes
+            if (selection.classes() != null) {
+                sources.addAll(selection.classes());
+            }
+        } else {
+            // Extract sources from selected fragments
+            for (var frag : selectedFragments) {
+                sources.addAll(frag.sources(project));
+            }
+        }
+
+        if (sources.isEmpty()) {
+            chrome.toolErrorRaw("No classes found in the selected " + (selectedFragments.isEmpty() ? "files" : "fragments")); // Qualify chrome
+            return;
+        }
+
+        boolean success = contextManager.summarizeClasses(sources); // Qualify contextManager
+        if (success) {
+            chrome.systemOutput("Summarized " + sources.size() + " classes"); // Qualify chrome
+        } else {
+            chrome.toolErrorRaw("No summarizable classes found"); // Qualify chrome
+        }
+    }
+
+    /**
+     * Cast BrokkFile to ProjectFile. Will throw if ExternalFiles are present.
+     * Use with caution, only when external files are disallowed or handled separately.
+     */
+    private List<ProjectFile> toProjectFilesUnsafe(List<BrokkFile> files) {
+        if (files == null) return List.of();
+        return files.stream().map(f -> {
+            if (f instanceof ProjectFile pf) {
+                return pf;
+            }
+            throw new ClassCastException("Expected only ProjectFile but got " + f.getClass().getName());
+        }).toList();
+    }
+
+    /**
+     * Show the multi-source selection dialog with configurable modes.
+     * This is called by the do*Action methods within this panel.
+     *
+     * @param title              Dialog title.
+     * @param allowExternalFiles Allow selection of external files in the Files tab.
+     * @param completions        Set of completable project files.
+     * @param modes              Set of selection modes (FILES, CLASSES) to enable.
+     * @return The Selection record containing lists of files and/or classes, or null if cancelled.
+     */
+    private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Set<ProjectFile> completions, Set<SelectionMode> modes) {
+        var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
+        var analyzer = contextManager.getProject().getAnalyzer(); // Qualify contextManager
+
+        SwingUtil.runOnEDT(() -> {
+            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), analyzer, title, allowExternalFiles, completions, modes); // Qualify chrome and contextManager
+            // Use dialog's preferred size after packing, potentially adjust width
+            dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));
+            dialog.setLocationRelativeTo(chrome.getFrame()); // Qualify chrome
+            dialog.setVisible(true);
+            dialogRef.set(dialog);
+        });
+        try {
+            var dialog = dialogRef.get();
+            if (dialog != null && dialog.isConfirmed()) {
+                return dialog.getSelection(); // Return the Selection record
+            }
+            return null; // Indicate cancellation or no selection
+        } finally {
+            chrome.focusInput(); // Qualify chrome
+        }
+    }
+
+    private boolean isUrl(String text) {
+        return text.matches("^https?://\\S+$");
+    }
+
+    private String fetchUrlContent(String urlString) throws IOException {
+        var url = URI.create(urlString).toURL();
+        var connection = url.openConnection();
+        // Set a reasonable timeout
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(10000);
+        // Set a user agent to avoid being blocked
+        connection.setRequestProperty("User-Agent", "Brokk-Agent/1.0");
+
+        try (var reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(connection.getInputStream()))) {
+            return reader.lines().collect(Collectors.joining("\n"));
+        }
+    }
+
+
     /**
      * Table cell renderer for displaying file references.
      */
-    public static class FileReferencesTableCellRenderer implements TableCellRenderer {
+    static class FileReferencesTableCellRenderer implements TableCellRenderer {
         public FileReferencesTableCellRenderer() {
         }
 
@@ -761,7 +1260,7 @@ public class ContextPanel extends JPanel {
     /**
      * Component to display and interact with a list of file references.
      */
-    public static class FileReferenceList extends JPanel {
+    static class FileReferenceList extends JPanel {
         private final List<FileReferenceData> fileReferences = new ArrayList<>();
         private boolean selected = false;
 
@@ -888,7 +1387,7 @@ public class ContextPanel extends JPanel {
         /**
          * Represents a file reference with metadata for context menu usage.
          */
-        public static class FileReferenceData {
+        static class FileReferenceData {
             private final String fileName;
             private final String fullPath;
             private final ProjectFile projectFile; // Optional, if available

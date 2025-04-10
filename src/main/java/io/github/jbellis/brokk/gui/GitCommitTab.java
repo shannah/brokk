@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.prompts.CommitPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -15,6 +16,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -216,12 +218,12 @@ public class GitCommitTab extends JPanel {
             chrome.disableUserActionButtons();
             List<ProjectFile> selectedFiles = getSelectedFilesFromTable();
             // Execute the suggestion task and handle the result on the EDT
-            var suggestionFuture = suggestMessageAsync(selectedFiles);
+            Future<String> suggestionFuture = suggestMessageAsync(selectedFiles);
             contextManager.submitUserTask("Handling suggestion result", () -> {
                 try {
-                    String suggestedMessage = suggestionFuture.get(); // Wait for the result
+                    String suggestedMessage = suggestionFuture.get(); // Wait for the result from the Future
                     SwingUtilities.invokeLater(() -> {
-                        if (suggestedMessage != null) {
+                        if (suggestedMessage != null && !suggestedMessage.isBlank()) {
                             setCommitMessageText(suggestedMessage);
                         } // Error/empty handled within suggestMessageAsync
                         chrome.enableUserActionButtons();
@@ -253,7 +255,8 @@ public class GitCommitTab extends JPanel {
                 // No message provided, suggest one and stash
                 contextManager.submitUserTask("Suggesting message and stashing", () -> {
                     try {
-                        String suggestedMessage = suggestMessageAsync(selectedFiles).get(); // Wait for suggestion
+                        Future<String> suggestionFuture = suggestMessageAsync(selectedFiles);
+                        String suggestedMessage = suggestionFuture.get(); // Wait for suggestion
                         if (suggestedMessage == null || suggestedMessage.isBlank()) {
                             suggestedMessage = "Stash created by Brokk"; // Fallback
                         }
@@ -623,25 +626,71 @@ public class GitCommitTab extends JPanel {
      * @return A Future containing the suggested message, or null if no changes or error.
      */
     private Future<String> suggestMessageAsync(List<ProjectFile> selectedFiles) {
-        // Explicitly define the return type for the background task as String
-        return contextManager.<String>submitBackgroundTask("Suggesting commit message", () -> {
+        Callable<String> suggestTask = () -> {
             try {
-                var diff = selectedFiles.isEmpty()
+                String diff = selectedFiles.isEmpty()
                         ? getRepo().diff()
                         : getRepo().diffFiles(selectedFiles);
+
                 if (diff.isEmpty()) {
                     SwingUtilities.invokeLater(() -> chrome.actionOutput("No changes detected"));
                     return null; // Indicate no changes
                 }
-                // Assuming inferCommitMessageAsync now returns the Future<String>
-                // Cast needed because inferCommitMessageAsync returns raw Future
-                return (String) contextManager.inferCommitMessageAsync(diff).get(); // Get the result synchronously within this background task
+                // Call the LLM logic directly
+                return inferCommitMessage(diff);
             } catch (Exception ex) {
-                logger.error("Error suggesting commit message:", ex);
+                logger.error("Error generating commit message suggestion:", ex);
                 SwingUtilities.invokeLater(() -> chrome.actionOutput("Error suggesting commit message: " + ex.getMessage()));
-                throw ex; // Rethrow to fail the future
+                // Propagate the exception to the future
+                throw ex;
             }
-        });
+        };
+        // Submit the Callable to a background task executor managed by ContextManager
+        // We use submitBackgroundTask to ensure it runs off the EDT and provides user feedback
+        return contextManager.submitBackgroundTask("Suggesting commit message", suggestTask);
+    }
+
+    /**
+     * Infers a commit message based on the provided diff text using the quickest model.
+     * This method performs the synchronous LLM call.
+     *
+     * @param diffText The text difference to analyze for the commit message.
+     * @return The inferred commit message string, or null if no message could be generated or an error occurred.
+     */
+    private String inferCommitMessage(String diffText) {
+        var messages = CommitPrompts.instance.collectMessages(diffText);
+        if (messages.isEmpty()) {
+            SwingUtilities.invokeLater(() -> chrome.systemOutput("Nothing to commit for suggestion"));
+            return null;
+        }
+
+        // Use quickest model for commit messages via ContextManager
+        var result = contextManager.getCoder().sendMessage(contextManager.getModels().quickestModel(), messages);
+        if (result.cancelled()) {
+            SwingUtilities.invokeLater(() -> chrome.systemOutput("Commit message suggestion cancelled."));
+            return null;
+        }
+        if (result.error() != null) {
+            SwingUtilities.invokeLater(() -> chrome.systemOutput("LLM error during commit message suggestion: " + result.error().getMessage()));
+            logger.warn("LLM error during commit message suggestion: {}", result.error().getMessage());
+            return null;
+        }
+        if (result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+            SwingUtilities.invokeLater(() -> chrome.systemOutput("LLM did not provide a commit message or is unavailable."));
+            return null;
+        }
+
+        String commitMsg = result.chatResponse().aiMessage().text();
+
+        if (commitMsg == null || commitMsg.isBlank()) {
+            SwingUtilities.invokeLater(() -> chrome.systemOutput("LLM did not provide a commit message."));
+            return null;
+        }
+
+        // Escape quotes in the commit message
+        commitMsg = commitMsg.replace("\"", "\\\"");
+
+        return commitMsg; // Return the raw message; setting text is handled by the caller
     }
 
     /**

@@ -59,14 +59,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     volatile Future<?> currentUserTask;
 
     /**
-     * Enum representing the different types of context actions that can be performed.
-     * This replaces the use of magic strings when calling performContextActionAsync.
-     */
-    public enum ContextAction {
-        EDIT, READ, SUMMARIZE, DROP, COPY, PASTE
-    }
-
-    /**
      * Default constructor sets up the UI.
      * We call this from Brokk after creating contextManager, before creating the Coder,
      * and before calling .resolveCircularReferences(...).
@@ -443,7 +435,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Cmd/Ctrl+Shift+Z => redo
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
-                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK);
+                                                   Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK);
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
         rootPane.getActionMap().put("globalRedo", new AbstractAction() {
             @Override
@@ -459,7 +451,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                currentUserTask = contextManager.performContextActionAsync(ContextAction.PASTE, List.of());
+                currentUserTask = contextPanel.performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
             }
         });
     }
@@ -546,7 +538,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 PreviewPanel previewPanel = new PreviewPanel(contextManager, ppf.file(), content, syntaxType, themeManager, null);
                 PreviewPanel.showFrame(contextManager, title, previewPanel);
             } else {
-                 // Pass null for file and fragment for other types (like StringFragment)
+                // Pass null for file and fragment for other types (like StringFragment)
                 PreviewPanel previewPanel = new PreviewPanel(contextManager, null, content, syntaxType, themeManager, null);
                 PreviewPanel.showFrame(contextManager, title, previewPanel);
             }
@@ -739,6 +731,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public InstructionsPanel getInstructionsPanel() {
         return instructionsPanel;
+    }
+
+    public ContextPanel getContextPanel() {
+        return contextPanel;
     }
 
     public void showSetAutoContextSizeDialog() {

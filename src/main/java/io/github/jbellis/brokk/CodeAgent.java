@@ -1,9 +1,11 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.BuildPrompts;
@@ -50,7 +52,7 @@ public class CodeAgent {
         var contextManager = (ContextManager) coder.contextManager;
 
         // Start verification command inference concurrently
-        CompletableFuture<String> verificationCommandFuture = contextManager.determineVerificationCommandAsync(userInput);
+        CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput);
 
         // Reflection loop state tracking
         int parseErrorAttempts = 0;
@@ -261,6 +263,155 @@ public class CodeAgent {
             io.systemOutput("Session complete!");
         } // otherwise, code that stops the session is responsible for explaining why
     }
+
+    /**
+     * Asynchronously determines the best verification command based on the user goal,
+     * workspace summary, and stored BuildDetails. Uses the quickest model.
+     * Runs on the ContextManager's background task executor.
+     *
+     * @param cm        The ContextManager instance.
+     * @param coder     The Coder instance.
+     * @param userGoal  The original user goal for the session.
+     * @return A CompletableFuture containing the suggested verification command string (or null if none/error/no details).
+     */
+    private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder, String userGoal) {
+        return CompletableFuture.supplyAsync(() -> {
+            BuildDetails details = cm.getProject().getBuildDetails();
+            if (details == null) {
+                logger.warn("No build details available, cannot determine verification command.");
+                // Return null to indicate no command could be determined due to missing details
+                return null;
+            }
+
+            String workspaceSummary = DefaultPrompts.formatWorkspaceSummary(cm);
+
+            // Construct the prompt for the quick model
+            var systemMessage = new SystemMessage("""
+            You are a build assistant. Based on the user's goal, the project workspace, and known build details,
+            determine the best single shell command to run as a minimal "smoke test" verifying that the changes achieve the goal.
+            This should usually involve a few specific tests, but if the project is small, running all tests is reasonable;
+            if no tests look relevant, it's fine to simply compile or lint the project without tests.
+            """.stripIndent());
+
+            // Run getTestFiles synchronously within this async task
+            List<ProjectFile> testFiles = getTestFiles(cm, coder);
+            String testFilesString = testFiles.isEmpty() ? "(none found)" :
+                                     testFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\\n"));
+
+            var userMessage = new UserMessage("""
+            **Build Details:**
+            Commands: %s
+            Instructions: %s
+
+            **Workspace Summary:**
+            %s
+
+            **Test files**
+            %s
+
+            **User Goal:**
+            %s
+
+            Respond ONLY with the raw shell command, no explanation, formatting, or markdown. If no verification is needed or possible, respond with an empty string.
+            """.stripIndent().formatted(
+                    details.buildLintCommand(),
+                    details.instructions(),
+                    workspaceSummary,
+                    testFilesString,
+                    userGoal
+            ));
+
+            List<ChatMessage> messages = List.of(systemMessage, userMessage);
+
+            // Call the quick model synchronously within the async task
+            var result = coder.sendMessage(cm.getModels().quickestModel(), messages);
+
+            if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+                logger.warn("Failed to determine verification command: {}",
+                            result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
+                // Fallback to build/lint command on LLM failure
+                return details.buildLintCommand();
+            }
+
+            String command = result.chatResponse().aiMessage().text();
+            // Check for null/blank/unavailable *before* trimming, as trim() on null throws NPE
+            if (command == null || command.isBlank() || command.equals(Models.UNAVAILABLE)) {
+                 logger.warn("LLM returned unusable verification command: '{}'. Falling back to build/lint command.", command);
+                 return details.buildLintCommand(); // Fallback to default build/lint
+             }
+
+            // Basic cleanup: remove potential markdown backticks
+            command = command.trim().replace("```", "");
+            logger.info("Determined verification command: `{}`", command);
+            return command;
+
+        }, cm.getBackgroundTasks()); // Ensure this runs on the CM's background executor
+    }
+
+    /**
+     * Identifies test files within the project using the quickest LLM.
+     * This method runs synchronously as it's expected to be called within an async task.
+     * No caching is performed here.
+     *
+     * @param cm     The ContextManager instance.
+     * @param coder  The Coder instance.
+     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found or an error occurs.
+     */
+    private static List<ProjectFile> getTestFiles(ContextManager cm, Coder coder) {
+        // Get all files from the project
+        Set<ProjectFile> allProjectFiles = cm.getProject().getFiles();
+        if (allProjectFiles.isEmpty()) {
+            logger.debug("No files found in project to identify test files.");
+            return List.of();
+        }
+
+        // Format file paths for the LLM prompt
+        String fileListString = allProjectFiles.stream()
+                .map(ProjectFile::toString) // Use relative path
+                .sorted()
+                .collect(Collectors.joining("\n"));
+
+        // Construct the prompt for the quick model
+        var systemMessage = new SystemMessage("""
+        You are a file analysis assistant. Your task is to identify test files from the provided list.
+        Analyze the file paths and names. Return ONLY the paths of the files that appear to be test files.
+        Each test file path should be on a new line. Do not include any explanation, headers, or formatting.
+        If no test files are found, return an empty response.
+        """.stripIndent());
+
+        var userMessage = new UserMessage("""
+        Project Files:
+        %s
+
+        Identify the test files from the list above and return their full paths, one per line.
+        """.stripIndent().formatted(fileListString));
+
+        List<ChatMessage> messages = List.of(systemMessage, userMessage);
+
+        // Call the quick model synchronously
+        var result = coder.sendMessage(cm.getModels().quickestModel(), messages);
+
+        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+            logger.error("Failed to get test files from LLM: {}",
+                         result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
+            return List.of();
+        }
+
+        String responseText = result.chatResponse().aiMessage().text();
+        if (responseText == null || responseText.isBlank()) {
+            logger.debug("LLM did not identify any test files.");
+            return List.of();
+        } else {
+            // Use contains for robustness against minor formatting variations from the LLM
+            var testFiles = allProjectFiles.stream()
+                    .parallel() // Can parallelize the filtering
+                    .filter(filename -> responseText.contains(filename.toString()))
+                    .toList(); // Collect to list
+            logger.debug("Identified {} test files via LLM.", testFiles.size());
+            return testFiles;
+        }
+    }
+
 
     /**
      * Runs a quick-edit session where we:
