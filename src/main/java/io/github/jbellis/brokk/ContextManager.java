@@ -870,6 +870,33 @@ public class ContextManager implements IContextManager, AutoCloseable {
         if (newContext != null) {
             io.updateContextHistoryTable(newContext);
             project.saveContext(newContext);
+
+            if (newContext.getTaskHistory().isEmpty()) {
+                return;
+            }
+
+            var cf = new ContextFragment.ConversationFragment(newContext.getTaskHistory());
+            int tokenCount = Models.getApproximateTokens(cf.format());
+            if (tokenCount > 32 * 1024) {
+                // Show a dialog asking if we should compress the history
+                SwingUtilities.invokeLater(() -> {
+                    int choice = JOptionPane.showConfirmDialog(io.getFrame(),
+                            """
+                            The conversation history is getting long (%,d loc or about %,d tokens).
+                            Compressing it can improve performance and reduce cost.
+
+                            Compress history now?
+                            """.formatted(cf.format().split("\n").length, tokenCount),
+                            "Compress History?",
+                            JOptionPane.YES_NO_OPTION,
+                            JOptionPane.QUESTION_MESSAGE);
+
+                    if (choice == JOptionPane.YES_OPTION) {
+                        // Call the async compression method if user agrees
+                        compressHistoryAsync();
+                    }
+                });
+            }
         }
     }
 
