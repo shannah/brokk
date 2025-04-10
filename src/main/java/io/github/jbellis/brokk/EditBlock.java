@@ -704,36 +704,6 @@ public class EditBlock {
     private record ContentLines(String original, String[] lines) { }
 
     /**
-     * Return a snippet of the content that best matches the search block, or "" if none.
-     */
-    public static String findSimilarLines(String search, String content, double threshold) {
-        String[] searchLines = search.split("\n", -1);
-        String[] contentLines = content.split("\n", -1);
-
-        double bestRatio = 0.0;
-        int bestIdx = -1;
-
-        int searchLen = searchLines.length;
-        for (int i = 0; i <= contentLines.length - searchLen; i++) {
-            String[] chunk = Arrays.copyOfRange(contentLines, i, i + searchLen);
-            double ratio = sequenceMatcherRatio(String.join("\n", chunk), search);
-            if (ratio > bestRatio) {
-                bestRatio = ratio;
-                bestIdx = i;
-            }
-        }
-        if (bestRatio < threshold || bestIdx < 0) {
-            return "";
-        }
-
-        // return the chunk plus a bit of surrounding context
-        int start = Math.max(0, bestIdx - 3);
-        int end = min(contentLines.length, bestIdx + searchLen + 3);
-        String[] snippet = Arrays.copyOfRange(contentLines, start, end);
-        return String.join("\n", snippet);
-    }
-
-    /**
      * Collects suggestions for failed blocks by examining file contents
      */
     public static Map<FailedBlock, String> collectSuggestions(List<FailedBlock> failedBlocks, IContextManager cm) {
@@ -744,22 +714,11 @@ public class EditBlock {
 
             try {
                 String fileContent = cm.toFile(failedBlock.block().filename()).read();
-                String snippet = findSimilarLines(failedBlock.block().beforeText(), fileContent, 0.6);
-                String suggestion = "";
                 if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    suggestion = """
+                    var suggestion = """
                     Note: The replacement text is already present in the file. If we no longer need to apply
                     this block, omit it from your reply.
                     """.stripIndent();
-                } else if (!snippet.isEmpty()) {
-                    suggestion = """
-                    Did you mean:
-                    ```
-                    %s
-                    ```
-                    """.stripIndent().formatted(snippet);
-                }
-                if (!suggestion.isEmpty()) {
                     suggestions.put(failedBlock, suggestion);
                 }
             } catch (IOException ignored) {
