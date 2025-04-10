@@ -50,12 +50,12 @@ public class ContextSerializationTest {
         
         // Most transient fields should be initialized to empty
         assertNull(deserialized.contextManager);
-        assertNotNull(deserialized.parsedOutput); // Empty ParsedOutput
-        assertNotNull(deserialized.originalContents); // Empty Map
-        assertNotNull(deserialized.historyMessages); // Empty List
-        
-        // AutoContext should have been preserved
-        assertNotNull(deserialized.getAutoContext());
+         assertNotNull(deserialized.parsedOutput); // Empty ParsedOutput
+         assertNotNull(deserialized.originalContents); // Empty Map
+         assertNotNull(deserialized.taskHistory); // Empty List (changed from historyMessages)
+
+         // AutoContext should have been preserved
+         assertNotNull(deserialized.getAutoContext());
         
         // We injected output
         assertEquals("stub", deserialized.parsedOutput.output());

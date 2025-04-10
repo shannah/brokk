@@ -863,6 +863,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return reader.lines().collect(Collectors.joining("\n"));
         }
     }
+
     private void doDropAction(List<ContextFragment> selectedFragments)
     {
         if (selectedFragments.isEmpty()) {
@@ -1329,12 +1330,30 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
-    public List<ChatMessage> getHistoryMessages()
-    {
-        return selectedContext().getHistory();
-    }
-
     /**
+      * @return A list containing two messages: a UserMessage with the string representation of the task history,
+      *         and an AiMessage acknowledging it. Returns an empty list if there is no history.
+      */
+     public List<ChatMessage> getHistoryMessages()
+     {
+         var taskHistory = selectedContext().getTaskHistory();
+         if (taskHistory.isEmpty()) {
+             return List.of();
+         }
+ 
+         // Concatenate the string representation of each TaskHistory
+         String historyString = taskHistory.stream()
+                                           .map(TaskHistory::toString)
+                                           .collect(Collectors.joining("\n\n"));
+ 
+         // Create the UserMessage containing the history and the AI acknowledgment
+         var historyUserMessage = new UserMessage("Here is our work history so far:\n<history>\n%s\n</history>".formatted(historyString));
+         var historyAiMessage = new AiMessage("Ok, I see the history."); // Simple acknowledgment
+ 
+         return List.of(historyUserMessage, historyAiMessage);
+     }
+ 
+     /**
      * Build a welcome message with environment information.
      * Uses statically available model info.
      */

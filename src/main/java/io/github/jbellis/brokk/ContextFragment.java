@@ -20,7 +20,7 @@ public interface ContextFragment extends Serializable {
     String shortDescription();
     /** longer description displayed in context table */
     String description();
-    /** raw content */
+    /** raw content for preview */
     String text() throws IOException;
     /** content formatted for LLM */
     String format() throws IOException;
@@ -569,19 +569,19 @@ public interface ContextFragment extends Serializable {
     }
 
     class ConversationFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
-        private final List<ChatMessage> messages;
+        private static final long serialVersionUID = 2L;
+        private final List<TaskHistory> taskHistory;
 
-        public ConversationFragment(List<ChatMessage> messages) {
+        public ConversationFragment(List<TaskHistory> taskHistory) {
             super();
-            assert messages != null;
-            this.messages = List.copyOf(messages);
+            assert taskHistory != null;
+            this.taskHistory = List.copyOf(taskHistory);
         }
 
         @Override
         public String text() {
-            return messages.stream()
-                    .map(m -> m.type() + ": " + Models.getText(m))
+            return taskHistory.stream()
+                    .map(TaskHistory::toString)
                     .collect(Collectors.joining("\n\n"));
         }
 
@@ -597,7 +597,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            return "Conversation history (" + messages.size() + " messages)";
+            return "Conversation History (" + taskHistory.size() + " task%s)".formatted(taskHistory.size() > 1 ? "s" : "");
         }
 
         @Override
@@ -608,19 +608,16 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() {
             return """
-            <conversation>
+            Here is the history of work done so far:
+            <history>
             %s
-            </conversation>
+            </history>
             """.formatted(text()).stripIndent();
         }
 
         @Override
         public String toString() {
-            return "ConversationFragment(" + messages.size() + " messages)";
-        }
-
-        public List<ChatMessage> getMessages() {
-            return messages;
+            return "ConversationFragment(" + taskHistory.size() + " tasks)";
         }
     }
 

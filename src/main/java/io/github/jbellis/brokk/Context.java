@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
+import io.github.jbellis.brokk.ContextFragment.ConversationFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
@@ -37,7 +38,7 @@ public class Context implements Serializable {
     }
 
     @Serial
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
     private static final String WELCOME_ACTION = "Welcome to Brokk";
@@ -51,8 +52,8 @@ public class Context implements Serializable {
 
     final AutoContext autoContext;
     final int autoContextFileCount;
-    /** history messages are unusual because they are updated in place.  See comments to addHistory and clearHistory */
-    transient final List<ChatMessage> historyMessages;
+    /** Task history list. Each entry represents a user request and the subsequent conversation. */
+    transient final List<TaskHistory> taskHistory;
 
     /** backup of original contents for /undo, does not carry forward to Context children */
     transient final Map<ProjectFile, String> originalContents;
@@ -101,9 +102,9 @@ public class Context implements Serializable {
                     List<ContextFragment.VirtualFragment> virtualFragments,
                     AutoContext autoContext,
                     int autoContextFileCount,
-                    List<ChatMessage> historyMessages,
-                    Map<ProjectFile, String> originalContents,
-                    ParsedOutput parsedOutput,
+                     List<TaskHistory> taskHistory,
+                     Map<ProjectFile, String> originalContents,
+                     ParsedOutput parsedOutput,
                     Future<String> action)
     {
         assert id > 0;
@@ -113,19 +114,19 @@ public class Context implements Serializable {
         assert virtualFragments != null;
         assert autoContext != null;
         assert autoContextFileCount >= 0;
-        assert historyMessages != null;
-        assert originalContents != null;
-        assert action != null;
+         assert taskHistory != null;
+         assert originalContents != null;
+         assert action != null;
         this.id = id;
         this.contextManager = contextManager;
         this.editableFiles = List.copyOf(editableFiles);
         this.readonlyFiles = List.copyOf(readonlyFiles);
         this.virtualFragments = List.copyOf(virtualFragments);
         this.autoContext = autoContext;
-        this.autoContextFileCount = autoContextFileCount;
-        this.historyMessages = historyMessages;
-        this.originalContents = originalContents;
-        this.parsedOutput = parsedOutput;
+         this.autoContextFileCount = autoContextFileCount;
+         this.taskHistory = List.copyOf(taskHistory); // Ensure immutability
+         this.originalContents = originalContents;
+         this.parsedOutput = parsedOutput;
         this.action = action;
     }
 
@@ -234,7 +235,7 @@ public class Context implements Serializable {
     public Context addSearchFragment(Future<String> query, ParsedOutput parsed) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(parsed.parsedFragment);
-        return new Context(newId(), contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, historyMessages, Map.of(), parsed, query).refresh();
+        return new Context(newId(), contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, taskHistory, Map.of(), parsed, query).refresh();
     }
 
     public Context removeBadFragment(ContextFragment f) {
@@ -298,7 +299,7 @@ public class Context implements Serializable {
                            virtualFragments,
                            autoContext,
                            fileCount,
-                           historyMessages,
+                           taskHistory,
                            Map.of(),
                            null,
                            action).refresh();
@@ -427,20 +428,30 @@ public class Context implements Serializable {
                 newReadonlyFiles,
                 newVirtualFragments,
                 autoContext,
-                autoContextFileCount,
-                historyMessages,
-                Map.of(),
-                null,
+                 autoContextFileCount,
+                 taskHistory,
+                 Map.of(),
+                 null,
                 action
         ).refresh();
     }
 
     public Context removeAll() {
-        String action = "Dropped all context";
-        return clearHistory().getWithFragments(List.of(), List.of(), List.of(), action);
-    }
+         String action = "Dropped all context";
+         return new Context(newId(),
+                            contextManager,
+                            List.of(), // editable
+                            List.of(), // readonly
+                            List.of(), // virtual
+                            autoContext,
+                            autoContextFileCount,
+                            List.of(), // task history
+                            Map.of(), // original contents
+                            null, // parsed output
+                            CompletableFuture.completedFuture(action)).refresh();
+     }
 
-    /**
+     /**
      * Produces a new Context object with a fresh AutoContext if enabled.
      * This new context will retain the ID of the original context.
      */
@@ -452,12 +463,12 @@ public class Context implements Serializable {
                                      editableFiles,
                                      readonlyFiles,
                                      virtualFragments,
-                                     acPlaceholder,
-                                     autoContextFileCount,
-                                     historyMessages,
-                                     originalContents,
-                                     parsedOutput,
-                                     action);
+                                      acPlaceholder,
+                                      autoContextFileCount,
+                                      taskHistory,
+                                      originalContents,
+                                      parsedOutput,
+                                      action);
         contextManager.submitBackgroundTask("Computing AutoContext", () -> {
             var newAutoContext = buildAutoContext();
             // Construct the final replacement context, preserving the ID from the placeholder context (which is the original ID)
@@ -468,7 +479,7 @@ public class Context implements Serializable {
                                           virtualFragments,
                                           newAutoContext,
                                           autoContextFileCount,
-                                          historyMessages,
+                                          taskHistory,
                                           originalContents,
                                           parsedOutput,
                                           action);
@@ -482,72 +493,81 @@ public class Context implements Serializable {
     // Method removed in favor of toFragment(int position)
 
     public boolean isEmpty() {
-        return editableFiles.isEmpty()
-                && readonlyFiles.isEmpty()
-                && virtualFragments.isEmpty()
-                && historyMessages.isEmpty();
-    }
+         return editableFiles.isEmpty()
+                 && readonlyFiles.isEmpty()
+                 && virtualFragments.isEmpty()
+                 && taskHistory.isEmpty();
+     }
 
-    public Context addHistory(List<ChatMessage> newMessages, Map<ProjectFile, String> originalContents, ParsedOutput parsed, Future<String> action) {
-        var newHistory = new ArrayList<>(historyMessages);
-        newHistory.addAll(newMessages);
-        return new Context(
-                newId(),
-                contextManager,
-                editableFiles,
-                readonlyFiles,
-                virtualFragments,
-                autoContext,
-                autoContextFileCount,
-                List.copyOf(newHistory),
-                originalContents,
-                parsed,
-                action
-        ).refresh();
+     /**
+      * Adds a new task to the history based on the provided messages.
+      * The first message MUST be a UserMessage to extract the 'job'.
+      *
+      * @param newMessages      The list of messages for this task/session.
+      * @param originalContents Map of original file contents for undo purposes.
+      * @param parsed           The parsed output associated with this task.
+      * @param action           A future describing the action that created this history entry.
+      * @return A new Context instance with the added task history.
+      */
+     public Context addHistory(List<ChatMessage> newMessages, Map<ProjectFile, String> originalContents, ParsedOutput parsed, Future<String> action) {
+         // Create the TaskHistory object
+         int nextSequence = taskHistory.isEmpty() ? 1 : taskHistory.getLast().sequence() + 1;
+         TaskHistory newTask = TaskHistory.fromSession(nextSequence, newMessages);
+
+         // Create a new list with the added task
+         var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(newTask)).toList();
+
+         return new Context(newId(),
+                            contextManager,
+                            editableFiles,
+                            readonlyFiles,
+                            virtualFragments,
+                            autoContext,
+                            autoContextFileCount,
+                            newTaskHistory, // new task history list
+                            originalContents,
+                            parsed,
+                            action).refresh();
     }
 
     public Context clearHistory() {
-        return new Context(
-                newId(), // New ID for cleared history
-                contextManager,
-                editableFiles,
-                readonlyFiles,
-                virtualFragments,
-                autoContext,
-                autoContextFileCount,
-                List.of(),
-                Map.of(),
-                null,
-                CompletableFuture.completedFuture("Cleared conversation history")
-        );
+        return new Context(newId(),
+                           contextManager,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           autoContext,
+                           autoContextFileCount,
+                           List.of(), // Cleared task history
+                           Map.of(),
+                           null,
+                           CompletableFuture.completedFuture("Cleared conversation history"));
     }
 
     public Context withOriginalContents(Map<ProjectFile, String> fileContents) {
         // This context is temporary/internal for undo, does not represent a new user action,
         // so it retains the same ID and does not call refresh.
-        return new Context(
-                this.id, // Retain the same ID
-                contextManager,
-                editableFiles,
-                readonlyFiles,
-                virtualFragments,
-                autoContext,
-                autoContextFileCount,
-                historyMessages,
-                fileContents,
-                this.parsedOutput,
-                this.action
-        );
+        return new Context(this.id,
+                           contextManager,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           autoContext,
+                           autoContextFileCount,
+                           taskHistory, // Use task history here
+                           fileContents,
+                           this.parsedOutput,
+                           this.action);
     }
 
     /**
-     * @return an immutable copy of the history messages
-     */
-    public List<ChatMessage> getHistory() {
-        return List.copyOf(historyMessages);
-    }
+      * @return an immutable copy of the task history.
+      */
+     public List<TaskHistory> getTaskHistory() {
+         return taskHistory;
+     }
 
-    /**
+     /**
      * Get the action that created this context
      */
     public String getAction() {
@@ -578,12 +598,12 @@ public class Context implements Serializable {
     public List<ContextFragment> getAllFragmentsInDisplayOrder() {
         var result = new ArrayList<ContextFragment>();
 
-        // First include conversation history if not empty
-        if (!historyMessages.isEmpty()) {
-            result.add(new ContextFragment.ConversationFragment(historyMessages));
-        }
+         // First include conversation history if not empty
+         if (!taskHistory.isEmpty()) {
+             result.add(new ConversationFragment(taskHistory));
+         }
 
-        // Then include autoContext
+         // Then include autoContext
         result.add(autoContext);
 
         // then read-only
@@ -603,11 +623,11 @@ public class Context implements Serializable {
                            readonlyFiles,
                            virtualFragments,
                            autoContext,
-                           autoContextFileCount,
-                           historyMessages,
-                           originalContents,
-                           parsedOutput,
-                           action).refresh();
+                            autoContextFileCount,
+                            taskHistory,
+                            originalContents,
+                            parsedOutput,
+                            action).refresh();
     }
 
     public ParsedOutput getParsedOutput() {
@@ -657,12 +677,13 @@ public class Context implements Serializable {
         ois.defaultReadObject();
 
         try {
-            // Use reflection to set final fields
-            var historyField = Context.class.getDeclaredField("historyMessages");
-            historyField.setAccessible(true);
-            historyField.set(this, new ArrayList<>());
+             // Use reflection to set final transient fields
+             // Initialize taskHistory as an empty list upon deserialization
+             var taskHistoryField = Context.class.getDeclaredField("taskHistory");
+             taskHistoryField.setAccessible(true);
+             taskHistoryField.set(this, List.of()); // Initialize as empty immutable list
 
-            var originalContentsField = Context.class.getDeclaredField("originalContents");
+             var originalContentsField = Context.class.getDeclaredField("originalContents");
             originalContentsField.setAccessible(true);
             originalContentsField.set(this, Map.of());
 
@@ -694,12 +715,12 @@ public class Context implements Serializable {
                 editableFiles,
                 readonlyFiles,
                 virtualFragments,
-                autoContext,
-                autoContextFileCount,
-                historyMessages,
-                originalContents,
-                parsedOutput,
-                action
+                 autoContext,
+                 autoContextFileCount,
+                 taskHistory, // Use task history here
+                 originalContents,
+                 parsedOutput,
+                 action
         );
     }
 
@@ -723,9 +744,9 @@ public class Context implements Serializable {
                            sourceContext.virtualFragments,
                            AutoContext.REBUILDING,
                            sourceContext.autoContextFileCount,
-                           currentContext.historyMessages,
-                           Map.of(),
-                           null,
-                           CompletableFuture.completedFuture("Reset context to historical state")).refresh();
+                            currentContext.taskHistory, // Keep history from current context
+                            Map.of(),
+                            null,
+                            CompletableFuture.completedFuture("Reset context to historical state")).refresh();
     }
 }
