@@ -355,45 +355,56 @@ public class InstructionsPanel extends JPanel {
 
         // Use the Models instance from ContextManager
         var models = chrome.getContextManager().getModels();
-        chrome.getContextManager().submitBackgroundTask("Fetching available models", () -> {
-            var modelLocationMap = models.getAvailableModels();
-            SwingUtilities.invokeLater(() -> {
-                modelDropdown.removeAllItems();
-                modelLocationMap.forEach((k, v) -> logger.debug("Available modelName={} => location={}", k, v));
-                if (modelLocationMap.isEmpty()) {
-                    logger.error("No models discovered from LiteLLM.");
-                    modelDropdown.addItem("No Models Available");
-                    modelDropdown.setEnabled(false);
-                    disableButtons();
-                } else {
-                    logger.debug("Populating dropdown with {} models.", modelLocationMap.size());
-                    modelLocationMap.keySet().stream()
-                            .filter(k -> !k.contains("-lite"))
-                            .sorted()
-                            .forEach(modelDropdown::addItem);
-                    modelDropdown.setEnabled(true);
-                    var lastUsedModel = chrome.getProject().getLastUsedModel();
-                    if (lastUsedModel != null) {
-                        boolean found = false;
-                        for (int i = 0; i < modelDropdown.getItemCount(); i++) {
-                            if (modelDropdown.getItemAt(i).equals(lastUsedModel)) {
-                                modelDropdown.setSelectedItem(lastUsedModel);
-                                found = true;
-                                logger.debug("Restored last used model: {}", lastUsedModel);
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            logger.warn("Last used model '{}' not found in available models.", lastUsedModel);
-                        }
-                    } else {
-                        logger.debug("No last used model saved for this project.");
+        // This method is already called via invokeLater, so we can update UI directly.
+        // Fetch the available models (reads an in-memory map, safe for EDT)
+        var modelLocationMap = models.getAvailableModels();
+
+        // Update the dropdown UI
+        modelDropdown.removeAllItems();
+        modelLocationMap.forEach((k, v) -> logger.debug("Available modelName={} => location={}", k, v));
+        if (modelLocationMap.isEmpty() || modelLocationMap.containsKey(Models.UNAVAILABLE)) {
+            logger.error("No models discovered from LiteLLM or LiteLLM is unavailable.");
+            modelDropdown.addItem("No Models Available");
+            modelDropdown.setEnabled(false);
+            disableButtons();
+        } else {
+            logger.debug("Populating dropdown with {} models.", modelLocationMap.size());
+            // Populate dropdown with available models (excluding "-lite" ones)
+            modelLocationMap.keySet().stream()
+                    .filter(k -> !k.contains("-lite"))
+                    .sorted()
+                    .forEach(modelDropdown::addItem);
+            modelDropdown.setEnabled(true);
+
+            // Restore the last used model if possible
+            var lastUsedModel = chrome.getProject().getLastUsedModel();
+            if (lastUsedModel != null) {
+                boolean found = false;
+                for (int i = 0; i < modelDropdown.getItemCount(); i++) {
+                    if (modelDropdown.getItemAt(i).equals(lastUsedModel)) {
+                        modelDropdown.setSelectedItem(lastUsedModel);
+                        found = true;
+                        logger.debug("Restored last used model: {}", lastUsedModel);
+                        break;
                     }
-                    enableButtons();
                 }
-            });
-            return null;
-        });
+                if (!found) {
+                    logger.warn("Last used model '{}' not found in available models (possibly due to policy change).", lastUsedModel);
+                    // If the last used model isn't available (e.g., policy changed),
+                    // select the first available item instead of leaving it blank.
+                    if (modelDropdown.getItemCount() > 0) {
+                        modelDropdown.setSelectedIndex(0);
+                    }
+                }
+            } else {
+                logger.debug("No last used model saved for this project.");
+                // Select the first item if no previous selection exists
+                 if (modelDropdown.getItemCount() > 0) {
+                    modelDropdown.setSelectedIndex(0);
+                }
+            }
+            enableButtons(); // Ensure buttons are enabled since models are available
+        }
     }
 
     // Private helper to get the selected model.

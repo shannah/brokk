@@ -51,8 +51,8 @@ public class CoderTest {
     static void setUp() {
         // Create ContextManager, which initializes Models internally
         contextManager = new ContextManager(tempDir);
-        // Initialize models directly, bypassing resolveCircularReferences which needs Chrome
-        contextManager.getModels().initialize();
+        // Initialize models directly, passing a default policy for testing
+        contextManager.getModels().reinit(Project.DataRetentionPolicy.MINIMAL);
 
         // Create a Coder instance using the temp directory and the real ContextManager
         var consoleIO = new NoOpConsoleIO();

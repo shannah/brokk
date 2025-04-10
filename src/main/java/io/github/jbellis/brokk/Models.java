@@ -86,13 +86,14 @@ public final class Models {
     /**
      * Initializes models by fetching available models from LiteLLM.
      * Call this after constructing the Models instance.
+     * @param policy The data retention policy to apply when selecting models.
      */
-    public void initialize() {
-        logger.info("Initializing models");
+    public void reinit(Project.DataRetentionPolicy policy) {
+        logger.info("Initializing models using policy: {}", policy);
         try {
-            fetchAvailableModels();
+            fetchAvailableModels(policy);
         } catch (IOException e) {
-            logger.error("Failed to connect to LiteLLM at {} or parse response: {}", 
+            logger.error("Failed to connect to LiteLLM at {} or parse response: {}",
                         LITELLM_BASE_URL, e.getMessage());
             modelLocations.clear();
             modelInfoMap.clear();
@@ -125,8 +126,7 @@ public final class Models {
         sttModel = new GeminiSTT("gemini/gemini-2.0-flash", httpClient, objectMapper);
     }
 
-    // Now an instance method as it accesses instance fields
-    private void fetchAvailableModels() throws IOException {
+    private void fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
         Request request = new Request.Builder()
                 .url(LITELLM_BASE_URL + "/model/info")
                 .get()
@@ -170,9 +170,6 @@ public final class Models {
                     
                     // Store model location and max tokens
                     if (!modelName.isBlank() && !modelLocation.isBlank()) {
-                        modelLocations.put(modelName, modelLocation);
-                        this.modelMaxOutputTokens.put(modelName, maxOutputTokens);
-
                         // Process and store all model_info fields
                         Map<String, Object> modelInfo = new HashMap<>();
                         if (modelInfoData.isObject()) {
@@ -201,14 +198,24 @@ public final class Models {
                                 }
                             }
                         }
-
                         // Add model location to the info map
                         modelInfo.put("model_location", modelLocation);
 
+                        // Apply data retention policy filter
+                        if (policy == Project.DataRetentionPolicy.MINIMAL) {
+                            boolean isPrivate = (Boolean) modelInfo.getOrDefault("is_private", false);
+                            if (!isPrivate) {
+                                logger.debug("Skipping non-private model {} due to MINIMAL data retention policy", modelName);
+                                continue; // Skip adding this model
+                            }
+                        }
+
                         // Store the complete model info
-                        this.modelInfoMap.put(modelName, modelInfo);
-                        
-                        logger.debug("Discovered model: {} -> {} (Max output tokens: {})", 
+                        modelLocations.put(modelName, modelLocation);
+                        modelMaxOutputTokens.put(modelName, maxOutputTokens);
+                        modelInfoMap.put(modelName, modelInfo);
+
+                        logger.debug("Discovered model: {} -> {} (Max output tokens: {})",
                                 modelName, modelLocation, maxOutputTokens);
                     }
                 }

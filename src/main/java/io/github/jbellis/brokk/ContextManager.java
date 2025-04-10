@@ -121,7 +121,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private Project project; // Initialized in resolveCircularReferences
     private final Path root;
     private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
-    private final Models models; // Instance of Models
+    private Models models; // Instance of Models
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
@@ -186,7 +186,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
-        this.models.initialize(); // Initialize models after project is created but before use
+        // Initialize models after project is created, passing the data retention policy
+        var dataRetentionPolicy = project.getDataRetentionPolicy();
+        if (dataRetentionPolicy == Project.DataRetentionPolicy.UNSET) {
+            // Handle unset policy, e.g., prompt the user or default to MINIMAL
+            // For now, let's default to MINIMAL if unset. Consider prompting later.
+            logger.warn("Data Retention Policy is UNSET for project {}. Defaulting to MINIMAL.", root.getFileName());
+            dataRetentionPolicy = Project.DataRetentionPolicy.MINIMAL;
+            // Optionally save the default back to the project
+            // project.setDataRetentionPolicy(dataRetentionPolicy);
+        }
+        this.models.reinit(dataRetentionPolicy);
         this.toolRegistry = new ToolRegistry(this);
         // Register standard tools
         this.toolRegistry.register(new SearchTools(this));
