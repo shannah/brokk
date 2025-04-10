@@ -28,17 +28,14 @@ public class ToolRegistry {
 
     // Maps tool name to its invocation target (method + instance)
     private final Map<String, ToolInvocationTarget> toolMap = new ConcurrentHashMap<>();
-    private final IContextManager contextManager;
 
     // Internal record to hold method and the instance it belongs to
     private record ToolInvocationTarget(Method method, Object instance) {}
 
     /**
      * Creates a new ToolRegistry.
-     * @param contextManager A shared context manager, potentially needed by tools.
      */
-    public ToolRegistry(IContextManager contextManager) {
-        this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
+    public ToolRegistry() {
     }
 
     /**
@@ -105,13 +102,6 @@ public class ToolRegistry {
             for (int i = 0; i < parameters.length; i++) {
                 Parameter param = parameters[i];
                 if (!argumentsMap.containsKey(param.getName())) {
-                    // Check if the parameter is an expected dependency like IContextManager
-                     if (param.getType().equals(IContextManager.class)) {
-                         methodArgs[i] = this.contextManager;
-                         continue;
-                     }
-                     // Could add similar checks for other injectable dependencies here
-
                     throw new IllegalArgumentException("Missing required parameter: '%s' in arguments: %s".formatted(param.getName(), request.arguments()));
                 }
 

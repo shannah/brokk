@@ -197,7 +197,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // project.setDataRetentionPolicy(dataRetentionPolicy);
         }
         this.models.reinit(dataRetentionPolicy);
-        this.toolRegistry = new ToolRegistry(this);
+        this.toolRegistry = new ToolRegistry();
         // Register standard tools
         this.toolRegistry.register(new SearchTools(this));
         this.toolRegistry.register(new BuildInfoTools()); // Register the build report/abort tools
