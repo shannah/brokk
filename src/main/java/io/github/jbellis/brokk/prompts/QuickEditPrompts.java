@@ -63,7 +63,7 @@ public final class QuickEditPrompts {
         <goal>
         %s
         </goal>
-        Think about how to implement the goal, then return the replacement code fenced with triple backticks.
+        Think about how to implement the goal, then return the replacement code fenced with triple backticks. Omit language or other markdown options.
         """.formatted(target, instructions);
     }
 
