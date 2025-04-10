@@ -12,9 +12,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public interface ContextFragment extends Serializable {
+    // Static counter for all fragments
+    AtomicInteger NEXT_ID = new AtomicInteger(1);
+    
+    /** Unique identifier for this fragment */
+    int id();
     /** short description in history */
     String shortDescription();
     /** longer description displayed in context table */
@@ -72,15 +78,19 @@ public interface ContextFragment extends Serializable {
         @Override
         default String format() throws IOException {
             return """
-            <file path="%s">
+            <file path="%s" fragmentid="%d">
             %s
             </file>
-            """.formatted(file().toString(), text()).stripIndent();
+            """.formatted(file().toString(), id(), text()).stripIndent();
         }
     }
 
-    record ProjectPathFragment(ProjectFile file) implements PathFragment {
-        private static final long serialVersionUID = 1L;
+    record ProjectPathFragment(ProjectFile file, int id) implements PathFragment {
+        private static final long serialVersionUID = 2L;
+
+        public ProjectPathFragment(ProjectFile file) {
+            this(file, NEXT_ID.getAndIncrement());
+        }
 
         @Override
         public String shortDescription() {
@@ -119,8 +129,12 @@ public interface ContextFragment extends Serializable {
     /**
      * Represents a specific revision of a ProjectFile from Git history.
      */
-    record GitFileFragment(ProjectFile file, String revision) implements PathFragment {
-        private static final long serialVersionUID = 1L;
+    record GitFileFragment(ProjectFile file, String revision, int id) implements PathFragment {
+        private static final long serialVersionUID = 2L;
+
+        public GitFileFragment(ProjectFile file, String revision) {
+            this(file, revision, NEXT_ID.getAndIncrement());
+        }
 
         private String shortRevision() {
             return (revision.length() > 7) ? revision.substring(0, 7) : revision;
@@ -167,8 +181,12 @@ public interface ContextFragment extends Serializable {
     }
 
 
-    record ExternalPathFragment(ExternalFile file) implements PathFragment {
-        private static final long serialVersionUID = 1L;
+    record ExternalPathFragment(ExternalFile file, int id) implements PathFragment {
+        private static final long serialVersionUID = 2L;
+
+        public ExternalPathFragment(ExternalFile file) {
+            this(file, NEXT_ID.getAndIncrement());
+        }
 
         @Override
         public String shortDescription() {
@@ -201,13 +219,24 @@ public interface ContextFragment extends Serializable {
     }
 
     abstract class VirtualFragment implements ContextFragment {
+        private static final long serialVersionUID = 2L;
+        private final int id;
+
+        public VirtualFragment() {
+            this.id = NEXT_ID.getAndIncrement();
+        }
+        
+        @Override
+        public int id() {
+            return id;
+        }
         @Override
         public String format() throws IOException {
             return """
-            <fragment description="%s">
+            <fragment description="%s" fragmentid="%d">
             %s
             </fragment>
-            """.formatted(description(), text()).stripIndent();
+            """.formatted(description(), id(), text()).stripIndent();
         }
 
         @Override
@@ -234,7 +263,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class StringFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         private final String text;
         private final String description;
 
@@ -268,7 +297,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class SearchFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         private final String query;
         private final String explanation;
         private final Set<CodeUnit> sources;
@@ -315,7 +344,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class PasteFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         private final String text;
         private transient Future<String> descriptionFuture;
 
@@ -377,7 +406,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class StacktraceFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         private final Set<CodeUnit> sources;
         private final String original;
         private final String exception;
@@ -430,7 +459,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class UsageFragment extends VirtualFragment {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         private final String type;
         private final String targetIdentifier;
         private final Set<CodeUnit> classes;
@@ -475,7 +504,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class SkeletonFragment extends VirtualFragment {
-        private static final long serialVersionUID = 2L;
+        private static final long serialVersionUID = 3L;
         final Map<CodeUnit, String> skeletons;
 
         public SkeletonFragment(Map<CodeUnit, String> skeletons) {
@@ -549,7 +578,7 @@ public interface ContextFragment extends Serializable {
         public String format() {
             assert !isEmpty();
             return """
-            <summary classes="%s">
+            <summary classes="%s" fragmentid="%d">
             %s
             </summary>
             """.formatted(
@@ -557,6 +586,7 @@ public interface ContextFragment extends Serializable {
                             .map(CodeUnit::fqName)
                             .sorted()
                             .collect(Collectors.joining(", ")),
+                    id(),
                     text()
             ).stripIndent();
         }
@@ -568,7 +598,7 @@ public interface ContextFragment extends Serializable {
     }
 
     class ConversationFragment extends VirtualFragment {
-        private static final long serialVersionUID = 2L;
+        private static final long serialVersionUID = 3L;
         private final List<TaskEntry> history;
 
         public ConversationFragment(List<TaskEntry> history) {
@@ -623,15 +653,24 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    record AutoContext(SkeletonFragment fragment) implements ContextFragment {
-        private static final long serialVersionUID = 2L;
+    record AutoContext(SkeletonFragment fragment, int id) implements ContextFragment {
+        private static final long serialVersionUID = 3L;
+
+        public AutoContext(SkeletonFragment fragment) {
+            this(fragment, NEXT_ID.getAndIncrement());
+        }
         private static final ProjectFile DUMMY = new ProjectFile(Path.of("//dummy/share"), Path.of("dummy"));
+        // Use constants for these special values
+        private static final int EMPTY_ID = -1;
+        private static final int DISABLED_ID = -2;
+        private static final int REBUILDING_ID = -3;
+        
         public static final AutoContext EMPTY =
-                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Enabled, but no references found"), "")));
+                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Enabled, but no references found"), "")), EMPTY_ID);
         public static final AutoContext DISABLED =
-                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Disabled"), "")));
+                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Disabled"), "")), DISABLED_ID);
         public static final AutoContext REBUILDING =
-                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Updating"), "")));
+                new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Updating"), "")), REBUILDING_ID);
 
         public AutoContext {
             assert fragment != null;
@@ -685,6 +724,11 @@ public interface ContextFragment extends Serializable {
                 return "";
             }
             return fragment.format();
+        }
+        
+        @Override
+        public int id() {
+            return id;
         }
 
         @Override

@@ -541,9 +541,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 // Pass the GitHistoryFragment itself to the panel constructor/frame
                 PreviewPanel previewPanel = new PreviewPanel(contextManager, ghf.file(), content, syntaxType, themeManager, ghf);
                 PreviewPanel.showFrame(contextManager, title, previewPanel);
-            } else if (fragment instanceof ContextFragment.ProjectPathFragment(ProjectFile file)) {
+            } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
                 // Pass the ProjectFile for regular project path fragments
-                PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxType, themeManager, null);
+                PreviewPanel previewPanel = new PreviewPanel(contextManager, ppf.file(), content, syntaxType, themeManager, null);
                 PreviewPanel.showFrame(contextManager, title, previewPanel);
             } else {
                  // Pass null for file and fragment for other types (like StringFragment)

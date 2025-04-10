@@ -237,11 +237,11 @@ public class ContextPanel extends JPanel {
                             // Otherwise, show "View History" only if it's a ProjectPathFragment and Git is available
                             boolean hasGit = contextManager != null && contextManager.getProject() != null
                                     && contextManager.getProject().hasGit();
-                            if (hasGit && fragment instanceof ContextFragment.ProjectPathFragment(ProjectFile f)) {
+                            if (hasGit && fragment instanceof ContextFragment.ProjectPathFragment ppf) {
                                 JMenuItem viewHistoryItem = new JMenuItem("View History");
                                 viewHistoryItem.addActionListener(ev -> {
                                     // Already know it's a ProjectPathFragment here
-                                    chrome.getGitPanel().addFileHistoryTab(f);
+                                    chrome.getGitPanel().addFileHistoryTab(ppf.file());
                                 });
                                 contextMenu.add(viewHistoryItem);
                             } else if (fragment instanceof ContextFragment.ConversationFragment cf) {
