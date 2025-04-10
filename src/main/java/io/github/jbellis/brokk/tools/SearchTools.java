@@ -143,12 +143,11 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot search definitions: Code analyzer is not available.";
         if (patterns.isEmpty()) {
-            return "Cannot search definitions: patterns list is empty";
+            throw new IllegalArgumentException("Cannot search definitions: patterns list is empty");
         }
         if (reasoning.isBlank()) {
             // Tolerate missing reasoning for now, maybe make mandatory later
             logger.warn("Missing reasoning for searchSymbols call");
-            // return "Cannot search definitions: missing or empty reasoning parameter";
         }
 
         Set<CodeUnit> allDefinitions = new HashSet<>();
@@ -159,7 +158,7 @@ public class SearchTools {
         }
 
         if (allDefinitions.isEmpty()) {
-            return "No definitions found for patterns: " + String.join(", ", patterns);
+            throw new IllegalStateException("No definitions found for patterns: " + String.join(", ", patterns));
         }
 
         logger.debug("Raw definitions: {}", allDefinitions);
@@ -184,11 +183,10 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot search usages: Code analyzer is not available.";
         if (symbols.isEmpty()) {
-            return "Cannot search usages: symbols list is empty";
+            throw new IllegalArgumentException("Cannot search usages: symbols list is empty");
         }
         if (reasoning.isBlank()) {
              logger.warn("Missing reasoning for getUsages call");
-            // return "Cannot search usages: missing or empty reasoning parameter";
         }
 
         List<CodeUnit> allUses = new ArrayList<>();
@@ -199,7 +197,7 @@ public class SearchTools {
         }
 
         if (allUses.isEmpty()) {
-            return "No usages found for: " + String.join(", ", symbols);
+            throw new IllegalStateException("No usages found for: " + String.join(", ", symbols));
         }
 
         var processedUsages = AnalyzerUtil.processUsages(getAnalyzer(), allUses).code();
@@ -216,7 +214,7 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot find related classes: Code analyzer is not available.";
         if (classNames.isEmpty()) {
-            return "Cannot search pagerank: classNames is empty";
+            throw new IllegalArgumentException("Cannot search pagerank: classNames is empty");
         }
 
         // Create map of seeds from discovered units
@@ -228,7 +226,7 @@ public class SearchTools {
         var pageRankUnits = AnalyzerUtil.combinedPagerankFor(getAnalyzer(), weightedSeeds);
 
         if (pageRankUnits.isEmpty()) {
-            return "No related code found via PageRank for seeds: " + String.join(", ", classNames);
+            throw new IllegalStateException("No related code found via PageRank for seeds: " + String.join(", ", classNames));
         }
 
         var pageRankResults = pageRankUnits.stream().map(CodeUnit::fqName).toList();
@@ -260,7 +258,7 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot get skeletons: Code analyzer is not available.";
         if (classNames.isEmpty()) {
-            return "Cannot get skeletons: class names list is empty";
+            throw new IllegalArgumentException("Cannot get skeletons: class names list is empty");
         }
 
         var result = classNames.stream().distinct().map(fqcn -> getAnalyzer().getSkeleton(fqcn))
@@ -269,7 +267,7 @@ public class SearchTools {
                 .collect(Collectors.joining("\n\n"));
 
         if (result.isEmpty()) {
-            return "No skeletons found for classes: " + String.join(", ", classNames);
+            throw new IllegalStateException("No skeletons found for classes: " + String.join(", ", classNames));
         }
 
         return result;
@@ -288,11 +286,10 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot get class sources: Code analyzer is not available.";
         if (classNames.isEmpty()) {
-            return "Cannot get class sources: class names list is empty";
+            throw new IllegalArgumentException("Cannot get class sources: class names list is empty");
         }
         if (reasoning.isBlank()) {
             logger.warn("Missing reasoning for getClassSources call");
-            // return "Cannot get class sources: missing or empty reasoning parameter";
         }
 
         StringBuilder result = new StringBuilder();
@@ -317,7 +314,7 @@ public class SearchTools {
         }
 
         if (result.isEmpty()) {
-            return "No sources found for classes: " + String.join(", ", classNames);
+            throw new IllegalStateException("No sources found for classes: " + String.join(", ", classNames));
         }
 
         return result.toString();
@@ -332,7 +329,7 @@ public class SearchTools {
     ) {
          assert !getAnalyzer().isEmpty() : "Cannot get method sources: Code analyzer is not available.";
         if (methodNames.isEmpty()) {
-            return "Cannot get method sources: method names list is empty";
+            throw new IllegalArgumentException("Cannot get method sources: method names list is empty");
         }
 
         StringBuilder result = new StringBuilder();
@@ -356,7 +353,7 @@ public class SearchTools {
         }
 
         if (result.isEmpty()) {
-            return "No sources found for methods: " + String.join(", ", methodNames);
+            throw new IllegalStateException("No sources found for methods: " + String.join(", ", methodNames));
         }
 
         return result.toString();
@@ -372,11 +369,15 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot get call graph: Code analyzer is not available.";
         if (methodName.isBlank()) {
-            return "Cannot get call graph: method name is empty";
+            throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
 
         var graph = getAnalyzer().getCallgraphTo(methodName, 5);
-        return AnalyzerUtil.formatCallGraph(graph, methodName, false);
+        String result = AnalyzerUtil.formatCallGraph(graph, methodName, false);
+        if (result.isEmpty()) {
+            throw new IllegalStateException("No call graph available for method: " + methodName);
+        }
+        return result;
     }
 
     @Tool(value = """
@@ -389,11 +390,15 @@ public class SearchTools {
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot get call graph: Code analyzer is not available.";
         if (methodName.isBlank()) {
-            return "Cannot get call graph: method name is empty";
+            throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
 
         var graph = getAnalyzer().getCallgraphFrom(methodName, 5); // Use correct analyzer method
-        return AnalyzerUtil.formatCallGraph(graph, methodName, true);
+        String result = AnalyzerUtil.formatCallGraph(graph, methodName, true);
+        if (result.isEmpty()) {
+            throw new IllegalStateException("No call graph available for method: " + methodName);
+        }
+        return result;
     }
 
     // --- Text search tools
@@ -409,11 +414,10 @@ public class SearchTools {
             String reasoning
     ) {
         if (patterns.isEmpty()) {
-            return "Cannot search substrings: patterns list is empty";
+            throw new IllegalArgumentException("Cannot search substrings: patterns list is empty");
         }
         if (reasoning.isBlank()) {
             logger.warn("Missing reasoning for searchSubstrings call");
-           // return "Cannot search substrings: missing or empty reasoning parameter";
         }
 
         logger.debug("Searching file contents for patterns: {}", patterns);
@@ -425,7 +429,7 @@ public class SearchTools {
                     .toList();
 
             if (compiledPatterns.isEmpty()) {
-                return "No valid patterns provided";
+                throw new IllegalArgumentException("No valid patterns provided");
             }
 
             var matchingFilenames = contextManager.getProject().getFiles().parallelStream().map(file -> {
@@ -451,17 +455,18 @@ public class SearchTools {
                     .collect(Collectors.toSet());
 
             if (matchingFilenames.isEmpty()) {
-                var msg = "No files found with content matching patterns: " + String.join(", ", patterns);
-                logger.debug(msg);
-                return msg;
+                throw new IllegalStateException("No files found with content matching patterns: " + String.join(", ", patterns));
             }
 
             var msg = "Files with content matching patterns: " + String.join(", ", matchingFilenames);
             logger.debug(msg);
             return msg;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // Let specific argument errors propagate up
+            throw e;
         } catch (Exception e) {
             logger.error("Error searching file contents", e);
-            return "Error searching file contents: " + e.getMessage();
+            throw new RuntimeException("Error searching file contents: " + e.getMessage(), e);
         }
     }
 
@@ -476,11 +481,10 @@ public class SearchTools {
             String reasoning
     ) {
         if (patterns.isEmpty()) {
-            return "Cannot search filenames: patterns list is empty";
+            throw new IllegalArgumentException("Cannot search filenames: patterns list is empty");
         }
         if (reasoning.isBlank()) {
             logger.warn("Missing reasoning for searchFilenames call");
-            // return "Cannot search filenames: missing or empty reasoning parameter";
         }
 
         logger.debug("Searching filenames for patterns: {}", patterns);
@@ -492,7 +496,7 @@ public class SearchTools {
                     .toList();
 
             if (compiledPatterns.isEmpty()) {
-                return "No valid patterns provided";
+                throw new IllegalArgumentException("No valid patterns provided");
             }
 
             var matchingFiles = contextManager.getProject().getFiles().stream()
@@ -508,13 +512,16 @@ public class SearchTools {
                     .collect(Collectors.toList());
 
             if (matchingFiles.isEmpty()) {
-                return "No filenames found matching patterns: " + String.join(", ", patterns);
+                throw new IllegalStateException("No filenames found matching patterns: " + String.join(", ", patterns));
             }
 
             return "Matching filenames: " + String.join(", ", matchingFiles);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // Let specific argument errors propagate up
+            throw e;
         } catch (Exception e) {
             logger.error("Error searching filenames", e);
-            return "Error searching filenames: " + e.getMessage();
+            throw new RuntimeException("Error searching filenames: " + e.getMessage(), e);
         }
     }
 
@@ -527,31 +534,41 @@ public class SearchTools {
             List<String> filenames
     ) {
         if (filenames.isEmpty()) {
-            return "Cannot get file contents: filenames list is empty";
+            throw new IllegalArgumentException("Cannot get file contents: filenames list is empty");
         }
 
         logger.debug("Getting contents for files: {}", filenames);
-
-        return filenames.stream()
-                .distinct()
-                .map(filename -> {
-                    try {
-                        var file = contextManager.toFile(filename); // Use contextManager
-                        if (!file.exists()) {
-                            logger.debug("File not found or not a regular file: {}", file);
-                            return "<file name=\"%s\">\nError: File not found or not a regular file.\n</file>".formatted(filename);
-                        }
-                        var content = file.read();
-                        return "<file name=\"%s\">\n%s\n</file>".formatted(filename, content);
-                    } catch (IOException e) {
-                        logger.error("Error reading file content for {}: {}", filename, e.getMessage());
-                        return "<file name=\"%s\">\nError reading file: %s\n</file>".formatted(filename, e.getMessage());
-                    } catch (Exception e) {
-                        logger.error("Unexpected error getting content for {}: {}", filename, e.getMessage());
-                        return "<file name=\"%s\">\nUnexpected error: %s\n</file>".formatted(filename, e.getMessage());
-                    }
-                })
-                .collect(Collectors.joining("\n\n"));
+        
+        StringBuilder result = new StringBuilder();
+        boolean anySuccess = false;
+        
+        for (String filename : filenames.stream().distinct().toList()) {
+            try {
+                var file = contextManager.toFile(filename); // Use contextManager
+                if (!file.exists()) {
+                    logger.debug("File not found or not a regular file: {}", file);
+                    continue;
+                }
+                var content = file.read();
+                if (result.length() > 0) {
+                    result.append("\n\n");
+                }
+                result.append("<file name=\"%s\">\n%s\n</file>".formatted(filename, content));
+                anySuccess = true;
+            } catch (IOException e) {
+                logger.error("Error reading file content for {}: {}", filename, e.getMessage());
+                // Continue to next file
+            } catch (Exception e) {
+                logger.error("Unexpected error getting content for {}: {}", filename, e.getMessage());
+                // Continue to next file
+            }
+        }
+        
+        if (!anySuccess) {
+            throw new IllegalStateException("None of the requested files could be read: " + String.join(", ", filenames));
+        }
+        
+        return result.toString();
     }
 
     // Only includes project files. Is this what we want?
@@ -564,7 +581,7 @@ public class SearchTools {
             String directoryPath
     ) {
         if (directoryPath == null || directoryPath.isBlank()) {
-            return "Error: Directory path cannot be empty.";
+            throw new IllegalArgumentException("Directory path cannot be empty");
         }
 
         // Normalize path for filtering (remove leading/trailing slashes, handle '.')
@@ -590,13 +607,16 @@ public class SearchTools {
                     .collect(Collectors.joining(", "));
 
             if (files.isEmpty()) {
-                return "No files found in directory: " + directoryPath;
+                throw new IllegalStateException("No files found in directory: " + directoryPath);
             }
 
             return "Files in " + directoryPath + ": " + files;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // Let specific argument errors propagate up
+            throw e;
         } catch (Exception e) {
             logger.error("Error listing files for directory '{}': {}", directoryPath, e.getMessage(), e);
-            return "Error listing files: " + e.getMessage();
+            throw new RuntimeException("Error listing files: " + e.getMessage(), e);
         }
     }
 
