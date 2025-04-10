@@ -336,15 +336,36 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public void editFiles(Collection<ProjectFile> files)
     {
-        var fragments = files.stream().map(ContextFragment.ProjectPathFragment::new).toList();
-        pushContext(ctx -> ctx.removeReadonlyFiles(fragments).addEditableFiles(fragments));
+        // Create the new fragments to be added as editable
+        var newEditableFragments = files.stream().map(ContextFragment.ProjectPathFragment::new).toList();
+        // Find existing read-only fragments that correspond to these files
+        var currentReadOnlyFiles = topContext().readonlyFiles().collect(Collectors.toSet());
+        var filesToEditSet = new HashSet<>(files);
+        var existingReadOnlyFragmentsToRemove = currentReadOnlyFiles.stream()
+                .filter(pf -> filesToEditSet.contains(pf.file()))
+                .toList();
+
+        // Push the context update: remove the *existing* read-only fragments and add the *new* editable ones
+        pushContext(ctx -> ctx.removeReadonlyFiles(existingReadOnlyFragmentsToRemove)
+                              .addEditableFiles(newEditableFragments));
     }
 
     /** Add read-only files. */
     public void addReadOnlyFiles(Collection<? extends BrokkFile> files)
     {
-        var fragments = files.stream().map(ContextFragment::toPathFragment).toList();
-        pushContext(ctx -> ctx.removeEditableFiles(fragments).addReadonlyFiles(fragments));
+        // Create the new fragments to be added as read-only
+        var newReadOnlyFragments = files.stream().map(ContextFragment::toPathFragment).toList();
+        // Find existing editable fragments that correspond to these files
+        var currentEditableFiles = topContext().editableFiles().collect(Collectors.toSet());
+        var filesToReadSet = files.stream().map(ContextFragment::toPathFragment).map(PathFragment::file).collect(Collectors.toSet());
+        var existingEditableFragmentsToRemove = currentEditableFiles.stream()
+                .filter(pf -> filesToReadSet.contains(pf.file()))
+                .map(PathFragment.class::cast) // Cast to the required supertype
+                .toList();
+
+        // Push the context update: remove the *existing* editable fragments and add the *new* read-only ones
+        pushContext(ctx -> ctx.removeEditableFiles(existingEditableFragmentsToRemove)
+                              .addReadonlyFiles(newReadOnlyFragments));
     }
 
     /** Drop all context. */
