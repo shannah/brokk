@@ -611,7 +611,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() {
             return """
-            Here is the history of work done so far:
             <history>
             %s
             </history>
