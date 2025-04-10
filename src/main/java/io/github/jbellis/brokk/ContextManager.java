@@ -809,10 +809,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         // Process the clipboard text
-        processClipboardText(clipboardText);
+        pasteText(clipboardText);
     }
 
-    public void processClipboardText(String clipboardText) {
+    public void pasteText(String clipboardText) {
         clipboardText = clipboardText.trim();
         // Check if it's a URL
         String content = clipboardText;
@@ -838,7 +838,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         // Add as string fragment (possibly converted from HTML)
-        addPasteFragment(content, submitSummarizeTaskForPaste(content));
+        Future<String> summaryFuture = submitSummarizeTaskForPaste(content);
+        String finalContent = content;
+        pushContext(ctx -> {
+            var fragment = new ContextFragment.PasteFragment(finalContent, summaryFuture);
+            return ctx.addPasteFragment(fragment, summaryFuture);
+        });
 
         // Inform the user about what happened
         String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
@@ -1090,15 +1095,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
-
-    /** Pasting content as read-only snippet */
-    public void addPasteFragment(String pastedContent, Future<String> summaryFuture)
-    {
-        pushContext(ctx -> {
-            var fragment = new ContextFragment.PasteFragment(pastedContent, summaryFuture);
-            return ctx.addPasteFragment(fragment, summaryFuture);
-        });
-    }
 
     /** Add search fragment from agent result */
     public void addSearchFragment(VirtualFragment fragment)
@@ -1931,7 +1927,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         logger.debug("Compressed history entry '{}' to summary: {}", entry.description(), summary);
-        return TaskEntry.fromCompressed(entry.sequence(), entry.description(), summary);
+        return TaskEntry.fromCompressed(entry.sequence(), summary);
     }
 
     /**
