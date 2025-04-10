@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import dev.langchain4j.data.message.ChatMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -269,5 +270,39 @@ public class ContextSerializationTest {
             assertTrue(deserialized.virtualFragments.get(i).text().contains("content"));
             assertTrue(deserialized.virtualFragments.get(i).description().contains("Fragment"));
         }
+    }
+
+    @Test
+    void testTaskHistorySerialization() throws Exception {
+        // Create context
+        Context context = new Context(mockContextManager, 5);
+
+        // Create sample chat messages for a full session (User + AI)
+        List<ChatMessage> sessionMessages = List.of(
+            dev.langchain4j.data.message.UserMessage.from("What is the capital of France?"),
+            dev.langchain4j.data.message.AiMessage.from("The capital of France is Paris.")
+        );
+
+        // Add history using fromSession, which extracts the first UserMessage as description
+        // Provide dummy original contents and parsed output as they are not the focus here
+        var originalContents = Map.<ProjectFile, String>of();
+        var parsedOutput = new Context.ParsedOutput("Output", new ContextFragment.StringFragment("Output", "dummy"));
+        context = context.addHistory(sessionMessages, originalContents, parsedOutput, CompletableFuture.completedFuture("Test Task"));
+
+        // Serialize and deserialize
+        byte[] serialized = Context.serialize(context);
+        Context deserialized = Context.deserialize(serialized, "stub");
+
+        // Verify task history count
+        assertEquals(1, deserialized.getTaskHistory().size(), "Deserialized context should have one task history entry.");
+        TaskEntry deserializedTask = deserialized.getTaskHistory().getFirst();
+
+        // Verify TaskEntry content (first message becomes description, rest becomes log)
+        assertEquals("What is the capital of France?", deserializedTask.description(), "Task description should match the first UserMessage.");
+        assertNotNull(deserializedTask.log(), "Task log should not be null after deserialization.");
+        assertEquals(1, deserializedTask.log().size(), "Task log should contain the remaining messages (AI response).");
+        assertInstanceOf(dev.langchain4j.data.message.AiMessage.class, deserializedTask.log().getFirst(), "The message in the log should be an AiMessage.");
+        assertEquals("The capital of France is Paris.", Models.getText(deserializedTask.log().getFirst()), "AI message content should match.");
+        assertNull(deserializedTask.summary(), "Task should not be summarized (summary field should be null).");
     }
 }

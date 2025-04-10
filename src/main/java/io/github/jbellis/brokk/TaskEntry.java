@@ -1,24 +1,33 @@
 package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageDeserializer;
+import dev.langchain4j.data.message.ChatMessageSerializer;
 import dev.langchain4j.data.message.UserMessage;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * Represents a single task interaction, including the user request ("job") and the full conversation log.
  * The log can be compressed for storage.
+ * This record is serializable, using langchain4j's JSON serialization for ChatMessage lists.
  *
  * @param sequence      A unique sequence number for ordering tasks.
  * @param description   A short description of the user's request for this task.
  * @param log           The uncompressed list of chat messages for this task. Null if compressed.
  * @param summary The compressed representation of the chat messages (summary). Null if uncompressed.
  */
-public record TaskEntry(int sequence, String description, List<ChatMessage> log, String summary) {
+public record TaskEntry(int sequence, String description, List<ChatMessage> log, String summary) implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L; // Initial version
     private static final System.Logger logger = System.getLogger(TaskEntry.class.getName());
 
-    /** Enforce that exactly one of log or compressedLog is non-null */
+    /** Enforce that exactly one of log or summary is non-null */
     public TaskEntry {
         assert (description == null) == (log == null);
         assert (log == null) != (summary == null) : "Exactly one of log or summary must be non-null";
@@ -90,5 +99,63 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
                       description.indent(2).stripTrailing(),
                       logText.indent(2).stripTrailing())
                 .stripIndent();
+    }
+
+    // --- Custom Serialization using Proxy Pattern ---
+
+    /**
+     * Replace this TaskEntry instance with a SerializationProxy during serialization.
+     * This allows us to convert the non-serializable ChatMessage list to JSON.
+     */
+    @Serial
+    private Object writeReplace() {
+        return new SerializationProxy(this);
+    }
+
+    /**
+     * Prevent direct deserialization of TaskEntry; must go through the proxy.
+     */
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new java.io.NotSerializableException("TaskEntry must be serialized via SerializationProxy");
+    }
+
+    /**
+     * A helper class to handle the serialization and deserialization of TaskEntry.
+     * It stores the ChatMessage list as a JSON string.
+     */
+    private static class SerializationProxy implements Serializable {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        private final int sequence;
+        private final String description;
+        private final String serializedLog; // Store log as JSON string
+        private final String summary;
+
+        SerializationProxy(TaskEntry taskEntry) {
+            this.sequence = taskEntry.sequence();
+            this.description = taskEntry.description();
+            this.summary = taskEntry.summary();
+            // Serialize the log to JSON if it exists
+            this.serializedLog = taskEntry.log() != null
+                    ? ChatMessageSerializer.messagesToJson(taskEntry.log())
+                    : null;
+        }
+
+        /**
+         * Reconstruct the TaskEntry instance after the SerializationProxy is deserialized.
+         */
+        @Serial
+        private Object readResolve() {
+            if (serializedLog != null) {
+                // Deserialize log from JSON
+                List<ChatMessage> deserializedLog = ChatMessageDeserializer.messagesFromJson(serializedLog);
+                return new TaskEntry(sequence, description, deserializedLog, null);
+            } else {
+                // Entry was compressed or had no log originally
+                return new TaskEntry(sequence, description, null, summary);
+            }
+        }
     }
 }

@@ -38,7 +38,7 @@ public class Context implements Serializable {
     }
 
     @Serial
-    private static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 3L;
 
     public static final int MAX_AUTO_CONTEXT_FILES = 100;
     private static final String WELCOME_ACTION = "Welcome to Brokk";
@@ -52,8 +52,8 @@ public class Context implements Serializable {
 
     final AutoContext autoContext;
     final int autoContextFileCount;
-    /** Task history list. Each entry represents a user request and the subsequent conversation. */
-    transient final List<TaskEntry> taskHistory;
+    /** Task history list. Each entry represents a user request and the subsequent conversation */
+    final List<TaskEntry> taskHistory;
 
     /** backup of original contents for /undo, does not carry forward to Context children */
     transient final Map<ProjectFile, String> originalContents;
@@ -698,13 +698,8 @@ public class Context implements Serializable {
         ois.defaultReadObject();
 
         try {
-             // Use reflection to set final transient fields
-             // Initialize taskHistory as an empty list upon deserialization
-             var taskHistoryField = Context.class.getDeclaredField("taskHistory");
-             taskHistoryField.setAccessible(true);
-             taskHistoryField.set(this, List.of()); // Initialize as empty immutable list
-
-             var originalContentsField = Context.class.getDeclaredField("originalContents");
+            // Use reflection to set final transient fields
+            var originalContentsField = Context.class.getDeclaredField("originalContents");
             originalContentsField.setAccessible(true);
             originalContentsField.set(this, Map.of());
 
