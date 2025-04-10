@@ -1902,6 +1902,39 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
+     * Compresses a single TaskEntry into a summary string using the quickest model.
+     *
+     * @param entry    The TaskEntry to compress.
+     * @return A new compressed TaskEntry, or the original entry (with updated sequence) if compression fails.
+     */
+    public TaskEntry compressHistory(TaskEntry entry) {
+        // If already compressed, return as is
+        if (entry.isCompressed()) {
+            return entry;
+        }
+
+        // Compress
+        var historyString = entry.toString();
+        var msgs = SummarizerPrompts.instance.compressHistory(historyString);
+        var result = coder.sendMessage(models.quickModel(), msgs);
+
+        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+            logger.warn("History compression failed for entry '{}': {}", entry.description(),
+                        result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
+            return entry;
+        }
+
+        String summary = result.chatResponse().aiMessage().text();
+        if (summary == null || summary.isBlank()) {
+            logger.warn("History compression for entry '{}' resulted in empty summary.", entry.description());
+            return entry;
+        }
+
+        logger.debug("Compressed history entry '{}' to summary: {}", entry.description(), summary);
+        return TaskEntry.fromCompressed(entry.sequence(), entry.description(), summary);
+    }
+
+    /**
      * Add to the user/AI message history. Called by both Ask and Code.
      */
     @Override
@@ -1943,5 +1976,47 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public ToolRegistry getToolRegistry() {
         assert toolRegistry != null : "ToolRegistry accessed before initialization";
         return toolRegistry;
+    }
+
+    /**
+     * Asynchronously compresses the entire conversation history of the currently selected context.
+     * Replaces the history with summarized versions of each task entry.
+     * This runs as a user action because it visibly modifies the context history.
+     */
+    public Future<?> compressHistoryAsync() {
+        return submitUserTask("Compressing History", () -> {
+            io.disableHistoryPanel(); // Disable history navigation during compression
+            try {
+                var currentContext = selectedContext(); // Operate on the selected context
+                var history = currentContext.getTaskHistory();
+
+                io.systemOutput("Compressing conversation history...");
+                List<TaskEntry> compressedHistory = new ArrayList<>(history.size());
+                boolean changed = false;
+                for (TaskEntry entry : history) {
+                    // Pass the sequence number (i + 1) for the new entry in the compressed list
+                    TaskEntry compressedEntry = compressHistory(entry);
+                    compressedHistory.add(compressedEntry);
+                    if (!entry.equals(compressedEntry)) { // Check if the entry actually changed (e.g., wasn't already compressed)
+                        changed = true;
+                    }
+                }
+
+                // Only push if changes were made
+                if (!changed) {
+                     io.systemOutput("Unable to compress history");
+                     return;
+                 }
+
+                // Create a new context with the compressed history
+                pushContext(ctx -> ctx.withCompressedHistory(List.copyOf(compressedHistory)));
+                io.systemOutput("Conversation history compressed successfully.");
+            } finally {
+                 // Re-enable history navigation *after* pushContext updates the UI
+                 SwingUtilities.invokeLater(io::enableHistoryPanel);
+                 // TODO clean up enable/disable of UI elements in usertasks
+                 // enableUserActionButtons is handled by submitUserTask
+            }
+        });
     }
 }

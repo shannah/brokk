@@ -569,17 +569,21 @@ public interface ContextFragment extends Serializable {
 
     class ConversationFragment extends VirtualFragment {
         private static final long serialVersionUID = 2L;
-        private final List<TaskEntry> taskEntry;
+        private final List<TaskEntry> history;
 
-        public ConversationFragment(List<TaskEntry> taskEntry) {
+        public ConversationFragment(List<TaskEntry> history) {
             super();
-            assert taskEntry != null;
-            this.taskEntry = List.copyOf(taskEntry);
+            assert history != null;
+            this.history = List.copyOf(history);
+        }
+
+        public List<TaskEntry> getHistory() {
+            return history;
         }
 
         @Override
         public String text() {
-            return taskEntry.stream()
+            return history.stream()
                     .map(TaskEntry::toString)
                     .collect(Collectors.joining("\n\n"));
         }
@@ -596,7 +600,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            return "Conversation History (" + taskEntry.size() + " task%s)".formatted(taskEntry.size() > 1 ? "s" : "");
+            return "Conversation History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
         }
 
         @Override
@@ -616,7 +620,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String toString() {
-            return "ConversationFragment(" + taskEntry.size() + " tasks)";
+            return "ConversationFragment(" + history.size() + " tasks)";
         }
     }
 

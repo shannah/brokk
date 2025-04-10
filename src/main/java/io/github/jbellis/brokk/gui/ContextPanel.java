@@ -234,24 +234,27 @@ public class ContextPanel extends JPanel {
                             contextMenu.add(setAutoContextCustomItem);
 
                         } else {
-                            // Otherwise, show "View History" if it's a RepoPathFragment and not a dependency
+                            // Otherwise, show "View History" only if it's a ProjectPathFragment and Git is available
                             boolean hasGit = contextManager != null && contextManager.getProject() != null
                                     && contextManager.getProject().hasGit();
-                            if (hasGit) {
+                            if (hasGit && fragment instanceof ContextFragment.ProjectPathFragment(ProjectFile f)) {
                                 JMenuItem viewHistoryItem = new JMenuItem("View History");
                                 viewHistoryItem.addActionListener(ev -> {
-                                    int selectedRow = contextTable.getSelectedRow();
-                                    if (selectedRow >= 0) {
-                                        var selectedFragment = (ContextFragment) contextTable.getModel().getValueAt(selectedRow, FRAGMENT_COLUMN);
-                                        if (selectedFragment instanceof ContextFragment.ProjectPathFragment(
-                                                ProjectFile f
-                                        )) {
-                                            chrome.getGitPanel().addFileHistoryTab(f);
-                                        }
-                                    }
+                                    // Already know it's a ProjectPathFragment here
+                                    chrome.getGitPanel().addFileHistoryTab(f);
                                 });
                                 contextMenu.add(viewHistoryItem);
-                                viewHistoryItem.setEnabled(fragment instanceof ContextFragment.ProjectPathFragment);
+                            } else if (fragment instanceof ContextFragment.ConversationFragment cf) {
+                                // Add Compress History option for conversation fragment
+                                JMenuItem compressHistoryItem = new JMenuItem("Compress History");
+                                compressHistoryItem.addActionListener(e1 -> {
+                                    // Call ContextManager to compress history
+                                    chrome.setCurrentUserTask(contextManager.compressHistoryAsync());
+                                });
+                                contextMenu.add(compressHistoryItem);
+                                // Only enable if uncompressed entries exist
+                                var uncompressedExists = cf.getHistory().stream().anyMatch(entry -> !entry.isCompressed());
+                                compressHistoryItem.setEnabled(uncompressedExists);
                             }
                         }
 

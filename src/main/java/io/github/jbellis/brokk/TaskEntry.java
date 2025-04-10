@@ -13,27 +13,29 @@ import java.util.stream.Collectors;
  * @param sequence      A unique sequence number for ordering tasks.
  * @param description   A short description of the user's request for this task.
  * @param log           The uncompressed list of chat messages for this task. Null if compressed.
- * @param compressedLog The compressed representation of the chat messages. Null if uncompressed.
+ * @param summary The compressed representation of the chat messages (summary). Null if uncompressed.
  */
-public record TaskEntry(int sequence, String description, List<ChatMessage> log, String compressedLog) {
+public record TaskEntry(int sequence, String description, List<ChatMessage> log, String summary) {
     private static final System.Logger logger = System.getLogger(TaskEntry.class.getName());
 
     /** Enforce that exactly one of log or compressedLog is non-null */
     public TaskEntry {
-        assert description != null && !description.isBlank();
-        assert (log == null) != (compressedLog == null) : "Exactly one of log or compressedLog must be non-null";
+        assert (description == null) == (log == null);
+        assert (log == null) != (summary == null) : "Exactly one of log or summary must be non-null";
         assert log == null || !log.isEmpty();
-        assert compressedLog == null || !compressedLog.isEmpty();
+        assert summary == null || !summary.isEmpty();
     }
 
     /**
      * Creates a TaskHistory instance from a list of ChatMessages representing a session.
-     * Assumes the first message is a UserMessage and extracts its text as the job.
-     * The TaskHistory always starts uncompressed.
+     * Creates a TaskEntry instance from a list of ChatMessages representing a full session interaction.
+     * The first message *must* be a UserMessage, its content is stored as the `description`.
+     * The remaining messages (AI responses, tool calls/results) are stored in the `log`.
+     * The TaskEntry starts uncompressed.
      *
      * @param sequence The sequence number for this task.
-     * @param sessionMessages The list of messages from the session. Must not be empty and the first message must be a UserMessage.
-     * @return A new TaskHistory instance.
+     * @param sessionMessages The full list of messages from the session, starting with the user's request.
+     * @return A new TaskEntry instance.
      */
     public static TaskEntry fromSession(int sequence, List<ChatMessage> sessionMessages) {
         assert sessionMessages != null && !sessionMessages.isEmpty();
@@ -44,32 +46,41 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
         return new TaskEntry(sequence, job, sessionMessages.subList(1, sessionMessages.size()), null);
     }
 
-    // TODO: Implement compress() method
-    // public TaskHistory compress() { ... }
+    public static TaskEntry fromCompressed(int sequence, String description, String compressedLog) {
+        return new TaskEntry(sequence, description, null, compressedLog);
+    }
+
+    /**
+     * Returns true if this TaskEntry holds a compressed summary instead of the full message log.
+     * @return true if compressed, false otherwise.
+     */
+    public boolean isCompressed() {
+        return summary != null;
+    }
 
     /**
      * Provides a string representation suitable for logging or context display.
-     *
-     * @return A formatted string representing the task.
      */
     @Override
     public String toString() {
-        String logText;
-        if (log == null) {
-            logText = "  <summary>%s</message>".formatted(this.compressedLog);
+        if (isCompressed()) {
+            return """
+                <task sequence=%s summarized=true>
+                %s
+                </task>
+                """.formatted(sequence, summary.indent(2).stripTrailing()).stripIndent();
         }
-        else {
-            logText = log.stream()
-                    .map(message -> {
-                        var text = Models.getText(message);
-                        return """
-                        <message type=%s>
-                        %s
-                        </message>
-                        """.formatted(message.type().name().toLowerCase(), text.indent(2).stripTrailing()).stripIndent();
-                    })
-                    .collect(Collectors.joining("\n  "));
-        }
+
+        var logText = log.stream()
+                .map(message -> {
+                    var text = Models.getText(message);
+                    return """
+                    <message type=%s>
+                    %s
+                    </message>
+                    """.formatted(message.type().name().toLowerCase(), text.indent(2).stripTrailing()).stripIndent();
+                })
+                .collect(Collectors.joining("\n"));
         return """
         <task sequence=%s>
         %s
@@ -78,6 +89,6 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
         """.formatted(sequence,
                       description.indent(2).stripTrailing(),
                       logText.indent(2).stripTrailing())
-           .stripIndent();
+                .stripIndent();
     }
 }

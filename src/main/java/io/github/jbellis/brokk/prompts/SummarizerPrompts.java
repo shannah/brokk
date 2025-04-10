@@ -4,7 +4,6 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import io.github.jbellis.brokk.ContextManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -68,5 +67,17 @@ public class SummarizerPrompts {
 
                Reply only with the summary, without any additional text, explanations, or line breaks.
                """.stripIndent();
+    }
+
+    public List<ChatMessage> compressHistory(String entryText) {
+        var instructions = """
+        Give a detailed but concise summary of this task.
+        A third party should be able to understand what happened without reference to the original.
+        Focus on information that would be useful for someone doing further work on the project described in the task.
+
+        Here is the task to summarize. Do not include XML tags or other markup.
+        %s
+        """.stripIndent().formatted(entryText);
+        return List.of(new SystemMessage(systemIntro()), new UserMessage(instructions));
     }
 }

@@ -102,9 +102,9 @@ public class Context implements Serializable {
                     List<ContextFragment.VirtualFragment> virtualFragments,
                     AutoContext autoContext,
                     int autoContextFileCount,
-                     List<TaskEntry> taskEntry,
-                     Map<ProjectFile, String> originalContents,
-                     ParsedOutput parsedOutput,
+                    List<TaskEntry> taskEntry,
+                    Map<ProjectFile, String> originalContents,
+                    ParsedOutput parsedOutput,
                     Future<String> action)
     {
         assert id > 0;
@@ -628,6 +628,27 @@ public class Context implements Serializable {
                             originalContents,
                             parsedOutput,
                             action).refresh();
+    }
+
+    /**
+     * Creates a new Context with a modified task history list.
+     * This generates a new context state with a new ID and action.
+     *
+     * @param newHistory The new list of TaskEntry objects.
+     * @return A new Context instance with the updated history.
+     */
+    public Context withCompressedHistory(List<TaskEntry> newHistory) {
+        return new Context(newId(),
+                           contextManager,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           autoContext,
+                           autoContextFileCount,
+                           newHistory, // Use the new history
+                           Map.of(), // original contents
+                           null,     // parsed output
+                           CompletableFuture.completedFuture("Compressed History")).refresh(); // Call refresh to potentially update autoContext
     }
 
     public ParsedOutput getParsedOutput() {
