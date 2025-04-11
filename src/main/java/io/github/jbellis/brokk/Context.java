@@ -508,27 +508,43 @@ public class Context implements Serializable {
       * @param parsed           The parsed output associated with this task.
       * @param action           A future describing the action that created this history entry.
       * @return A new Context instance with the added task history.
+      * @deprecated Use {@link #addHistoryEntry(TaskEntry, ParsedOutput, Future, Map)} instead.
       */
+     @Deprecated
      public Context addHistory(List<ChatMessage> newMessages, Map<ProjectFile, String> originalContents, ParsedOutput parsed, Future<String> action) {
-         // Create the TaskHistory object
+         // Create the TaskEntry object
          int nextSequence = taskHistory.isEmpty() ? 1 : taskHistory.getLast().sequence() + 1;
          TaskEntry newTask = TaskEntry.fromSession(nextSequence, newMessages);
 
-         // Create a new list with the added task
-         var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(newTask)).toList();
+         return addHistoryEntry(newTask, parsed, action, originalContents);
+     }
 
-         return new Context(newId(),
-                            contextManager,
-                            editableFiles,
-                            readonlyFiles,
-                            virtualFragments,
-                            autoContext,
-                            autoContextFileCount,
-                            newTaskHistory, // new task history list
-                            originalContents,
-                            parsed,
-                            action).refresh();
+    /**
+     * Adds a new TaskEntry to the history.
+     *
+     * @param taskEntry        The pre-constructed TaskEntry to add.
+     * @param originalContents Map of original file contents for undo purposes.
+     * @param parsed           The parsed output associated with this task.
+     * @param action           A future describing the action that created this history entry.
+     * @return A new Context instance with the added task history.
+     */
+    public Context addHistoryEntry(TaskEntry taskEntry, ParsedOutput parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
+        // Create a new list with the added task
+        var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(taskEntry)).toList();
+
+        return new Context(newId(),
+                           contextManager,
+                           editableFiles,
+                           readonlyFiles,
+                           virtualFragments,
+                           autoContext,
+                           autoContextFileCount,
+                           newTaskHistory, // new task history list
+                           originalContents,
+                           parsed,
+                           action).refresh();
     }
+
 
     public Context clearHistory() {
         return new Context(newId(),

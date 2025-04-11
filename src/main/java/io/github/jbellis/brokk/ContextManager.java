@@ -1223,47 +1223,38 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Add to the user/AI message history. Called by both Ask and Code.
-     * Kept for potential internal use, but no longer overrides an interface method.
-     */
-    public void addToHistory(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String action)
-    {
-        // This method relies on potentially stale UI state for the LLM output.
-        // Construct SessionResult and delegate to the main method.
-        String llmOutputText = io.getLlmOutputText(); // Fetch current output from UI
-        // Assuming direct calls imply success or the reason is unknown/not applicable here.
-        var sessionResult = new CodeAgent.SessionResult(messages, originalContents, action, llmOutputText, CodeAgent.StopReason.SUCCESS);
-        addToHistory(sessionResult);
-    }
-
-    /**
      * Adds a completed CodeAgent session result to the context history.
      * This is the primary method for adding history after a CodeAgent run.
      *
-     * @param sessionResult The result object from CodeAgent.runSession. Can be null.
+     * @param result The result object from CodeAgent.runSession. Can be null.
      */
-    public void addToHistory(CodeAgent.SessionResult sessionResult) {
-        // runSession returns null if no history should be added
-        if (sessionResult == null) {
-            logger.debug("Skipping adding null session result to history.");
+    public void addToHistory(CodeAgent.SessionResult result) {
+        assert result != null;
+        if (result.messages().isEmpty()) {
+            logger.debug("Skipping adding empty session result to history.");
             return;
         }
 
-        var messages = sessionResult.messages();
-        var originalContents = sessionResult.originalContents();
-        var action = sessionResult.actionDescription(); // This already includes the stop reason if not SUCCESS
-        var llmOutputText = sessionResult.finalLlmOutput();
+        var messages = result.messages();
+        var originalContents = result.originalContents();
+        var action = result.actionDescription(); // This already includes the stop reason if not SUCCESS
+        var llmOutputText = result.finalLlmOutput();
 
         // Use the final LLM output text from the result to create ParsedOutput
         // Ensure llmOutputText is not null, default to empty string if necessary
         var nonNullLlmOutput = llmOutputText == null ? "" : llmOutputText;
         var parsed = new ParsedOutput(nonNullLlmOutput, new ContextFragment.StringFragment(nonNullLlmOutput, "ai Response"));
 
-        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), sessionResult.stopReason());
+        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopReason());
+
+        // Create the TaskEntry
+        int nextSequence = topContext().getTaskHistory().isEmpty() ? 1 : topContext().getTaskHistory().getLast().sequence() + 1;
+        TaskEntry newTask = TaskEntry.fromSession(nextSequence, messages);
 
         // Push the new context state with the added history entry
         // The action description from the sessionResult already contains the stop reason if needed
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
+        Future<String> actionFuture = submitSummarizeTaskForConversation(action);
+        pushContext(ctx -> ctx.addHistoryEntry(newTask, parsed, actionFuture, originalContents));
     }
 
     public List<Context> getContextHistory() {

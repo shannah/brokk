@@ -9,6 +9,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.util.Arrays; // Added import
 import java.util.Collection;
@@ -76,26 +77,33 @@ public class ToolRegistry {
     }
 
     /**
-     * Generates ToolSpecifications for tool methods defined directly within a given class.
-     * This is useful for agent-specific tools (like answer/abort) defined within the agent itself.
-     * @param cls The class containing the @Tool annotated static or instance methods.
+     * Generates ToolSpecifications for tool methods defined as instance methods within a given object.
+     * This is useful for agent-specific tools (like answer/abort) defined within an agent instance.
+     * @param toolInstance The object containing the @Tool annotated instance methods.
      * @param toolNames The names of the tools to get specifications for.
-     * @return A list of ToolSpecification objects. Returns an empty list if a name is not found or method doesn't match.
+     * @return A list of ToolSpecification objects. Returns an empty list if a name is not found or the method doesn't match.
      */
-    public List<ToolSpecification> getTools(Class<?> cls, Collection<String> toolNames) {
-        Objects.requireNonNull(cls, "cls cannot be null");
-        Map<String, Method> classMethods = Arrays.stream(cls.getMethods())
-                .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
-                .collect(Collectors.toMap(
-                        m -> {
-                            var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
-                            return toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
-                        },
-                        m -> m
-                ));
+    public List<ToolSpecification> getTools(Object toolInstance, Collection<String> toolNames) {
+        Objects.requireNonNull(toolInstance, "toolInstance cannot be null");
+        Class<?> cls = toolInstance.getClass();
 
+        // Gather all instance methods declared in the class that are annotated with @Tool.
+        List<Method> annotatedMethods = Arrays.stream(cls.getDeclaredMethods())
+                .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
+                .filter(m -> !Modifier.isStatic(m.getModifiers()))
+                .toList();
+
+        // For each toolName, directly find the corresponding method and generate its specification.
         return toolNames.stream()
-                .map(classMethods::get)
+                .map(toolName -> annotatedMethods.stream()
+                        .filter(m -> {
+                            var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
+                            String name = toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
+                            return name.equals(toolName);
+                        })
+                        .findFirst()
+                        .orElse(null)
+                )
                 .filter(Objects::nonNull)
                 .map(ToolSpecifications::toolSpecificationFrom)
                 .collect(Collectors.toList());

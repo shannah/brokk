@@ -37,19 +37,14 @@ import java.util.stream.Collectors;
  * can choose to add them to the context if relevant.
  */
 public class BrokkAgent {
-
     private static final Logger logger = LogManager.getLogger(BrokkAgent.class);
 
     private final ContextManager contextManager;
-    private final Coder coder;
     private final StreamingChatLanguageModel model;
     private final ToolRegistry toolRegistry;
 
     // Task stack (LIFO) containing the tasks or subtasks we want to solve
     private final Deque<String> tasks = new ArrayDeque<>();
-
-    // Keep track of conversation or "agent state" if needed
-    private final List<ToolHistoryEntry> actionHistory = new ArrayList<>();
 
     private TokenUsage totalUsage = new TokenUsage(0,0);
 
@@ -58,9 +53,8 @@ public class BrokkAgent {
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
      */
-    public BrokkAgent(ContextManager contextManager, Coder coder, StreamingChatLanguageModel model, ToolRegistry toolRegistry) {
+    public BrokkAgent(ContextManager contextManager, StreamingChatLanguageModel model, ToolRegistry toolRegistry) {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
-        this.coder = Objects.requireNonNull(coder, "coder cannot be null");
         this.model = Objects.requireNonNull(model, "model cannot be null");
         this.toolRegistry = Objects.requireNonNull(toolRegistry, "toolRegistry cannot be null");
     }
@@ -123,20 +117,54 @@ public class BrokkAgent {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
         // Run CodeAgent
-        var sessionResult = CodeAgent.runSession(contextManager, model, instructions);
-        if (sessionResult == null) {
-            logger.warn("CodeAgent returned null session result (likely canceled or error).");
-            return "CodeAgent was canceled or returned no updates.";
+        var result = CodeAgent.runSession(contextManager, model, instructions);
+
+        // Add the result to history (compression handled within addToHistory)
+        contextManager.addToHistory(result);
+
+        // Pop the completed task *if* the stack is not empty
+        String poppedTask = null;
+        logger.debug("Popped task from stack: {}", poppedTask);
+
+        // Summarize the result for the BrokkAgent LLM, mentioning the popped task
+        var stopReason = result.stopReason();
+        String summary = "CodeAgent concluded with stop reason: %s".stripIndent().formatted(stopReason, instructions);
+        logger.debug("Summary for callCodeAgent: {}", summary);
+        return summary;
+    }
+
+    /**
+     * A tool that invokes the SearchAgent to perform searches and analysis based on a query.
+     * The SearchAgent will decide which specific search/analysis tools to use (e.g., searchSymbols, getFileContents).
+     * The results are added as a context fragment.
+     */
+    @Tool("Invoke the SearchAgent to find information relevant to the given query. Search results are added to context.")
+    public String callSearchAgent(
+            @P("The search query or question for the SearchAgent.")
+            String query
+    ) {
+        logger.debug("callSearchAgent invoked with query: {}", query);
+
+        // Instantiate and run SearchAgent, passing all required arguments
+        var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry);
+        var searchResult = searchAgent.execute(); // Correct method is execute(), query passed to constructor
+
+        if (searchResult == null || searchResult.text() == null || searchResult.text().isBlank()) {
+            logger.warn("SearchAgent returned null or empty result for query: {}", query);
+            return "SearchAgent returned no results.";
         }
-        // Summarize the result for the user
-        var stopReason = sessionResult.stopReason();
-        var summary = """
-            CodeAgent concluded with stop reason: %s
-            Original instructions: %s
-            """.stripIndent().formatted(stopReason, instructions);
+
+        // Add the fragment using ContextManager
+        contextManager.addSearchFragment(searchResult);
+
+        // Provide a summary back to BrokkAgent's LLM
+        // The full result text is in the context, so just confirm it was added.
+        String summary = "SearchAgent completed for query '%s'. Results added to context fragment #%d: %s"
+                .formatted(query, searchResult.id(), searchResult.shortDescription());
         logger.debug(summary);
         return summary;
     }
+
 
     /**
      * Run the multi-step plan until we either produce a final answer, abort, or run out of tasks.
@@ -158,12 +186,12 @@ public class BrokkAgent {
             List<ChatMessage> messages = buildPrompt(topClassesMarkdown);
 
             // 4) Figure out which tools are allowed in this step
-            List<String> allowedToolNames = getAllowedTools();
+            List<String> allowedToolNames = getRegisteredTools();
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
-            toolSpecs.addAll(toolRegistry.getTools(this.getClass(), List.of("answerPlan", "abortPlan")));
+            toolSpecs.addAll(toolRegistry.getTools(this.getClass(), List.of("answerPlan", "abortPlan", "callCodeAgent", "pushTasks", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
-            var response = coder.sendMessage(model, messages, toolSpecs, ToolChoice.REQUIRED, false);
+            var response = contextManager.getCoder().sendMessage(model, messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (response.cancelled()) {
                 logger.info("Plan canceled by user. Stopping now.");
                 return;
@@ -203,14 +231,12 @@ public class BrokkAgent {
             if (answerReq != null) {
                 logger.debug("LLM decided to answerPlan. We'll finalize and stop.");
                 var result = toolRegistry.executeTool(answerReq);
-                addActionHistory(answerReq, result);
                 logger.info("Plan final answer: {}", result.resultText());
                 return; // done
             }
             if (abortReq != null) {
                 logger.debug("LLM decided to abortPlan. We'll finalize and stop.");
                 var result = toolRegistry.executeTool(abortReq);
-                addActionHistory(abortReq, result);
                 logger.info("Plan aborted: {}", result.resultText());
                 return; // done
             }
@@ -220,7 +246,6 @@ public class BrokkAgent {
                 // If it's a duplicate "pushTasks" or "callCodeAgent" with same arguments, etc.
                 // we might skip or handle differently. But let's just do them in order for now.
                 var toolResult = toolRegistry.executeTool(request);
-                addActionHistory(request, toolResult);
 
                 // If pushTasks was used, presumably the stack changed. If callCodeAgent was used, we see how it ended.
                 // The LLM can keep re-iterating.
@@ -236,27 +261,26 @@ public class BrokkAgent {
      *     the top-10 PageRank classes, and any relevant instructions.
      */
     private List<ChatMessage> buildPrompt(String topClassesMarkdown) {
-        var systemMsg = new StringBuilder();
-        systemMsg.append("""
-            You are BrokkAgent, a multi-step plan manager. You have a stack of tasks to complete.
-            In each step, you must pick the best tool to call. The main tools are:
-              1) pushTasks => add more sub-tasks to the stack
-              2) callCodeAgent => do coding/implementation with the CodeAgent
-              3) searchSymbols or other search/insp tools => find relevant code
-              4) context manipulations => add or drop files/fragments
-              5) answerPlan => finalize the plan with a complete explanation/solution
-              6) abortPlan => give up if it's unsolvable or irrelevant
-
-            The top of the stack is the next immediate subgoal. But you can also examine or transform the entire stack in any iteration.
-
-            The 10 classes with highest pageRank and their skeletons are shown below.
-            If any are relevant, you can add them to context using context tools:
-            addClassSkeletonsFragment, addClassSourcesFragment, etc.
-
-            Do NOT just repeat a previous action. If you must refine your approach, do so with new arguments.
-
-            If no more tasks remain or you are done, call answerPlan or abortPlan.
-            """.stripIndent());
+        String systemMsg = """
+        You are BrokkAgent, a multi-step plan manager. You have a stack of tasks to complete.
+        In each step, you must pick the best tool to call. The main tools are:
+          1) pushTasks => add more sub-tasks to the stack
+          2) callCodeAgent => do coding/implementation with the CodeAgent
+          3) searchSymbols or other search/insp tools => find relevant code
+          4) context manipulations => add or drop files/fragments
+          5) answerPlan => finalize the plan with a complete explanation/solution
+          6) abortPlan => give up if it's unsolvable or irrelevant
+        
+        The top of the stack is the next immediate subgoal. But you can also examine or transform the entire stack in any iteration.
+        
+        The 10 classes with highest pageRank and their skeletons are shown below.
+        If any are relevant, you can add them to context using context tools:
+        addClassSkeletonsFragment, addClassSourcesFragment, etc.
+        
+        Do NOT just repeat a previous action. If you must refine your approach, do so with new arguments.
+        
+        If no more tasks remain or you are done, call answerPlan or abortPlan.
+        """.stripIndent();
 
         // Show the current tasks
         var tasksList = tasks.stream().limit(20).collect(Collectors.joining("\n - "));
@@ -265,17 +289,17 @@ public class BrokkAgent {
         }
 
         var userMsg = """
-            **Task Stack (top first)**:
-            - %s
+        **Task Stack (top first)**:
+        - %s
 
-            **Top-10 PageRank Classes**:
-            %s
+        **Top-10 PageRank Classes**:
+        %s
 
-            Please decide the next tool action. Summarize your approach and call a single tool that best fits.
-            """.stripIndent().formatted(tasksList, topClassesMarkdown);
+        Please decide the next tool action. Summarize your approach and call a single tool that best fits.
+        """.stripIndent().formatted(tasksList, topClassesMarkdown);
 
         return List.of(
-                new SystemMessage(systemMsg.toString()),
+                new SystemMessage(systemMsg),
                 new UserMessage(userMsg)
         );
     }
@@ -283,26 +307,28 @@ public class BrokkAgent {
     /**
      * Return a list of allowed tool names for each iteration. We allow:
      * - pushTasks
-     * - callCodeAgent
      * - answerPlan
      * - abortPlan
      * plus some from SearchTools, plus context manipulations from ContextTools.
      */
-    private List<String> getAllowedTools() {
+    private List<String> getRegisteredTools() {
         return List.of(
-                "pushTasks",
-                "callCodeAgent",
-                // from SearchTools
-                "searchSymbols",
-                "getUsages",
-                "getRelatedClasses",
+                // from SearchTools - Note: most SearchTools are now invoked via callSearchAgent
+                "getUsages", // Keep direct usage for simple cases? Or remove? Let's keep for now.
                 // from ContextTools
                 "addEditableFiles",
                 "addReadOnlyFiles",
                 "addUrlContents",
                 "addTextFragment",
+                "addUsagesFragment",          // Added from ContextTools
+                "addClassSkeletonsFragment",  // Added from ContextTools
+                "addMethodSourcesFragment", // Added from ContextTools
+                "addClassSourcesFragment",    // Added from ContextTools
+                "addCallGraphToFragment",     // Added from ContextTools
+                "addCallGraphFromFragment",   // Added from ContextTools
                 "dropFragments",
                 "dropAllContext"
+                // Note: callSearchAgent tool handles SearchTools like searchSymbols, getFileContents etc.
         );
     }
 
@@ -332,25 +358,5 @@ public class BrokkAgent {
             }
         }
         return sb.toString();
-    }
-
-    /**
-     * Tracks each tool call for debugging.
-     */
-    private void addActionHistory(ToolExecutionRequest request, ToolExecutionResult result) {
-        var entry = new ToolHistoryEntry(request, result);
-        actionHistory.add(entry);
-        logger.debug("Tool call history updated with: {} => {}", request.name(), result.resultText());
-    }
-
-    // A small record for storing the history of each tool call
-    private static class ToolHistoryEntry {
-        final ToolExecutionRequest request;
-        final ToolExecutionResult result;
-
-        ToolHistoryEntry(ToolExecutionRequest request, ToolExecutionResult result) {
-            this.request = request;
-            this.result = result;
-        }
     }
 }

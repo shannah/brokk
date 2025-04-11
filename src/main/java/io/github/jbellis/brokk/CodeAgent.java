@@ -85,7 +85,6 @@ public class CodeAgent {
         var sessionMessages = new ArrayList<ChatMessage>();
         // The user's initial request, becomes the prompt for the next LLM call
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
-        // var contextManager = (ContextManager) coder.contextManager; // No longer needed, use cm directly
 
         // Start verification command inference concurrently
         CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput); // Use cm
@@ -116,8 +115,8 @@ public class CodeAgent {
             allMessages.add(nextRequest); // Add the specific request for this turn
 
             // Actually send the message to the LLM and get the response
-        logger.debug("Sending request to model: {}", contextManager.getModels().nameOf(model));
-        var streamingResult = coder.sendStreaming(model, allMessages, true);
+            logger.debug("Sending request to model: {}", contextManager.getModels().nameOf(model));
+            var streamingResult = coder.sendStreaming(model, allMessages, true);
 
             // 1) If user cancelled
             if (streamingResult.cancelled()) {
@@ -169,12 +168,12 @@ public class CodeAgent {
                 } else {
                     // Error occurred after *some* blocks were parsed - ask to continue
                     var msg = """
-                    It looks like we got cut off. The last block I successfully parsed was
-                    <block>
-                    %s
-                    </block>
-                    Please continue from there (WITHOUT repeating that one).
-                    """.stripIndent().formatted(newlyParsedBlocks.getLast());
+                            It looks like we got cut off. The last block I successfully parsed was
+                            <block>
+                            %s
+                            </block>
+                            Please continue from there (WITHOUT repeating that one).
+                            """.stripIndent().formatted(newlyParsedBlocks.getLast());
                     nextRequest = new UserMessage(msg);
                     io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()));
                 }
@@ -242,7 +241,7 @@ public class CodeAgent {
                 if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
                     io.systemOutput("Parse/Apply retry limit reached; ending session");
                     break;
-                 }
+                }
                 io.systemOutput("Attempting to fix apply/match errors...");
                 nextRequest = new UserMessage(parseReflection);
                 continue;
@@ -291,20 +290,12 @@ public class CodeAgent {
         }
 
         // Session finished (completed, interrupted, or failed)
+        assert stopReason != null;
         String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
 
-        if (sessionMessages.isEmpty()) {
-             // No history generated, return null
-             // We might reach here if interrupted early, check stopReason
-             if (stopReason == StopReason.SUCCESS) io.systemOutput("Session complete (no changes)!");
-             return null;
-         }
-
-        // Mark description as incomplete if necessary
         // Mark description based on stop reason
         boolean completedSuccessfully = stopReason == StopReason.SUCCESS;
         String finalActionDescription = completedSuccessfully ? userInput : userInput + " [" + stopReason.name() + "]";
-
 
         // Return the result for the caller to add to history
         var sessionResult = new SessionResult(List.copyOf(sessionMessages), Map.copyOf(originalContents), finalActionDescription, finalLlmOutput, stopReason);
@@ -517,14 +508,14 @@ public class CodeAgent {
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
             io.toolErrorRaw("Quick edit failed or was cancelled.");
             // Add to history even if canceled, so we can potentially undo any partial changes
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName());
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", StopReason.INTERRUPTED)); // Temporary fix
             return fileContents; // Return original content
         }
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText == null || responseText.isBlank()) {
             io.toolErrorRaw("LLM returned empty response for quick edit.");
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName());
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, StopReason.EMPTY_RESPONSE)); // Temporary fix
             return fileContents; // Return original content
         }
 
@@ -536,7 +527,7 @@ public class CodeAgent {
         if (newSnippet.isEmpty()) {
             io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName());
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR_LIMIT)); // Temporary fix
             return fileContents; // Return original content
         }
 
@@ -547,18 +538,23 @@ public class CodeAgent {
 
             // Save to context history - pendingHistory already contains both the instruction and the response
             var parsed = new Context.ParsedOutput(responseText, new ContextFragment.StringFragment(responseText, "AI Response"));
-            cm.pushContext(ctx -> ctx.addHistory(pendingHistory, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
+            // History for QuickEdit needs proper SessionResult handling if we keep it separate,
+            // but for now, let's assume the caller manages history if QuickEdit becomes more integrated.
+            // cm.pushContext(ctx -> ctx.addHistory(pendingHistory, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, StopReason.SUCCESS)); // Temporary fix: Call the correct method
             return newStripped; // Return the new snippet that was applied
 
         } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
             io.toolErrorRaw("Failed to replace text: " + e.getMessage());
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName());
+            // cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName()); // Old signature
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT)); // Temporary fix
             return fileContents; // Return original content on failure
         } catch (IOException e) {
             io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName());
+            // cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName()); // Old signature
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT)); // Temporary fix (reusing APPLY_ERROR)
             return fileContents; // Return original content on failure
         }
     }

@@ -77,15 +77,13 @@ public class SearchAgent {
 
     public SearchAgent(String query,
                        ContextManager contextManager,
-                       Coder coder,
-                       IConsoleIO io,
                        StreamingChatLanguageModel model,
                        ToolRegistry toolRegistry) {
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
-        this.coder = coder;
-        this.io = io;
+        this.coder = contextManager.getCoder();
+        this.io = contextManager.getIo();
         this.model = model;
         this.toolRegistry = toolRegistry;
 
@@ -629,8 +627,10 @@ public class SearchAgent {
          // Ask LLM for next action with tools
          List<String> allowedToolNames = calculateAllowedToolNames();
          List<ToolSpecification> tools = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
+         // Get specs for agent-specific tools (answer/abort) if allowed
          if (allowAnswer) {
-             tools.addAll(toolRegistry.getTools(this.getClass(), List.of("answerSearch", "abortSearcH"));
+             // Pass an instance of the tools class, correct typo, add missing parenthesis
+             tools.addAll(toolRegistry.getTools(this, List.of("answerSearch", "abortSearch")));
          }
          var result = coder.sendMessage(model, messages, tools, ToolChoice.REQUIRED, false);
 

@@ -47,9 +47,9 @@ public class ContextTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Add project files (relative to project root) to the editable context.")
+    @Tool("Add project files to the editable context. Use this when you intend to modify these files.")
     public String addEditableFiles(
-            @P("List of file paths relative to the project root.")
+            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java').")
             List<String> relativePaths
     ) {
         if (relativePaths == null || relativePaths.isEmpty()) {
@@ -97,9 +97,9 @@ public class ContextTools {
 
     // Removed addReadOnlyProjectFiles and addReadOnlyExternalFiles
 
-    @Tool("Add files to the read-only context. Paths starting with '/' or '~/' or drive letters (e.g., C:) are treated as absolute external paths; others are treated as project-relative.")
+    @Tool("Add files to the read-only context. Use this for files you need to reference but not modify. Paths starting with '/' or '~/' or drive letters (e.g., 'C:') are treated as absolute external paths; others are treated as project-relative.")
     public String addReadOnlyFiles(
-            @P("List of file paths (absolute or project-relative).")
+            @P("List of file paths. Examples: 'README.md', '/etc/hosts', '~/config.txt', 'C:\\Users\\Me\\file.txt'.")
             List<String> paths
     ) {
         if (paths == null || paths.isEmpty()) {
@@ -170,9 +170,9 @@ public class ContextTools {
         return "Added %d file(s) to read-only context: [%s]".formatted(filesToAdd.size(), fileNames);
     }
 
-    @Tool("Fetch content from a URL and add it as a read-only text fragment.")
+    @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it as a read-only text fragment. HTML content will be converted to Markdown.")
     public String addUrlContents(
-            @P("The URL to fetch content from.")
+            @P("The full URL to fetch content from (e.g., 'https://example.com/docs/page').")
             String urlString
     ) {
         if (urlString == null || urlString.isBlank()) {
@@ -211,11 +211,11 @@ public class ContextTools {
         return "Added content from URL [%s] as a read-only text fragment.".formatted(urlString);
     }
 
-    @Tool("Add a block of text as a read-only virtual fragment.")
+    @Tool("Add an arbitrary block of text (e.g., user input, notes, configuration snippet) as a read-only virtual fragment.")
     public String addTextFragment(
-            @P("The text content to add.")
+            @P("The text content to add as a fragment.")
             String content,
-            @P("A short description for this text fragment.")
+            @P("A short, descriptive label for this text fragment (e.g., 'User Requirements', 'API Key Snippet').")
             String description
     ) {
         if (content == null || content.isBlank()) {
@@ -231,9 +231,9 @@ public class ContextTools {
         return "Added text fragment '%s'.".formatted(description);
     }
 
-    @Tool("Drop specified context fragments by their ID.")
+    @Tool("Remove specified context fragments (files, text snippets, analysis results) from the context using their unique integer IDs.")
     public String dropFragments(
-            @P("List of integer IDs of the fragments to drop.")
+            @P("List of integer IDs corresponding to the fragments visible in the context view that you want to remove.")
             List<Integer> fragmentIds
     ) {
         if (fragmentIds == null || fragmentIds.isEmpty()) {
@@ -288,13 +288,13 @@ public class ContextTools {
         return "Dropped %d fragment(s) with IDs: [%s]".formatted(droppedCount, foundIds.stream().map(String::valueOf).collect(Collectors.joining(", ")));
     }
 
-    @Tool("Clear the entire conversation history.")
+    @Tool("Clear the entire conversation history, including intermediate steps and summaries.")
     public String clearHistory() {
         contextManager.clearHistory();
         return "Cleared conversation history.";
     }
 
-    @Tool("Drop ALL context fragments (editable, read-only, virtual, and auto-context).")
+    @Tool("Drop ALL context fragments (editable files, read-only files, text snippets, analysis results, and disable auto-context). Use this to start fresh.")
     public String dropAllContext() {
         if (contextManager.topContext().isEmpty()) {
             return "Context is already empty.";
@@ -341,11 +341,11 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Adds the source code of blocks where symbols are used as a read-only context fragment.
-    Use this to capture how classes, methods, or fields are actually used throughout the codebase in the context.
+    Finds usages of a specific symbol (class, method, field) and adds the relevant source code snippets as a read-only context fragment.
+    Useful for understanding how a piece of code is utilized across the project.
     """)
     public String addUsagesFragment(
-            @P("Fully qualified symbol name (package name, class name, optional member name) to find usages for")
+            @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
             String symbol
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add usages fragment: Code analyzer is not available.";
@@ -372,11 +372,11 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Adds an overview of classes' contents (fields and method signatures) as a read-only context fragment.
-    Use this to capture class structures and APIs in the context faster than adding full source code.
+    Retrieves summaries (fields and method signatures) for specified classes and adds them as a single read-only context fragment.
+    Provides a quick overview of class APIs without the full source code.
     """)
     public String addClassSkeletonsFragment(
-            @P("Fully qualified class names to get the skeleton structures for")
+            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get skeletons for.")
             List<String> classNames
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add skeletons fragment: Code analyzer is not available.";
@@ -422,11 +422,11 @@ public class ContextTools {
 
 
     @Tool(value = """
-    Adds the full source code of specific methods as read-only text fragments.
-    Use this to examine the implementation of particular methods without adding the entire classes to the context.
+    Retrieves the full source code of specific methods and adds each as a separate read-only text fragment.
+    Useful for examining the implementation details of individual methods.
     """)
     public String addMethodSourcesFragment(
-            @P("Fully qualified method names (package name, class name, method name) to retrieve sources for")
+            @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for.")
             List<String> methodNames
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add method sources: Code analyzer is not available.";
@@ -455,11 +455,11 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Adds the full source code of classes as read-only text fragments.
-    Prefer adding skeletons or specific method sources if possible. Use this when the complete implementation details are needed in the context.
+    Retrieves the full source code of specified classes and adds each as a separate read-only text fragment.
+    Use this when you need the complete implementation details of one or more classes in the context. Prefer `addClassSkeletonsFragment` or `addMethodSourcesFragment` if possible.
     """)
     public String addClassSourcesFragment(
-            @P("Fully qualified class names to retrieve the full source code for")
+            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to retrieve the full source code for.")
             List<String> classNames
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add class sources: Code analyzer is not available.";
@@ -489,13 +489,13 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Adds the call graph showing which methods call the given method (callers) as a read-only context fragment.
-    Use this to capture method dependencies and how code flows into a method in the context.
+    Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it as a read-only context fragment.
+    Helps understand how a method is invoked.
     """)
     public String addCallGraphToFragment(
-            @P("Fully qualified method name (package name, class name, method name) to find callers for")
+            @P("Fully qualified target method name (e.g., 'com.example.MyClass.targetMethod') to find callers for.")
             String methodName,
-            @P("Maximum depth of the call graph to retrieve (e.g., 5)")
+            @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
             int depth // Added depth parameter
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add call graph: Code analyzer is not available.";
@@ -533,13 +533,13 @@ public class ContextTools {
     }
 
      @Tool(value = """
-    Adds the call graph showing which methods are called by the given method (callees) as a read-only context fragment.
-    Use this to capture how a method's logic flows to other parts of the codebase in the context.
+    Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it as a read-only context fragment.
+    Helps understand what other methods a given method depends on.
     """)
     public String addCallGraphFromFragment(
-            @P("Fully qualified method name (package name, class name, method name) to find callees for")
+            @P("Fully qualified source method name (e.g., 'com.example.MyClass.sourceMethod') to find callees for.")
             String methodName,
-            @P("Maximum depth of the call graph to retrieve (e.g., 5)")
+            @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
             int depth // Added depth parameter
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add call graph: Code analyzer is not available.";

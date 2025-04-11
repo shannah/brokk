@@ -75,7 +75,7 @@ public class BuildAgent {
             var tools = new ArrayList<>(toolRegistry.getRegisteredTools(List.of("listFiles", "searchFilenames", "searchSubstrings", "getFileContents")));
             if (chatHistory.size() > 1) {
                 // allow terminal tools
-                tools.addAll(toolRegistry.getTools(this.getClass(), List.of("reportBuildDetails", "abortBuildDetails")));
+                tools.addAll(toolRegistry.getTools(this, List.of("reportBuildDetails", "abortBuildDetails")));
             }
 
             // Call the Coder to get the LLM's response, including potential tool calls

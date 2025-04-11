@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.gui;
 
-import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.CodeAgent;
@@ -430,7 +429,8 @@ public class InstructionsPanel extends JPanel {
         var project = contextManager.getProject();
         project.pauseAnalyzerRebuilds();
         try {
-            CodeAgent.runSession(contextManager, model, input);
+            var result = CodeAgent.runSession(contextManager, model, input);
+            contextManager.addToHistory(result);
         } finally {
             project.resumeAnalyzerRebuilds();
         }
@@ -458,14 +458,20 @@ public class InstructionsPanel extends JPanel {
             } else if (response.error() != null) {
                  chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
              } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
-                var aiResponse = response.chatResponse().aiMessage();
-                // Check if the response is valid before adding to history
-                if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
-                    // Pass empty map for originalContents as Ask doesn't modify files
-                    contextManager.addToHistory(List.of(messages.getLast(), aiResponse), Map.of(), question);
-                } else {
-                    chrome.systemOutput("Ask command completed with an empty response.");
-                }
+                    var aiResponse = response.chatResponse().aiMessage();
+                    // Check if the response is valid before adding to history
+                    if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
+                        // Construct SessionResult for 'Ask'
+                        var sessionResult = new CodeAgent.SessionResult(
+                                List.of(messages.getLast(), aiResponse),
+                                Map.of(), // No original contents for Ask
+                                "Ask: " + question,
+                                aiResponse.text(),
+                                CodeAgent.StopReason.SUCCESS);
+                        contextManager.addToHistory(sessionResult);
+                    } else {
+                        chrome.systemOutput("Ask command completed with an empty response.");
+                    }
             } else {
                 chrome.systemOutput("Ask command completed with no response data.");
             }
@@ -490,7 +496,7 @@ public class InstructionsPanel extends JPanel {
              var contextManager = chrome.getContextManager();
              // run a search agent, passing the specific model and tool registry
              // Pass chrome (IConsoleIO) instead of contextManager directly
-             var agent = new SearchAgent(query, contextManager, contextManager.getCoder(), chrome, model, contextManager.getToolRegistry());
+             var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry());
              var result = agent.execute();
              if (result == null) {
                  // Agent execution was likely cancelled or errored, agent should log details
