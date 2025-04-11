@@ -222,6 +222,9 @@ public abstract class DefaultPrompts {
         including all comments, docstrings, indentation, etc.
         If the filename contains code or other data wrapped in json/xml/quotes or other containers,
         you need to propose edits to the literal contents, including that container markup.
+        
+        *SEARCH* and *REPLACE* blocks must both contain ONLY the lines to be matched or edited.
+        This means no +/- diff markers in particular!
 
         *SEARCH/REPLACE* blocks will *fail* to apply if the SEARCH text matches multiple occurrences.
         Include enough lines to uniquely match each set of lines that need to change.
