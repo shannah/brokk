@@ -903,7 +903,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 SwingUtilities.invokeLater(() -> {
                     int choice = JOptionPane.showConfirmDialog(io.getFrame(),
                             """
-                            The conversation history is getting long (%,d loc or about %,d tokens).
+                            The conversation history is getting long (%,d lines or about %,d tokens).
                             Compressing it can improve performance and reduce cost.
 
                             Compress history now?
