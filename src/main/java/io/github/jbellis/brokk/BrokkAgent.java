@@ -159,7 +159,8 @@ public class BrokkAgent {
 
             // 4) Figure out which tools are allowed in this step
             List<String> allowedToolNames = getAllowedTools();
-            var toolSpecs = toolRegistry.getToolSpecifications(allowedToolNames);
+            var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
+            toolSpecs.addAll(toolRegistry.getTools(this.getClass(), List.of("answerPlan", "abortPlan")));
 
             // 5) Ask the LLM for the next step with tools required
             var response = coder.sendMessage(model, messages, toolSpecs, ToolChoice.REQUIRED, false);
@@ -288,15 +289,9 @@ public class BrokkAgent {
      * plus some from SearchTools, plus context manipulations from ContextTools.
      */
     private List<String> getAllowedTools() {
-        // Based on the codebase, we might allow: "pushTasks", "callCodeAgent", "answerPlan", "abortPlan"
-        // plus the existing search tools from SearchTools: searchSymbols, getUsages, ...
-        // plus some context tools from ContextTools, e.g. "addTextFragment", "dropAllContext", ...
-        // We'll just list the main ones. The user can expand as needed.
         return List.of(
                 "pushTasks",
                 "callCodeAgent",
-                "answerPlan",
-                "abortPlan",
                 // from SearchTools
                 "searchSymbols",
                 "getUsages",

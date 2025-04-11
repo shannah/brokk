@@ -5,12 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
-import io.github.jbellis.brokk.IContextManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.Arrays; // Added import
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,11 +67,37 @@ public class ToolRegistry {
      * @param toolNames A list of tool names to get specifications for.
      * @return A list of ToolSpecification objects. Returns an empty list if a name is not found.
      */
-    public List<ToolSpecification> getToolSpecifications(List<String> toolNames) {
+    public List<ToolSpecification> getRegisteredTools(List<String> toolNames) {
         return toolNames.stream()
                 .map(toolMap::get)
                 .filter(Objects::nonNull)
                 .map(target -> ToolSpecifications.toolSpecificationFrom(target.method()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Generates ToolSpecifications for tool methods defined directly within a given class.
+     * This is useful for agent-specific tools (like answer/abort) defined within the agent itself.
+     * @param cls The class containing the @Tool annotated static or instance methods.
+     * @param toolNames The names of the tools to get specifications for.
+     * @return A list of ToolSpecification objects. Returns an empty list if a name is not found or method doesn't match.
+     */
+    public List<ToolSpecification> getTools(Class<?> cls, Collection<String> toolNames) {
+        Objects.requireNonNull(cls, "cls cannot be null");
+        Map<String, Method> classMethods = Arrays.stream(cls.getMethods())
+                .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
+                .collect(Collectors.toMap(
+                        m -> {
+                            var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
+                            return toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
+                        },
+                        m -> m
+                ));
+
+        return toolNames.stream()
+                .map(classMethods::get)
+                .filter(Objects::nonNull)
+                .map(ToolSpecifications::toolSpecificationFrom)
                 .collect(Collectors.toList());
     }
 

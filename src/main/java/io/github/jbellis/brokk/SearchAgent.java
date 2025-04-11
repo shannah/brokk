@@ -628,8 +628,10 @@ public class SearchAgent {
 
          // Ask LLM for next action with tools
          List<String> allowedToolNames = calculateAllowedToolNames();
-         // Removed call to createToolSpecifications()
-         List<ToolSpecification> tools = toolRegistry.getToolSpecifications(allowedToolNames);
+         List<ToolSpecification> tools = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
+         if (allowAnswer) {
+             tools.addAll(toolRegistry.getTools(this.getClass(), List.of("answerSearch", "abortSearcH"));
+         }
          var result = coder.sendMessage(model, messages, tools, ToolChoice.REQUIRED, false);
 
          if (result.cancelled()) {
@@ -659,10 +661,6 @@ public class SearchAgent {
       */
      private List<String> calculateAllowedToolNames() {
          List<String> names = new ArrayList<>();
-         if (allowAnswer) {
-             names.add("answerSearch"); // Assumes tool is registered with this name
-             names.add("abortSearch");  // Assumes tool is registered with this name
-         }
          if (beastMode) return names; // Only answer/abort in beast mode
 
          // Add names based on analyzer presence and state flags

@@ -72,10 +72,10 @@ public class BuildAgent {
 
             // 4. Call LLM
             // Get specifications for ALL tools the agent might use in this turn.
-            var tools = new ArrayList<>(toolRegistry.getToolSpecifications(List.of("listFiles", "searchFilenames", "searchSubstrings", "getFileContents")));
+            var tools = new ArrayList<>(toolRegistry.getRegisteredTools(List.of("listFiles", "searchFilenames", "searchSubstrings", "getFileContents")));
             if (chatHistory.size() > 1) {
                 // allow terminal tools
-                tools.addAll(toolRegistry.getToolSpecifications(List.of("reportBuildDetails", "abortBuildDetails")));
+                tools.addAll(toolRegistry.getTools(this.getClass(), List.of("reportBuildDetails", "abortBuildDetails")));
             }
 
             // Call the Coder to get the LLM's response, including potential tool calls
