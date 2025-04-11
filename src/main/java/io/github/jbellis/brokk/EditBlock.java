@@ -245,68 +245,118 @@ public class EditBlock {
      */
     public static ParseResult parseUpdateBlocks(String content) {
         List<SearchReplaceBlock> blocks = new ArrayList<>();
+        StringBuilder parseErrors = new StringBuilder();
         String[] lines = content.split("\n", -1);
         int i = 0;
 
-        while (i < lines.length) {
+        blockLoop: while (i < lines.length) {
             Matcher headMatcher = HEAD.matcher(lines[i]);
-
-            // Check if it's a filename <<<<<<< SEARCH block
             if (headMatcher.matches()) {
                 String currentFilename = headMatcher.group(1).trim();
-                assert !currentFilename.isBlank(); // regexp construction ensures this
-
-                // gather "before" lines until filename ======= divider
                 i++;
+
+                // Gather lines until we find the standard "filename ======="
+                // or else discover "filename >>>>>>> REPLACE" first.
                 List<String> beforeLines = new ArrayList<>();
-                Matcher dividerMatcher;
+                int dividerIndex = -1;  // line index where we found "filename ======="
                 while (i < lines.length) {
-                    dividerMatcher = DIVIDER.matcher(lines[i]);
+                    Matcher dividerMatcher = DIVIDER.matcher(lines[i]);
                     if (dividerMatcher.matches() && dividerMatcher.group(1).trim().equals(currentFilename)) {
-                        break; // Found the divider
+                        // Found the normal "filename ======="
+                        dividerIndex = i;
+                        break;
                     }
+
+                    Matcher replaceMatcher = REPLACE.matcher(lines[i]);
+                    if (replaceMatcher.matches() && replaceMatcher.group(1).trim().equals(currentFilename)) {
+                        // We hit REPLACE before finding a matching divider
+                        // => Look for a single standalone '=======' in beforeLines
+                        int partialCount = 0;
+                        int partialIdx = -1;
+                        for (int idx = 0; idx < beforeLines.size(); idx++) {
+                            // Just the '=======', ignoring optional surrounding spaces
+                            if (beforeLines.get(idx).matches("^\\s*={5,9}\\s*$")) {
+                                partialCount++;
+                                partialIdx = idx;
+                            }
+                        }
+                        if (partialCount == 1) {
+                            // We can treat that single line as our divider
+                            String beforeJoined = String.join("\n", beforeLines.subList(0, partialIdx));
+                            String afterJoined = String.join("\n", beforeLines.subList(partialIdx + 1, beforeLines.size()));
+                            if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
+                                beforeJoined += "\n";
+                            }
+                            if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
+                                afterJoined += "\n";
+                            }
+                            blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
+                        } else {
+                            // Non-fatal error for this block
+                            parseErrors.append("Failed to parse block for '")
+                                    .append(currentFilename)
+                                    .append("': found ")
+                                    .append(partialCount)
+                                    .append(" standalone '=======' lines between SEARCH and REPLACE.\n");
+                        }
+                        // Skip the REPLACE line and move on to next possible block
+                        i++;
+                        continue blockLoop;
+                    }
+
+                    // Not a DIVIDER, not a REPLACE => just collect line
                     beforeLines.add(lines[i]);
                     i++;
                 }
-                if (i >= lines.length) {
-                    return new ParseResult(blocks, "Expected '%s =======' divider after `%s <<<<<<< SEARCH`".formatted(currentFilename, currentFilename));
+
+                // If we never found the divider and never encountered REPLACE, it's an error
+                if (dividerIndex < 0) {
+                    parseErrors.append("Expected '")
+                            .append(currentFilename).append(" =======' divider after '")
+                            .append(currentFilename).append(" <<<<<<< SEARCH' but not found.\n");
+                    // We continue so we can look for the next block
+                    continue blockLoop;
                 }
 
-                // gather "after" lines until REPLACE marker
-                i++; // skip the ======= line
+                // We found a standard divider => gather after-lines up to the REPLACE marker
+                i++; // skip the divider line
                 List<String> afterLines = new ArrayList<>();
-                Matcher replaceMatcher = null;
-                while (i < lines.length)
-                {
-                    replaceMatcher = REPLACE.matcher(lines[i]);
+                int replaceIndex = -1;
+                while (i < lines.length) {
+                    Matcher replaceMatcher = REPLACE.matcher(lines[i]);
                     if (replaceMatcher.matches() && replaceMatcher.group(1).trim().equals(currentFilename)) {
-                        break; // Found the end marker
+                        replaceIndex = i;
+                        break;
                     }
                     afterLines.add(lines[i]);
                     i++;
                 }
-                if (i >= lines.length) {
-                    return new ParseResult(blocks, "Expected '%s >>>>>>> REPLACE' marker after `%s <<<<<<< SEARCH`".formatted(currentFilename, currentFilename));
+                if (replaceIndex < 0) {
+                    parseErrors.append("Expected '")
+                            .append(currentFilename)
+                            .append(" >>>>>>> REPLACE' marker after '")
+                            .append(currentFilename).append(" <<<<<<< SEARCH'.\n");
+                    continue blockLoop;
                 }
 
-                var beforeJoined = String.join("\n", beforeLines);
-                var afterJoined = String.join("\n", afterLines);
+                // Skip the REPLACE line
+                i++;
 
-                // Append trailing newline if not present
+                String beforeJoined = String.join("\n", beforeLines);
+                String afterJoined = String.join("\n", afterLines);
                 if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
                     beforeJoined += "\n";
                 }
                 if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
                     afterJoined += "\n";
                 }
-
                 blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
             }
-
             i++;
         }
 
-        return new ParseResult(blocks, null);
+        String errorText = parseErrors.isEmpty() ? null : parseErrors.toString();
+        return new ParseResult(blocks, errorText);
     }
 
     /**

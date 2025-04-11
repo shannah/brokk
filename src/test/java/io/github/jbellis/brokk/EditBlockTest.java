@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EditBlockTest {
@@ -376,6 +377,98 @@ class EditBlockTest {
         // Verify no failures
         assertTrue(result.failedBlocks().isEmpty(), "No failures expected");
         assertTrue(io.getErrorLog().isEmpty(), "No IO errors expected");
+    }
+
+    /**
+     * These tests illustrate how the new "forgiving" parse logic works when we
+     * don't see a "filename =======" divider between SEARCH and REPLACE, but do
+     * see a standalone "=======" line. If exactly one such line is found,
+     * we use it as the divider; otherwise it's a non-fatal parse error.
+     */
+    @Test
+    void testForgivingDividerSingleMatch() {
+        String content = """
+        <<<<<<< SEARCH foo.txt
+        old line
+        =======
+        new line
+        >>>>>>> REPLACE foo.txt
+        """;
+
+        var result = EditBlock.parseUpdateBlocks(content);
+        // Expect exactly one successfully parsed block, no parse errors
+        assertEquals(1, result.blocks().size(), "Should parse a single block");
+        assertEquals(null, result.parseError(), "No parse errors expected");
+
+        var block = result.blocks().get(0);
+        assertEquals("foo.txt", block.filename());
+        assertEquals("old line\n", block.beforeText());
+        assertEquals("new line\n", block.afterText());
+    }
+
+    @Test
+    void testForgivingDividerMultipleMatches() {
+        String content = """
+        <<<<<<< SEARCH foo.txt
+        line A
+        =======
+        line B
+        =======
+        line C
+        >>>>>>> REPLACE foo.txt
+        """;
+
+        var result = EditBlock.parseUpdateBlocks(content);
+        // Because we found more than one standalone "=======" line in the SEARCH->REPLACE block,
+        // the parser should treat it as an error for that block, producing zero blocks.
+        assertEquals(0, result.blocks().size(), "No successful blocks expected when multiple dividers found");
+        assertNotNull(result.parseError(), "Should report parse error on multiple matches");
+    }
+
+    @Test
+    void testForgivingDividerZeroMatches() {
+        String content = """
+        <<<<<<< SEARCH foo.txt
+        line A
+        line B
+        >>>>>>> REPLACE foo.txt
+        """;
+
+        var result = EditBlock.parseUpdateBlocks(content);
+        // Because there was no "foo.txt =======" nor a single standalone "=======" line,
+        // this block also fails to parse, yielding zero blocks and a parse error.
+        assertEquals(0, result.blocks().size(), "No successful blocks expected without any divider line");
+        assertNotNull(result.parseError(), "Should report parse error on zero matches");
+    }
+
+    /**
+     * Demonstrates that a malformed block can coexist with a well-formed one:
+     * the malformed block is skipped (recorded as an error) but the good block is parsed.
+     */
+    @Test
+    void testForgivingDividerPartialFailure() {
+        String content = """
+        <<<<<<< SEARCH foo.txt
+        line A
+        >>>>>>> REPLACE foo.txt
+
+        <<<<<<< SEARCH bar.txt
+        some
+        ======= bar.txt
+        other
+        >>>>>>> REPLACE bar.txt
+        """;
+
+        var result = EditBlock.parseUpdateBlocks(content);
+        // Expect 1 block to parse OK (the bar.txt block),
+        // and 1 parse error from the foo.txt block that has no divider.
+        assertEquals(1, result.blocks().size(), "One successfully parsed block");
+        assertNotNull(result.parseError(), "Expect parse error for the malformed block");
+
+        var goodBlock = result.blocks().get(0);
+        assertEquals("bar.txt", goodBlock.filename());
+        assertEquals("some\n", goodBlock.beforeText());
+        assertEquals("other\n", goodBlock.afterText());
     }
 
     // ----------------------------------------------------
