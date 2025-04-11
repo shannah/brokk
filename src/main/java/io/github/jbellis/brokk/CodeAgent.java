@@ -291,6 +291,7 @@ public class CodeAgent {
             determine the best single shell command to run as a minimal "smoke test" verifying that the changes achieve the goal.
             This should usually involve a few specific tests, but if the project is small, running all tests is reasonable;
             if no tests look relevant, it's fine to simply compile or lint the project without tests.
+            IF A TEST FILE ISN'T SHOWN, IT DOES NOT EXIST, DO NOT GUESS AT ADDITIONAL TESTS.
             """.stripIndent());
 
             // Run getTestFiles synchronously within this async task
