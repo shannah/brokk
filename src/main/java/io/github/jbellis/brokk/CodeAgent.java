@@ -28,31 +28,67 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
+    private static final int MAX_BUILD_ATTEMPTS = 3; // Max attempts to fix build errors
+
+    /** Enum representing the reason a CodeAgent session concluded. */
+    public enum StopReason {
+        /** The agent successfully completed the goal. */
+        SUCCESS,
+        /** The user interrupted the session. */
+        INTERRUPTED,
+        /** The LLM returned an error after retries. */
+        LLM_ERROR,
+        /** The LLM returned an empty or blank response after retries. */
+        EMPTY_RESPONSE,
+        /** The LLM response could not be parsed after retries. */
+        PARSE_ERROR_LIMIT,
+        /** Applying edits failed after retries. */
+        APPLY_ERROR_LIMIT,
+        /** Build errors occurred and were not improving after retries. */
+        BUILD_ERROR_LIMIT,
+        /** The LLM attempted to edit a read-only file. */
+        READ_ONLY_EDIT
+    }
+
+    /**
+     * Represents the outcome of a CodeAgent session, containing all necessary information
+     * to update the context history.
+     *
+     * @param messages The list of chat messages exchanged during the session.
+     * @param originalContents A map of project files to their original content before edits.
+     * @param actionDescription A description of the user's goal for the session.
+     * @param finalLlmOutput The final raw text output from the LLM.
+     * @param stopReason The reason the session concluded.
+     */
+    public record SessionResult(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String actionDescription, String finalLlmOutput, StopReason stopReason) {}
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
      * Uses the provided model for the initial request and potentially switches for fixes.
      *
-     * @param coder The Coder instance.
-     * @param io Console IO handler.
+     * @param contextManager The ContextManager instance, providing access to Coder, IO, Project, etc.
      * @param model The model selected by the user for the main task.
      * @param userInput The user's goal/instructions.
+     * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
+    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput) {
         // Track original contents of files before any changes
         var originalContents = new HashMap<ProjectFile, String>();
+       var io = contextManager.getIo();
+       var coder = contextManager.getCoder();
 
         // We'll collect the conversation as ChatMessages to store in context history.
         var sessionMessages = new ArrayList<ChatMessage>();
         // The user's initial request, becomes the prompt for the next LLM call
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
-        var contextManager = (ContextManager) coder.contextManager;
+        // var contextManager = (ContextManager) coder.contextManager; // No longer needed, use cm directly
 
         // Start verification command inference concurrently
-        CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput);
+        CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput); // Use cm
 
         // Reflection loop state tracking
         int parseErrorAttempts = 0;
@@ -64,12 +100,12 @@ public class CodeAgent {
         // we give more specific feedback when we need to make another request
         io.systemOutput("Request sent");
 
-        boolean isComplete = false;
-
+        StopReason stopReason = null;
         while (true) {
             // Check for interruption before sending to LLM
             if (Thread.currentThread().isInterrupted()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -86,6 +122,7 @@ public class CodeAgent {
             // 1) If user cancelled
             if (streamingResult.cancelled()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -93,18 +130,21 @@ public class CodeAgent {
             if (streamingResult.error() != null) {
                 logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
                 io.systemOutput("LLM returned an error even after retries. Ending session");
+                stopReason = StopReason.LLM_ERROR;
                 break;
             }
 
             var llmResponse = streamingResult.chatResponse();
             if (llmResponse == null) {
                 io.systemOutput("Empty LLM response even after retries. Ending session.");
+                stopReason = StopReason.EMPTY_RESPONSE;
                 break;
             }
 
             String llmText = llmResponse.aiMessage().text();
             if (llmText.isBlank()) {
                 io.systemOutput("Blank LLM response even after retries. Ending session.");
+                stopReason = StopReason.EMPTY_RESPONSE;
                 break;
             }
 
@@ -148,12 +188,13 @@ public class CodeAgent {
                 // No blocks found in the latest response AND no blocks were applied in previous reflection loops waiting for a build check
                 // This means the LLM thinks it's done *and* we don't have pending edits waiting for a build check.
                 io.systemOutput("No edits found in response; ending session");
-                isComplete = true; // Assume completion if LLM stops providing edits and we have nothing pending
+                stopReason = StopReason.SUCCESS; // Assume completion if LLM stops providing edits and we have nothing pending
                 break;
             }
             // Check for interruption before proceeding to edit files
             if (Thread.currentThread().isInterrupted()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -173,6 +214,7 @@ public class CodeAgent {
                         .toList();
                 if (!readOnlyFilesToAdd.isEmpty()) {
                     io.systemOutput("LLM attempted to edit read-only file(s): %s. \nNo edits applied. Mark the files editable or clarify to the LLM how to approach the problem another way.".formatted(readOnlyFilesToAdd));
+                    stopReason = StopReason.READ_ONLY_EDIT;
                     break;
                 }
                 io.systemOutput("Editing additional files " + filesToAdd);
@@ -186,7 +228,7 @@ public class CodeAgent {
             blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
 
             // Check for parse/match failures first
-            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
+            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, contextManager, io);
 
             // Only increase parse error attempts if no blocks were successfully applied
             if (editResult.failedBlocks().size() == blocks.size()) {
@@ -195,18 +237,12 @@ public class CodeAgent {
                 parseErrorAttempts = 0;
             }
             blocks.clear(); // Don't re-apply the same successful ones on the next loop
-            if (!parseReflection.isEmpty()) {
-                io.systemOutput("Attempting to fix apply/match errors...");
-                nextRequest = new UserMessage(parseReflection);
-                continue;
-            }
-
-
+            // If there were failed blocks, attempt to fix them
             if (!parseReflection.isEmpty()) {
                 if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
                     io.systemOutput("Parse/Apply retry limit reached; ending session");
                     break;
-                }
+                 }
                 io.systemOutput("Attempting to fix apply/match errors...");
                 nextRequest = new UserMessage(parseReflection);
                 continue;
@@ -217,6 +253,7 @@ public class CodeAgent {
             // Check for interruption before checking build
             if (Thread.currentThread().isInterrupted()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -236,13 +273,14 @@ public class CodeAgent {
 
             if (buildSucceeded) {
                 // Build successful!
-                isComplete = true;
+                stopReason = StopReason.SUCCESS;
                 break;
             }
 
             // Check if we should continue trying to fix build errors
             if (!(buildErrors.isEmpty() || isBuildProgressing(coder, buildErrors))) {
                 io.systemOutput("Build errors are not improving; ending session");
+                stopReason = StopReason.BUILD_ERROR_LIMIT;
                 break;
             }
 
@@ -252,16 +290,30 @@ public class CodeAgent {
             // Loop back to LLM to fix build errors
         }
 
-        // Add all session messages to history in one batch
-        if (!sessionMessages.isEmpty()) {
-            if (!isComplete) {
-                userInput += " [incomplete]";
-            }
-            coder.contextManager.addToHistory(sessionMessages, originalContents, userInput);
-        }
-        if (isComplete) {
+        // Session finished (completed, interrupted, or failed)
+        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
+
+        if (sessionMessages.isEmpty()) {
+             // No history generated, return null
+             // We might reach here if interrupted early, check stopReason
+             if (stopReason == StopReason.SUCCESS) io.systemOutput("Session complete (no changes)!");
+             return null;
+         }
+
+        // Mark description as incomplete if necessary
+        // Mark description based on stop reason
+        boolean completedSuccessfully = stopReason == StopReason.SUCCESS;
+        String finalActionDescription = completedSuccessfully ? userInput : userInput + " [" + stopReason.name() + "]";
+
+
+        // Return the result for the caller to add to history
+        var sessionResult = new SessionResult(List.copyOf(sessionMessages), Map.copyOf(originalContents), finalActionDescription, finalLlmOutput, stopReason);
+
+        if (completedSuccessfully) {
             io.systemOutput("Session complete!");
         } // otherwise, code that stops the session is responsible for explaining why
+
+        return sessionResult;
     }
 
     /**

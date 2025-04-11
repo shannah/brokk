@@ -430,8 +430,7 @@ public class InstructionsPanel extends JPanel {
         var project = contextManager.getProject();
         project.pauseAnalyzerRebuilds();
         try {
-            // Pass chrome (IConsoleIO) instead of contextManager directly
-            CodeAgent.runSession(contextManager.getCoder(), chrome, model, input);
+            CodeAgent.runSession(contextManager, model, input);
         } finally {
             project.resumeAnalyzerRebuilds();
         }

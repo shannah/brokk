@@ -32,6 +32,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException; // Added import
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -1011,13 +1012,16 @@ public class ContextPanel extends JPanel {
         if (isUrl(clipboardText)) {
             try {
                 chrome.systemOutput("Fetching " + clipboardText); // Qualify chrome
-                content = fetchUrlContent(clipboardText);
+                // Use the static method from ContextTools
+                content = io.github.jbellis.brokk.tools.ContextTools.fetchUrlContent(new URI(clipboardText));
+                // Use the standard HTML converter
                 content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                 wasUrl = true;
                 chrome.actionComplete(); // Qualify chrome
-            } catch (IOException e) {
-                chrome.toolErrorRaw("Failed to fetch URL content: " + e.getMessage()); // Qualify chrome
+            } catch (IOException | URISyntaxException e) { // Catch URISyntaxException too
+                chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage()); // Qualify chrome
                 // Continue with the URL as text if fetch fails
+                content = clipboardText; // Reset content to original URL string on error
             }
         }
 
@@ -1187,22 +1191,6 @@ public class ContextPanel extends JPanel {
     private boolean isUrl(String text) {
         return text.matches("^https?://\\S+$");
     }
-
-    private String fetchUrlContent(String urlString) throws IOException {
-        var url = URI.create(urlString).toURL();
-        var connection = url.openConnection();
-        // Set a reasonable timeout
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(10000);
-        // Set a user agent to avoid being blocked
-        connection.setRequestProperty("User-Agent", "Brokk-Agent/1.0");
-
-        try (var reader = new java.io.BufferedReader(
-                new java.io.InputStreamReader(connection.getInputStream()))) {
-            return reader.lines().collect(Collectors.joining("\n"));
-        }
-    }
-
 
     /**
      * Table cell renderer for displaying file references.
