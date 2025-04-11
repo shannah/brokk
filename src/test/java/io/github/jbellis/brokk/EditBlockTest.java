@@ -300,7 +300,7 @@ class EditBlockTest {
     }
 
     @Test
-    void testDidYouMeanSuggestionsOnFailure(@TempDir Path tempDir) throws IOException {
+    void testNoMatchFailure(@TempDir Path tempDir) throws IOException {
         TestConsoleIO io = new TestConsoleIO();
         Path existingFile = tempDir.resolve("fileA.txt");
         Files.writeString(existingFile, "AAA\nBBB\nCCC\n");
@@ -317,7 +317,14 @@ class EditBlockTest {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
         var blocks = EditBlock.parseUpdateBlocks(response).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
-        assertNotEquals(List.of(), result.failedBlocks());
+
+        // Assert exactly one failure with the correct reason
+        assertEquals(1, result.failedBlocks().size(), "Expected exactly one failed block");
+        assertEquals(EditBlock.EditBlockFailureReason.NO_MATCH, result.failedBlocks().getFirst().reason(), "Expected failure reason to be NO_MATCH");
+
+        // Assert that the file content remains unchanged after the failed edit
+        String finalContent = Files.readString(existingFile);
+        assertEquals("AAA\nBBB\nCCC\n", finalContent, "File content should remain unchanged after a NO_MATCH failure.");
     }
 
     @Test
