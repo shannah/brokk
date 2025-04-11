@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -10,6 +9,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
+import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,9 +17,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -270,9 +268,13 @@ public class BrokkAgent {
         Other important tools are:
           6) popTask => mark a task completed
           7) abortProject => give up if it's unsolvable or irrelevant
-
-        The top of the stack is the next immediate subgoal.
         
+        You are encouraged to call multiple context manipulation tools at once!  You are also encouraged to
+        call other tools in conjunction with popTask, since popping does not make any changes to the context so
+        you can freely start setting up the next task.
+        
+        Explain your current plan and reasoning at each step before calling tool(s).
+
         When you are done, call projectFinished or abortProject.
         """.stripIndent();
 
@@ -283,19 +285,20 @@ public class BrokkAgent {
         }
 
         var userMsg = """
-        **Task Stack (top first)**:
+        %s
+        
+        <tasks>
+        %s
+        </tasks>
+
+        With every prompt I will suggest related classes that you may wish to add to the context. Code Agent will not
+        see them unless you explicitly add them. If they are not relevant, just ignore them.
         %s
 
-        **Top-10 Related Classes**:
-        %s
+        Please decide the next tool action(s) to make progress towards resolving the current task (`%s`).
+        """.stripIndent().formatted(ArchitectPrompts.instance.collectMessagesNoIntro(contextManager), tasksList, topClassesMarkdown, tasks.peek());
 
-        Please decide the next tool action to resolve the current task (`%s`). Summarize your approach and call a single tool that best fits.
-        """.stripIndent().formatted(tasksList, topClassesMarkdown, tasks.peek());
-
-        return List.of(
-                new SystemMessage(systemMsg),
-                new UserMessage(userMsg)
-        );
+        return List.of(new SystemMessage(systemMsg), new UserMessage(userMsg));
     }
 
     private List<String> getRegisteredTools() {

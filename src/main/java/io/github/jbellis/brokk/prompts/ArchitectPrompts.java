@@ -1,24 +1,29 @@
 package io.github.jbellis.brokk.prompts;
 
+import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextManager;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 public abstract class ArchitectPrompts extends DefaultPrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
 
     public List<ChatMessage> collectMessages(ContextManager cm) {
         // like the default, but omits the edit instructions and examples
-        var messages = new ArrayList<ChatMessage>();
+        return Streams.concat(Stream.of(new SystemMessage(formatIntro(cm, DefaultPrompts.LAZY_REMINDER))),
+                              collectMessagesNoIntro(cm).stream())
+                        .toList();
+    }
 
-        messages.add(new SystemMessage(formatIntro(cm, DefaultPrompts.LAZY_REMINDER)));
+    public List<ChatMessage> collectMessagesNoIntro(ContextManager cm) {
+        var messages = new ArrayList<ChatMessage>();
         messages.addAll(cm.getReadOnlyMessages());
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(cm.getEditableMessages());
-
         return messages;
     }
 
