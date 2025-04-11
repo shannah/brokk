@@ -311,7 +311,7 @@ public class Context implements Serializable {
      * 3) Build a multiline skeleton text for the top autoContextFileCount results
      * 4) Return the new AutoContext instance
      */
-    private AutoContext buildAutoContext() {
+    AutoContext buildAutoContext() {
         if (!isAutoContextEnabled()) {
             return AutoContext.DISABLED;
         }
@@ -499,25 +499,15 @@ public class Context implements Serializable {
                  && taskHistory.isEmpty();
      }
 
-     /**
-      * Adds a new task to the history based on the provided messages.
-      * The first message MUST be a UserMessage to extract the 'job'.
-      *
-      * @param newMessages      The list of messages for this task/session.
-      * @param originalContents Map of original file contents for undo purposes.
-      * @param parsed           The parsed output associated with this task.
-      * @param action           A future describing the action that created this history entry.
-      * @return A new Context instance with the added task history.
-      * @deprecated Use {@link #addHistoryEntry(TaskEntry, ParsedOutput, Future, Map)} instead.
-      */
-     @Deprecated
-     public Context addHistory(List<ChatMessage> newMessages, Map<ProjectFile, String> originalContents, ParsedOutput parsed, Future<String> action) {
-         // Create the TaskEntry object
-         int nextSequence = taskHistory.isEmpty() ? 1 : taskHistory.getLast().sequence() + 1;
-         TaskEntry newTask = TaskEntry.fromSession(nextSequence, newMessages);
-
-         return addHistoryEntry(newTask, parsed, action, originalContents);
-     }
+    /**
+     * Creates a new TaskEntry with the correct sequence number based on the current history.
+     * @param messages The chat messages for the new task.
+     * @return A new TaskEntry.
+     */
+    public TaskEntry createTaskEntry(List<ChatMessage> messages) {
+        int nextSequence = taskHistory.isEmpty() ? 1 : taskHistory.getLast().sequence() + 1;
+        return TaskEntry.fromSession(nextSequence, messages);
+    }
 
     /**
      * Adds a new TaskEntry to the history.
@@ -529,9 +519,7 @@ public class Context implements Serializable {
      * @return A new Context instance with the added task history.
      */
     public Context addHistoryEntry(TaskEntry taskEntry, ParsedOutput parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
-        // Create a new list with the added task
         var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(taskEntry)).toList();
-
         return new Context(newId(),
                            contextManager,
                            editableFiles,

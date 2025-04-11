@@ -508,14 +508,14 @@ public class CodeAgent {
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
             io.toolErrorRaw("Quick edit failed or was cancelled.");
             // Add to history even if canceled, so we can potentially undo any partial changes
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", StopReason.INTERRUPTED)); // Temporary fix
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", StopReason.INTERRUPTED));
             return fileContents; // Return original content
         }
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText == null || responseText.isBlank()) {
             io.toolErrorRaw("LLM returned empty response for quick edit.");
             // Add to history even if it failed
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, StopReason.EMPTY_RESPONSE)); // Temporary fix
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, StopReason.EMPTY_RESPONSE));
             return fileContents; // Return original content
         }
 
@@ -527,34 +527,25 @@ public class CodeAgent {
         if (newSnippet.isEmpty()) {
             io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
             // Add to history even if it failed
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR_LIMIT)); // Temporary fix
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR_LIMIT));
             return fileContents; // Return original content
         }
 
         String newStripped = newSnippet.stripLeading();
         try {
-            // Use EditBlock.replaceInFile for consistency and robustness
             EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
-
             // Save to context history - pendingHistory already contains both the instruction and the response
-            var parsed = new Context.ParsedOutput(responseText, new ContextFragment.StringFragment(responseText, "AI Response"));
-            // History for QuickEdit needs proper SessionResult handling if we keep it separate,
-            // but for now, let's assume the caller manages history if QuickEdit becomes more integrated.
-            // cm.pushContext(ctx -> ctx.addHistory(pendingHistory, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, StopReason.SUCCESS)); // Temporary fix: Call the correct method
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, StopReason.SUCCESS));
             return newStripped; // Return the new snippet that was applied
-
         } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
             io.toolErrorRaw("Failed to replace text: " + e.getMessage());
             // Add to history even if it failed
-            // cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName()); // Old signature
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT)); // Temporary fix
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT));
             return fileContents; // Return original content on failure
         } catch (IOException e) {
             io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
             // Add to history even if it failed
-            // cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName()); // Old signature
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT)); // Temporary fix (reusing APPLY_ERROR)
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT));
             return fileContents; // Return original content on failure
         }
     }

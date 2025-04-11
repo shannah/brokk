@@ -1247,12 +1247,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopReason());
 
-        // Create the TaskEntry
-        int nextSequence = topContext().getTaskHistory().isEmpty() ? 1 : topContext().getTaskHistory().getLast().sequence() + 1;
-        TaskEntry newTask = TaskEntry.fromSession(nextSequence, messages);
-
         // Push the new context state with the added history entry
-        // The action description from the sessionResult already contains the stop reason if needed
+        TaskEntry newTask = topContext().createTaskEntry(messages);
         Future<String> actionFuture = submitSummarizeTaskForConversation(action);
         pushContext(ctx -> ctx.addHistoryEntry(newTask, parsed, actionFuture, originalContents));
     }

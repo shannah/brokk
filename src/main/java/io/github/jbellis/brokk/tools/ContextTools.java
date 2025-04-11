@@ -294,20 +294,6 @@ public class ContextTools {
         return "Cleared conversation history.";
     }
 
-    @Tool("Drop ALL context fragments (editable files, read-only files, text snippets, analysis results, and disable auto-context). Use this to start fresh.")
-    public String dropAllContext() {
-        if (contextManager.topContext().isEmpty()) {
-            return "Context is already empty.";
-        }
-        contextManager.dropAll();
-        // Also ensure AutoContext is explicitly disabled if dropAll doesn't handle it
-        if (contextManager.topContext().isAutoContextEnabled()) {
-             contextManager.setAutoContextFiles(0);
-        }
-        return "Dropped all context.";
-    }
-
-
     // --- Helper Methods ---
 
     /**
