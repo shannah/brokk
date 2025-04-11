@@ -495,7 +495,7 @@ public class CodeAgent {
 
             // Save to context history - pendingHistory already contains both the instruction and the response
             var parsed = new Context.ParsedOutput(responseText, new ContextFragment.StringFragment(responseText, "AI Response"));
-            cm.pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
+            cm.pushContext(ctx -> ctx.addHistory(pendingHistory, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
             return newStripped; // Return the new snippet that was applied
 
         } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
@@ -595,7 +595,7 @@ public class CodeAgent {
             return true;
         }
 
-        var messages = BuildPrompts.instance.collectMessages(buildResults);
+        var messages = BuildPrompts.instance.collectBuildProgressingMessages(buildResults);
         var response = coder.sendMessage(coder.contextManager.getModels().quickModel(), messages).chatResponse().aiMessage().text().trim();
 
         // Keep trying until we get one of our expected tokens
