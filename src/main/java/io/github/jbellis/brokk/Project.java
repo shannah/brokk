@@ -188,7 +188,8 @@ public class Project implements IProject, AutoCloseable {
 
     @Override
     public BuildAgent.BuildDetails getBuildDetails() {
-        String json = workspaceProps.getProperty(BUILD_DETAILS_KEY);
+        // Build details are project-specific, not workspace-specific
+        String json = projectProps.getProperty(BUILD_DETAILS_KEY);
         if (json != null && !json.isEmpty()) {
             try {
                 return objectMapper.readValue(json, BuildAgent.BuildDetails.class);
@@ -201,19 +202,22 @@ public class Project implements IProject, AutoCloseable {
 
     public void saveBuildDetails(BuildAgent.BuildDetails details) {
         if (details == null || details.equals(BuildAgent.BuildDetails.EMPTY)) {
-            workspaceProps.remove(BUILD_DETAILS_KEY);
-            logger.debug("Removing empty build details from workspace properties.");
+            // Build details are project-specific, not workspace-specific
+            projectProps.remove(BUILD_DETAILS_KEY);
+            logger.debug("Removing empty build details from project properties.");
         } else {
             try {
                 String json = objectMapper.writeValueAsString(details);
-                workspaceProps.setProperty(BUILD_DETAILS_KEY, json);
-                logger.debug("Saving build details to workspace properties.");
+                // Build details are project-specific, not workspace-specific
+                projectProps.setProperty(BUILD_DETAILS_KEY, json);
+                logger.debug("Saving build details to project properties.");
             } catch (JsonProcessingException e) {
                 logger.error("Failed to serialize BuildDetails to JSON: {}", details, e);
                 return; // Don't save if serialization fails
             }
         }
-        saveWorkspaceProperties();
+        // Save to project properties file
+        saveProjectProperties();
     }
 
 
