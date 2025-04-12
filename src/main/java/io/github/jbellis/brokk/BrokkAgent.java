@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -100,30 +101,49 @@ public class BrokkAgent {
     }
 
     /**
+     * A tool for marking the current top task as completed by removing it from the stack.
+     */
+    @Tool("Pop the current top task off the stack, marking it as completed. Usually you should resolve tasks with the Code Agent, but if it has become irrelevant then you can discard it with this tool.")
+    public String popTask() {
+        if (tasks.isEmpty()) {
+            return "Task stack is already empty. Cannot pop.";
+        }
+        String poppedTask = tasks.pop();
+        logger.debug("Popped task from stack: {}", poppedTask);
+        return "Popped task '" + poppedTask + "' from the stack.";
+    }
+
+    /**
      * A tool that invokes the CodeAgent to solve the current top task using the given instructions.
      * The instructions can incorporate the stack's current top task or anything else.
      */
-    @Tool("Invoke the CodeAgent to solve or implement the specified instructions. Provide user instructions or partial code to fix.")
+    @Tool("Invoke the CodeAgent to solve or implement the current task. Provide complete instructions. The task will be popped off the stack when the agent is finished.")
     public String callCodeAgent(
             @P("Detailed instructions for the CodeAgent, typically referencing the current top task.")
             String instructions
     ) {
-        // We'll call CodeAgent.runSession with the provided instructions
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
-
+        if (tasks.isEmpty()) {
+            throw new IllegalArgumentException("No tasks in the stack to work on! Create one, or call projectFinished.");
+        }
+        
         // Run CodeAgent
         var result = CodeAgent.runSession(contextManager, model, instructions);
-
-        // Add the result to history (compression handled within addToHistory)
-        contextManager.addToHistory(result);
+        contextManager.addToHistory(result, true);
 
         // Pop the completed task *if* the stack is not empty
-        String poppedTask = null;
+        var poppedTask = result.stopReason() == CodeAgent.StopReason.SUCCESS ? tasks.pop() : "";
+        var poppedNotice = poppedTask.isEmpty()
+                ? ""
+                : "Popped task `%s` from the stack; if it's not complete, you can push it back.".formatted(poppedTask);
         logger.debug("Popped task from stack: {}", poppedTask);
 
         // Summarize the result for the BrokkAgent LLM, mentioning the popped task
         var stopReason = result.stopReason();
-        String summary = "CodeAgent concluded with stop reason: %s".stripIndent().formatted(stopReason, instructions);
+        String summary = """
+        CodeAgent concluded with stop reason: "%s."
+        %s
+        """.formatted(stopReason, poppedNotice).stripIndent();
         logger.debug("Summary for callCodeAgent: {}", summary);
         return summary;
     }
@@ -133,7 +153,7 @@ public class BrokkAgent {
      * The SearchAgent will decide which specific search/analysis tools to use (e.g., searchSymbols, getFileContents).
      * The results are added as a context fragment.
      */
-    @Tool("Invoke the SearchAgent to find information relevant to the given query. Search results are added to context.")
+    @Tool("Invoke the SearchAgent to find information relevant to the given query. It will add its findings to the context automatically.")
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent.")
             String query
@@ -150,30 +170,29 @@ public class BrokkAgent {
         }
 
         // Add the fragment using ContextManager
-        contextManager.addSearchFragment(searchResult);
+        var querySummary = contextManager.addSearchFragment(searchResult);
 
-        // Provide a summary back to BrokkAgent's LLM
-        // The full result text is in the context, so just confirm it was added.
-        String summary = "SearchAgent completed for query '%s'. Results added to context fragment #%d: %s"
-                .formatted(query, searchResult.id(), searchResult.shortDescription());
+        // The full result text is in the context, so just return a confirmation
+        String summary;
+        try {
+            summary = "SearchAgent completed. Results added to context fragment #%d: %s"
+                    .formatted(searchResult.id(), querySummary.get());
+        } catch (InterruptedException |ExecutionException e) {
+            throw new RuntimeException(e);
+        }
         logger.debug(summary);
         return summary;
     }
 
 
     /**
-     * Run the multi-step plan until we either produce a final answer, abort, or run out of tasks.
+     * Run the multi-step project until we either produce a final answer, abort, or run out of tasks.
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
-    public void executePlan() {
-        logger.info("BrokkAgent starting plan with {} tasks in stack", tasks.size());
+    public void execute() {
+        logger.info("BrokkAgent starting project with {} tasks in stack", tasks.size());
 
         while (true) {
-            // 1) If no tasks remain, we can stop. The LLM might push tasks again though.
-            if (tasks.isEmpty()) {
-                logger.debug("No tasks left in the stack. Plan complete (no final answer?).");
-                return;
-            }
             // 2) Provide top-10 PageRank classes in the prompt each iteration
             String topClassesMarkdown = fetchTop10PagerankClasses();
 
@@ -181,14 +200,27 @@ public class BrokkAgent {
             List<ChatMessage> messages = buildPrompt(topClassesMarkdown);
 
             // 4) Figure out which tools are allowed in this step
-            List<String> allowedToolNames = getRegisteredTools();
-            var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
-            toolSpecs.addAll(toolRegistry.getTools(this.getClass(), List.of("projectFinished", "abortProject", "callCodeAgent", "pushTasks", "callSearchAgent")));
+            List<String> genericToolNames = List.of(
+                    "addEditableFiles",
+                    "addReadOnlyFiles",
+                    "addUrlContents",
+                    "addTextFragment",
+                    "addUsagesFragment",
+                    "addClassSkeletonsFragment",
+                    "addMethodSourcesFragment",
+                    "addClassSourcesFragment",
+                    "addCallGraphToFragment",
+                    "addCallGraphFromFragment",
+                    "dropFragments"
+            );
+            var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(genericToolNames));
+            // Add the BrokkAgent-specific tools
+            toolSpecs.addAll(toolRegistry.getTools(this.getClass(), List.of("projectFinished", "abortProject", "callCodeAgent", "pushTasks", "callSearchAgent", "popTask")));
 
             // 5) Ask the LLM for the next step with tools required
             var response = contextManager.getCoder().sendMessage(model, messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (response.cancelled()) {
-                logger.info("Plan canceled by user. Stopping now.");
+                logger.info("Project canceled by user. Stopping now.");
                 return;
             }
             if (response.error() != null) {
@@ -263,13 +295,11 @@ public class BrokkAgent {
           2) callSearchAgent => find relevant code so you can decide what to add to the context for the Code Agent
           3) context manipulations => add or drop files/fragments to make them visible to the Code Agent
           4) callCodeAgent => do coding/implementation
-          5) projectFinished => finalize the project with a complete explanation/solution
-
-        Other important tools are:
-          6) popTask => mark a task completed
+          5) popTask => mark the current top task as completed
+          6) projectFinished => finalize the project with a complete explanation/solution
           7) abortProject => give up if it's unsolvable or irrelevant
-        
-        You are encouraged to call multiple context manipulation tools at once!  You are also encouraged to
+
+        You are encouraged to call multiple context manipulation tools at once! You are also encouraged to
         call other tools in conjunction with popTask, since popping does not make any changes to the context so
         you can freely start setting up the next task.
         
@@ -299,22 +329,6 @@ public class BrokkAgent {
         """.stripIndent().formatted(ArchitectPrompts.instance.collectMessagesNoIntro(contextManager), tasksList, topClassesMarkdown, tasks.peek());
 
         return List.of(new SystemMessage(systemMsg), new UserMessage(userMsg));
-    }
-
-    private List<String> getRegisteredTools() {
-        return List.of(
-                "addEditableFiles",
-                "addReadOnlyFiles",
-                "addUrlContents",
-                "addTextFragment",
-                "addUsagesFragment",
-                "addClassSkeletonsFragment",
-                "addMethodSourcesFragment",
-                "addClassSourcesFragment",
-                "addCallGraphToFragment",
-                "addCallGraphFromFragment",
-                "dropFragments"
-        );
     }
 
     /**

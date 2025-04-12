@@ -481,8 +481,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
 
-    /** Add search fragment from agent result */
-    public void addSearchFragment(VirtualFragment fragment)
+    /**
+     * Add search fragment from agent result
+     *
+     * @return a summary of the search
+     */
+    public Future<String> addSearchFragment(VirtualFragment fragment)
     {
         Future<String> query;
         if (fragment.description().split("\\s").length > 10) {
@@ -494,11 +498,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var llmOutputText = io.getLlmOutputText();
         if (llmOutputText == null) {
             io.systemOutput("Interrupted!");
-            return;
+            return query;
         }
 
         var parsed = new ParsedOutput(llmOutputText, fragment);
         pushContext(ctx -> ctx.addSearchFragment(query, parsed));
+        return query;
     }
 
     /**
@@ -1226,9 +1231,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Adds a completed CodeAgent session result to the context history.
      * This is the primary method for adding history after a CodeAgent run.
      *
-     * @param result The result object from CodeAgent.runSession. Can be null.
+     * @param result   The result object from CodeAgent.runSession. Can be null.
+     * @param compress
      */
-    public void addToHistory(CodeAgent.SessionResult result) {
+    public void addToHistory(CodeAgent.SessionResult result, boolean compress) {
         assert result != null;
         if (result.messages().isEmpty()) {
             logger.debug("Skipping adding empty session result to history.");
@@ -1248,9 +1254,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
         logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopReason());
 
         // Push the new context state with the added history entry
-        TaskEntry newTask = topContext().createTaskEntry(messages);
+        TaskEntry newEntry = topContext().createTaskEntry(messages);
+        var finalEntry = compress ? compressHistory(newEntry) : newEntry;
         Future<String> actionFuture = submitSummarizeTaskForConversation(action);
-        pushContext(ctx -> ctx.addHistoryEntry(newTask, parsed, actionFuture, originalContents));
+        pushContext(ctx -> ctx.addHistoryEntry(finalEntry, parsed, actionFuture, originalContents));
     }
 
     public List<Context> getContextHistory() {

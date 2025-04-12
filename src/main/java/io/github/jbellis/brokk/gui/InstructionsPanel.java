@@ -430,7 +430,7 @@ public class InstructionsPanel extends JPanel {
         project.pauseAnalyzerRebuilds();
         try {
             var result = CodeAgent.runSession(contextManager, model, input);
-            contextManager.addToHistory(result);
+            contextManager.addToHistory(result, false);
         } finally {
             project.resumeAnalyzerRebuilds();
         }
@@ -468,7 +468,7 @@ public class InstructionsPanel extends JPanel {
                                 "Ask: " + question,
                                 aiResponse.text(),
                                 CodeAgent.StopReason.SUCCESS);
-                        contextManager.addToHistory(sessionResult);
+                        contextManager.addToHistory(sessionResult, false);
                     } else {
                         chrome.systemOutput("Ask command completed with an empty response.");
                     }
