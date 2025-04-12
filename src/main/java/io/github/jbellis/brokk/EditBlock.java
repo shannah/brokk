@@ -202,9 +202,6 @@ public class EditBlock {
 
     public record ParseResult(List<SearchReplaceBlock> blocks, String parseError) { }
 
-    // Default fence to match triple-backtick usage, e.g. ``` ... ```
-    static final String[] DEFAULT_FENCE = {"```", "```"};
-
     private EditBlock() {
         // utility class
     }
@@ -315,7 +312,7 @@ public class EditBlock {
                             .append(currentFilename).append(" =======' divider after '")
                             .append(currentFilename).append(" <<<<<<< SEARCH' but not found.\n");
                     // We continue so we can look for the next block
-                    continue blockLoop;
+                    continue;
                 }
 
                 // We found a standard divider => gather after-lines up to the REPLACE marker
@@ -336,7 +333,7 @@ public class EditBlock {
                             .append(currentFilename)
                             .append(" >>>>>>> REPLACE' marker after '")
                             .append(currentFilename).append(" <<<<<<< SEARCH'.\n");
-                    continue blockLoop;
+                    continue;
                 }
 
                 // Skip the REPLACE line
@@ -562,7 +559,7 @@ public class EditBlock {
         }
 
         // Exactly one match
-        int matchStart = matches.get(0);
+        int matchStart = matches.getFirst();
 
         List<String> newLines = new ArrayList<>(Arrays.asList(originalLines).subList(0, matchStart));
         if (truncatedReplace.length > 0) {
@@ -656,80 +653,6 @@ public class EditBlock {
             return line.substring(delta);
         }
         return replacePrefix.substring(0, -delta) + line;
-    }
-
-    /**
-     * Uses LCS approximation for ratio.
-     */
-    private static double sequenceMatcherRatio(String a, String b) {
-        if (a.isEmpty() && b.isEmpty()) {
-            return 1.0;
-        }
-        int lcs = longestCommonSubsequence(a, b);
-        double denom = a.length() + b.length();
-        return (2.0 * lcs) / denom;
-    }
-
-    /**
-     * Optimized LCS with rolling 1D array instead of a 2D matrix
-     */
-    private static int longestCommonSubsequence(String s1, String s2) {
-        int n1 = s1.length();
-        int n2 = s2.length();
-        if (n1 == 0 || n2 == 0) {
-            return 0;
-        }
-        int[] prev = new int[n2 + 1];
-        int[] curr = new int[n2 + 1];
-
-        for (int i = 1; i <= n1; i++) {
-            // reset row
-            curr[0] = 0;
-            for (int j = 1; j <= n2; j++) {
-                if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
-                    curr[j] = prev[j - 1] + 1;
-                } else {
-                    curr[j] = Math.max(prev[j], curr[j - 1]);
-                }
-            }
-            // swap references
-            int[] temp = prev;
-            prev = curr;
-            curr = temp;
-        }
-        return prev[n2];
-    }
-
-    /**
-     * Removes any extra lines containing the filename or triple-backticks fences.
-     */
-    public static String stripQuotedWrapping(String block, String fname, String[] fence) {
-        assert block != null;
-        if (block.isEmpty()) {
-            return block;
-        }
-        String[] lines = block.split("\n", -1);
-
-        // If triple-backtick block, remove the fences
-        // Note: We no longer strip the filename line here, as it's part of the SEARCH/REPLACE markers
-        if (lines.length >= 2
-                && lines[0].trim().equals(fence[0])
-                && lines[lines.length - 1].trim().equals(fence[1])) {
-            lines = Arrays.copyOfRange(lines, 1, lines.length - 1);
-        } else if (lines.length >= 1 && lines[0].trim().equals(fence[0])) {
-             // Handle missing closing fence
-             lines = Arrays.copyOfRange(lines, 1, lines.length);
-        } else if (lines.length >= 1 && lines[lines.length - 1].trim().equals(fence[1])) {
-             // Handle missing opening fence
-             lines = Arrays.copyOfRange(lines, 0, lines.length - 1);
-        }
-
-        String result = String.join("\n", lines);
-        // Ensure trailing newline, primarily for the case where fences were stripped
-        if (!result.isEmpty() && !result.endsWith("\n")) {
-             result += "\n";
-        }
-        return result;
     }
 
     /**
@@ -838,8 +761,7 @@ public class EditBlock {
         var project = cm.getProject();
         if (project != null) {
             var projectFileMatches = project.getFiles().stream()
-                    .filter(f -> f instanceof ProjectFile)
-                    .map(f -> (ProjectFile) f)
+                    .filter(Objects::nonNull)
                     .filter(f -> f.getFileName().equalsIgnoreCase(file.getFileName()))
                     .toList();
             if (projectFileMatches.size() == 1) {

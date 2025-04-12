@@ -131,16 +131,13 @@ public abstract class DefaultPrompts {
                   
                   Here are the *SEARCH/REPLACE* blocks:
 
-                  ```
                   <<<<<<< SEARCH mathweb/flask/app.py
                   from flask import Flask
                   ======= mathweb/flask/app.py
                   import math
                   from flask import Flask
                   >>>>>>> REPLACE mathweb/flask/app.py
-                  ```
 
-                  ```
                   <<<<<<< SEARCH mathweb/flask/app.py
                   def factorial(n):
                       "compute factorial"
@@ -150,15 +147,12 @@ public abstract class DefaultPrompts {
                           return n * factorial(n-1)
                   ======= mathweb/flask/app.py
                   >>>>>>> REPLACE mathweb/flask/app.py
-                  ```
 
-                  ```
                   <<<<<<< SEARCH mathweb/flask/app.py
                       return str(factorial(n))
                   ======= mathweb/flask/app.py
                       return str(math.factorial(n))
                   >>>>>>> REPLACE mathweb/flask/app.py
-                  ```
                   """.stripIndent()),
                 new UserMessage("Refactor hello() into its own filename."),
                 new AiMessage("""
@@ -168,16 +162,13 @@ public abstract class DefaultPrompts {
                   2. Remove hello() from main.py and replace it with an import.
 
                   Here are the *SEARCH/REPLACE* blocks:
-                  ```
                   <<<<<<< SEARCH hello.py
                   ======= hello.py
                   def hello():
                       "print a greeting"
                       print("hello")
                   >>>>>>> REPLACE hello.py
-                  ```
 
-                  ```
                   <<<<<<< SEARCH main.py
                   def hello():
                       "print a greeting"
@@ -185,7 +176,6 @@ public abstract class DefaultPrompts {
                   ======= main.py
                   from hello import hello
                   >>>>>>> REPLACE main.py
-                  ```
                   """.stripIndent())
             );
     }
@@ -195,26 +185,22 @@ public abstract class DefaultPrompts {
         <rules>
         # *SEARCH/REPLACE blocks*
 
-        *SEARCH/REPLACE* blocks describe how to edit files. They are composed of 2 fences
-        and 3 delimiting markers. Each marker repeats the FULL filename being edited.
+        *SEARCH/REPLACE* blocks describe how to edit files. They are composed of
+        3 delimiting markers. Each marker repeats the FULL filename being edited.
         For example,
-        ```
         <<<<<<<< SEARCH io/github/jbellis/Foo.java
         ======== io/github/jbellis/Foo.java
         >>>>>>>> REPLACE io/github/jbellis/Foo.java
-        ```
         
         These markers (the hardcoded tokens, plus the filename) are referred to as the search, dividing,
         and replace markers, respectively.
 
         Every *SEARCH/REPLACE* block must use this format:
-        1. The opening fence of backticks: ```
-        2. The search marker, followed by the full filename: <<<<<<< SEARCH $filename
-        4. A contiguous chunk of lines to search for in the existing source code
-        5. The dividing marker, followed by the full filename: ======= $filename
-        6. The lines to replace in the source code
-        7. The replace marker, followed by the full filename: >>>>>>> REPLACE $filename
-        8. The closing fence: ```
+        1. The search marker, followed by the full filename: <<<<<<< SEARCH $filename
+        2. A contiguous chunk of lines to search for in the existing source code
+        3. The dividing marker, followed by the full filename: ======= $filename
+        4. The lines to replace in the source code
+        5. The replace marker, followed by the full filename: >>>>>>> REPLACE $filename
 
         Use the *FULL* filename, as shown to you by the user. This appears on each of the three marker lines.
         No other text should appear on the marker lines.
