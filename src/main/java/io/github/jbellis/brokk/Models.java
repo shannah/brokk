@@ -257,7 +257,7 @@ public final class Models {
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
             var builder = OpenAiStreamingChatModel.builder()
-                    .logRequests(true)
+                    .logRequests(true) // Not visible unless you turn down the threshold for dev.langchain4j in log4j2.xml
                     .strictJsonSchema(true)
                     .maxTokens(getMaxOutputTokens(modelName))
                     .baseUrl(LITELLM_BASE_URL)

@@ -3,7 +3,7 @@
   <Properties>
     <!-- Define the log file location using the user's home directory -->
     <Property name="logFile">${sys:user.home}/.brokk/debug.log</Property>
-    <Property name="pattern">%d [%t] %-5level: %msg%n</Property>
+    <Property name="pattern">%d [%t] %-5level %C{1}.%M:%L - %msg%n</Property>
   </Properties>
 
   <Appenders>
@@ -29,6 +29,9 @@
       <AppenderRef ref="RollingFileLogger"/>
     </Logger>
     <Logger name="org.eclipse" level="error" additivity="false">
+      <AppenderRef ref="RollingFileLogger"/>
+    </Logger>
+    <Logger name="dev.langchain4j" level="warn" additivity="false">
       <AppenderRef ref="RollingFileLogger"/>
     </Logger>
 
