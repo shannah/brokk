@@ -227,7 +227,7 @@ public class CodeAgent {
             blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
 
             // Check for parse/match failures first
-            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, contextManager, io);
+            var parseRetryPrompt = getApplyFailureMessage(editResult.failedBlocks(), blocks, contextManager, io);
 
             // Only increase parse error attempts if no blocks were successfully applied
             if (editResult.failedBlocks().size() == blocks.size()) {
@@ -237,13 +237,13 @@ public class CodeAgent {
             }
             blocks.clear(); // Don't re-apply the same successful ones on the next loop
             // If there were failed blocks, attempt to fix them
-            if (!parseReflection.isEmpty()) {
+            if (!parseRetryPrompt.isEmpty()) {
                 if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
                     io.systemOutput("Parse/Apply retry limit reached; ending session");
                     break;
                 }
                 io.systemOutput("Attempting to fix apply/match errors...");
-                nextRequest = new UserMessage(parseReflection);
+                nextRequest = new UserMessage(parseRetryPrompt);
                 continue;
             }
 
@@ -568,10 +568,10 @@ public class CodeAgent {
     /**
      * Generates a reflection message based on parse/apply errors from failed edit blocks
      */
-    private static String getParseReflection(List<EditBlock.FailedBlock> failedBlocks,
-                                             List<EditBlock.SearchReplaceBlock> originalBlocks, // All blocks attempted in this round
-                                             IContextManager contextManager,
-                                             IConsoleIO io)
+    private static String getApplyFailureMessage(List<EditBlock.FailedBlock> failedBlocks,
+                                                 List<EditBlock.SearchReplaceBlock> originalBlocks, // All blocks attempted in this round
+                                                 IContextManager contextManager,
+                                                 IConsoleIO io)
     {
         if (failedBlocks.isEmpty()) {
             return "";
@@ -580,13 +580,47 @@ public class CodeAgent {
         // Provide suggestions for failed blocks
         var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
 
-        // Calculate how many succeeded in this round
-        int succeededCount = originalBlocks.size() - failedBlocks.size();
-
         // Generate the message for the LLM
-        var failedApplyMessage = handleFailedBlocks(suggestions, succeededCount);
-        io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
+        int succeededCount = originalBlocks.size() - failedBlocks.size();
+        int count = failedBlocks.size();
+        boolean singular = (count == 1);
+        var failedText = failedBlocks.stream()
+                .map(f -> {
+                    var fname = (f.block().filename() == null ? "(none)" : f.block().filename());
+                    return """
+                    ## Failed to match in file `%s` (Reason: %s)
+                    ```
+                    <<<<<<< SEARCH
+                    %s
+                    =======
+                    %s
+                    >>>>>>> REPLACE
+                    ```
+                    %s
+                    """.stripIndent().formatted(fname,
+                                                f.reason(),
+                                                f.block().beforeText(),
+                                                f.block().afterText(),
+                                                suggestions.containsKey(f) ? "\n" + suggestions.get(f) : "");
+                })
+                .collect(Collectors.joining("\n\n"));
+        var successfulText = succeededCount > 0
+                ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
+                : "";
+        var pluralize = singular ? "" : "s";
+        var failedApplyMessage = """
+        # %d SEARCH/REPLACE block%s failed to match!
+        
+        %s
+        
+        Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
+        please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
+        check the filename carefully.
+        
+        %s
+        """.formatted(count, pluralize, failedText, pluralize, pluralize, successfulText).stripIndent();
 
+        io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
         return failedApplyMessage; // Return the message to be sent to the LLM
     }
 
@@ -648,52 +682,4 @@ public class CodeAgent {
         return response.contains("BROKK_PROGRESSING");
     }
 
-    /**
-     * Generates a reflection message for failed edit blocks
-     */
-    private static String handleFailedBlocks(Map<EditBlock.FailedBlock, String> failed, int succeededCount) {
-        if (failed.isEmpty()) {
-            return "";
-        }
-
-        // build an error message
-        int count = failed.size();
-        boolean singular = (count == 1);
-        var failedText = failed.entrySet().stream()
-                .map(entry -> {
-                    var f = entry.getKey();
-                    String fname = (f.block().filename() == null ? "(none)" : f.block().filename());
-                    return """
-                    ## Failed to match in file: `%s` (Reason: %s)
-                    ```
-                    <<<<<<< SEARCH
-                    %s
-                    =======
-                    %s
-                    >>>>>>> REPLACE
-                    ```
-
-                    %s
-                    """.stripIndent().formatted(fname,
-                                                f.reason(),
-                                                f.block().beforeText(),
-                                                f.block().afterText(),
-                                                entry.getValue());
-                })
-                .collect(Collectors.joining("\n"));
-        var successfulText = succeededCount > 0
-                ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
-                : "";
-        var pluralize = singular ? "" : "s";
-        return """
-        # %d SEARCH/REPLACE block%s failed to match!
-
-        %s
-
-        Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
-        please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
-        check the filename carefully.
-        %s
-        """.formatted(count, pluralize, failedText, pluralize, pluralize, successfulText).stripIndent();
-    }
 }
