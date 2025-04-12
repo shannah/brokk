@@ -17,4 +17,3 @@ Coding Style Guide
 2. **Let it throw**: Let unexpected exceptions propagate up where they will be logged by a global handler. Don't catch unless you have context-specific handling to apply.
 1. **It's okay to let exceptions bubble up**: If you can't handle an exception, let it bubble up. Don't try to handle it unless we can actually do something about it.
 1. **DRY**: Don't Repeat Yourself. Refactor similar code into a common method. But feature flag parameters are a design smell; if you would need to add flags, write separate methods instead.
-1. **Focus on the final code**: do not comment on modifications, only on the resulting code in isolation.

@@ -24,6 +24,8 @@ public abstract class DefaultPrompts {
     public static final String OVEREAGER_REMINDER = """
             Pay careful attention to the scope of the user's request. Do what he asks, but no more.
             Do comment new code, but if existing comments are adequate, do not rewrite them.
+            Do not comment on your modifications, only on the resulting code in isolation.
+            This means that comments like "added X" or "changed Y" or "moved Z" are NOT WELCOME.
             """;
 
     // Now takes a Models instance
