@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
+import io.github.jbellis.brokk.gui.dialogs.PlanDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
@@ -32,7 +33,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException; // Added import
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -226,6 +227,7 @@ public class ContextPanel extends JPanel {
                     // Clear the menu and rebuild according to row/column
                     contextMenu.removeAll();
 
+                    ContextFragment selected = null;
                     if (row >= 0) {
                         // Select the row only if:
                         // 1. No rows are currently selected, or
@@ -233,16 +235,42 @@ public class ContextPanel extends JPanel {
                         if (contextTable.getSelectedRowCount() == 0 || (contextTable.getSelectedRowCount() == 1 && contextTable.getSelectedRow() != row)) {
                             contextTable.setRowSelectionInterval(row, row);
                         }
-                        var fragment = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+                        selected = (ContextFragment) contextTable.getModel().getValueAt(row, FRAGMENT_COLUMN);
+                    }
 
+                    // Assign to effectively final variable for use in lambdas
+                    final ContextFragment fragmentToShow = selected;
+
+                    if (fragmentToShow instanceof ContextFragment.PlanFragment) {
+    JMenuItem editPlanItem = new JMenuItem("Edit Plan");
+    editPlanItem.addActionListener(evt -> {
+        var currentPlan = contextManager.selectedContext().getPlan();
+        var dialog = new PlanDialog(chrome, contextManager, currentPlan);
+        dialog.setVisible(true);
+    });
+    contextMenu.add(editPlanItem);
+    contextMenu.addSeparator();
+    JMenuItem copyItem = new JMenuItem("Copy");
+    copyItem.addActionListener(evt -> {
+        var selectedList = java.util.List.of(fragmentToShow);
+        chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, selectedList);
+    });
+    contextMenu.add(copyItem);
+    JMenuItem dropItem = new JMenuItem("Drop");
+    dropItem.addActionListener(evt -> {
+        contextManager.setPlan(io.github.jbellis.brokk.ContextFragment.PlanFragment.EMPTY);
+    });
+    contextMenu.add(dropItem);
+} else if (row >= 0) {
                         // Show Contents as the first action
                         JMenuItem showContentsItem = new JMenuItem("Show Contents");
-                        showContentsItem.addActionListener(e1 -> showFragmentPreview(fragment));
+                        // Use the effectively final variable in the lambda
+                        showContentsItem.addActionListener(e1 -> showFragmentPreview(fragmentToShow));
                         contextMenu.add(showContentsItem);
                         contextMenu.addSeparator();
 
                         // If this is the AutoContext row, show AutoContext items
-                        if (fragment instanceof ContextFragment.AutoContext) {
+                        if (fragmentToShow instanceof ContextFragment.AutoContext) {
                             JMenuItem setAutoContext5Item = new JMenuItem("Set AutoContext to 5");
                             setAutoContext5Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(5));
 
@@ -264,14 +292,14 @@ public class ContextPanel extends JPanel {
                             // Otherwise, show "View History" only if it's a ProjectPathFragment and Git is available
                             boolean hasGit = contextManager != null && contextManager.getProject() != null
                                     && contextManager.getProject().hasGit();
-                            if (hasGit && fragment instanceof ContextFragment.ProjectPathFragment ppf) {
+                            if (hasGit && fragmentToShow instanceof ContextFragment.ProjectPathFragment ppf) {
                                 JMenuItem viewHistoryItem = new JMenuItem("View History");
                                 viewHistoryItem.addActionListener(ev -> {
-                                    // Already know it's a ProjectPathFragment here
+                                    // Already know it's a ProjectPathFragment here, use ppf captured by the outer if
                                     chrome.getGitPanel().addFileHistoryTab(ppf.file());
                                 });
                                 contextMenu.add(viewHistoryItem);
-                            } else if (fragment instanceof ContextFragment.ConversationFragment cf) {
+                            } else if (fragmentToShow instanceof ContextFragment.ConversationFragment cf) {
                                 // Add Compress History option for conversation fragment
                                 JMenuItem compressHistoryItem = new JMenuItem("Compress History");
                                 compressHistoryItem.addActionListener(e1 -> {
@@ -347,10 +375,11 @@ public class ContextPanel extends JPanel {
 
                         if (!contextManager.selectedContext().equals(contextManager.topContext())) {
                             dropSelectionItem.setEnabled(false);
-                        } else if (contextTable.getSelectedRowCount() == 1 && fragment instanceof ContextFragment.AutoContext) {
-                            dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
-                        }
-                    } else {
+                    } else if (contextTable.getSelectedRowCount() == 1 && fragmentToShow instanceof ContextFragment.AutoContext) {
+                        // Check if AutoContext is enabled using the fragmentToShow variable
+                        dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
+                    }
+                } else {
                         // No row selected - show the popup with all options
                         tablePopupMenu.show(contextTable, e.getX(), e.getY());
                     }
@@ -451,16 +480,6 @@ public class ContextPanel extends JPanel {
                 }
             });
         }
-
-        // Add a selection listener so we can update the action availability
-        contextTable.getSelectionModel().
-
-                addListSelectionListener(e ->
-
-                                         {
-                                             if (!e.getValueIsAdjusting()) {
-                                             }
-                                         });
 
         // Build summary panel
         var contextSummaryPanel = new JPanel(new BorderLayout());

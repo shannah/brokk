@@ -66,6 +66,7 @@ public class Context implements Serializable {
     transient final Future<String> action;
     /** Unique transient identifier for this context instance */
     transient final int id;
+    /** The high-level plan for the project. Never null, defaults to PlanFragment.EMPTY */
     final ContextFragment.PlanFragment plan;
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
@@ -89,7 +90,7 @@ public class Context implements Serializable {
              autoContextFileCount,
              new ArrayList<>(),
              Map.of(),
-             ContextFragment.PlanFragment.EMPTY,
+             ContextFragment.PlanFragment.EMPTY, // Initialize with empty plan
              getWelcomeOutput(initialOutputText),
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
@@ -120,6 +121,7 @@ public class Context implements Serializable {
     {
         assert id > 0;
         assert contextManager != null;
+        assert plan != null; // Ensure plan is never null
         assert editableFiles != null;
         assert readonlyFiles != null;
         assert virtualFragments != null;
@@ -622,7 +624,12 @@ public class Context implements Serializable {
     public List<ContextFragment> getAllFragmentsInDisplayOrder() {
         var result = new ArrayList<ContextFragment>();
 
-        // First include conversation history if not empty
+        // Add plan first if it's not empty
+        if (plan != null && !(plan == ContextFragment.PlanFragment.EMPTY)) {
+            result.add(plan);
+        }
+
+        // Then conversation history
         if (!taskHistory.isEmpty()) {
             result.add(new ConversationFragment(taskHistory));
         }
@@ -682,8 +689,8 @@ public class Context implements Serializable {
     }
 
     /**
-     * Get the current plan, if any.
-     * @return The PlanFragment or null.
+     * Get the current plan.
+     * @return The PlanFragment, never null
      */
     public ContextFragment.PlanFragment getPlan() {
         return plan;

@@ -332,6 +332,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     // Core context manipulation logic called by ContextPanel / Chrome
     // ------------------------------------------------------------------
 
+    public void setPlan(ContextFragment.PlanFragment plan) {
+        pushContext(ctx -> ctx.withPlan(plan));
+    }
+
     /** Add the given files to editable. */
     @Override
     public void editFiles(Collection<ProjectFile> files)
