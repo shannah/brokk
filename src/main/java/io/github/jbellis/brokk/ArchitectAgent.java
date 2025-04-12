@@ -19,20 +19,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 
-/**
- * BrokkAgent is a high-level multi-step agent that manages a stack of tasks (Strings)
- * and allows the LLM to decide the next action each iteration:
- *   - Push more tasks (subtasks),
- *   - Manipulate the context (add or drop files/fragments),
- *   - Invoke the CodeAgent to solve a task,
- *   - Use search and inspection tools,
- *   - or finalize/abort the plan.
- *v
- * Each iteration also provides the top-10 PageRank classes with skeletons, so the LLM
- * can choose to add them to the context if relevant.
- */
-public class BrokkAgent {
-    private static final Logger logger = LogManager.getLogger(BrokkAgent.class);
+public class ArchitectAgent {
+    private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
 
     private final ContextManager contextManager;
     private final StreamingChatLanguageModel model;
@@ -43,12 +31,11 @@ public class BrokkAgent {
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
      */
-    public BrokkAgent(ContextManager contextManager, StreamingChatLanguageModel model, ToolRegistry toolRegistry) {
+    public ArchitectAgent(ContextManager contextManager, StreamingChatLanguageModel model, ToolRegistry toolRegistry) {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
         this.model = Objects.requireNonNull(model, "model cannot be null");
         this.toolRegistry = Objects.requireNonNull(toolRegistry, "toolRegistry cannot be null");
     }
-
 
     /**
      * A tool for finishing the plan with a final answer. Similar to 'answerSearch' in SearchAgent.
@@ -74,7 +61,6 @@ public class BrokkAgent {
         logger.debug("Plan aborted with reason: {}", reason);
         return "Aborted: " + reason;
     }
-
 
     /**
      * A tool that invokes the CodeAgent to solve the current top task using the given instructions.
@@ -238,7 +224,8 @@ public class BrokkAgent {
      */
     private List<ChatMessage> buildPrompt(String topClassesPlaintext) {
         String systemMsg = """
-        You are BrokkAgent, a multi-step plan manager. You have an evolving plan.
+        You are the Architect Agent, a multi-step plan manager. You have an evolving long-range plan.
+
         In each step, you must pick the best tool to call. The main tools are:
           1) updatePlan => provide the complete updated plan
           2) callSearchAgent => find relevant code so you can decide what to add to the context for the Code Agent
@@ -246,8 +233,12 @@ public class BrokkAgent {
           4) callCodeAgent => do coding/implementation
           5) projectFinished => finalize the project with a complete explanation/solution
           6) abortProject => give up if it's unsolvable or irrelevant
+        
+        Search Agent and Code Agent both have tools that you do not have access to for searching
+        and code editing, respectively.
 
-        The current plan is visible to all tools, including the CodeAgent.
+        Your current plan and the context (files and code fragments) are visible to all agents.
+
         You are encouraged to call multiple tools simultaneously, especially
         - when using updatePlan, call the next tools to start working on the new plan at the same time
         - when manipulating context, make all needed manipulations at once
