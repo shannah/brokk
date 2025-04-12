@@ -37,6 +37,10 @@ public class BuildAgent {
 
     // Use standard ChatMessage history
     private final List<ChatMessage> chatHistory = new ArrayList<>();
+    // Field to store the result from the reportBuildDetails tool
+    private BuildDetails reportedDetails = null;
+    // Field to store the reason from the abortBuildDetails tool
+    private String abortReason = null;
 
     public BuildAgent(Coder coder, ToolRegistry toolRegistry) {
         assert coder != null : "coder cannot be null";
@@ -120,36 +124,33 @@ public class BuildAgent {
                 }
             }
 
-            // 6. Handle Terminal Actions (if any)
+            // 6. Execute Terminal Actions via ToolRegistry (if any)
             if (reportRequest != null) {
-                logger.debug("BuildInfoAgent is terminating and reporting details.");
-                try {
-                    Map<String, Object> args = OBJECT_MAPPER.readValue(reportRequest.arguments(), new TypeReference<>() {});
-                    List<String> buildfiles = getListArgument(args, "buildfiles");
-                    List<String> dependencies = getListArgument(args, "dependencies");
-                    String buildLintCommand = getStringArgument(args, "buildLintCommand");
-                    String testAllCommand = getStringArgument(args, "testAllCommand");
-                    String instructions = getStringArgument(args, "instructions");
-
-                    return new BuildDetails(buildfiles, dependencies, buildLintCommand, testAllCommand, instructions);
-                } catch (JsonProcessingException e) {
-                    logger.error("Failed to parse arguments for reportBuildDetails: {}", reportRequest.arguments(), e);
-                    return null; // Failed to create the final result
+                var terminalResult = toolRegistry.executeTool(this, reportRequest);
+                if (terminalResult.status() == ToolExecutionResult.Status.SUCCESS) {
+                    assert reportedDetails != null;
+                    return reportedDetails;
+                } else {
+                    // Tool execution failed
+                    logger.warn("reportBuildDetails tool execution failed. Error: {}", terminalResult.resultText());
+                    chatHistory.add(terminalResult.toExecutionResultMessage());
+                    continue;
                 }
             } else if (abortRequest != null) {
-                String explanation = "No explanation provided.";
-                try {
-                    Map<String, Object> args = OBJECT_MAPPER.readValue(abortRequest.arguments(), new TypeReference<>() {});
-                    explanation = getStringArgument(args, "explanation");
-                } catch (JsonProcessingException e) {
-                    logger.error("Failed to parse arguments for abort tool: {}", abortRequest.arguments(), e);
+                var terminalResult = toolRegistry.executeTool(this, abortRequest);
+                if (terminalResult.status() == ToolExecutionResult.Status.SUCCESS) {
+                    assert abortReason != null;
+                    return null;
+                } else {
+                    // Tool execution failed
+                    logger.warn("abortBuildDetails tool execution failed. Error: {}", terminalResult.resultText());
+                    chatHistory.add(terminalResult.toExecutionResultMessage());
+                    continue;
                 }
-                logger.warn("BuildInfoAgent aborted by LLM: {}", explanation);
-                return null; // Return null to indicate abortion
             }
 
-            // 7. Execute Non-Terminal Tools (if no terminal action was taken or if terminal action was ignored)
-            // Only proceed if no terminal action *was actually executed* this turn
+            // 7. Execute Non-Terminal Tools
+            // Only proceed if no terminal action was requested this turn
             for (var request : otherRequests) {
                 String toolName = request.name();
                 logger.debug(String.format("Agent action: %s (%s)", toolName, request.arguments()));
@@ -162,31 +163,6 @@ public class BuildAgent {
             }
         }
     }
-
-    // Helper to safely extract List<String> from arguments map
-    private List<String> getListArgument(Map<String, Object> args, String key) {
-        Object value = args.get(key);
-        if (value instanceof List<?> list) {
-            // Check if elements are Strings, convert if necessary (though Jackson usually handles this)
-            return list.stream()
-                       .map(String::valueOf) // Ensure elements are strings
-                       .toList();
-        }
-        logger.warn("Argument '{}' was not a List<String> or was missing, defaulting to empty list.", key);
-        return List.of(); // Return empty list if missing or wrong type
-    }
-
-    // Helper to safely extract String from arguments map
-    private String getStringArgument(Map<String, Object> args, String key) {
-        Object value = args.get(key);
-         // Check for null or empty string explicitly
-         if (value instanceof String s && !s.isBlank()) {
-             return s;
-         }
-         logger.warn("Argument '{}' was not a non-blank String or was missing, defaulting to empty string.", key);
-         return ""; // Return empty string if missing, null, or wrong type
-     }
-
 
     /**
      * Build the prompt for the LLM, including system message and history.
@@ -216,37 +192,34 @@ public class BuildAgent {
         return messages;
     }
 
-    /**
-     * Static inner class to hold the build-specific tool(s).
-     * This tool's purpose is primarily to act as a termination signal and data structure definition for the LLM.
-     */
-    public static class BuildInfoTools {
-        @Tool(value = "Report the gathered build details when ALL information is collected. DO NOT call this method before then.")
-        public String reportBuildDetails(
-                @P("List of build files involved in the build, including module build files") List<String> buildfiles,
-                @P("List of identified third-party dependencies") List<String> dependencies,
-                @P("Command to build or lint incrementally, e.g. mvn compile, cargo check, pyflakes .") String buildLintCommand,
-                @P("Command to run all tests") String testAllCommand,
-                @P("""
+    @Tool(value = "Report the gathered build details when ALL information is collected. DO NOT call this method before then.")
+    public String reportBuildDetails(
+            @P("List of build files involved in the build, including module build files") List<String> buildfiles,
+            @P("List of identified third-party dependencies") List<String> dependencies,
+            @P("Command to build or lint incrementally, e.g. mvn compile, cargo check, pyflakes .") String buildLintCommand,
+            @P("Command to run all tests") String testAllCommand,
+            @P("""
                 Instructions and details about the build process, including environment configurations
                 and any idiosyncracies observed. Include information on how to run other test configurations, especially 
                 individual tests but also at other levels e.g. package or namespace;
                 also include information on other pre-commit tools like code formatters or static analysis tools.
-                """) String instructions
+                     """) String instructions
         ) {
-            logger.debug("reportBuildDetails tool called by LLM (intercepted by agent).");
-            return "Build details report received by agent.";
+            // Construct the BuildDetails object from the parameters and store it in the agent's field
+            this.reportedDetails = new BuildDetails(buildfiles, dependencies, buildLintCommand, testAllCommand, instructions);
+            logger.debug("reportBuildDetails tool executed, details captured.");
+            return "Build details report received and processed.";
         }
 
-        @Tool(value = "Abort the process if you cannot determine the build details or the project structure is unsupported.")
-        public String abortBuildDetails(
-                @P("Explanation of why the build details cannot be determined") String explanation
-        ) {
-            // Like reportBuildDetails, this is mainly a signal intercepted by the agent.
-            logger.debug("abort tool called by LLM with explanation: {}", explanation);
-            return "Abort signal received by agent.";
+    @Tool(value = "Abort the process if you cannot determine the build details or the project structure is unsupported.")
+    public String abortBuildDetails(
+            @P("Explanation of why the build details cannot be determined") String explanation
+         ) {
+             // Store the explanation in the agent's field
+             this.abortReason = explanation;
+             logger.debug("abortBuildDetails tool executed with explanation: {}", explanation);
+             return "Abort signal received and processed.";
         }
-    }
 
     /** Holds semi-structured information about a project's build process */
     public record BuildDetails(

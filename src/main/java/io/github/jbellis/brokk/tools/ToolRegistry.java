@@ -7,6 +7,7 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -123,6 +124,50 @@ public class ToolRegistry {
             return ToolExecutionResult.failure(request, "Tool not found: " + request.name());
         }
 
+        return executeTool(request, target);
+    }
+
+    /**
+     * Executes a tool defined as an instance method on the provided object.
+     * @param instance The object instance containing the @Tool annotated method.
+     * @param request The ToolExecutionRequest from the LLM.
+     * @return A ToolExecutionResult indicating success or failure.
+     */
+    public ToolExecutionResult executeTool(Object instance, ToolExecutionRequest request) {
+        assert instance != null;
+        Class<?> cls = instance.getClass();
+        String toolName = request.name();
+
+        // Find the method matching the tool name within the instance's class
+        Method targetMethod = Arrays.stream(cls.getDeclaredMethods())
+                .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
+                .filter(m -> !Modifier.isStatic(m.getModifiers())) // Ensure it's an instance method
+                .filter(m -> {
+                    var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
+                    String name = toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
+                    return name.equals(toolName);
+                })
+                .findFirst()
+                .orElse(null);
+
+        if (targetMethod == null) {
+            logger.error("Tool '{}' not found as an instance method on class {}", toolName, cls.getName());
+            return ToolExecutionResult.failure(request, "Tool not found: " + toolName);
+        }
+
+        // Create the target and execute
+        ToolInvocationTarget target = new ToolInvocationTarget(targetMethod, instance);
+        return executeTool(request, target);
+    }
+
+    /**
+     * Private helper to execute a tool given a request and a resolved target.
+     * Handles argument parsing and method invocation.
+     * @param request The execution request.
+     * @param target The resolved method and instance.
+     * @return The execution result.
+     */
+    private static @NotNull ToolExecutionResult executeTool(ToolExecutionRequest request, ToolInvocationTarget target) {
         Method method = target.method();
         Object instance = target.instance();
 
