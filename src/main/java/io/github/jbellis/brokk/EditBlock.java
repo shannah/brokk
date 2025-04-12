@@ -764,13 +764,19 @@ public class EditBlock {
 
             try {
                 String fileContent = cm.toFile(failedBlock.block().filename()).read();
+                String suggestion = "";
                 if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    var suggestion = """
+                    suggestion = """
                     Note: The replacement text is already present in the file. If we no longer need to apply
                     this block, omit it from your reply.
                     """.stripIndent();
                     suggestions.put(failedBlock, suggestion);
+                } else {
+                    suggestion = """
+                    Failure reason: %s
+                    """.stripIndent().formatted(failedBlock.reason());
                 }
+                suggestions.put(failedBlock, suggestion);
             } catch (IOException ignored) {
                 // Skip suggestions if we can't read the file
             }
