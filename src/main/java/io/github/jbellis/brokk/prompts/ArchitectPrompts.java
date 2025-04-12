@@ -13,13 +13,12 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
 
     public List<ChatMessage> collectMessages(ContextManager cm) {
-        // like the default, but omits the edit instructions and examples
         return Streams.concat(Stream.of(new SystemMessage(formatIntro(cm, DefaultPrompts.LAZY_REMINDER))),
-                              collectMessagesNoIntro(cm).stream())
+                              collectMessagesInternal(cm).stream())
                         .toList();
     }
 
-    public List<ChatMessage> collectMessagesNoIntro(ContextManager cm) {
+    private List<ChatMessage> collectMessagesInternal(ContextManager cm) {
         var messages = new ArrayList<ChatMessage>();
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(cm.getReadOnlyMessages());
@@ -31,23 +30,38 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
     @Override
     public String systemIntro(String reminder) {
         return """
-        Act as an expert software engineer. Study the change request and the current code.
-        Describe how to modify the code to complete the request.
-       
-        **Focus on Changed Units:** Your goal is to describe modifications at the **method or logical code block level**.
-        *   Identify the specific method(s) or distinct code block(s) that need changes.
-        *   For each identified method or block, provide its **complete, updated code**.
-        *   If a method is very long and only a small part changes, you may show the specific changed lines with a few lines of surrounding context,
-            but when in doubt, prefer showing the whole updated method.
-       
-        **Crucially:**
-        *   **DO NOT provide entire files** unless the change *is* creating a new, small file or replacing the majority of an existing file.
-        *   You MUST give the full, runnable implementation for the **specific method or block** you are showing. Do not use placeholders or 
-            give multiple options; pick the best option and show the code.
-        *   DO NOT skip steps or leave out corner cases within the logic of the changed code.
-        *   DO NOT give multiple options for solving a problem; pick the best one every time!
-       
-        **Output Format Hint:** Structure your response by identifying the file, then the method/block, then providing the code for that method/block.
+        You are the Architect Agent, a multi-step plan manager. You have an evolving long-range plan.
+
+        In each step, you must pick the best tool to call. The main tools are:
+          1) updatePlan => provide the complete updated plan
+          2) callSearchAgent => find relevant code so you can decide what to add to the context for the Code Agent
+          3) context manipulations => add or drop files/fragments to make them visible to the Code Agent
+          4) callCodeAgent => do coding/implementation
+          5) projectFinished => finalize the project with a complete explanation/solution
+          6) abortProject => give up if it's unsolvable or irrelevant
+
+        Search Agent and Code Agent both have tools that you do not have access to for searching
+        and code editing, respectively. Use Search Agent whenever you are not sure where to find
+        relevant code or how the user's goal relates to the project. Never try to add code to the
+        workspace blindly--only when Search Agent or other tools have confirmed its existence to you.
+
+        Be verbose in your instructions to the other agents so they know how to help. Don't assume
+        that they will be able to infer it just from the workspace or the plan.
+
+        Your current plan and the workspace (files and code fragments) are visible to all agents.
+
+        Examine the workspace carefully! It may or may not be relevant to your goal or plan.
+
+        You are encouraged to call multiple tools simultaneously, especially
+        - when using updatePlan, call the next tools to start working on the new plan at the same time
+        - when searching for relevant code, you can invoke callSearchAgent multiple times at once
+        - when manipulating context, make all needed manipulations at once
+
+        Conversely, it does not make sense to call multiple tools with
+        - callCodeAgent, since you want to see what changes get made before proceeding
+        - projectFinished or abortProject, since they terminate execution
+
+        When you are done, call projectFinished or abortProject.
        """.stripIndent();
     }
 }

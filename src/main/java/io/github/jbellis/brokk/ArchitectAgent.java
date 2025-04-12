@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import com.google.common.collect.Streams;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Stream;
 
 public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
@@ -25,16 +27,19 @@ public class ArchitectAgent {
     private final ContextManager contextManager;
     private final StreamingChatLanguageModel model;
     private final ToolRegistry toolRegistry;
+    private final String goal;
 
     private TokenUsage totalUsage = new TokenUsage(0,0);
 
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
+     * @param goal The initial user instruction or goal for the agent.
      */
-    public ArchitectAgent(ContextManager contextManager, StreamingChatLanguageModel model, ToolRegistry toolRegistry) {
+    public ArchitectAgent(ContextManager contextManager, StreamingChatLanguageModel model, ToolRegistry toolRegistry, String goal) {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
         this.model = Objects.requireNonNull(model, "model cannot be null");
         this.toolRegistry = Objects.requireNonNull(toolRegistry, "toolRegistry cannot be null");
+        this.goal = Objects.requireNonNull(goal, "goal cannot be null");
     }
 
     /**
@@ -68,7 +73,7 @@ public class ArchitectAgent {
      */
     @Tool("Invoke the CodeAgent to solve or implement the current task. Provide complete instructions. The plan is visible to the CodeAgent and other tools.")
     public String callCodeAgent(
-            @P("Detailed instructions for the CodeAgent, typically referencing the current plan.")
+            @P("Detailed instructions for the CodeAgent, typically referencing the current plan. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
     ) {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
@@ -89,7 +94,7 @@ public class ArchitectAgent {
      */
     @Tool("Invoke the SearchAgent to find information relevant to the given query. It will add its findings to the context automatically.")
     public String callSearchAgent(
-            @P("The search query or question for the SearchAgent.")
+            @P("The search query or question for the SearchAgent. Query in English (not just keywords)")
             String query
     ) {
         logger.debug("callSearchAgent invoked with query: {}", query);
@@ -125,14 +130,11 @@ public class ArchitectAgent {
      */
     public void execute() {
         var currentPlan = contextManager.selectedContext().getPlan();
-        logger.info("BrokkAgent starting project with plan: {}", currentPlan);
+        logger.debug("BrokkAgent starting project with plan: {}", currentPlan);
 
         while (true) {
-            // 2) Provide top-10 PageRank classes in the prompt each iteration
-            var topClassesPlaintext = fetchTop10PagerankClasses();
-
             // 3) Build the prompt to let the LLM choose a tool
-            var messages = buildPrompt(topClassesPlaintext);
+            var messages = buildPrompt();
 
             // 4) Figure out which tools are allowed in this step
             var genericToolNames = List.of(
@@ -149,22 +151,23 @@ public class ArchitectAgent {
             );
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(genericToolNames));
             // Add the BrokkAgent-specific tools
-            toolSpecs.addAll(toolRegistry.getTools(this.getClass(), List.of("projectFinished", "abortProject", "callCodeAgent", "pushTasks", "callSearchAgent", "popTask")));
+            toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
             var response = contextManager.getCoder().sendMessage(model, messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (response.cancelled()) {
-                logger.info("Project canceled by user. Stopping now.");
+                logger.debug("Project canceled by user. Stopping now.");
                 return;
             }
             if (response.error() != null) {
-                logger.warn("Error from LLM while deciding next action: {}", response.error().getMessage());
+                logger.debug("Error from LLM while deciding next action: {}", response.error().getMessage());
                 return;
             }
             if (response.chatResponse() == null || response.chatResponse().aiMessage() == null) {
-                logger.warn("Empty LLM response. Stopping plan now.");
+                logger.debug("Empty LLM response. Stopping plan now.");
                 return;
             }
+            logger.debug("LLM response: {}", response);
 
             totalUsage = TokenUsage.sum(totalUsage, response.chatResponse().tokenUsage());
             // parse the tool requests
@@ -206,21 +209,21 @@ public class ArchitectAgent {
             // 6) If we see "projectFinished" or "abortProject", handle it and then exit
             if (answerReq != null) {
                 logger.debug("LLM decided to projectFinished. We'll finalize and stop.");
-                var result = toolRegistry.executeTool(answerReq);
-                logger.info("Plan final answer: {}", result.resultText());
-                return; // done
+                var result = toolRegistry.executeTool(this, answerReq);
+                logger.debug("Plan final answer: {}", result.resultText());
+                return;
             }
             if (abortReq != null) {
                 logger.debug("LLM decided to abortProject. We'll finalize and stop.");
-                var result = toolRegistry.executeTool(abortReq);
-                logger.info("Plan aborted: {}", result.resultText());
-                return; // done
+                var result = toolRegistry.executeTool(this, abortReq);
+                logger.debug("Plan aborted: {}", result.resultText());
+                return;
             }
 
             // 7) Execute remaining tool calls in the desired order:
             // First updatePlan, then any other tools, then callSearchAgent, then callCodeAgent.
             for (var req : updatePlanReqs) {
-                var toolResult = toolRegistry.executeTool(req);
+                var toolResult = toolRegistry.executeTool(this, req);
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
             for (var req : otherReqs) {
@@ -228,11 +231,11 @@ public class ArchitectAgent {
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
             for (var req : searchAgentReqs) {
-                var toolResult = toolRegistry.executeTool(req);
+                var toolResult = toolRegistry.executeTool(this, req);
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
             for (var req : codeAgentReqs) {
-                var toolResult = toolRegistry.executeTool(req);
+                var toolResult = toolRegistry.executeTool(this, req);
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
         }
@@ -244,63 +247,45 @@ public class ArchitectAgent {
      *   - A user message showing the current stack top, the entire stack,
      *     the top-10 PageRank classes, and any relevant instructions.
      */
-    private List<ChatMessage> buildPrompt(String topClassesPlaintext) {
-        String systemMsg = """
-        You are the Architect Agent, a multi-step plan manager. You have an evolving long-range plan.
-
-        In each step, you must pick the best tool to call. The main tools are:
-          1) updatePlan => provide the complete updated plan
-          2) callSearchAgent => find relevant code so you can decide what to add to the context for the Code Agent
-          3) context manipulations => add or drop files/fragments to make them visible to the Code Agent
-          4) callCodeAgent => do coding/implementation
-          5) projectFinished => finalize the project with a complete explanation/solution
-          6) abortProject => give up if it's unsolvable or irrelevant
+    private List<ChatMessage> buildPrompt() {
+        // top 10 related classes
+        String topClassesRaw = "";
+        var analyzer = contextManager.getAnalyzer();
+        if (!analyzer.isEmpty()) {
+            var ac = contextManager.selectedContext().setAutoContextFiles(10).buildAutoContext();
+            topClassesRaw = ac.text();
+        }
+        var topClassesText = topClassesRaw.isBlank() ? "" : """
+        <related_classes>
+        With every prompt I will suggest related classes that you may wish to add to the context. Code Agent will not
+        see them unless you explicitly add them. If they are not relevant, just ignore them:
         
-        Search Agent and Code Agent both have tools that you do not have access to for searching
-        and code editing, respectively.
+        %s
+        </related_classes>
+        """;
 
-        Your current plan and the context (files and code fragments) are visible to all agents.
-
-        You are encouraged to call multiple tools simultaneously, especially
-        - when using updatePlan, call the next tools to start working on the new plan at the same time
-        - when manipulating context, make all needed manipulations at once
-        
-        Conversely, it does not make sense to call multiple tools with
-        - callCodeAgent, since you want to see what changes get made before proceeding
-        - projectFinished or abortProject, since they terminate execution
-
-        When you are done, call projectFinished or abortProject.
-        """.stripIndent();
-
-        // Show the current plan
+        // plan
         var currentPlan = contextManager.selectedContext().getPlan();
         var planText = currentPlan != null ? currentPlan.text() : "(none)";
 
         var userMsg = """
         %s
 
-        With every prompt I will suggest related classes that you may wish to add to the context. Code Agent will not
-        see them unless you explicitly add them. If they are not relevant, just ignore them:
+        <goal>
         %s
+        </goal>
+
+        <plan>
+        %s
+        </plan>
 
         Please decide the next tool action(s) to make progress towards resolving the current task.
-        """.stripIndent().formatted(ArchitectPrompts.instance.collectMessagesNoIntro(contextManager), planText, topClassesPlaintext);
+        """.formatted(topClassesText, goal, planText).stripIndent();
 
-        return List.of(new SystemMessage(systemMsg), new UserMessage(userMsg));
+        return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager).stream(),
+                              Stream.of(new UserMessage(userMsg))).toList();
     }
 
-    /**
-     * Provide top-10 pagerank classes as Markdown skeletons.
-     */
-    private String fetchTop10PagerankClasses() {
-        var analyzer = contextManager.getAnalyzer();
-        if (analyzer.isEmpty()) {
-            return "(Code analyzer not available, can't compute PageRank.)";
-        }
-
-        var ac = contextManager.selectedContext().setAutoContextFiles(10).buildAutoContext();
-        return ac.text();
-    }
     /**
      * A tool that updates the complete plan with a new complete plan string.
      * The new plan will be visible to the CodeAgent and other tools.

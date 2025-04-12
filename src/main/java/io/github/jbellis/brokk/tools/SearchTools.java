@@ -616,32 +616,4 @@ public class SearchTools {
             throw new RuntimeException("Error listing files: " + e.getMessage(), e);
         }
     }
-
-
-    @Tool(value = "Provide a final answer to the query. Use this when you have enough information to fully address the query.")
-    public String answerSearch(
-            @P("Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query. Format the entire explanation with Markdown.")
-            String explanation,
-            @P("List of fully qualified class names (FQCNs) of ALL classes relevant to the explanation. Do not skip even minor details!")
-            List<String> classNames
-    ) {
-        // Return the explanation provided by the LLM.
-        // The SearchAgent uses this result when it detects the 'answer' tool was chosen.
-        logger.debug("Answer tool selected with explanation: {}", explanation);
-        return explanation;
-    }
-
-    @Tool(value = """
-    Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found.
-    Use this as a last resort when you're confident no useful answer can be provided.
-    """)
-    public String abortSearch(
-            @P("Explanation of why the question cannot be answered or is not relevant to this codebase")
-            String explanation
-    ) {
-        // Return the explanation provided by the LLM.
-        // The SearchAgent uses this result when it detects the 'abort' tool was chosen.
-        logger.debug("Abort tool selected with explanation: {}", explanation);
-        return explanation;
-    }
 }

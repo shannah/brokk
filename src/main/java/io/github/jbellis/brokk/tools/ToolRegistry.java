@@ -80,13 +80,13 @@ public class ToolRegistry {
     /**
      * Generates ToolSpecifications for tool methods defined as instance methods within a given object.
      * This is useful for agent-specific tools (like answer/abort) defined within an agent instance.
-     * @param toolInstance The object containing the @Tool annotated instance methods.
+     * @param instance The object containing the @Tool annotated instance methods.
      * @param toolNames The names of the tools to get specifications for.
      * @return A list of ToolSpecification objects. Returns an empty list if a name is not found or the method doesn't match.
      */
-    public List<ToolSpecification> getTools(Object toolInstance, Collection<String> toolNames) {
-        Objects.requireNonNull(toolInstance, "toolInstance cannot be null");
-        Class<?> cls = toolInstance.getClass();
+    public List<ToolSpecification> getTools(Object instance, Collection<String> toolNames) {
+        Objects.requireNonNull(instance, "toolInstance cannot be null");
+        Class<?> cls = instance.getClass();
 
         // Gather all instance methods declared in the class that are annotated with @Tool.
         List<Method> annotatedMethods = Arrays.stream(cls.getDeclaredMethods())
@@ -103,9 +103,8 @@ public class ToolRegistry {
                             return name.equals(toolName);
                         })
                         .findFirst()
-                        .orElse(null)
+                        .orElseThrow(() -> new IllegalArgumentException("No tool method found for %s in %s".formatted(toolName, instance)))
                 )
-                .filter(Objects::nonNull)
                 .map(ToolSpecifications::toolSpecificationFrom)
                 .collect(Collectors.toList());
     }
@@ -182,7 +181,7 @@ public class ToolRegistry {
             for (int i = 0; i < parameters.length; i++) {
                 Parameter param = parameters[i];
                 if (!argumentsMap.containsKey(param.getName())) {
-                    throw new IllegalArgumentException("Missing required parameter: '%s' in arguments: %s".formatted(param.getName(), request.arguments()));
+                    return ToolExecutionResult.failure(request, "Missing required parameter: '%s' in arguments: %s".formatted(param.getName(), request.arguments()));
                 }
 
                 Object argValue = argumentsMap.get(param.getName());

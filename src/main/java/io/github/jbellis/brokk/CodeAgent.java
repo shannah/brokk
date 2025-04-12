@@ -97,7 +97,7 @@ public class CodeAgent {
 
         // give user some feedback -- this isn't in the main loop because after the first iteration
         // we give more specific feedback when we need to make another request
-        io.systemOutput("Request sent");
+        io.systemOutput("Code Agent started: `%s`".formatted(userInput));
 
         StopReason stopReason = null;
         while (true) {

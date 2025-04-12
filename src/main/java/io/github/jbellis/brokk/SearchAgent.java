@@ -3,6 +3,8 @@ package io.github.jbellis.brokk;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -193,7 +195,9 @@ public class SearchAgent {
      * @return The final set of discovered code units
      */
     public ContextFragment.VirtualFragment execute() {
-        // Initialize
+        io.systemOutput("Search Agent engaged: `%s`".formatted(query));
+
+        // If context exists, ask LLM to evaluate its relevance and kick off async summary
         var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {
             String text;
             try {
@@ -209,10 +213,8 @@ public class SearchAgent {
             """.stripIndent().formatted(f.description(),
                                         (f.sources(contextManager.getProject()).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
                                         text);
-        }).filter(Objects::nonNull).collect(Collectors.joining("\n\n")); // Separate fragments better
-
-        // If context exists, ask LLM to evaluate its relevance and kick off async summary
-        if (!contextWithClasses.isBlank()) { 
+        }).filter(Objects::nonNull).collect(Collectors.joining("\n\n"));
+        if (!contextWithClasses.isBlank()) {
             io.systemOutput("Evaluating context..."); // Updated log message
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
@@ -835,15 +837,26 @@ public class SearchAgent {
          // Could revisit parallel execution later if performance becomes an issue.
          return toolRequests.stream()
                  .map(request -> {
-                     io.systemOutput(getExplanationForToolRequest(request)); // Show user what's happening
-                     ToolExecutionResult execResult = toolRegistry.executeTool(request); // CALL REGISTRY
-                     var historyEntry = new ToolHistoryEntry(request, execResult);
+                     // Show user what's happening
+                     var explanation = getExplanationForToolRequest(request);
+                     if (!explanation.isBlank()) {
+                         io.systemOutput(explanation);
+                     }
+
+                     // Execute the tool
+                     ToolExecutionResult result;
+                     if (Set.of("answerSearch", "abortSearch").contains(request.name())) {
+                         result = toolRegistry.executeTool(this, request);
+                     } else {
+                         result = toolRegistry.executeTool(request);
+                     }
+                     var historyEntry = new ToolHistoryEntry(request, result);
 
                      // Handle post-execution logic like summarization/compression
                      handlePostExecution(historyEntry);
 
                      // Agent-specific state updates based on the *result*
-                     handleToolExecutionResult(execResult); // Updates agent state like allowTextSearch
+                     handleToolExecutionResult(result); // Updates agent state like allowTextSearch
 
                      return historyEntry;
                  })
@@ -865,8 +878,8 @@ public class SearchAgent {
              case "getMethodSources" -> "Fetching method source";
              case "getCallGraphTo" -> "Getting call graph TO";
              case "getCallGraphFrom" -> "Getting call graph FROM";
-             case "answerSearch" -> "Answering the question";
-             case "abortSearch" -> "Aborting the search";
+             case "answerSearch" -> "";
+             case "abortSearch" -> "";
              default -> {
                  logger.warn("Unknown tool name for explanation: {}", request.name());
                  yield "Processing request";
@@ -1121,8 +1134,33 @@ public class SearchAgent {
         }
     }
 
-    // --- Inner Class for History Storage ---
-    // Restoring the definition of ToolHistoryEntry
+    @Tool(value = "Provide a final answer to the query. Use this when you have enough information to fully address the query.")
+    public String answerSearch(
+            @P("Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query. Format the entire explanation with Markdown.")
+            String explanation,
+            @P("List of fully qualified class names (FQCNs) of ALL classes relevant to the explanation. Do not skip even minor details!")
+            List<String> classNames
+    ) {
+        // Return the explanation provided by the LLM.
+        // The SearchAgent uses this result when it detects the 'answer' tool was chosen.
+        logger.debug("Answer tool selected with explanation: {}", explanation);
+        return explanation;
+    }
+
+    @Tool(value = """
+    Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found.
+    Use this as a last resort when you're confident no useful answer can be provided.
+    """)
+    public String abortSearch(
+            @P("Explanation of why the question cannot be answered or is not relevant to this codebase")
+            String explanation
+    ) {
+        // Return the explanation provided by the LLM.
+        // The SearchAgent uses this result when it detects the 'abort' tool was chosen.
+        logger.debug("Abort tool selected with explanation: {}", explanation);
+        return explanation;
+    }
+
     private static class ToolHistoryEntry {
          final ToolExecutionRequest request;
          final ToolExecutionResult execResult;

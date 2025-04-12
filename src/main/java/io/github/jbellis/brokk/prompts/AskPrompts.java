@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.prompts;
 
-public abstract class AskPrompts extends ArchitectPrompts {
+public abstract class AskPrompts extends CopyExternalPrompts {
     public static final AskPrompts instance = new AskPrompts() {};
 
     @Override

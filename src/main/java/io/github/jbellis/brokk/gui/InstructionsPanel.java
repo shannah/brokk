@@ -494,24 +494,22 @@ public class InstructionsPanel extends JPanel {
     /**
      * Executes the core logic for the "Agent" command.
      * This runs inside the Runnable passed to contextManager.submitAction.
+     * @param goal The initial user instruction passed to the agent.
      */
-    private void executeAgentCommand(StreamingChatLanguageModel model) {
+    private void executeAgentCommand(StreamingChatLanguageModel model, String goal) {
         var contextManager = chrome.getContextManager();
         try {
             // The plan existence check happens in runAgentCommand before submitting
-            chrome.actionOutput("Agent executing plan..."); // Initial status
-            // Instantiate the agent with required dependencies
-            var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry());
-            agent.execute(); // Run the agent's main loop
-            // Agent handles its own output/history internally
-            chrome.systemOutput("Agent finished executing plan."); // Final status on normal completion
+            chrome.systemOutput("Architect engaged");
+            var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
+            agent.execute();
+            chrome.systemOutput("Architect Agent finished executing"); // Final status on normal completion
         } catch (CancellationException cex) {
              chrome.systemOutput("Agent execution cancelled.");
         } catch (Exception e) {
              logger.error("Error during Agent execution", e);
              chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
         }
-        // No specific history add needed here, ArchitectAgent/CodeAgent/SearchAgent manage their own history additions
     }
 
     /**
@@ -589,9 +587,18 @@ public class InstructionsPanel extends JPanel {
         // Save model before submitting task
         var modelName = contextManager.getModels().nameOf(selectedModel);
         chrome.getProject().setLastUsedModel(modelName);
+        // Get the goal from the input field
+        var goal = commandInputField.getText();
+        if (goal.isBlank()) {
+            chrome.toolErrorRaw("Please provide an initial goal or instruction for the Agent.");
+            enableButtons(); // Re-enable buttons since we are not proceeding
+            return;
+        }
+        chrome.getProject().addToTextHistory(goal, 20);
+        clearCommandInput();
 
-        // Submit the action, calling the private execute method inside the lambda
-        var future = contextManager.submitAction("Agent", "Executing plan...", () -> executeAgentCommand(selectedModel));
+        // Submit the action, calling the private execute method inside the lambda, passing the goal
+        var future = contextManager.submitAction("Agent", "Executing plan...", () -> executeAgentCommand(selectedModel, goal));
         chrome.setCurrentUserTask(future);
     }
 

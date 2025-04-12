@@ -17,6 +17,7 @@ import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
+import io.github.jbellis.brokk.prompts.CopyExternalPrompts;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
@@ -972,7 +973,7 @@ public class ContextPanel extends JPanel {
         String content;
         if (selectedFragments.isEmpty()) {
             // gather entire context
-            var msgs = ArchitectPrompts.instance.collectMessages(contextManager); // Qualify contextManager
+            var msgs = CopyExternalPrompts.instance.collectMessages(contextManager); // Qualify contextManager
             var combined = new StringBuilder();
             for (var m : msgs) {
                 if (!(m instanceof AiMessage)) {
