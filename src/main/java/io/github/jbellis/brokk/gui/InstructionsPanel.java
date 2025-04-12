@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.ArchitectAgent;
 import io.github.jbellis.brokk.CodeAgent;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
@@ -41,6 +42,7 @@ public class InstructionsPanel extends JPanel {
     private final RSyntaxTextArea commandInputField;
     private final JComboBox<String> modelDropdown;
     private final VoiceInputButton micButton;
+    private final JButton agentButton;
     private final JButton codeButton;
     private final JButton askButton;
     private final JButton searchButton;
@@ -74,6 +76,11 @@ public class InstructionsPanel extends JPanel {
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
         // Initialize Buttons first
+        agentButton = new JButton("Agent"); // Initialize the agent button
+        agentButton.setMnemonic(KeyEvent.VK_G); // Mnemonic for Agent
+        agentButton.setToolTipText("Run the multi-step agent to execute the current plan");
+        agentButton.addActionListener(e -> runAgentCommand());
+
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
         codeButton.setToolTipText("Tell the LLM to write code to solve this problem using the current context");
@@ -213,6 +220,7 @@ public class InstructionsPanel extends JPanel {
     private JPanel buildActionBar() {
         JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
+        actionButtonsPanel.add(agentButton);
         actionButtonsPanel.add(codeButton);
         actionButtonsPanel.add(askButton);
         actionButtonsPanel.add(searchButton);
@@ -484,6 +492,29 @@ public class InstructionsPanel extends JPanel {
     }
 
     /**
+     * Executes the core logic for the "Agent" command.
+     * This runs inside the Runnable passed to contextManager.submitAction.
+     */
+    private void executeAgentCommand(StreamingChatLanguageModel model) {
+        var contextManager = chrome.getContextManager();
+        try {
+            // The plan existence check happens in runAgentCommand before submitting
+            chrome.actionOutput("Agent executing plan..."); // Initial status
+            // Instantiate the agent with required dependencies
+            var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry());
+            agent.execute(); // Run the agent's main loop
+            // Agent handles its own output/history internally
+            chrome.systemOutput("Agent finished executing plan."); // Final status on normal completion
+        } catch (CancellationException cex) {
+             chrome.systemOutput("Agent execution cancelled.");
+        } catch (Exception e) {
+             logger.error("Error during Agent execution", e);
+             chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
+        }
+        // No specific history add needed here, ArchitectAgent/CodeAgent/SearchAgent manage their own history additions
+    }
+
+    /**
      * Executes the core logic for the "Search" command.
      * This runs inside the Runnable passed to contextManager.submitAction.
      */
@@ -540,6 +571,29 @@ public class InstructionsPanel extends JPanel {
     }
 
     // --- Action Handlers ---
+
+    public void runAgentCommand() {
+        var selectedModel = getSelectedModel();
+        if (selectedModel == null) {
+            chrome.toolError("Please select a valid model from the dropdown.");
+            return;
+        }
+        var contextManager = chrome.getContextManager();
+        var currentPlan = contextManager.selectedContext().getPlan();
+        if (currentPlan == null || currentPlan.text().isBlank()) {
+            chrome.toolErrorRaw("Please provide a plan in the context before running the Agent.");
+            return;
+        }
+
+        disableButtons();
+        // Save model before submitting task
+        var modelName = contextManager.getModels().nameOf(selectedModel);
+        chrome.getProject().setLastUsedModel(modelName);
+
+        // Submit the action, calling the private execute method inside the lambda
+        var future = contextManager.submitAction("Agent", "Executing plan...", () -> executeAgentCommand(selectedModel));
+        chrome.setCurrentUserTask(future);
+    }
 
     // Private helper to get the selected model.
     private StreamingChatLanguageModel getSelectedModel() {
@@ -650,11 +704,12 @@ public class InstructionsPanel extends JPanel {
     }
 
     // Methods to disable and enable buttons.
-    public void disableButtons() {
-        SwingUtilities.invokeLater(() -> {
-            codeButton.setEnabled(false);
-            askButton.setEnabled(false);
-            searchButton.setEnabled(false);
+     public void disableButtons() {
+         SwingUtilities.invokeLater(() -> {
+            agentButton.setEnabled(false); // Disable agent button
+             codeButton.setEnabled(false);
+             askButton.setEnabled(false);
+             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
             modelDropdown.setEnabled(false);
@@ -666,11 +721,12 @@ public class InstructionsPanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             boolean modelsAvailable = modelDropdown.getItemCount() > 0 &&
                     !String.valueOf(modelDropdown.getSelectedItem()).startsWith("No Model") && // check selected value
-                    !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
-            modelDropdown.setEnabled(modelsAvailable);
-            codeButton.setEnabled(modelsAvailable);
-            askButton.setEnabled(modelsAvailable);
-            searchButton.setEnabled(modelsAvailable);
+                     !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
+             modelDropdown.setEnabled(modelsAvailable);
+            agentButton.setEnabled(modelsAvailable); // Enable agent button based on model availability
+             codeButton.setEnabled(modelsAvailable);
+             askButton.setEnabled(modelsAvailable);
+             searchButton.setEnabled(modelsAvailable);
             runButton.setEnabled(true);
             stopButton.setEnabled(false);
             micButton.setEnabled(true); // Enable mic button
