@@ -7,7 +7,6 @@ import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
-import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
@@ -21,8 +20,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -47,9 +44,9 @@ public class ContextTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Add project files to the editable context. Use this when you intend to modify these files.")
+    @Tool("Add project files to the editable context. Use this when you intend to modify these files")
     public String addEditableFiles(
-            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java').")
+            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> relativePaths
     ) {
         if (relativePaths == null || relativePaths.isEmpty()) {
@@ -97,9 +94,9 @@ public class ContextTools {
 
     // Removed addReadOnlyProjectFiles and addReadOnlyExternalFiles
 
-    @Tool("Add files to the read-only context. Use this for files you need to reference but not modify. Paths starting with '/' or '~/' or drive letters (e.g., 'C:') are treated as absolute external paths; others are treated as project-relative.")
+    @Tool("Add files to the read-only context. Use this for files you need to reference the full source of, but not modify")
     public String addReadOnlyFiles(
-            @P("List of file paths. Examples: 'README.md', '/etc/hosts', '~/config.txt', 'C:\\Users\\Me\\file.txt'.")
+            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> paths
     ) {
         if (paths == null || paths.isEmpty()) {
@@ -108,7 +105,6 @@ public class ContextTools {
 
         List<BrokkFile> filesToAdd = new ArrayList<>();
         List<String> errors = new ArrayList<>();
-        Path projectRoot = contextManager.getRoot();
 
         for (String pathStr : paths) {
             if (pathStr == null || pathStr.isBlank()) {
@@ -117,37 +113,13 @@ public class ContextTools {
             }
 
             try {
-                // Check if it looks like an absolute path
-                Path path = Paths.get(pathStr); // Try parsing first
-                boolean isAbsolute = path.isAbsolute() || pathStr.startsWith("~" + System.getProperty("file.separator")) || (System.getProperty("os.name").toLowerCase().contains("win") && pathStr.matches("^[a-zA-Z]:\\\\.*"));
-
-                if (isAbsolute) {
-                    // Handle potential ~ expansion simply
-                    if (pathStr.startsWith("~" + System.getProperty("file.separator"))) {
-                        path = Paths.get(System.getProperty("user.home"), pathStr.substring(2)).toAbsolutePath();
-                    } else {
-                         path = path.toAbsolutePath(); // Ensure it's absolute
-                    }
-
-                    if (path.startsWith(projectRoot)) {
-                        errors.add("Absolute path is inside the project root, provide it as a relative path instead: " + pathStr);
-                    } else if (!Files.exists(path)) {
-                        errors.add("External file does not exist: " + pathStr);
-                    } else if (!Files.isRegularFile(path)) {
-                        errors.add("External path is not a regular file: " + pathStr);
-                    } else {
-                        filesToAdd.add(new ExternalFile(path));
-                    }
+                ProjectFile pf = contextManager.toFile(pathStr);
+                if (!Files.exists(pf.absPath())) {
+                     errors.add("Project file does not exist: " + pathStr);
+                } else if (!Files.isRegularFile(pf.absPath())) {
+                    errors.add("Project path is not a regular file: " + pathStr);
                 } else {
-                    // Treat as project-relative
-                    ProjectFile pf = contextManager.toFile(pathStr);
-                    if (!Files.exists(pf.absPath())) {
-                         errors.add("Project file does not exist: " + pathStr);
-                    } else if (!Files.isRegularFile(pf.absPath())) {
-                        errors.add("Project path is not a regular file: " + pathStr);
-                    } else {
-                        filesToAdd.add(pf);
-                    }
+                    filesToAdd.add(pf);
                 }
             } catch (InvalidPathException e) {
                 errors.add("Invalid path format: " + pathStr + " (" + e.getMessage() + ")");
@@ -159,10 +131,6 @@ public class ContextTools {
 
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException("Errors encountered processing paths: " + String.join("; ", errors));
-        }
-
-        if (filesToAdd.isEmpty()) {
-            throw new IllegalArgumentException("No valid files provided to add.");
         }
 
         contextManager.addReadOnlyFiles(filesToAdd);
@@ -199,7 +167,7 @@ public class ContextTools {
              throw new RuntimeException("Unexpected error processing URL " + urlString + ": " + e.getMessage(), e);
         }
 
-        if (content == null || content.isBlank()) {
+        if (content.isBlank()) {
             throw new IllegalStateException("Fetched content from URL is empty: " + urlString);
         }
 
@@ -211,11 +179,11 @@ public class ContextTools {
         return "Added content from URL [%s] as a read-only text fragment.".formatted(urlString);
     }
 
-    @Tool("Add an arbitrary block of text (e.g., user input, notes, configuration snippet) as a read-only virtual fragment.")
+    @Tool("Add an arbitrary block of text (e.g., user input, notes that don't need to be in the Plan, configuration snippet) as a read-only virtual fragment")
     public String addTextFragment(
-            @P("The text content to add as a fragment.")
+            @P("The text content to add as a fragment")
             String content,
-            @P("A short, descriptive label for this text fragment (e.g., 'User Requirements', 'API Key Snippet').")
+            @P("A short, descriptive label for this text fragment (e.g., 'User Requirements', 'API Key Snippet')")
             String description
     ) {
         if (content == null || content.isBlank()) {
@@ -231,9 +199,9 @@ public class ContextTools {
         return "Added text fragment '%s'.".formatted(description);
     }
 
-    @Tool("Remove specified context fragments (files, text snippets, analysis results) from the context using their unique integer IDs.")
+    @Tool("Remove specified context fragments (files, text snippets, analysis results) from the context using their unique integer IDs")
     public String dropFragments(
-            @P("List of integer IDs corresponding to the fragments visible in the context view that you want to remove.")
+            @P("List of integer IDs corresponding to the fragments visible in the context view that you want to remove")
             List<Integer> fragmentIds
     ) {
         if (fragmentIds == null || fragmentIds.isEmpty()) {
@@ -288,47 +256,14 @@ public class ContextTools {
         return "Dropped %d fragment(s) with IDs: [%s]".formatted(droppedCount, foundIds.stream().map(String::valueOf).collect(Collectors.joining(", ")));
     }
 
-    @Tool("Clear the entire conversation history, including intermediate steps and summaries.")
+    @Tool("Clear the entire conversation history, including intermediate steps and summaries. Don't use this unless you've extracted all the information you need from the history to text snippets or the Plan!")
     public String clearHistory() {
         contextManager.clearHistory();
         return "Cleared conversation history.";
     }
 
-    // --- Helper Methods ---
-
-    /**
-     * Fetches content from a given URL. Public static for reuse.
-     * @param url The URL to fetch from.
-     * @return The content as a String.
-     * @throws IOException If fetching fails.
-     */
-    public static String fetchUrlContent(URI url) throws IOException { // Changed to public static
-        var connection = url.toURL().openConnection();
-        // Set reasonable timeouts
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(10000);
-        // Set a user agent
-        connection.setRequestProperty("User-Agent", "Brokk-Agent/1.0 (ContextTools)");
-
-        try (var reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream()))) {
-            return reader.lines().collect(Collectors.joining("\n"));
-        }
-    }
-
-    // Removed redundant maybeConvertToMarkdown helper method.
-    // The call site now uses HtmlToMarkdown.maybeConvertToMarkdown directly.
-
-    // --- Analysis Result Tools (Add Fragments) ---
-
-    private IAnalyzer getAnalyzer() {
-        // Assuming ContextManager provides access to the analyzer
-        return contextManager.getProject().getAnalyzer();
-    }
-
     @Tool(value = """
-    Finds usages of a specific symbol (class, method, field) and adds the relevant source code snippets as a read-only context fragment.
-    Useful for understanding how a piece of code is utilized across the project.
+    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods as a read-only context fragment
     """)
     public String addUsagesFragment(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
@@ -359,7 +294,7 @@ public class ContextTools {
 
     @Tool(value = """
     Retrieves summaries (fields and method signatures) for specified classes and adds them as a single read-only context fragment.
-    Provides a quick overview of class APIs without the full source code.
+    Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
     """)
     public String addClassSkeletonsFragment(
             @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get skeletons for.")
@@ -409,10 +344,10 @@ public class ContextTools {
 
     @Tool(value = """
     Retrieves the full source code of specific methods and adds each as a separate read-only text fragment.
-    Useful for examining the implementation details of individual methods.
+    Faster and more efficient than including entire files or classes when you only need a few methods
     """)
     public String addMethodSourcesFragment(
-            @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for.")
+            @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for")
             List<String> methodNames
     ) {
         assert !getAnalyzer().isEmpty() : "Cannot add method sources: Code analyzer is not available.";
@@ -440,43 +375,44 @@ public class ContextTools {
         return "Added %d method source fragment(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
     }
 
-    @Tool(value = """
-    Retrieves the full source code of specified classes and adds each as a separate read-only text fragment.
-    Use this when you need the complete implementation details of one or more classes in the context. Prefer `addClassSkeletonsFragment` or `addMethodSourcesFragment` if possible.
-    """)
-    public String addClassSourcesFragment(
-            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to retrieve the full source code for.")
-            List<String> classNames
-    ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add class sources: Code analyzer is not available.";
-        if (classNames == null || classNames.isEmpty()) {
-            throw new IllegalArgumentException("Cannot add class sources: class names list is empty");
-        }
-        // Removed reasoning check
-
-        var sourcesData = AnalyzerUtil.getClassSourcesData(getAnalyzer(), classNames);
-        if (sourcesData.isEmpty()) {
-            throw new IllegalStateException("No sources found for classes: " + String.join(", ", classNames));
-        }
-
-        // Add each class source as a separate StringFragment
-        int count = 0;
-        for (var entry : sourcesData.entrySet()) {
-            String className = entry.getKey();
-            String sourceCodeWithHeader = entry.getValue();
-            String description = "Source for class " + className;
-            // Create and add the fragment
-            var fragment = new ContextFragment.StringFragment(sourceCodeWithHeader, description);
-            contextManager.addVirtualFragment(fragment);
-            count++;
-        }
-
-        return "Added %d class source fragment(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
-    }
+    // disabled until we can do this efficiently in Joern
+//    @Tool(value = """
+//    Retrieves the full source code of specified classes and adds each as a separate read-only text fragment.
+//    More efficient than reading an entire file when you only need a single class, particularly for inner classes
+//    """)
+//    public String addClassSourcesFragment(
+//            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to retrieve the full source code for.")
+//            List<String> classNames
+//    ) {
+//        assert !getAnalyzer().isEmpty() : "Cannot add class sources: Code analyzer is not available.";
+//        if (classNames == null || classNames.isEmpty()) {
+//            throw new IllegalArgumentException("Cannot add class sources: class names list is empty");
+//        }
+//        // Removed reasoning check
+//
+//        var sourcesData = AnalyzerUtil.getClassSourcesData(getAnalyzer(), classNames);
+//        if (sourcesData.isEmpty()) {
+//            throw new IllegalStateException("No sources found for classes: " + String.join(", ", classNames));
+//        }
+//
+//        // Add each class source as a separate StringFragment
+//        int count = 0;
+//        for (var entry : sourcesData.entrySet()) {
+//            String className = entry.getKey();
+//            String sourceCodeWithHeader = entry.getValue();
+//            String description = "Source for class " + className;
+//            // Create and add the fragment
+//            var fragment = new ContextFragment.StringFragment(sourceCodeWithHeader, description);
+//            contextManager.addVirtualFragment(fragment);
+//            count++;
+//        }
+//
+//        return "Added %d class source fragment(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
+//    }
 
     @Tool(value = """
     Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it as a read-only context fragment.
-    Helps understand how a method is invoked.
+    The single line of the call sites (but not full method sources) are included
     """)
     public String addCallGraphToFragment(
             @P("Fully qualified target method name (e.g., 'com.example.MyClass.targetMethod') to find callers for.")
@@ -520,7 +456,7 @@ public class ContextTools {
 
      @Tool(value = """
     Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it as a read-only context fragment.
-    Helps understand what other methods a given method depends on.
+    The single line of the call sites (but not full method sources) are included
     """)
     public String addCallGraphFromFragment(
             @P("Fully qualified source method name (e.g., 'com.example.MyClass.sourceMethod') to find callees for.")
@@ -560,5 +496,31 @@ public class ContextTools {
 
         int totalCallSites = graphData.values().stream().mapToInt(List::size).sum();
         return "Added call graph fragment (%d sites) for callees of '%s' (depth %d).".formatted(totalCallSites, methodName, depth);
+    }
+
+    // --- Helper Methods ---
+
+    /**
+     * Fetches content from a given URL. Public static for reuse.
+     * @param url The URL to fetch from.
+     * @return The content as a String.
+     * @throws IOException If fetching fails.
+     */
+    public static String fetchUrlContent(URI url) throws IOException { // Changed to public static
+        var connection = url.toURL().openConnection();
+        // Set reasonable timeouts
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(10000);
+        // Set a user agent
+        connection.setRequestProperty("User-Agent", "Brokk-Agent/1.0 (ContextTools)");
+
+        try (var reader = new BufferedReader(
+                new InputStreamReader(connection.getInputStream()))) {
+            return reader.lines().collect(Collectors.joining("\n"));
+        }
+    }
+
+    private IAnalyzer getAnalyzer() {
+        return contextManager.getProject().getAnalyzer();
     }
 }

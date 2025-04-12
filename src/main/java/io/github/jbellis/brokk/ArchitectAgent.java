@@ -143,7 +143,6 @@ public class ArchitectAgent {
                     "addUsagesFragment",
                     "addClassSkeletonsFragment",
                     "addMethodSourcesFragment",
-                    "addClassSourcesFragment",
                     "addCallGraphToFragment",
                     "addCallGraphFromFragment",
                     "dropFragments"
@@ -176,14 +175,29 @@ public class ArchitectAgent {
             }
             var toolRequests = aiMessage.toolExecutionRequests();
 
-            // If there's an answer or abort, we handle that first and then stop
+            // execute tool calls in the following order:
+            // 1. projectFinished
+            // 2. abortProject
+            // 3. updatePlan
+            // 4. (everything else)
+            // 5. searchAgent
+            // 6. codeAgent
             ToolExecutionRequest answerReq = null, abortReq = null;
-            List<ToolExecutionRequest> otherReqs = new ArrayList<>();
+            var updatePlanReqs = new ArrayList<ToolExecutionRequest>();
+            var searchAgentReqs = new ArrayList<ToolExecutionRequest>();
+            var codeAgentReqs = new ArrayList<ToolExecutionRequest>();
+            var otherReqs = new ArrayList<ToolExecutionRequest>();
             for (var req : toolRequests) {
                 if (req.name().equals("projectFinished")) {
                     answerReq = req;
                 } else if (req.name().equals("abortProject")) {
                     abortReq = req;
+                } else if (req.name().equals("updatePlan")) {
+                    updatePlanReqs.add(req);
+                } else if (req.name().equals("callSearchAgent")) {
+                    searchAgentReqs.add(req);
+                } else if (req.name().equals("callCodeAgent")) {
+                    codeAgentReqs.add(req);
                 } else {
                     otherReqs.add(req);
                 }
@@ -203,15 +217,23 @@ public class ArchitectAgent {
                 return; // done
             }
 
-            // 7) If we have other tool calls, execute them. In principle we can do them sequentially.
-            for (var request : otherReqs) {
-                // If it's a duplicate "pushTasks" or "callCodeAgent" with same arguments, etc.
-                // we might skip or handle differently. But let's just do them in order for now.
-                var toolResult = toolRegistry.executeTool(request);
-
-                // If pushTasks was used, presumably the stack changed. If callCodeAgent was used, we see how it ended.
-                // The LLM can keep re-iterating.
-                logger.debug("Executed tool '{}' => result: {}", request.name(), toolResult.resultText());
+            // 7) Execute remaining tool calls in the desired order:
+            // First updatePlan, then any other tools, then callSearchAgent, then callCodeAgent.
+            for (var req : updatePlanReqs) {
+                var toolResult = toolRegistry.executeTool(req);
+                logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
+            }
+            for (var req : otherReqs) {
+                var toolResult = toolRegistry.executeTool(req);
+                logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
+            }
+            for (var req : searchAgentReqs) {
+                var toolResult = toolRegistry.executeTool(req);
+                logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
+            }
+            for (var req : codeAgentReqs) {
+                var toolResult = toolRegistry.executeTool(req);
+                logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
         }
     }
