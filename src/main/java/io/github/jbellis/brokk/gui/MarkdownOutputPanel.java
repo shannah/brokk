@@ -13,6 +13,7 @@ import java.awt.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,12 +30,11 @@ import org.apache.logging.log4j.Logger;
  * - CODE mode: we accumulate lines in an RSyntaxTextArea. If we encounter a code
  *   fence, we finalize the code block, switch to TEXT mode, and create a new text block.
  */
-class MarkdownOutputPanel extends JPanel implements Scrollable
-{
+class MarkdownOutputPanel extends JPanel implements Scrollable {
     private static final Logger logger = LogManager.getLogger(MarkdownOutputPanel.class);
 
     // We track partial text so we can parse incrementally.
-    private enum ParseState { TEXT, CODE }
+    private enum ParseState {TEXT, CODE}
 
     // Holds *all* the raw Markdown appended so far (for getText()).
     private final StringBuilder markdownBuffer = new StringBuilder();
@@ -68,8 +68,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     private Color codeBackgroundColor = null;
     private Color codeBorderColor = null;
 
-    public MarkdownOutputPanel()
-    {
+    public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(true);
 
@@ -85,8 +84,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      * Updates the theme colors used by this panel. Must be called before adding text,
      * or whenever you want to re-theme existing blocks.
      */
-    public void updateTheme(boolean isDark)
-    {
+    public void updateTheme(boolean isDark) {
         this.isDarkTheme = isDark;
 
         if (isDark) {
@@ -125,8 +123,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Clears all text and displayed components. The parse state is reset.
      */
-    public void clear()
-    {
+    public void clear() {
         logger.debug("Clearing all content from MarkdownOutputPanel");
 
         markdownBuffer.setLength(0);
@@ -150,8 +147,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      * Appends more Markdown text. We parse only the newly appended segment
      * and update the active text/code block(s) as needed.
      */
-    public void append(String text)
-    {
+    public void append(String text) {
         assert text != null;
         if (!text.isEmpty()) {
             markdownBuffer.append(text);
@@ -165,8 +161,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Sets the entire text buffer to the given Markdown, re-parsing from scratch.
      */
-    public void setText(String text)
-    {
+    public void setText(String text) {
         assert text != null;
         clear();
         append(text);
@@ -175,17 +170,15 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Returns the entire unrendered Markdown text so far.
      */
-    public String getText()
-    {
+    public String getText() {
         return markdownBuffer.toString();
     }
 
     /**
      * Let callers listen for changes in the text.
      */
-    public void addTextChangeListener(Runnable listener)
-    {
-         textChangeListeners.add(listener);
+    public void addTextChangeListener(Runnable listener) {
+        textChangeListeners.add(listener);
     }
 
     /**
@@ -193,8 +186,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      * We look for fences (```), and whenever we switch modes,
      * we finalize the old block and start a new one.
      */
-    private void parseIncremental(String newText)
-    {
+    private void parseIncremental(String newText) {
         var textToParse = pendingBuffer + newText;
         pendingBuffer = "";
         var backtickCount = 0;
@@ -255,8 +247,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      * Extracts a possible fence info (language id) that appears immediately
      * after the fence marker. Example: ```java
      */
-    private void parseFenceInfo(String line, int fenceInfoStart)
-    {
+    private void parseFenceInfo(String line, int fenceInfoStart) {
         var fenceRemainder = line.substring(fenceInfoStart).stripLeading();
         var parts = fenceRemainder.split("\\s+", 2);
         if (parts.length > 0 && !parts[0].isEmpty()) {
@@ -270,9 +261,8 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Create a new text block and set it as activeTextPane. Clears currentBlockContent.
      */
-    private void startTextBlock()
-    {
-        logger.debug("Starting new TEXT block");
+    private void startTextBlock() {
+        // logger.debug("Starting new TEXT block");
 
         // Create a new JEditorPane
         activeTextPane = createHtmlPane();
@@ -285,9 +275,8 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Create a new code block and set it as activeCodeArea. Clears currentBlockContent.
      */
-    private void startCodeBlock()
-    {
-        logger.debug("Starting new CODE block: {}", currentFenceInfo);
+    private void startCodeBlock() {
+        // logger.debug("Starting new CODE block: {}", currentFenceInfo);
 
         activeCodeArea = createConfiguredCodeArea(currentFenceInfo, "");
         add(codeAreaInPanel(activeCodeArea));
@@ -300,8 +289,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      * Finalize the current block so it no longer receives appended text.
      * We do not remove it, just treat it as "closed".
      */
-    private void finalizeActiveBlock()
-    {
+    private void finalizeActiveBlock() {
         if (currentState == ParseState.TEXT && activeTextPane != null) {
             // Last update before we freeze
             updateActiveBlock();
@@ -318,8 +306,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Update the currently active block with the content in currentBlockContent.
      */
-    private void updateActiveBlock()
-    {
+    private void updateActiveBlock() {
         if (currentState == ParseState.TEXT && activeTextPane != null) {
             var html = renderer.render(parser.parse(currentBlockContent.toString()));
             activeTextPane.setText("<html><body>" + html + "</body></html>");
@@ -331,8 +318,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Creates an RSyntaxTextArea for a code block, setting the syntax style and theme.
      */
-    private RSyntaxTextArea createConfiguredCodeArea(String fenceInfo, String content)
-    {
+    private RSyntaxTextArea createConfiguredCodeArea(String fenceInfo, String content) {
         var codeArea = new RSyntaxTextArea(content);
         codeArea.setEditable(false);
         codeArea.setLineWrap(true);
@@ -371,8 +357,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Wraps an RSyntaxTextArea in a panel with a border and vertical spacing.
      */
-    private JPanel codeAreaInPanel(RSyntaxTextArea textArea)
-    {
+    private JPanel codeAreaInPanel(RSyntaxTextArea textArea) {
         var panel = new JPanel(new BorderLayout());
         panel.setBackground(codeBackgroundColor);
         panel.setAlignmentX(LEFT_ALIGNMENT);
@@ -391,8 +376,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Creates a JEditorPane for HTML content. We set base CSS to match the theme.
      */
-    private JEditorPane createHtmlPane()
-    {
+    private JEditorPane createHtmlPane() {
         var htmlPane = new JEditorPane();
         DefaultCaret caret = (DefaultCaret) htmlPane.getCaret();
         caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
@@ -437,8 +421,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      *
      * @param message The text to display next to the spinner (e.g. "Thinking...")
      */
-    public void showSpinner(String message)
-    {
+    public void showSpinner(String message) {
         if (spinnerPanel != null) {
             // Already showing, update the message and return
             spinnerPanel.setMessage(message);
@@ -458,8 +441,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Hides the spinner panel if it is visible, removing it from the UI.
      */
-    public void hideSpinner()
-    {
+    public void hideSpinner() {
         if (spinnerPanel == null) {
             return; // not showing
         }
@@ -473,33 +455,28 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     // --- Scrollable interface methods ---
 
     @Override
-    public Dimension getPreferredScrollableViewportSize()
-    {
+    public Dimension getPreferredScrollableViewportSize() {
         return getPreferredSize();
     }
 
     @Override
-    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
-    {
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
         return 20;
     }
 
     @Override
-    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
-    {
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
         return orientation == SwingConstants.VERTICAL
                 ? visibleRect.height : visibleRect.width;
     }
 
     @Override
-    public boolean getScrollableTracksViewportWidth()
-    {
+    public boolean getScrollableTracksViewportWidth() {
         return true;
     }
 
     @Override
-    public boolean getScrollableTracksViewportHeight()
-    {
+    public boolean getScrollableTracksViewportHeight() {
         return false;
     }
 }

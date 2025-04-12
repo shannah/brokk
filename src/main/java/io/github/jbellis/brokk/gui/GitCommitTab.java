@@ -410,20 +410,15 @@ public class GitCommitTab extends JPanel {
             String fullPath = path.isEmpty() ? filename : path + "/" + filename;
             selectedFiles.add(fullPath);
         }
-        logger.debug("Saved {} selected files before refresh", selectedFiles.size());
-
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
-            logger.debug("Background task for uncommitted files started");
             try {
-                logger.debug("Calling getRepo().getModifiedFiles()");
                 var uncommittedFiles = getRepo().getModifiedFiles();
-                logger.debug("Got {} modified files", uncommittedFiles.size());
+                logger.debug("Found modified files {}", uncommittedFiles);
                 var gitStatus = getRepo().getGit().status().call();
                 var addedSet = gitStatus.getAdded();
                 var removedSet = new java.util.HashSet<>(gitStatus.getRemoved());
                 removedSet.addAll(gitStatus.getMissing());
                 SwingUtilities.invokeLater(() -> {
-                    logger.debug("In Swing thread updating uncommitted files table");
                     fileStatusMap.clear();
                     for (var file : uncommittedFiles) {
                         String fullPath = file.getParent().isEmpty() ? file.getFileName() : file.getParent() + "/" + file.getFileName();
