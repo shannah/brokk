@@ -21,9 +21,10 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
 
     public List<ChatMessage> collectMessagesNoIntro(ContextManager cm) {
         var messages = new ArrayList<ChatMessage>();
-        messages.addAll(cm.getReadOnlyMessages());
         messages.addAll(cm.getHistoryMessages());
+        messages.addAll(cm.getReadOnlyMessages());
         messages.addAll(cm.getEditableMessages());
+        messages.addAll(cm.getPlanMessages());
         return messages;
     }
 

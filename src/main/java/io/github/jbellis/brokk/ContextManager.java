@@ -868,6 +868,32 @@ public class ContextManager implements IContextManager, AutoCloseable {
             </editable>
             """.formatted(combined).stripIndent();
         return List.of(new UserMessage(msg), new AiMessage("Ok, any changes I propose will be to those files."));
+     }
+
+    /**
+     * Gets the current plan as ChatMessages for the LLM, if a plan exists.
+     * Includes an acknowledgement message from the AI.
+     * @return List containing UserMessage with plan and AiMessage ack, or empty list.
+     */
+    public List<ChatMessage> getPlanMessages() {
+        var currentPlan = selectedContext().getPlan();
+        if (currentPlan == null) {
+            return List.of();
+        }
+        try {
+            // PlanFragment.format() already includes <plan> tags and fragmentid
+            var planContent = currentPlan.format();
+            var userMsg = """
+                Here is the high-level plan to follow:
+                %s
+                """.formatted(planContent).stripIndent();
+            return List.of(new UserMessage(userMsg), new AiMessage("Ok, I will follow this plan."));
+        } catch (IOException e) {
+            // This shouldn't happen for PlanFragment unless there's a deeper issue
+            logger.error("IOException formatting PlanFragment (should not happen)", e);
+            removeBadFragment(currentPlan, e); // Attempt recovery
+            return List.of();
+        }
     }
 
     public String getReadOnlySummary()

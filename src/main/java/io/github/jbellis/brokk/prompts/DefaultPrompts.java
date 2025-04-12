@@ -38,12 +38,13 @@ public abstract class DefaultPrompts {
 
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
         messages.addAll(exampleMessages());
-        messages.addAll(cm.getReadOnlyMessages()); // Depends on Models.getText via ContextManager
-        messages.addAll(cm.getHistoryMessages()); // Previous full sessions
-        messages.addAll(sessionMessages);         // Messages from *this* session
+        messages.addAll(cm.getHistoryMessages());
+        messages.addAll(cm.getReadOnlyMessages());
+        messages.addAll(sessionMessages);
         messages.add(new UserMessage(editReminder(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
-        messages.addAll(cm.getEditableMessages()); // Depends on Models.getText via ContextManager
+        messages.addAll(cm.getEditableMessages());
+        messages.addAll(cm.getPlanMessages());
 
         return messages;
     }
