@@ -2,9 +2,10 @@ package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.BuildAgent;
 import io.github.jbellis.brokk.Project;
-import io.github.jbellis.brokk.Project.DataRetentionPolicy; // Import the enum
+import io.github.jbellis.brokk.Project.DataRetentionPolicy;
 import io.github.jbellis.brokk.gui.Chrome;
-// import io.github.jbellis.brokk.gui.WrapLayout; // WrapLayout is not used directly in this file, only in the inner static class. No top-level import needed.
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import java.awt.*;
@@ -12,6 +13,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
 public class SettingsDialog extends JDialog {
+    private static final Logger logger = LogManager.getLogger(SettingsDialog.class);
 
     private final Chrome chrome;
     private final JTabbedPane tabbedPane;
@@ -171,6 +173,7 @@ public class SettingsDialog extends JDialog {
         instructionsScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         
         var details = project.getBuildDetails();
+        logger.debug("Initial Build Details: {}", details);
         // Build/Lint Command
         gbc.gridx = 0;
         gbc.gridy = row;
@@ -437,6 +440,8 @@ public class SettingsDialog extends JDialog {
                     newTestAll,
                     newInstructions
             );
+
+            logger.debug("Applying Build Details: {}", newDetails);
 
             // Only save if details have actually changed
             if (!newDetails.equals(currentDetails)) {
