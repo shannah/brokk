@@ -44,24 +44,6 @@ class EditBlockInternalsTest {
     }
 
     @Test
-    void testAdjustIndentation() {
-        // delta < 0 => add spaces
-        String line = "hello\n";
-        String adjusted = EditBlock.adjustIndentation(line, "  ", "");
-        assertEquals("  hello\n", adjusted);
-
-        // delta > 0 => remove spaces (if present)
-        String line2 = "    hello\n";
-        String adjusted2 = EditBlock.adjustIndentation(line2, "  ", "    "); // remove 2 spaces
-        assertEquals("  hello\n", adjusted2);
-
-        // ensure we never go below zero indentation
-        String line3 = "  hi\n";
-        String adjusted3 = EditBlock.adjustIndentation(line3, "  ", "          "); // tries to remove 10, but has only 2
-        assertEquals("hi\n", adjusted3);
-    }
-
-    @Test
     void testMatchesIgnoringWhitespace() {
         String[] whole = {
                 "    line1\n",
@@ -79,7 +61,7 @@ class EditBlockInternalsTest {
     }
 
     @Test
-    void testPerfectReplace() throws EditBlock.AmbiguousMatchException {
+    void testPerfectReplace() throws EditBlock.AmbiguousMatchException, EditBlock.NoMatchException {
         String[] whole = { "A\n", "B\n", "C\n" };
         String[] part  = { "B\n" };
         String[] repl  = { "B-REPLACED\n" };
@@ -92,7 +74,7 @@ class EditBlockInternalsTest {
     }
 
     @Test
-    void testReplaceIgnoringWhitespace_includingBlankLine() throws EditBlock.AmbiguousMatchException {
+    void testReplaceIgnoringWhitespace_includingBlankLine() throws EditBlock.AmbiguousMatchException, EditBlock.NoMatchException {
         // This is closer to the scenario that breaks in your test:
         // There's an extra blank line in 'search' that doesn't appear in the original.
         String[] whole = {

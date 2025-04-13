@@ -15,8 +15,6 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static java.lang.Math.min;
-
 /**
  * Utility for extracting and applying before/after search-replace blocks in content.
  */
@@ -453,28 +451,29 @@ public class EditBlock {
 
     /**
      * Tries perfect replace first, then leading-whitespace-insensitive.
-     * Throws AmbiguousMatchException if more than one match is found in either step.
+     * Throws AmbiguousMatchException if more than one match is found in either step,
+     * or NoMatchException if no matches are found
      */
     public static String perfectOrWhitespace(String[] originalLines,
                                              String[] targetLines,
                                              String[] replaceLines)
-            throws AmbiguousMatchException
-    {
-        String perfect = perfectReplace(originalLines, targetLines, replaceLines);
-        if (perfect != null) {
-            return perfect;
+            throws AmbiguousMatchException, NoMatchException {
+        try {
+            return perfectReplace(originalLines, targetLines, replaceLines);
+        } catch (NoMatchException e) {
+            return replaceIgnoringWhitespace(originalLines, targetLines, replaceLines);
         }
-        return replaceIgnoringWhitespace(originalLines, targetLines, replaceLines);
     }
 
     /**
-     * Tries exact line-by-line match. Returns the post-replacement lines on success; null on failure.
-     * Throws AmbiguousMatchException if multiple matches are found.
+     * Tries exact line-by-line match. Returns the post-replacement lines on success.
+     * Throws AmbiguousMatchException if multiple exact matches are found.
+     * Throws NoMatchException if no exact match is found.
      */
     public static String perfectReplace(String[] originalLines,
                                         String[] targetLines,
                                         String[] replaceLines)
-            throws AmbiguousMatchException
+            throws AmbiguousMatchException, NoMatchException
     {
         // special-case replace entire file (empty target)
         if (targetLines.length == 0) {
@@ -497,7 +496,7 @@ public class EditBlock {
         }
 
         if (matches.isEmpty()) {
-            return null;
+            throw new NoMatchException("No exact matches found for the search block");
         }
 
         // Exactly one match
@@ -519,11 +518,12 @@ public class EditBlock {
      * slice by adjusting each replacement line's indentation to preserve the relative
      * indentation from the 'search' lines.
      * Throws AmbiguousMatchException if multiple matches are found ignoring whitespace.
+     * Throws NoMatchException if no match is found ignoring whitespace, or if the search block contained only whitespace.
      */
     static String replaceIgnoringWhitespace(String[] originalLines,
                                             String[] targetLines,
                                             String[] replaceLines)
-            throws AmbiguousMatchException
+            throws AmbiguousMatchException, NoMatchException
     {
         var truncatedTarget = removeLeadingTrailingEmptyLines(targetLines);
         var truncatedReplace = removeLeadingTrailingEmptyLines(replaceLines);
@@ -546,7 +546,7 @@ public class EditBlock {
         }
 
         if (matches.isEmpty()) {
-            return null;
+            throw new NoMatchException("No matches found ignoring whitespace");
         }
 
         // Exactly one match
@@ -620,30 +620,6 @@ public class EditBlock {
             }
         }
         return line.substring(0, count);
-    }
-
-    /**
-     * Align the replacement line to the original target content, based on the prefixes from the first matched lines
-     */
-    static String adjustIndentation(String line, String targetPrefix, String replacePrefix) {
-        if (replacePrefix.isEmpty()) {
-            return targetPrefix + line;
-        }
-
-        if (line.startsWith(replacePrefix)) {
-            return line.replaceFirst(replacePrefix, targetPrefix);
-        }
-
-        // no prefix match, either we have inconsistent whitespace in the replacement
-        // or (more likely) we have a replacement block that ends at a lower level of indentation
-        // than where it begins.  we'll do our best by counting characters
-        int delta = replacePrefix.length() - targetPrefix.length();
-        if (delta > 0) {
-            // remove up to `delta` spaces
-            delta = min(delta, getLeadingWhitespace(line).length());
-            return line.substring(delta);
-        }
-        return replacePrefix.substring(0, -delta) + line;
     }
 
     /**
