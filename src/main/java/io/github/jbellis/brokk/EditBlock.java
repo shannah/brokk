@@ -53,7 +53,11 @@ public class EditBlock {
         IO_ERROR
     }
 
-    public record EditResult(Map<ProjectFile, String> originalContents, List<FailedBlock> failedBlocks) { }
+    public record EditResult(Map<ProjectFile, String> originalContents, List<FailedBlock> failedBlocks) {
+        public boolean hadSuccessfulEdits() {
+            return !originalContents.isEmpty();
+        }
+    }
 
     public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
 
@@ -78,7 +82,7 @@ public class EditBlock {
     public static EditResult applyEditBlocks(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks) {
         // Track which blocks succeed or fail during application
         List<FailedBlock> failed = new ArrayList<>();
-        List<SearchReplaceBlock> succeeded = new ArrayList<>();
+        Map<SearchReplaceBlock, ProjectFile> succeeded = new HashMap<>();
 
         // Track original file contents before any changes
         Map<ProjectFile, String> changedFiles = new HashMap<>();
@@ -110,7 +114,7 @@ public class EditBlock {
                 replaceInFile(file, block.beforeText(), block.afterText());
 
                 // If successful, add to succeeded list
-                succeeded.add(block);
+                succeeded.put(block, file);
                 if (isCreateNew) {
                     try {
                         contextManager.addToGit(List.of(file));
@@ -146,9 +150,10 @@ public class EditBlock {
              }
          } // End of for loop
 
-         if (!succeeded.isEmpty()) {
+        if (!succeeded.isEmpty()) {
             io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.");
         }
+        changedFiles.keySet().retainAll(succeeded.values());
         return new EditResult(changedFiles, failed);
     }
 

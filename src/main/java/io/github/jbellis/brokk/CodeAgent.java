@@ -6,6 +6,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
+import io.github.jbellis.brokk.Coder.StreamingResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.BuildPrompts;
@@ -32,7 +33,6 @@ import java.util.stream.Collectors;
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
-    private static final int MAX_BUILD_ATTEMPTS = 3; // Max attempts to fix build errors
 
     /** Enum representing the reason a CodeAgent session concluded. */
     public enum StopReason {
@@ -45,11 +45,11 @@ public class CodeAgent {
         /** The LLM returned an empty or blank response after retries. */
         EMPTY_RESPONSE,
         /** The LLM response could not be parsed after retries. */
-        PARSE_ERROR_LIMIT,
+        PARSE_ERROR,
         /** Applying edits failed after retries. */
-        APPLY_ERROR_LIMIT,
+        APPLY_ERROR,
         /** Build errors occurred and were not improving after retries. */
-        BUILD_ERROR_LIMIT,
+        BUILD_ERROR,
         /** The LLM attempted to edit a read-only file. */
         READ_ONLY_EDIT
     }
@@ -75,244 +75,280 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput) {
+    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput)
+    {
+        var io = contextManager.getIo();
+        var coder = contextManager.getCoder();
+
         // Track original contents of files before any changes
         var originalContents = new HashMap<ProjectFile, String>();
-       var io = contextManager.getIo();
-       var coder = contextManager.getCoder();
 
         // We'll collect the conversation as ChatMessages to store in context history.
         var sessionMessages = new ArrayList<ChatMessage>();
-        // The user's initial request, becomes the prompt for the next LLM call
+
+        // The user's initial request
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
 
         // Start verification command inference concurrently
-        CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput); // Use cm
+        var verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput);
 
-        // retry loop state tracking
-        int parseErrors = 0;
-        int applyErrors = 0;
+        // Retry-loop state tracking
+        int parseFailures = 0;
+        int applyFailures = 0;
         int blocksAppliedWithoutBuild = 0;
-        List<String> buildErrors = new ArrayList<>();
-        List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>(); // Accumulated blocks from potentially partial responses
 
-        // give user some feedback -- this isn't in the main loop because after the first iteration
-        // we give more specific feedback when we need to make another request
+        var buildErrors = new ArrayList<String>();
+        var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
+
         io.systemOutput("Code Agent started: `%s`".formatted(userInput));
+        StopReason stopReason;
 
-        StopReason stopReason = null;
         while (true) {
-            // Check for interruption before sending to LLM
-            if (Thread.currentThread().isInterrupted()) {
-                io.systemOutput("Session interrupted");
-                stopReason = StopReason.INTERRUPTED;
-                break;
-            }
+            stopReason = checkInterruption(io);
+            if (stopReason != null) break;
 
-            // refresh with updated file contents
-            var reminder = DefaultPrompts.reminderForModel(contextManager.getModels(), model);
-            // collect all messages including prior session history
-            var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages, reminder);
-            allMessages.add(nextRequest); // Add the specific request for this turn
+            // Prepare and send request to LLM
+            var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages,
+                                                                      DefaultPrompts.reminderForModel(contextManager.getModels(), model));
+            allMessages.add(nextRequest);
 
-            // Actually send the message to the LLM and get the response
-            logger.debug("Sending request to model: {}", contextManager.getModels().nameOf(model));
             var streamingResult = coder.sendStreaming(model, allMessages, true);
+            stopReason = checkLlmErrorOrEmpty(streamingResult, io);
+            if (stopReason != null) break;
 
-            // 1) If user cancelled
-            if (streamingResult.cancelled()) {
-                io.systemOutput("Session interrupted");
-                stopReason = StopReason.INTERRUPTED;
-                break;
-            }
-
-            // 2) Handle errors or empty responses
-            if (streamingResult.error() != null) {
-                logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
-                io.systemOutput("LLM returned an error even after retries. Ending session");
-                stopReason = StopReason.LLM_ERROR;
-                break;
-            }
-
+            // Append request/response to session history
             var llmResponse = streamingResult.chatResponse();
-            if (llmResponse == null) {
-                io.systemOutput("Empty LLM response even after retries. Ending session.");
-                stopReason = StopReason.EMPTY_RESPONSE;
-                break;
-            }
-
-            String llmText = llmResponse.aiMessage().text();
-            if (llmText.isBlank()) {
-                io.systemOutput("Blank LLM response even after retries. Ending session.");
-                stopReason = StopReason.EMPTY_RESPONSE;
-                break;
-            }
-
-            // We got a valid response
-            logger.debug("response:\n{}", llmText);
-
-            // Add the request/response to session history
             sessionMessages.add(nextRequest);
             sessionMessages.add(llmResponse.aiMessage());
 
-            // Gather all edit blocks in the reply
+            String llmText = llmResponse.aiMessage().text();
+            logger.debug("response:\n{}", llmText);
+
+            // Parse any edit blocks from LLM response
             var parseResult = EditBlock.parseEditBlocks(llmText);
             var newlyParsedBlocks = parseResult.blocks();
-            blocks.addAll(newlyParsedBlocks); // Add newly parsed blocks to the accumulation
-            logger.debug("{} total unapplied blocks", blocks.size());
+            blocks.addAll(newlyParsedBlocks);
 
-            if (parseResult.parseError() != null) {
+            if (parseResult.parseError() == null) {
+                // No parse errors
+                parseFailures = 0;
+            } else {
                 if (newlyParsedBlocks.isEmpty()) {
-                    if (parseErrors++ >= MAX_PARSE_ATTEMPTS) {
-                        stopReason = StopReason.PARSE_ERROR_LIMIT;
+                    // No blocks parsed successfully
+                    parseFailures++;
+                    if (parseFailures > MAX_PARSE_ATTEMPTS) {
+                        stopReason = StopReason.PARSE_ERROR;
                         io.systemOutput("Parse error limit reached; ending session");
                         break;
                     }
-                    // Error occurred before *any* blocks were parsed in this response
                     nextRequest = new UserMessage(parseResult.parseError());
                     io.systemOutput("Failed to parse LLM response; retrying");
                 } else {
-                    // Error occurred after *some* blocks were parsed - ask to continue
-                    parseErrors = 0;
-                    var msg = """
-                            It looks like we got cut off. The last block I successfully parsed was
+                    // Partial parse => ask LLM to continue from last parsed block
+                    parseFailures = 0;
+                    var partialMsg = """
+                            It looks like we got cut off. The last block I successfully parsed was:
+                            
                             <block>
                             %s
                             </block>
+                            
                             Please continue from there (WITHOUT repeating that one).
                             """.stripIndent().formatted(newlyParsedBlocks.getLast());
-                    nextRequest = new UserMessage(msg);
+                    nextRequest = new UserMessage(partialMsg);
                     io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()));
                 }
-                continue; // Retry the LLM call with the new request asking for continuation/fix
-            }
-
-            // If we reached here, parsing was successful (or no blocks were found in this response)
-            logger.debug("{} total blocks found in current response", newlyParsedBlocks.size());
-
-            if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
-                // No blocks found in the latest response AND no blocks were applied in previous reflection loops waiting for a build check
-                // This means the LLM thinks it's done *and* we don't have pending edits waiting for a build check.
-                io.systemOutput("No edits found in response; ending session");
-                stopReason = StopReason.SUCCESS; // Assume completion if LLM stops providing edits and we have nothing pending
-                break;
-            }
-            // Check for interruption before proceeding to edit files
-            if (Thread.currentThread().isInterrupted()) {
-                io.systemOutput("Session interrupted");
-                stopReason = StopReason.INTERRUPTED;
-                break;
-            }
-
-            // auto-add files referenced in search/replace blocks that are not already editable
-            var filesToAdd = blocks.stream()
-                    .map(EditBlock.SearchReplaceBlock::filename)
-                    .filter(Objects::nonNull)
-                    .distinct() // Ensure unique filenames
-                    .map(coder.contextManager::toFile) // Convert to ProjectFile
-                    .filter(file -> !coder.contextManager.getEditableFiles().contains(file)) // Filter out already editable
-                    .toList();
-
-            logger.debug("Auto-adding as editable: {}", filesToAdd);
-            if (!filesToAdd.isEmpty()) {
-                var readOnlyFilesToAdd = filesToAdd.stream()
-                        .filter(file -> coder.contextManager.getReadonlyFiles().contains(file))
-                        .toList();
-                if (!readOnlyFilesToAdd.isEmpty()) {
-                    io.systemOutput("LLM attempted to edit read-only file(s): %s. \nNo edits applied. Mark the files editable or clarify to the LLM how to approach the problem another way.".formatted(readOnlyFilesToAdd));
-                    stopReason = StopReason.READ_ONLY_EDIT;
-                    break;
-                }
-                io.systemOutput("Editing additional files " + filesToAdd);
-                coder.contextManager.editFiles(filesToAdd);
-            }
-
-            // Attempt to apply *all accumulated* code edits from the LLM
-            var editResult = EditBlock.applyEditBlocks(coder.contextManager, io, blocks);
-            editResult.originalContents().forEach(originalContents::putIfAbsent);
-            logger.debug("Failed blocks: {}", editResult.failedBlocks());
-            blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
-
-            // Check for parse/match failures first
-            var parseRetryPrompt = getApplyFailureMessage(editResult.failedBlocks(), blocks, contextManager, io);
-
-            // Only increase parse error attempts if no blocks were successfully applied
-            if (editResult.failedBlocks().size() == blocks.size()) {
-                applyErrors++;
-            } else {
-                applyErrors = 0;
-            }
-            blocks.clear(); // Don't re-apply the same successful ones on the next loop
-            // If there were failed blocks, attempt to fix them
-            if (!parseRetryPrompt.isEmpty()) {
-                if (applyErrors >= MAX_PARSE_ATTEMPTS) {
-                    io.systemOutput("Parse/Apply retry limit reached; ending session");
-                    stopReason = StopReason.APPLY_ERROR_LIMIT;
-                    break;
-                }
-                io.systemOutput("Attempting to fix apply/match errors...");
-                nextRequest = new UserMessage(parseRetryPrompt);
                 continue;
             }
 
-            // If we get here, all accumulated blocks were applied successfully in this round.
+            logger.debug("{} total unapplied blocks", blocks.size());
 
-            // Check for interruption before checking build
-            if (Thread.currentThread().isInterrupted()) {
-                io.systemOutput("Session interrupted");
-                stopReason = StopReason.INTERRUPTED;
-                break;
-            }
-
-            // If parsing/application succeeded, check build using the asynchronously inferred command
-            String verificationCommand;
-            try {
-                // Wait for the command inference, with a timeout
-                verificationCommand = verificationCommandFuture.get(5, TimeUnit.SECONDS);
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                logger.warn("Failed to get verification command", e);
-                var bd = contextManager.getProject().getBuildDetails();
-                verificationCommand = bd == null ? null : bd.buildLintCommand();
-            }
-
-            boolean buildSucceeded = checkBuild(verificationCommand, contextManager, io, buildErrors);
-            blocksAppliedWithoutBuild = 0; // Reset count after build check attempt
-
-            if (buildSucceeded) {
-                // Build successful!
+            // If no blocks are pending and we haven't applied anything yet, assume we're done
+            if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
+                io.systemOutput("No edits found in response; ending session");
                 stopReason = StopReason.SUCCESS;
                 break;
             }
 
-            // Check if we should continue trying to fix build errors
-            if (!(buildErrors.isEmpty() || isBuildProgressing(coder, buildErrors))) {
+            // Check for interruption again before applying
+            stopReason = checkInterruption(io);
+            if (stopReason != null) break;
+
+            // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
+            stopReason = autoAddReferencedFiles(blocks, contextManager, io);
+            if (stopReason != null) break;
+
+            // Apply all accumulated blocks
+            var editResult = EditBlock.applyEditBlocks(contextManager, io, blocks);
+            editResult.originalContents().forEach(originalContents::putIfAbsent);
+            int succeededCount = (blocks.size() - editResult.failedBlocks().size());
+            blocksAppliedWithoutBuild += succeededCount;
+            blocks.clear(); // Clear them out: either successful or moved to editResult.failed
+
+            // Handle any failed blocks
+            if (!editResult.failedBlocks().isEmpty()) {
+                // If all blocks failed => increment applyErrors
+                if (editResult.hadSuccessfulEdits()) {
+                    applyFailures = 0;
+                } else {
+                    applyFailures++;
+                }
+
+                var parseRetryPrompt = getApplyFailureMessage(editResult.failedBlocks(),
+                                                              succeededCount,
+                                                              contextManager,
+                                                              io);
+
+                if (!parseRetryPrompt.isEmpty()) {
+                    if (applyFailures >= MAX_PARSE_ATTEMPTS) {
+                        io.systemOutput("Parse/Apply retry limit reached; ending session");
+                        stopReason = StopReason.APPLY_ERROR;
+                        break;
+                    }
+                    io.systemOutput("Attempting to fix apply/match errors...");
+                    nextRequest = new UserMessage(parseRetryPrompt);
+                    continue;
+                }
+            } else {
+                // If we had successful apply, reset applyErrors
+                applyFailures = 0;
+            }
+
+            // Attempt build/verification
+            boolean buildSuccess = attemptBuildVerification(verificationCommandFuture, contextManager, io, buildErrors);
+            blocksAppliedWithoutBuild = 0; // reset after each build attempt
+
+            if (buildSuccess) {
+                stopReason = StopReason.SUCCESS;
+                break;
+            }
+
+            // Build failed => check if it's improving or floundering
+            if (!buildErrors.isEmpty() && !isBuildProgressing(coder, buildErrors)) {
                 io.systemOutput("Build errors are not improving; ending session");
-                stopReason = StopReason.BUILD_ERROR_LIMIT;
+                stopReason = StopReason.BUILD_ERROR;
                 break;
             }
 
             io.systemOutput("Attempting to fix build errors...");
-            // Construct the reflection message based on the stored build errors
             nextRequest = new UserMessage(formatBuildErrorsForLLM(buildErrors));
-            // Loop back to LLM to fix build errors
         }
 
-        // Session finished (completed, interrupted, or failed)
+        // Conclude session
         assert stopReason != null;
-        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
+        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.get(sessionMessages.size() - 1));
+        boolean completedSuccessfully = (stopReason == StopReason.SUCCESS);
+        String finalActionDescription = completedSuccessfully
+                ? userInput
+                : userInput + " [" + stopReason.name() + "]";
 
-        // Mark description based on stop reason
-        boolean completedSuccessfully = stopReason == StopReason.SUCCESS;
-        String finalActionDescription = completedSuccessfully ? userInput : userInput + " [" + stopReason.name() + "]";
+        var sessionResult = new SessionResult(
+                List.copyOf(sessionMessages),
+                Map.copyOf(originalContents),
+                finalActionDescription,
+                finalLlmOutput,
+                stopReason
+        );
 
-        // Return the result for the caller to add to history
-        var sessionResult = new SessionResult(List.copyOf(sessionMessages), Map.copyOf(originalContents), finalActionDescription, finalLlmOutput, stopReason);
-
-        if (completedSuccessfully) {
+        if (completedSuccessfully)
+        {
             io.systemOutput("Code Agent finished!");
-        } // otherwise, code that stops the session is responsible for explaining why
-
+        }
         return sessionResult;
+    }
+
+    /**
+     * Checks if the current thread is interrupted. Returns StopReason.INTERRUPTED if so,
+     * or null if everything is fine.
+     */
+    private static StopReason checkInterruption(IConsoleIO io) {
+        if (Thread.currentThread().isInterrupted()) {
+            io.systemOutput("Session interrupted");
+            return StopReason.INTERRUPTED;
+        }
+        return null;
+    }
+
+    /**
+     * Checks if a streaming result is empty or errored. If so, logs and returns a StopReason;
+     * otherwise returns null to proceed.
+     */
+    private static StopReason checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
+        if (streamingResult.cancelled()) {
+            io.systemOutput("Session interrupted");
+            return StopReason.INTERRUPTED;
+        }
+        if (streamingResult.error() != null) {
+            io.systemOutput("LLM returned an error even after retries. Ending session");
+            return StopReason.LLM_ERROR;
+        }
+        var llmResponse = streamingResult.chatResponse();
+        if (llmResponse == null) {
+            io.systemOutput("Empty LLM response even after retries. Ending session.");
+            return StopReason.EMPTY_RESPONSE;
+        }
+        var text = llmResponse.aiMessage().text();
+        if (text.isBlank()) {
+            io.systemOutput("Blank LLM response even after retries. Ending session.");
+            return StopReason.EMPTY_RESPONSE;
+        }
+        return null;
+    }
+
+    /**
+     * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
+     * Returns READ_ONLY_EDIT if the user tries to edit read-only files, otherwise null.
+     */
+    private static StopReason autoAddReferencedFiles(
+            List<EditBlock.SearchReplaceBlock> blocks,
+            ContextManager contextManager,
+            IConsoleIO io
+    ) {
+        var coder = contextManager.getCoder();
+        var filesToAdd = blocks.stream()
+                .map(EditBlock.SearchReplaceBlock::filename)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(coder.contextManager::toFile)
+                .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
+                .toList();
+
+        if (!filesToAdd.isEmpty()) {
+            var readOnlyFiles = filesToAdd.stream()
+                    .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
+                    .toList();
+            if (!readOnlyFiles.isEmpty()) {
+                io.systemOutput(
+                        "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
+                                .formatted(readOnlyFiles));
+                return StopReason.READ_ONLY_EDIT;
+            }
+            io.systemOutput("Editing additional files " + filesToAdd);
+            coder.contextManager.editFiles(filesToAdd);
+        }
+        return null;
+    }
+
+    /**
+     * Runs the build verification command (once available) and appends any build error text to buildErrors list.
+     * Returns true if the build/verification was successful or skipped, false otherwise.
+     */
+    private static boolean attemptBuildVerification(
+            CompletableFuture<String> verificationCommandFuture,
+            ContextManager contextManager,
+            IConsoleIO io,
+            List<String> buildErrors
+    ) {
+        String verificationCommand;
+        try {
+            verificationCommand = verificationCommandFuture.get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            logger.warn("Failed to get verification command", e);
+            var bd = contextManager.getProject().getBuildDetails();
+            verificationCommand = (bd == null ? null : bd.buildLintCommand());
+        }
+
+        return checkBuild(verificationCommand, contextManager, io, buildErrors);
     }
 
     /**
@@ -535,7 +571,7 @@ public class CodeAgent {
         if (newSnippet.isEmpty()) {
             io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
             // Add to history even if it failed
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR_LIMIT), false);
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR), false);
             return fileContents; // Return original content
         }
 
@@ -548,17 +584,17 @@ public class CodeAgent {
         } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
             io.toolErrorRaw("Failed to replace text: " + e.getMessage());
             // Add to history even if it failed
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT), false);
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR), false);
             return fileContents; // Return original content on failure
         } catch (IOException e) {
             io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
             // Add to history even if it failed
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT), false);
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR), false);
             return fileContents; // Return original content on failure
         }
     }
 
-    /** Formats the history of build errors for the LLM reflection prompt. */
+    /** Formats the history of build errors for the LLM retry prompt. */
     private static String formatBuildErrorsForLLM(List<String> buildErrors) {
         if (buildErrors.isEmpty()) {
             return ""; // Should not happen if checkBuild returned false, but defensive check.
@@ -574,10 +610,10 @@ public class CodeAgent {
     }
 
     /**
-     * Generates a reflection message based on parse/apply errors from failed edit blocks
+     * Generates a message based on parse/apply errors from failed edit blocks
      */
     private static String getApplyFailureMessage(List<EditBlock.FailedBlock> failedBlocks,
-                                                 List<EditBlock.SearchReplaceBlock> originalBlocks, // All blocks attempted in this round
+                                                 int succeededCount,
                                                  IContextManager contextManager,
                                                  IConsoleIO io)
     {
@@ -589,7 +625,6 @@ public class CodeAgent {
         var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
 
         // Generate the message for the LLM
-        int succeededCount = originalBlocks.size() - failedBlocks.size();
         int count = failedBlocks.size();
         boolean singular = (count == 1);
         var failedText = failedBlocks.stream()
@@ -662,7 +697,7 @@ public class CodeAgent {
         ```
         """.stripIndent().formatted(result.error(), result.output()));
         io.systemOutput("Verification failed (details above)");
-        // Add the combined error and output to the history for reflection
+        // Add the combined error and output to the history for the next request
         buildErrors.add(result.error() + "\n\n" + result.output());
         return false;
     }
