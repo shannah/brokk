@@ -161,15 +161,14 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
 
     /**
      * Re-parses the entire contentBuffer and updates the displayed components.
-     * It first attempts to parse using EditBlock.parseUpdateBlocks. If successful,
-     * it renders the edit blocks. Otherwise, it renders the content as Markdown.
+     * Uses EditBlock.parseAllBlocks to handle both edit blocks and plain text/markdown segments.
      */
     private void rerender() {
         // Preserve the spinner if it's showing
         Component potentialSpinner = null;
         if (getComponentCount() > 0) {
              var lastComponent = getComponent(getComponentCount() - 1);
-             if (lastComponent == spinnerPanel) { // spinnerPanel is null if not showing
+             if (lastComponent == spinnerPanel) {
                  potentialSpinner = lastComponent;
              }
         }
@@ -177,27 +176,23 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         removeAll();
 
         String content = contentBuffer.toString();
-        // Attempt to parse the content as a series of SEARCH/REPLACE blocks.
-        // Note: Using parseEditBlocks based on original goal and build errors with parseUpdateBlocks
-        var parseResult = EditBlock.parseEditBlocks(content);
+        var parseResult = EditBlock.parseAllBlocks(content);
 
-        if (parseResult.parseError() == null && !parseResult.blocks().isEmpty()) {
-            // Option 1: Content parsed successfully as EditBlocks
-            logger.debug("Rendering content as EditBlocks");
-            for (var block : parseResult.blocks()) {
-                add(renderEditBlockComponent(block));
-            }
-        } else {
-            // Option 2: Content is not valid EditBlocks (or contains surrounding text), treat as raw text/Markdown.
-            // If there was a parse error, render literally to show the user the malformed input.
-            // Otherwise, render as Markdown.
-            if (parseResult.parseError() != null) {
-                 logger.debug("Rendering content as plain text due to EditBlock parse error");
-                 JEditorPane textPane = createPlainTextPane(content); // Render literally
-                 add(textPane);
+        for (var block : parseResult.blocks()) {
+            if (block.block() != null) {
+                // Edit block
+                logger.debug("Rendering edit block for {}", block.block().filename());
+                add(renderEditBlockComponent(block.block()));
             } else {
-                logger.debug("Rendering content as Markdown (EditBlock parse returned empty or content wasn't solely blocks)");
-                renderMarkdownContent(content); // Render as potentially rich Markdown
+                // Plain text/markdown
+                logger.debug("Rendering plain/markdown text block");
+                if (parseResult.parseError() != null) {
+                    // Show parse errors literally
+                    add(createPlainTextPane(block.text()));
+                } else {
+                    // Render as markdown
+                    renderMarkdownContent(block.text());
+                }
             }
         }
 
