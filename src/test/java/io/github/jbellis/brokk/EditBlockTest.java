@@ -203,7 +203,7 @@ class EditBlockTest {
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
         var blocks = EditBlock.parseEditBlocks(response).blocks();
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // existing filename
         String actualA = Files.readString(existingFile);
@@ -258,7 +258,6 @@ class EditBlockTest {
                 oops! no trailing >>>>>> REPLACE foo.txt
                 """;
 
-        var files = Set.of("foo.txt").stream().map(f -> new ProjectFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
         var result = EditBlock.parseEditBlocks(edit);
         assertNotEquals(null, result.parseError());
     }
@@ -346,7 +345,7 @@ class EditBlockTest {
         var blocks = EditBlock.parseEditBlocks(response).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
-        // Verify original content is preserved
+        // Verify original content is returned
         var fileA = new ProjectFile(tempDir, Path.of("fileA.txt"));
         assertEquals(originalContent, result.originalContents().get(fileA));
 
@@ -476,6 +475,41 @@ class EditBlockTest {
         assertEquals("bar.txt", goodBlock.filename());
         assertEquals("some\n", goodBlock.beforeText());
         assertEquals("other\n", goodBlock.afterText());
+    }
+
+    @Test
+    void testNoMatchFailureWithExistingReplacementText(@TempDir Path tempDir) throws IOException {
+        TestConsoleIO io = new TestConsoleIO();
+        Path existingFile = tempDir.resolve("fileA.txt");
+        String initialContent = "AAA\nBBB\nCCC\n";
+        String alreadyPresentText = "Replacement Text"; // This text is NOT in initialContent yet, but we want it there
+        String fileContent = initialContent + alreadyPresentText + "\nDDD\n";
+        Files.writeString(existingFile, fileContent);
+
+        // The "beforeText" will not match, but the "afterText" is already in the file
+        String response = """
+            <<<<<<< SEARCH fileA.txt
+            NonExistentBeforeText
+            ======= fileA.txt
+            %s
+            >>>>>>> REPLACE fileA.txt
+            """.formatted(alreadyPresentText);
+
+        TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
+        var blocks = EditBlock.parseEditBlocks(response).blocks();
+        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+
+        // Assert exactly one failure with NO_MATCH reason
+        assertEquals(1, result.failedBlocks().size(), "Expected exactly one failed block");
+        var failedBlock = result.failedBlocks().getFirst();
+        assertEquals(EditBlock.EditBlockFailureReason.NO_MATCH, failedBlock.reason(), "Expected failure reason to be NO_MATCH");
+
+        // Assert the specific commentary is present
+        assertTrue(failedBlock.commentary().contains("replacement text is already present"), "Expected specific commentary about existing replacement text");
+
+        // Assert that the file content remains unchanged
+        String finalContent = Files.readString(existingFile);
+        assertEquals(fileContent, finalContent, "File content should remain unchanged after the failed edit");
     }
 
     // ----------------------------------------------------

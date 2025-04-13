@@ -49,7 +49,6 @@ public class EditBlock {
         FILE_NOT_FOUND,
         NO_MATCH,
         AMBIGUOUS_MATCH,
-        NO_FILENAME,
         IO_ERROR
     }
 
@@ -59,7 +58,17 @@ public class EditBlock {
         }
     }
 
-    public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) { }
+    public record FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason, String commentary) {
+        public FailedBlock {
+            assert block != null;
+            assert reason != null;
+            assert commentary != null;
+        }
+
+        public FailedBlock(SearchReplaceBlock block, EditBlockFailureReason reason) {
+            this(block, reason, "");
+        }
+    }
 
     // -- Exceptions for file resolution --
     /** Thrown when a filename provided by the LLM cannot be uniquely resolved. */
@@ -88,7 +97,6 @@ public class EditBlock {
         Map<ProjectFile, String> changedFiles = new HashMap<>();
 
         for (SearchReplaceBlock block : blocks) {
-
             // 1. Resolve the filename
             ProjectFile file;
             boolean isCreateNew = block.beforeText().trim().isEmpty();
@@ -125,8 +133,22 @@ public class EditBlock {
                     }
                 }
             } catch (NoMatchException | AmbiguousMatchException e) {
+                assert changedFiles.containsKey(file);
+                var originalContent = changedFiles.get(file);
+                String commentary;
+                try {
+                    replaceMostSimilarChunk(originalContent, block.afterText, "");
+                    // if it didn't throw:
+                    commentary = """
+                    Note: The replacement text is already present in the file. If we no longer need to apply
+                    this block, omit it from your reply.
+                    """.stripIndent();
+                } catch (NoMatchException | AmbiguousMatchException e2) {
+                    commentary = "";
+                }
                 logger.debug("Edit application failed for file [{}] {}: {}", file, e.getClass().getSimpleName(), e.getMessage());
-                failed.add(new FailedBlock(block, e instanceof  NoMatchException ? EditBlockFailureReason.NO_MATCH : EditBlockFailureReason.AMBIGUOUS_MATCH));
+                var reason = e instanceof NoMatchException ? EditBlockFailureReason.NO_MATCH : EditBlockFailureReason.AMBIGUOUS_MATCH;
+                failed.add(new FailedBlock(block, reason, commentary));
                 // Restore original content if we saved it and the edit failed
                 if (changedFiles.containsKey(file)) {
                     try {
@@ -647,44 +669,6 @@ public class EditBlock {
     }
 
     private record ContentLines(String original, String[] lines) { }
-
-    /**
-     * Collects suggestions for failed blocks by examining file contents
-     */
-    public static Map<FailedBlock, String> collectSuggestions(List<FailedBlock> failedBlocks, IContextManager cm) {
-        Map<FailedBlock, String> suggestions = new HashMap<>();
-
-        for (var failedBlock : failedBlocks) {
-            if (failedBlock.block().filename() == null) {
-                suggestions.put(failedBlock, "Filename not provided or not found");
-                continue;
-            }
-
-            String fileContent;
-            try {
-                fileContent = cm.toFile(failedBlock.block().filename()).read();
-            } catch (IOException ignored) {
-                suggestions.put(failedBlock, "File not found");
-                continue;
-            }
-
-            String suggestion = "";
-            // TODO check lines w/o whitespace like replaceIgnoringWhitespace
-            if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                suggestion = """
-                Note: The replacement text is already present in the file. If we no longer need to apply
-                this block, omit it from your reply.
-                """.stripIndent();
-                suggestions.put(failedBlock, suggestion);
-            } else {
-                suggestion = """
-                Failure reason: %s
-                """.stripIndent().formatted(failedBlock.reason());
-            }
-            suggestions.put(failedBlock, suggestion);
-        }
-        return suggestions;
-    }
 
     /**
      * Resolves a filename string to a ProjectFile.

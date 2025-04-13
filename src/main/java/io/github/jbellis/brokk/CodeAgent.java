@@ -196,7 +196,6 @@ public class CodeAgent {
 
                 var parseRetryPrompt = getApplyFailureMessage(editResult.failedBlocks(),
                                                               succeededCount,
-                                                              contextManager,
                                                               io);
 
                 if (!parseRetryPrompt.isEmpty()) {
@@ -236,7 +235,7 @@ public class CodeAgent {
 
         // Conclude session
         assert stopReason != null;
-        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.get(sessionMessages.size() - 1));
+        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
         boolean completedSuccessfully = (stopReason == StopReason.SUCCESS);
         String finalActionDescription = completedSuccessfully
                 ? userInput
@@ -614,15 +613,11 @@ public class CodeAgent {
      */
     private static String getApplyFailureMessage(List<EditBlock.FailedBlock> failedBlocks,
                                                  int succeededCount,
-                                                 IContextManager contextManager,
                                                  IConsoleIO io)
     {
         if (failedBlocks.isEmpty()) {
             return "";
         }
-
-        // Provide suggestions for failed blocks
-        var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
 
         // Generate the message for the LLM
         int count = failedBlocks.size();
@@ -644,7 +639,7 @@ public class CodeAgent {
                                                 f.reason(),
                                                 f.block().beforeText(),
                                                 f.block().afterText(),
-                                                suggestions.containsKey(f) ? "\n" + suggestions.get(f) : "");
+                                                f.commentary());
                 })
                 .collect(Collectors.joining("\n\n"));
         var successfulText = succeededCount > 0
