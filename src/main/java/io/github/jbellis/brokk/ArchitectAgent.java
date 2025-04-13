@@ -177,6 +177,7 @@ public class ArchitectAgent {
                 return;
             }
             var toolRequests = aiMessage.toolExecutionRequests();
+            logger.debug("Tool requests are {}", toolRequests);
 
             // execute tool calls in the following order:
             // 1. projectFinished

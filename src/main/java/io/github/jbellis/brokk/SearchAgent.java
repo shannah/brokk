@@ -902,7 +902,7 @@ public class SearchAgent {
                       "getClassSources" -> formatListParameter(arguments, "classNames");
                  case "getMethodSources" -> formatListParameter(arguments, "methodNames");
                  case "getCallGraphTo", "getCallGraphFrom" -> arguments.getOrDefault("methodName", "").toString();
-                 case "answerSearch", "abortSearch" -> "finalizing";
+                 case "answerSearch", "abortSearch" -> "";
                  default -> ""; // Avoid exception for unknown tools
              };
          } catch (Exception e) {
