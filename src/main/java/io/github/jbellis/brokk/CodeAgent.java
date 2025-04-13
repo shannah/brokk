@@ -89,8 +89,9 @@ public class CodeAgent {
         // Start verification command inference concurrently
         CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput); // Use cm
 
-        // Reflection loop state tracking
-        int parseErrorAttempts = 0;
+        // retry loop state tracking
+        int parseErrors = 0;
+        int applyErrors = 0;
         int blocksAppliedWithoutBuild = 0;
         List<String> buildErrors = new ArrayList<>();
         List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>(); // Accumulated blocks from potentially partial responses
@@ -162,11 +163,17 @@ public class CodeAgent {
 
             if (parseResult.parseError() != null) {
                 if (newlyParsedBlocks.isEmpty()) {
+                    if (parseErrors++ >= MAX_PARSE_ATTEMPTS) {
+                        stopReason = StopReason.PARSE_ERROR_LIMIT;
+                        io.systemOutput("Parse error limit reached; ending session");
+                        break;
+                    }
                     // Error occurred before *any* blocks were parsed in this response
                     nextRequest = new UserMessage(parseResult.parseError());
                     io.systemOutput("Failed to parse LLM response; retrying");
                 } else {
                     // Error occurred after *some* blocks were parsed - ask to continue
+                    parseErrors = 0;
                     var msg = """
                             It looks like we got cut off. The last block I successfully parsed was
                             <block>
@@ -231,15 +238,16 @@ public class CodeAgent {
 
             // Only increase parse error attempts if no blocks were successfully applied
             if (editResult.failedBlocks().size() == blocks.size()) {
-                parseErrorAttempts++;
+                applyErrors++;
             } else {
-                parseErrorAttempts = 0;
+                applyErrors = 0;
             }
             blocks.clear(); // Don't re-apply the same successful ones on the next loop
             // If there were failed blocks, attempt to fix them
             if (!parseRetryPrompt.isEmpty()) {
-                if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
+                if (applyErrors >= MAX_PARSE_ATTEMPTS) {
                     io.systemOutput("Parse/Apply retry limit reached; ending session");
+                    stopReason = StopReason.APPLY_ERROR_LIMIT;
                     break;
                 }
                 io.systemOutput("Attempting to fix apply/match errors...");
