@@ -66,7 +66,7 @@ class EditBlockTest {
     }
 
     @Test
-    void testParseUpdateBlocksSimple() {
+    void testParseEditBlocksSimple() {
         String edit = """
                 Here's the change:
 
@@ -89,7 +89,7 @@ class EditBlockTest {
     }
 
     @Test
-    void testParseUpdateBlocksMultipleSameFile() {
+    void testParseEditBlocksMultipleSameFile() {
         String edit = """
                 Here's the change:
 
@@ -125,7 +125,7 @@ class EditBlockTest {
     }
 
     @Test
-    void testParseUpdateBlocksNoFinalNewline() {
+    void testParseEditBlocksNoFinalNewline() {
         String edit = """
                 <<<<<<< SEARCH aider/coder.py
                 lineA
@@ -148,7 +148,7 @@ class EditBlockTest {
     }
 
     @Test
-    void testParseUpdateBlocksNewFileThenExisting() {
+    void testParseEditBlocksNewFileThenExisting() {
         String edit = """
                 Here's the change:
 
@@ -202,7 +202,7 @@ class EditBlockTest {
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlock.parseUpdateBlocks(response).blocks();
+        var blocks = EditBlock.parseEditBlocks(response).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // existing filename
@@ -234,7 +234,7 @@ class EditBlockTest {
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlock.parseUpdateBlocks(response).blocks();
+        var blocks = EditBlock.parseEditBlocks(response).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         assertNotEquals(List.of(), result.failedBlocks());
@@ -245,7 +245,7 @@ class EditBlockTest {
      * (Similar to python test_find_original_update_blocks_unclosed)
      */
     @Test
-    void testParseUpdateBlocksUnclosed() {
+    void testParseEditBlocksUnclosed() {
         String edit = """
                 Here's the change:
 
@@ -259,7 +259,7 @@ class EditBlockTest {
                 """;
 
         var files = Set.of("foo.txt").stream().map(f -> new ProjectFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
-        var result = EditBlock.parseUpdateBlocks(edit);
+        var result = EditBlock.parseEditBlocks(edit);
         assertNotEquals(null, result.parseError());
     }
 
@@ -268,7 +268,7 @@ class EditBlockTest {
      * haven't yet established a 'currentFile').
      */
     @Test
-    void testParseUpdateBlocksMissingFilename(@TempDir Path tempDir) {
+    void testParseEditBlocksMissingFilename(@TempDir Path tempDir) {
         String edit = """
                 Here's the change:
 
@@ -283,7 +283,7 @@ class EditBlockTest {
 
         // Expect an exception about missing filename
         var files = Set.of("").stream().map(f -> new ProjectFile(tempDir, Path.of(f))).collect(Collectors.toSet());
-        var result = EditBlock.parseUpdateBlocks(edit);
+        var result = EditBlock.parseEditBlocks(edit);
 
         // It should fail parsing because the filename is missing
         assertEquals(0, result.blocks().size());
@@ -315,7 +315,7 @@ class EditBlockTest {
             """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlock.parseUpdateBlocks(response).blocks();
+        var blocks = EditBlock.parseEditBlocks(response).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // Assert exactly one failure with the correct reason
@@ -343,7 +343,7 @@ class EditBlockTest {
         """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlock.parseUpdateBlocks(response).blocks();
+        var blocks = EditBlock.parseEditBlocks(response).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // Verify original content is preserved
@@ -371,7 +371,7 @@ class EditBlockTest {
         """.formatted(replacementContent.trim()); // Use trim because EditBlock adds newline
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("replaceTest.txt"));
-        var blocks = EditBlock.parseUpdateBlocks(response).blocks();
+        var blocks = EditBlock.parseEditBlocks(response).blocks();
         assertEquals(1, blocks.size());
         assertTrue(blocks.getFirst().beforeText().isEmpty()); // Verify search block is empty
 
@@ -402,7 +402,7 @@ class EditBlockTest {
         >>>>>>> REPLACE foo.txt
         """;
 
-        var result = EditBlock.parseUpdateBlocks(content);
+        var result = EditBlock.parseEditBlocks(content);
         // Expect exactly one successfully parsed block, no parse errors
         assertEquals(1, result.blocks().size(), "Should parse a single block");
         assertEquals(null, result.parseError(), "No parse errors expected");
@@ -425,7 +425,7 @@ class EditBlockTest {
         >>>>>>> REPLACE foo.txt
         """;
 
-        var result = EditBlock.parseUpdateBlocks(content);
+        var result = EditBlock.parseEditBlocks(content);
         // Because we found more than one standalone "=======" line in the SEARCH->REPLACE block,
         // the parser should treat it as an error for that block, producing zero blocks.
         assertEquals(0, result.blocks().size(), "No successful blocks expected when multiple dividers found");
@@ -441,7 +441,7 @@ class EditBlockTest {
         >>>>>>> REPLACE foo.txt
         """;
 
-        var result = EditBlock.parseUpdateBlocks(content);
+        var result = EditBlock.parseEditBlocks(content);
         // Because there was no "foo.txt =======" nor a single standalone "=======" line,
         // this block also fails to parse, yielding zero blocks and a parse error.
         assertEquals(0, result.blocks().size(), "No successful blocks expected without any divider line");
@@ -466,7 +466,7 @@ class EditBlockTest {
         >>>>>>> REPLACE bar.txt
         """;
 
-        var result = EditBlock.parseUpdateBlocks(content);
+        var result = EditBlock.parseEditBlocks(content);
         // Expect 1 block to parse OK (the bar.txt block),
         // and 1 parse error from the foo.txt block that has no divider.
         assertEquals(1, result.blocks().size(), "One successfully parsed block");
@@ -483,7 +483,7 @@ class EditBlockTest {
     // ----------------------------------------------------
     private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
         var files = validFilenames.stream().map(f -> new ProjectFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
-        var blocks = EditBlock.parseUpdateBlocks(fullResponse).blocks();
+        var blocks = EditBlock.parseEditBlocks(fullResponse).blocks();
         return blocks.toArray(new EditBlock.SearchReplaceBlock[0]);
     }
 }

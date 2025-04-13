@@ -156,7 +156,7 @@ public class CodeAgent {
             sessionMessages.add(llmResponse.aiMessage());
 
             // Gather all edit blocks in the reply
-            var parseResult = EditBlock.parseUpdateBlocks(llmText);
+            var parseResult = EditBlock.parseEditBlocks(llmText);
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks); // Add newly parsed blocks to the accumulation
             logger.debug("{} total unapplied blocks", blocks.size());
@@ -309,7 +309,7 @@ public class CodeAgent {
         var sessionResult = new SessionResult(List.copyOf(sessionMessages), Map.copyOf(originalContents), finalActionDescription, finalLlmOutput, stopReason);
 
         if (completedSuccessfully) {
-            io.systemOutput("Session complete!");
+            io.systemOutput("Code Agent finished!");
         } // otherwise, code that stops the session is responsible for explaining why
 
         return sessionResult;

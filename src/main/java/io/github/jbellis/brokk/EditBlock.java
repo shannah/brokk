@@ -24,7 +24,7 @@ public class EditBlock {
     private static final Logger logger = LogManager.getLogger(EditBlock.class);
 
     // Pattern for the start of a search block, capturing the filename
-    private static final Pattern HEAD = Pattern.compile("^\\s*<{5,9} SEARCH\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
+    private static final Pattern SEARCH = Pattern.compile("^\\s*<{5,9} SEARCH\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
     // Pattern for the divider, capturing the filename
     private static final Pattern DIVIDER = Pattern.compile("^\\s*={5,9}\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
     // Pattern for the end of a replace block, capturing the filename
@@ -231,14 +231,14 @@ public class EditBlock {
     /**
      * Parses the given content into ParseResult
      */
-    public static ParseResult parseUpdateBlocks(String content) {
+    public static ParseResult parseEditBlocks(String content) {
         List<SearchReplaceBlock> blocks = new ArrayList<>();
         StringBuilder parseErrors = new StringBuilder();
         String[] lines = content.split("\n", -1);
         int i = 0;
 
         blockLoop: while (i < lines.length) {
-            Matcher headMatcher = HEAD.matcher(lines[i]);
+            Matcher headMatcher = SEARCH.matcher(lines[i]);
             if (headMatcher.matches()) {
                 String currentFilename = headMatcher.group(1).trim();
                 i++;
