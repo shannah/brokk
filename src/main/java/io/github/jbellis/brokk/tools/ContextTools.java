@@ -44,7 +44,7 @@ public class ContextTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Add project files to the editable context. Use this when you intend to modify these files")
+    @Tool("Add project files to the editable workspace. Use this when you intend to modify these files")
     public String addEditableFiles(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> relativePaths
@@ -60,41 +60,26 @@ public class ContextTools {
                 errors.add("Null or blank path provided.");
                 continue;
             }
-            try {
-                // ContextManager.toFile handles normalization and root path joining
-                ProjectFile pf = contextManager.toFile(path);
-                // Basic check if it looks like it's outside the project root still?
-                // toFile creates the ProjectFile object regardless of existence check
-                if (!pf.absPath().startsWith(contextManager.getRoot())) {
-                     errors.add("Path seems outside project root: " + path);
-                     continue;
-                }
-                // Maybe add existence check? contextManager.editFiles handles it later anyway.
-                projectFiles.add(pf);
-            } catch (InvalidPathException e) {
-                errors.add("Invalid path format: " + path + " (" + e.getMessage() + ")");
-            } catch (Exception e) {
-                errors.add("Error processing path '" + path + "': " + e.getMessage());
-                logger.error("Error processing path for edit: {}", path, e);
+            var file = contextManager.toFile(path);
+            if (!file.exists()) {
+                errors.add("File at `%s` does not exist.".formatted(path));
+                continue;
             }
+            projectFiles.add(file);
         }
 
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException("Errors encountered processing paths: " + String.join("; ", errors));
         }
 
-        if (projectFiles.isEmpty()) {
-            throw new IllegalArgumentException("No valid project files provided to add.");
-        }
-
         contextManager.editFiles(projectFiles);
         String fileNames = projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
-        return "Added %d file(s) to editable context: [%s]".formatted(projectFiles.size(), fileNames);
+        return "Editing %d file(s) in the workspace: [%s]".formatted(projectFiles.size(), fileNames);
     }
 
     // Removed addReadOnlyProjectFiles and addReadOnlyExternalFiles
 
-    @Tool("Add files to the read-only context. Use this for files you need to reference the full source of, but not modify")
+    @Tool("Add read-only files to the workspace. Use this for files you need to reference the full source of, but not modify")
     public String addReadOnlyFiles(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> paths
@@ -135,10 +120,10 @@ public class ContextTools {
 
         contextManager.addReadOnlyFiles(filesToAdd);
         String fileNames = filesToAdd.stream().map(BrokkFile::toString).collect(Collectors.joining(", "));
-        return "Added %d file(s) to read-only context: [%s]".formatted(filesToAdd.size(), fileNames);
+        return "Added %d file(s) as read-only in the workspace: [%s]".formatted(filesToAdd.size(), fileNames);
     }
 
-    @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it as a read-only text fragment. HTML content will be converted to Markdown.")
+    @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it to the workspace as a read-only text fragment. HTML content will be converted to Markdown")
     public String addUrlContents(
             @P("The full URL to fetch content from (e.g., 'https://example.com/docs/page').")
             String urlString
@@ -179,7 +164,7 @@ public class ContextTools {
         return "Added content from URL [%s] as a read-only text fragment.".formatted(urlString);
     }
 
-    @Tool("Add an arbitrary block of text (e.g., user input, notes that don't need to be in the Plan, configuration snippet) as a read-only virtual fragment")
+    @Tool("Add an arbitrary block of text (e.g., notes that are independent of the Plan, a configuration snippet, or something learned from another Agent) to the workspace as a read-only fragment")
     public String addTextFragment(
             @P("The text content to add as a fragment")
             String content,
@@ -199,9 +184,9 @@ public class ContextTools {
         return "Added text fragment '%s'.".formatted(description);
     }
 
-    @Tool("Remove specified context fragments (files, text snippets, analysis results) from the context using their unique integer IDs")
+    @Tool("Remove specified fragments (files, text snippets, analysis results) from the workspace using their unique integer IDs")
     public String dropFragments(
-            @P("List of integer IDs corresponding to the fragments visible in the context view that you want to remove")
+            @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove")
             List<Integer> fragmentIds
     ) {
         if (fragmentIds == null || fragmentIds.isEmpty()) {
@@ -239,7 +224,7 @@ public class ContextTools {
 
         if (!notFoundIds.isEmpty()) {
              // Throw error if *any* requested ID wasn't found? Or just log? Let's throw.
-            throw new IllegalArgumentException("Fragment IDs not found in current context: " + notFoundIds);
+            throw new IllegalArgumentException("Fragment IDs not found in current workspace: " + notFoundIds);
         }
 
         // Perform the drop operation if there's anything other than AutoContext to drop
@@ -256,14 +241,14 @@ public class ContextTools {
         return "Dropped %d fragment(s) with IDs: [%s]".formatted(droppedCount, foundIds.stream().map(String::valueOf).collect(Collectors.joining(", ")));
     }
 
-    @Tool("Clear the entire conversation history, including intermediate steps and summaries. Don't use this unless you've extracted all the information you need from the history to text snippets or the Plan!")
+    @Tool("Clear the entire workspace conversation history, including intermediate steps and summaries. Don't use this unless you've extracted all the information you need from the history to text snippets or the Plan!")
     public String clearHistory() {
         contextManager.clearHistory();
         return "Cleared conversation history.";
     }
 
     @Tool(value = """
-    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods as a read-only context fragment
+    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the workspace
     """)
     public String addUsagesFragment(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
@@ -293,7 +278,7 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Retrieves summaries (fields and method signatures) for specified classes and adds them as a single read-only context fragment.
+    Retrieves summaries (fields and method signatures) for specified classes and adds them to the workspace.
     Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
     """)
     public String addClassSkeletonsFragment(
@@ -411,7 +396,7 @@ public class ContextTools {
 //    }
 
     @Tool(value = """
-    Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it as a read-only context fragment.
+    Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it to the workspace
     The single line of the call sites (but not full method sources) are included
     """)
     public String addCallGraphToFragment(
@@ -455,7 +440,7 @@ public class ContextTools {
     }
 
      @Tool(value = """
-    Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it as a read-only context fragment.
+    Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it to the workspace
     The single line of the call sites (but not full method sources) are included
     """)
     public String addCallGraphFromFragment(
