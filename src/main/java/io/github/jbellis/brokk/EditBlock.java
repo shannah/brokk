@@ -75,7 +75,7 @@ public class EditBlock {
     }
 
     /**
-     * Parse the LLM response for SEARCH/REPLACE blocks (or shell blocks, etc.) and apply them.
+     * Parse the LLM response for SEARCH/REPLACE blocks and apply them.
      */
     public static EditResult applyEditBlocks(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks) {
         // Track which blocks succeed or fail during application
@@ -86,11 +86,6 @@ public class EditBlock {
         Map<ProjectFile, String> changedFiles = new HashMap<>();
 
         for (SearchReplaceBlock block : blocks) {
-            // Shell commands remain unchanged
-            if (block.shellCommand() != null) {
-                io.systemOutput("Shell command from LLM:\n" + block.shellCommand());
-                continue;
-            }
 
             // 1. Resolve the filename
             ProjectFile file;
@@ -162,15 +157,11 @@ public class EditBlock {
     /**
      * Simple record storing the parts of a search-replace block.
      * If {@code filename} is non-null, then this block corresponds to a filename’s
-     * search/replace. If {@code shellCommand} is non-null, then this block
-     * corresponds to shell code that should be executed, not applied to a filename.
+     * search/replace
      */
-    public record SearchReplaceBlock(String filename, String beforeText, String afterText, String shellCommand) {
+    public record SearchReplaceBlock(String filename, String beforeText, String afterText) {
         @Override
         public String toString() {
-            if (shellCommand != null) {
-                return "```shell\n" + shellCommand + "\n```";
-            }
 
             StringBuilder sb = new StringBuilder();
             sb.append("```\n");
@@ -287,7 +278,7 @@ public class EditBlock {
                             if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
                                 afterJoined += "\n";
                             }
-                            blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
+                            blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined));
                         } else {
                             // Non-fatal error for this block
                             parseErrors.append("Failed to parse block for '")
@@ -347,7 +338,7 @@ public class EditBlock {
                 if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
                     afterJoined += "\n";
                 }
-                blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined, null));
+                blocks.add(new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined));
             }
             i++;
         }
