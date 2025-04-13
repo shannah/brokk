@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.Coder;
 import io.github.jbellis.brokk.ContextManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,7 +18,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Collections;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -264,7 +264,16 @@ public class VoiceInputButton extends JButton {
                      }
 
                     // Perform transcription
-                    var transcript = contextManager.getCoder().transcribeAudio(tempFile, symbolsForTranscription);
+                    String result;
+                    var sttModel = contextManager.getModels().sttModel();
+                    try {
+                        result = sttModel.transcribe(tempFile, symbolsForTranscription);
+                    } catch (Exception e) {
+                        logger.error("Failed to transcribe audio: {}", e.getMessage(), e);
+                        contextManager.getIo().toolError("Error transcribing audio: " + e.getMessage());
+                        result = "";
+                    }
+                    var transcript = result;
                     logger.debug("Successfully transcribed audio: {}", transcript);
 
                     // put it in the target text area

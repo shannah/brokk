@@ -39,7 +39,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -79,20 +78,6 @@ public class Coder {
      */
     public StreamingResult sendStreaming(StreamingChatLanguageModel model, List<ChatMessage> messages, boolean echo) {
         return sendMessageWithRetry(model, messages, List.of(), ToolChoice.AUTO, echo, MAX_ATTEMPTS);
-    }
-
-    /**
-     * Transcribes an audio file using an STT model. Returns text or empty if error.
-     */
-    public String transcribeAudio(Path audioFile, Set<String> symbols) {
-        var sttModel = contextManager.getModels().sttModel();
-        try {
-            return sttModel.transcribe(audioFile, symbols);
-        } catch (Exception e) {
-            logger.error("Failed to transcribe audio: {}", e.getMessage(), e);
-            io.toolError("Error transcribing audio: " + e.getMessage());
-            return "";
-        }
     }
 
     /**
