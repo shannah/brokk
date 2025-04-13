@@ -674,26 +674,33 @@ public class EditBlock {
         Map<FailedBlock, String> suggestions = new HashMap<>();
 
         for (var failedBlock : failedBlocks) {
-            if (failedBlock.block().filename() == null) continue;
-
-            try {
-                String fileContent = cm.toFile(failedBlock.block().filename()).read();
-                String suggestion = "";
-                if (fileContent.contains(failedBlock.block().afterText().trim())) {
-                    suggestion = """
-                    Note: The replacement text is already present in the file. If we no longer need to apply
-                    this block, omit it from your reply.
-                    """.stripIndent();
-                    suggestions.put(failedBlock, suggestion);
-                } else {
-                    suggestion = """
-                    Failure reason: %s
-                    """.stripIndent().formatted(failedBlock.reason());
-                }
-                suggestions.put(failedBlock, suggestion);
-            } catch (IOException ignored) {
-                // Skip suggestions if we can't read the file
+            if (failedBlock.block().filename() == null) {
+                suggestions.put(failedBlock, "Filename not provided or not found");
+                continue;
             }
+
+            String fileContent;
+            try {
+                fileContent = cm.toFile(failedBlock.block().filename()).read();
+            } catch (IOException ignored) {
+                suggestions.put(failedBlock, "File not found");
+                continue;
+            }
+
+            String suggestion = "";
+            // TODO check lines w/o whitespace like replaceIgnoringWhitespace
+            if (fileContent.contains(failedBlock.block().afterText().trim())) {
+                suggestion = """
+                Note: The replacement text is already present in the file. If we no longer need to apply
+                this block, omit it from your reply.
+                """.stripIndent();
+                suggestions.put(failedBlock, suggestion);
+            } else {
+                suggestion = """
+                Failure reason: %s
+                """.stripIndent().formatted(failedBlock.reason());
+            }
+            suggestions.put(failedBlock, suggestion);
         }
         return suggestions;
     }
