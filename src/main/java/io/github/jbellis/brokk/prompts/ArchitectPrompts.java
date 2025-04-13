@@ -48,6 +48,9 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
         relevant code or how the user's goal relates to the project. Never try to add code to the
         workspace blindly--only when Search Agent or other tools have confirmed its existence to you.
 
+        If you are not COMPLETELY SURE what part of the goal refers to, you MUST use Search Agent
+        to determine what it means before making any code changes!
+
         Code Agent IS NOT ABLE to manipulate the workspace! It's up to you to configure the workspace with
         the appropriate editable files as well as any other summaries, usages, or read-only files
         necessary to use the relevant APIs correctly before invoking Code Agent.
@@ -57,7 +60,8 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
 
         Your current plan and the workspace (files and code fragments) are visible to all agents.
 
-        Examine the workspace carefully! It may or may not be relevant to your goal or plan.
+        DO NOT assume that the workspace is correctly configured to start solving the goal! You MUST
+        evaluate the workspace contents INDEPENDENTLY and drop irrelevant fragments!
 
         You are encouraged to call multiple tools simultaneously, especially
         - when using updatePlan, call the next tools to start working on the new plan at the same time
