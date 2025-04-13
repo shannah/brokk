@@ -3,7 +3,9 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.jetbrains.annotations.NotNull;
+import scala.Option;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -13,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class AnalyzerUtil {
     @NotNull
@@ -128,5 +131,94 @@ public class AnalyzerUtil {
         }
 
         return result.toString();
+    }
+
+    /**
+     * Retrieves skeleton data for the given class names.
+     * @param analyzer The code analyzer instance.
+     * @param classNames Fully qualified class names.
+     * @return A map of CodeUnit to its skeleton string. Returns an empty map if no skeletons are found.
+     */
+    public static Map<CodeUnit, String> getClassSkeletonsData(IAnalyzer analyzer, List<String> classNames) {
+        assert !analyzer.isEmpty() : "Analyzer is not available.";
+        if (classNames == null || classNames.isEmpty()) {
+            return Map.of();
+        }
+
+        return classNames.stream()
+                .distinct()
+                .map(fqcn -> {
+                    Option<String> skeletonOpt = analyzer.getSkeleton(fqcn);
+                    Option<ProjectFile> fileOpt = analyzer.getFileFor(fqcn); // Need file for CodeUnit
+                    if (skeletonOpt.isDefined() && fileOpt.isDefined()) {
+                        return Map.entry(CodeUnit.cls(fileOpt.get(), fqcn), skeletonOpt.get());
+                    }
+                    return null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    /**
+     * Retrieves method source code for the given method names.
+     * @param analyzer The code analyzer instance.
+     * @param methodNames Fully qualified method names.
+     * @return A map of method name to its source code string. Returns an empty map if no sources are found.
+     */
+    public static Map<String, String> getMethodSourcesData(IAnalyzer analyzer, List<String> methodNames) {
+        assert !analyzer.isEmpty() : "Analyzer is not available.";
+        if (methodNames == null || methodNames.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, String> sources = new LinkedHashMap<>(); // Preserve order potentially
+
+        // Iterate through each requested method name
+        for (String methodName : methodNames) {
+            if (methodName != null && !methodName.isBlank()) {
+                // Attempt to get the source code for the method
+                var methodSourceOpt = analyzer.getMethodSource(methodName);
+                if (methodSourceOpt.isDefined()) {
+                    // If source is found, add it to the map with a header comment
+                    String methodSource = methodSourceOpt.get();
+                    sources.put(methodName, "// Source for " + methodName + "\n" + methodSource);
+                }
+                // If methodSourceOpt is empty, we simply don't add an entry for this methodName
+            }
+        }
+        // Return the map containing sources for all found methods
+        return sources;
+    }
+
+    /**
+     * Retrieves class source code for the given class names, including filename headers.
+     * @param analyzer The code analyzer instance.
+     * @param classNames Fully qualified class names.
+     * @return A map of class name to its formatted source code string (with header). Returns an empty map if no sources are found.
+     */
+    public static Map<String, String> getClassSourcesData(IAnalyzer analyzer, List<String> classNames) {
+         assert !analyzer.isEmpty() : "Analyzer is not available.";
+        if (classNames == null || classNames.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, String> sources = new LinkedHashMap<>(); // Preserve order potentially
+
+        // Iterate through each requested class name
+        for (String className : classNames) {
+            if (className != null && !className.isBlank()) {
+                // Attempt to get the source code for the class
+                var classSource = analyzer.getClassSource(className);
+                if (classSource != null && !classSource.isEmpty()) {
+                    // If source is found, format it with a header and add to the map
+                    String filename = analyzer.getFileFor(className).map(ProjectFile::toString).getOrElse(() -> "unknown file");
+                    String formattedSource = "Source code of %s (from %s):\n\n%s".formatted(className, filename, classSource);
+                    sources.put(className, formattedSource);
+                    // If classSource is null or empty, we simply don't add an entry for this className
+                }
+            }
+        }
+        // Return the map containing formatted sources for all found classes
+        return sources;
     }
 }

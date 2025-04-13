@@ -40,7 +40,7 @@ public class CommitPrompts {
                Review the diffs carefully.
                Generate a one-line commit message for those changes.
                The commit message should be structured as follows: <type>: <description>
-               Use these for <type>: fix, feat, build, chore, ci, docs, style, refactor, perf, test
+               Use these for <type>: debug, fix, feat, build, chore, ci, docs, style, refactor, perf, test
                
                Ensure the commit message:
                - Starts with the appropriate prefix.

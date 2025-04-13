@@ -229,23 +229,20 @@ public class SearchTools {
             throw new IllegalStateException("No related code found via PageRank for seeds: " + String.join(", ", classNames));
         }
 
-        var pageRankResults = pageRankUnits.stream().map(CodeUnit::fqName).toList();
+        var pageRankResults = pageRankUnits.stream().limit(50).map(CodeUnit::fqName).toList();
 
-        // Get skeletons for the top few *original* seed classes, not the PR results
-        var prResult = classNames.stream().distinct()
+        // Get skeletons for the top few results -- potentially saves a round trip for a few extra tokens
+        var skResult = pageRankResults.stream().distinct()
                 .limit(10) // padding in case of not defined
                 .map(fqcn -> getAnalyzer().getSkeleton(fqcn))
                 .filter(Option::isDefined)
                 .limit(5)
                 .map(Option::get)
                 .collect(Collectors.joining("\n\n"));
-        var formattedPrResult = prResult.isEmpty() ? "" : "# Summaries of top 5 seed classes: \n\n" + prResult + "\n\n";
 
-        // Format the compressed list of related classes found by pagerank
-        List<String> resultsList = pageRankResults.stream().limit(50).toList();
-        var formattedResults = formatCompressedSymbols("# List of related classes (up to 50)", resultsList);
-
-        return formattedPrResult + formattedResults;
+        var formattedSkeletons = skResult.isEmpty() ? "" : "# Summaries of the top related classes: \n\n" + skResult + "\n\n";
+        var formattedClassList = formatCompressedSymbols("# Full list of related classes, up to 50", pageRankResults);
+        return formattedSkeletons + formattedClassList;
     }
 
     @Tool(value = """
@@ -618,33 +615,5 @@ public class SearchTools {
             logger.error("Error listing files for directory '{}': {}", directoryPath, e.getMessage(), e);
             throw new RuntimeException("Error listing files: " + e.getMessage(), e);
         }
-    }
-
-
-    @Tool(value = "Provide a final answer to the query. Use this when you have enough information to fully address the query.")
-    public String answerSearch(
-            @P("Comprehensive explanation that answers the query. Include relevant source code snippets and explain how they relate to the query. Format the entire explanation with Markdown.")
-            String explanation,
-            @P("List of fully qualified class names (FQCNs) of ALL classes relevant to the explanation. Do not skip even minor details!")
-            List<String> classNames
-    ) {
-        // Return the explanation provided by the LLM.
-        // The SearchAgent uses this result when it detects the 'answer' tool was chosen.
-        logger.debug("Answer tool selected with explanation: {}", explanation);
-        return explanation;
-    }
-
-    @Tool(value = """
-    Abort the search process when you determine the question is not relevant to this codebase or when an answer cannot be found.
-    Use this as a last resort when you're confident no useful answer can be provided.
-    """)
-    public String abortSearch(
-            @P("Explanation of why the question cannot be answered or is not relevant to this codebase")
-            String explanation
-    ) {
-        // Return the explanation provided by the LLM.
-        // The SearchAgent uses this result when it detects the 'abort' tool was chosen.
-        logger.debug("Abort tool selected with explanation: {}", explanation);
-        return explanation;
     }
 }

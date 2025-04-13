@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -287,7 +288,9 @@ public class ContextSerializationTest {
         // Provide dummy original contents and parsed output as they are not the focus here
         var originalContents = Map.<ProjectFile, String>of();
         var parsedOutput = new Context.ParsedOutput("Output", new ContextFragment.StringFragment("Output", "dummy"));
-        context = context.addHistory(sessionMessages, originalContents, parsedOutput, CompletableFuture.completedFuture("Test Task"));
+        Future<String> action = CompletableFuture.completedFuture("Test Task");
+        var taskEntry = context.createTaskEntry(sessionMessages);
+        context = context.addHistoryEntry(taskEntry, parsedOutput, action, originalContents);
 
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);

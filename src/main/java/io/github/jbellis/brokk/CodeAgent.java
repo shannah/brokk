@@ -28,48 +28,84 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
+    private static final int MAX_BUILD_ATTEMPTS = 3; // Max attempts to fix build errors
+
+    /** Enum representing the reason a CodeAgent session concluded. */
+    public enum StopReason {
+        /** The agent successfully completed the goal. */
+        SUCCESS,
+        /** The user interrupted the session. */
+        INTERRUPTED,
+        /** The LLM returned an error after retries. */
+        LLM_ERROR,
+        /** The LLM returned an empty or blank response after retries. */
+        EMPTY_RESPONSE,
+        /** The LLM response could not be parsed after retries. */
+        PARSE_ERROR_LIMIT,
+        /** Applying edits failed after retries. */
+        APPLY_ERROR_LIMIT,
+        /** Build errors occurred and were not improving after retries. */
+        BUILD_ERROR_LIMIT,
+        /** The LLM attempted to edit a read-only file. */
+        READ_ONLY_EDIT
+    }
+
+    /**
+     * Represents the outcome of a CodeAgent session, containing all necessary information
+     * to update the context history.
+     *
+     * @param messages The list of chat messages exchanged during the session.
+     * @param originalContents A map of project files to their original content before edits.
+     * @param actionDescription A description of the user's goal for the session.
+     * @param finalLlmOutput The final raw text output from the LLM.
+     * @param stopReason The reason the session concluded.
+     */
+    public record SessionResult(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String actionDescription, String finalLlmOutput, StopReason stopReason) {}
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
      * Uses the provided model for the initial request and potentially switches for fixes.
      *
-     * @param coder The Coder instance.
-     * @param io Console IO handler.
+     * @param contextManager The ContextManager instance, providing access to Coder, IO, Project, etc.
      * @param model The model selected by the user for the main task.
      * @param userInput The user's goal/instructions.
+     * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public static void runSession(Coder coder, IConsoleIO io, StreamingChatLanguageModel model, String userInput) {
+    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput) {
         // Track original contents of files before any changes
         var originalContents = new HashMap<ProjectFile, String>();
+       var io = contextManager.getIo();
+       var coder = contextManager.getCoder();
 
         // We'll collect the conversation as ChatMessages to store in context history.
         var sessionMessages = new ArrayList<ChatMessage>();
         // The user's initial request, becomes the prompt for the next LLM call
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
-        var contextManager = (ContextManager) coder.contextManager;
 
         // Start verification command inference concurrently
-        CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput);
+        CompletableFuture<String> verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput); // Use cm
 
-        // Reflection loop state tracking
-        int parseErrorAttempts = 0;
+        // retry loop state tracking
+        int parseErrors = 0;
+        int applyErrors = 0;
         int blocksAppliedWithoutBuild = 0;
         List<String> buildErrors = new ArrayList<>();
         List<EditBlock.SearchReplaceBlock> blocks = new ArrayList<>(); // Accumulated blocks from potentially partial responses
 
         // give user some feedback -- this isn't in the main loop because after the first iteration
         // we give more specific feedback when we need to make another request
-        io.systemOutput("Request sent");
+        io.systemOutput("Code Agent started: `%s`".formatted(userInput));
 
-        boolean isComplete = false;
-
+        StopReason stopReason = null;
         while (true) {
             // Check for interruption before sending to LLM
             if (Thread.currentThread().isInterrupted()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -80,12 +116,13 @@ public class CodeAgent {
             allMessages.add(nextRequest); // Add the specific request for this turn
 
             // Actually send the message to the LLM and get the response
-        logger.debug("Sending request to model: {}", contextManager.getModels().nameOf(model));
-        var streamingResult = coder.sendStreaming(model, allMessages, true);
+            logger.debug("Sending request to model: {}", contextManager.getModels().nameOf(model));
+            var streamingResult = coder.sendStreaming(model, allMessages, true);
 
             // 1) If user cancelled
             if (streamingResult.cancelled()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -93,18 +130,21 @@ public class CodeAgent {
             if (streamingResult.error() != null) {
                 logger.warn("Error from LLM: {}", streamingResult.error().getMessage());
                 io.systemOutput("LLM returned an error even after retries. Ending session");
+                stopReason = StopReason.LLM_ERROR;
                 break;
             }
 
             var llmResponse = streamingResult.chatResponse();
             if (llmResponse == null) {
                 io.systemOutput("Empty LLM response even after retries. Ending session.");
+                stopReason = StopReason.EMPTY_RESPONSE;
                 break;
             }
 
             String llmText = llmResponse.aiMessage().text();
             if (llmText.isBlank()) {
                 io.systemOutput("Blank LLM response even after retries. Ending session.");
+                stopReason = StopReason.EMPTY_RESPONSE;
                 break;
             }
 
@@ -116,25 +156,31 @@ public class CodeAgent {
             sessionMessages.add(llmResponse.aiMessage());
 
             // Gather all edit blocks in the reply
-            var parseResult = EditBlock.parseUpdateBlocks(llmText);
+            var parseResult = EditBlock.parseEditBlocks(llmText);
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks); // Add newly parsed blocks to the accumulation
             logger.debug("{} total unapplied blocks", blocks.size());
 
             if (parseResult.parseError() != null) {
                 if (newlyParsedBlocks.isEmpty()) {
+                    if (parseErrors++ >= MAX_PARSE_ATTEMPTS) {
+                        stopReason = StopReason.PARSE_ERROR_LIMIT;
+                        io.systemOutput("Parse error limit reached; ending session");
+                        break;
+                    }
                     // Error occurred before *any* blocks were parsed in this response
                     nextRequest = new UserMessage(parseResult.parseError());
                     io.systemOutput("Failed to parse LLM response; retrying");
                 } else {
                     // Error occurred after *some* blocks were parsed - ask to continue
+                    parseErrors = 0;
                     var msg = """
-                    It looks like we got cut off. The last block I successfully parsed was
-                    <block>
-                    %s
-                    </block>
-                    Please continue from there (WITHOUT repeating that one).
-                    """.stripIndent().formatted(newlyParsedBlocks.getLast());
+                            It looks like we got cut off. The last block I successfully parsed was
+                            <block>
+                            %s
+                            </block>
+                            Please continue from there (WITHOUT repeating that one).
+                            """.stripIndent().formatted(newlyParsedBlocks.getLast());
                     nextRequest = new UserMessage(msg);
                     io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()));
                 }
@@ -148,12 +194,13 @@ public class CodeAgent {
                 // No blocks found in the latest response AND no blocks were applied in previous reflection loops waiting for a build check
                 // This means the LLM thinks it's done *and* we don't have pending edits waiting for a build check.
                 io.systemOutput("No edits found in response; ending session");
-                isComplete = true; // Assume completion if LLM stops providing edits and we have nothing pending
+                stopReason = StopReason.SUCCESS; // Assume completion if LLM stops providing edits and we have nothing pending
                 break;
             }
             // Check for interruption before proceeding to edit files
             if (Thread.currentThread().isInterrupted()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -173,6 +220,7 @@ public class CodeAgent {
                         .toList();
                 if (!readOnlyFilesToAdd.isEmpty()) {
                     io.systemOutput("LLM attempted to edit read-only file(s): %s. \nNo edits applied. Mark the files editable or clarify to the LLM how to approach the problem another way.".formatted(readOnlyFilesToAdd));
+                    stopReason = StopReason.READ_ONLY_EDIT;
                     break;
                 }
                 io.systemOutput("Editing additional files " + filesToAdd);
@@ -186,29 +234,24 @@ public class CodeAgent {
             blocksAppliedWithoutBuild += blocks.size() - editResult.failedBlocks().size();
 
             // Check for parse/match failures first
-            var parseReflection = getParseReflection(editResult.failedBlocks(), blocks, coder.contextManager, io);
+            var parseRetryPrompt = getApplyFailureMessage(editResult.failedBlocks(), blocks, contextManager, io);
 
             // Only increase parse error attempts if no blocks were successfully applied
             if (editResult.failedBlocks().size() == blocks.size()) {
-                parseErrorAttempts++;
+                applyErrors++;
             } else {
-                parseErrorAttempts = 0;
+                applyErrors = 0;
             }
             blocks.clear(); // Don't re-apply the same successful ones on the next loop
-            if (!parseReflection.isEmpty()) {
-                io.systemOutput("Attempting to fix apply/match errors...");
-                nextRequest = new UserMessage(parseReflection);
-                continue;
-            }
-
-
-            if (!parseReflection.isEmpty()) {
-                if (parseErrorAttempts >= MAX_PARSE_ATTEMPTS) {
+            // If there were failed blocks, attempt to fix them
+            if (!parseRetryPrompt.isEmpty()) {
+                if (applyErrors >= MAX_PARSE_ATTEMPTS) {
                     io.systemOutput("Parse/Apply retry limit reached; ending session");
+                    stopReason = StopReason.APPLY_ERROR_LIMIT;
                     break;
                 }
                 io.systemOutput("Attempting to fix apply/match errors...");
-                nextRequest = new UserMessage(parseReflection);
+                nextRequest = new UserMessage(parseRetryPrompt);
                 continue;
             }
 
@@ -217,6 +260,7 @@ public class CodeAgent {
             // Check for interruption before checking build
             if (Thread.currentThread().isInterrupted()) {
                 io.systemOutput("Session interrupted");
+                stopReason = StopReason.INTERRUPTED;
                 break;
             }
 
@@ -236,13 +280,14 @@ public class CodeAgent {
 
             if (buildSucceeded) {
                 // Build successful!
-                isComplete = true;
+                stopReason = StopReason.SUCCESS;
                 break;
             }
 
             // Check if we should continue trying to fix build errors
             if (!(buildErrors.isEmpty() || isBuildProgressing(coder, buildErrors))) {
                 io.systemOutput("Build errors are not improving; ending session");
+                stopReason = StopReason.BUILD_ERROR_LIMIT;
                 break;
             }
 
@@ -252,16 +297,22 @@ public class CodeAgent {
             // Loop back to LLM to fix build errors
         }
 
-        // Add all session messages to history in one batch
-        if (!sessionMessages.isEmpty()) {
-            if (!isComplete) {
-                userInput += " [incomplete]";
-            }
-            coder.contextManager.addToHistory(sessionMessages, originalContents, userInput);
-        }
-        if (isComplete) {
-            io.systemOutput("Session complete!");
+        // Session finished (completed, interrupted, or failed)
+        assert stopReason != null;
+        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
+
+        // Mark description based on stop reason
+        boolean completedSuccessfully = stopReason == StopReason.SUCCESS;
+        String finalActionDescription = completedSuccessfully ? userInput : userInput + " [" + stopReason.name() + "]";
+
+        // Return the result for the caller to add to history
+        var sessionResult = new SessionResult(List.copyOf(sessionMessages), Map.copyOf(originalContents), finalActionDescription, finalLlmOutput, stopReason);
+
+        if (completedSuccessfully) {
+            io.systemOutput("Code Agent finished!");
         } // otherwise, code that stops the session is responsible for explaining why
+
+        return sessionResult;
     }
 
     /**
@@ -465,14 +516,14 @@ public class CodeAgent {
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
             io.toolErrorRaw("Quick edit failed or was cancelled.");
             // Add to history even if canceled, so we can potentially undo any partial changes
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName());
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", StopReason.INTERRUPTED), false);
             return fileContents; // Return original content
         }
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText == null || responseText.isBlank()) {
             io.toolErrorRaw("LLM returned empty response for quick edit.");
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName());
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, StopReason.EMPTY_RESPONSE), false);
             return fileContents; // Return original content
         }
 
@@ -484,29 +535,25 @@ public class CodeAgent {
         if (newSnippet.isEmpty()) {
             io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName());
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR_LIMIT), false);
             return fileContents; // Return original content
         }
 
         String newStripped = newSnippet.stripLeading();
         try {
-            // Use EditBlock.replaceInFile for consistency and robustness
             EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
-
             // Save to context history - pendingHistory already contains both the instruction and the response
-            var parsed = new Context.ParsedOutput(responseText, new ContextFragment.StringFragment(responseText, "AI Response"));
-            cm.pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, cm.submitSummarizeTaskForConversation("Quick Edit: " + instructions)));
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, StopReason.SUCCESS), false);
             return newStripped; // Return the new snippet that was applied
-
         } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
             io.toolErrorRaw("Failed to replace text: " + e.getMessage());
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName());
+             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT), false);
             return fileContents; // Return original content on failure
         } catch (IOException e) {
             io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
             // Add to history even if it failed
-            cm.addToHistory(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName());
+            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR_LIMIT), false);
             return fileContents; // Return original content on failure
         }
     }
@@ -529,10 +576,10 @@ public class CodeAgent {
     /**
      * Generates a reflection message based on parse/apply errors from failed edit blocks
      */
-    private static String getParseReflection(List<EditBlock.FailedBlock> failedBlocks,
-                                             List<EditBlock.SearchReplaceBlock> originalBlocks, // All blocks attempted in this round
-                                             IContextManager contextManager,
-                                             IConsoleIO io)
+    private static String getApplyFailureMessage(List<EditBlock.FailedBlock> failedBlocks,
+                                                 List<EditBlock.SearchReplaceBlock> originalBlocks, // All blocks attempted in this round
+                                                 IContextManager contextManager,
+                                                 IConsoleIO io)
     {
         if (failedBlocks.isEmpty()) {
             return "";
@@ -541,13 +588,47 @@ public class CodeAgent {
         // Provide suggestions for failed blocks
         var suggestions = EditBlock.collectSuggestions(failedBlocks, contextManager);
 
-        // Calculate how many succeeded in this round
-        int succeededCount = originalBlocks.size() - failedBlocks.size();
-
         // Generate the message for the LLM
-        var failedApplyMessage = handleFailedBlocks(suggestions, succeededCount);
-        io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
+        int succeededCount = originalBlocks.size() - failedBlocks.size();
+        int count = failedBlocks.size();
+        boolean singular = (count == 1);
+        var failedText = failedBlocks.stream()
+                .map(f -> {
+                    var fname = (f.block().filename() == null ? "(none)" : f.block().filename());
+                    return """
+                    ## Failed to match in file `%s` (Reason: %s)
+                    ```
+                    <<<<<<< SEARCH
+                    %s
+                    =======
+                    %s
+                    >>>>>>> REPLACE
+                    ```
+                    %s
+                    """.stripIndent().formatted(fname,
+                                                f.reason(),
+                                                f.block().beforeText(),
+                                                f.block().afterText(),
+                                                suggestions.containsKey(f) ? "\n" + suggestions.get(f) : "");
+                })
+                .collect(Collectors.joining("\n\n"));
+        var successfulText = succeededCount > 0
+                ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
+                : "";
+        var pluralize = singular ? "" : "s";
+        var failedApplyMessage = """
+        # %d SEARCH/REPLACE block%s failed to match!
+        
+        %s
+        
+        Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
+        please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
+        check the filename carefully.
+        
+        %s
+        """.formatted(count, pluralize, failedText, pluralize, pluralize, successfulText).stripIndent();
 
+        io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
         return failedApplyMessage; // Return the message to be sent to the LLM
     }
 
@@ -595,7 +676,7 @@ public class CodeAgent {
             return true;
         }
 
-        var messages = BuildPrompts.instance.collectMessages(buildResults);
+        var messages = BuildPrompts.instance.collectBuildProgressingMessages(buildResults);
         var response = coder.sendMessage(coder.contextManager.getModels().quickModel(), messages).chatResponse().aiMessage().text().trim();
 
         // Keep trying until we get one of our expected tokens
@@ -609,52 +690,4 @@ public class CodeAgent {
         return response.contains("BROKK_PROGRESSING");
     }
 
-    /**
-     * Generates a reflection message for failed edit blocks
-     */
-    private static String handleFailedBlocks(Map<EditBlock.FailedBlock, String> failed, int succeededCount) {
-        if (failed.isEmpty()) {
-            return "";
-        }
-
-        // build an error message
-        int count = failed.size();
-        boolean singular = (count == 1);
-        var failedText = failed.entrySet().stream()
-                .map(entry -> {
-                    var f = entry.getKey();
-                    String fname = (f.block().filename() == null ? "(none)" : f.block().filename());
-                    return """
-                    ## Failed to match in file: `%s` (Reason: %s)
-                    ```
-                    <<<<<<< SEARCH
-                    %s
-                    =======
-                    %s
-                    >>>>>>> REPLACE
-                    ```
-
-                    %s
-                    """.stripIndent().formatted(fname,
-                                                f.reason(),
-                                                f.block().beforeText(),
-                                                f.block().afterText(),
-                                                entry.getValue());
-                })
-                .collect(Collectors.joining("\n"));
-        var successfulText = succeededCount > 0
-                ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
-                : "";
-        var pluralize = singular ? "" : "s";
-        return """
-        # %d SEARCH/REPLACE block%s failed to match!
-
-        %s
-
-        Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
-        please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
-        check the filename carefully.
-        %s
-        """.formatted(count, pluralize, failedText, pluralize, pluralize, successfulText).stripIndent();
-    }
 }

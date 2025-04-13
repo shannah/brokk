@@ -6,7 +6,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
-import io.github.jbellis.brokk.BuildAgent.BuildInfoTools;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
@@ -17,6 +16,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
+import io.github.jbellis.brokk.tools.ContextTools;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.LoggingExecutorService;
@@ -184,12 +184,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
         this.models.reinit(dataRetentionPolicy);
         this.toolRegistry = new ToolRegistry();
-        // Register standard tools
-        this.toolRegistry.register(new SearchTools(this));
-        this.toolRegistry.register(new BuildInfoTools()); // Register the build report/abort tools
+         // Register standard tools
+         this.toolRegistry.register(new SearchTools(this));
+         this.toolRegistry.register(new ContextTools(this));
 
-        // Load saved context or create a new one
-        var welcomeMessage = buildWelcomeMessage();
+         // Load saved context or create a new one
+         var welcomeMessage = buildWelcomeMessage();
         var initialContext = project.loadContext(this, welcomeMessage);
         if (initialContext == null) {
             initialContext = new Context(this, 10, welcomeMessage); // Default autocontext size
@@ -331,6 +331,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     // ------------------------------------------------------------------
     // Core context manipulation logic called by ContextPanel / Chrome
     // ------------------------------------------------------------------
+
+    public void setPlan(ContextFragment.PlanFragment plan) {
+        pushContext(ctx -> ctx.withPlan(plan));
+    }
 
     /** Add the given files to editable. */
     @Override
@@ -491,8 +495,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
 
-    /** Add search fragment from agent result */
-    public void addSearchFragment(VirtualFragment fragment)
+    /**
+     * Add search fragment from agent result
+     *
+     * @return a summary of the search
+     */
+    public Future<String> addSearchFragment(VirtualFragment fragment)
     {
         Future<String> query;
         if (fragment.description().split("\\s").length > 10) {
@@ -504,11 +512,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var llmOutputText = io.getLlmOutputText();
         if (llmOutputText == null) {
             io.systemOutput("Interrupted!");
-            return;
+            return query;
         }
 
         var parsed = new ParsedOutput(llmOutputText, fragment);
         pushContext(ctx -> ctx.addSearchFragment(query, parsed));
+        return query;
     }
 
     /**
@@ -517,6 +526,20 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public void addVirtualFragment(VirtualFragment fragment)
     {
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
+    }
+
+    /**
+     * Adds a simple string content as a virtual fragment.
+     * @param content The text content.
+     * @param description A description for the fragment.
+     */
+    public void addStringFragment(String content, String description) {
+        // This directly pushes a new context state with the added fragment.
+        // Instantiate the StringFragment and add it via addVirtualFragment.
+        pushContext(ctx -> {
+            var fragment = new ContextFragment.StringFragment(content, description);
+            return ctx.addVirtualFragment(fragment);
+        });
     }
 
     /**
@@ -859,6 +882,32 @@ public class ContextManager implements IContextManager, AutoCloseable {
             </editable>
             """.formatted(combined).stripIndent();
         return List.of(new UserMessage(msg), new AiMessage("Ok, any changes I propose will be to those files."));
+     }
+
+    /**
+     * Gets the current plan as ChatMessages for the LLM, if a plan exists.
+     * Includes an acknowledgement message from the AI.
+     * @return List containing UserMessage with plan and AiMessage ack, or empty list.
+     */
+    public List<ChatMessage> getPlanMessages() {
+        var currentPlan = selectedContext().getPlan();
+        if (currentPlan == null) {
+            return List.of();
+        }
+        try {
+            // PlanFragment.format() already includes <plan> tags and fragmentid
+            var planContent = currentPlan.format();
+            var userMsg = """
+                Here is the high-level plan to follow:
+                %s
+                """.formatted(planContent).stripIndent();
+            return List.of(new UserMessage(userMsg), new AiMessage("Ok, I will follow this plan."));
+        } catch (IOException e) {
+            // This shouldn't happen for PlanFragment unless there's a deeper issue
+            logger.error("IOException formatting PlanFragment (should not happen)", e);
+            removeBadFragment(currentPlan, e); // Attempt recovery
+            return List.of();
+        }
     }
 
     public String getReadOnlySummary()
@@ -1219,19 +1268,36 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Add to the user/AI message history. Called by both Ask and Code.
+     * Adds a completed CodeAgent session result to the context history.
+     * This is the primary method for adding history after a CodeAgent run.
+     *
+     * @param result   The result object from CodeAgent.runSession. Can be null.
+     * @param compress
      */
-    @Override
-    public void addToHistory(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String action)
-    {
-        addToHistory(messages, originalContents, action, io.getLlmOutputText());
-    }
+    public void addToHistory(CodeAgent.SessionResult result, boolean compress) {
+        assert result != null;
+        if (result.messages().isEmpty()) {
+            logger.debug("Skipping adding empty session result to history.");
+            return;
+        }
 
-    public void addToHistory(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String action, String llmOutputText)
-    {
-        var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
-        logger.debug("Adding to history with {} changed files", originalContents.size());
-        pushContext(ctx -> ctx.addHistory(messages, originalContents, parsed, submitSummarizeTaskForConversation(action)));
+        var messages = result.messages();
+        var originalContents = result.originalContents();
+        var action = result.actionDescription(); // This already includes the stop reason if not SUCCESS
+        var llmOutputText = result.finalLlmOutput();
+
+        // Use the final LLM output text from the result to create ParsedOutput
+        // Ensure llmOutputText is not null, default to empty string if necessary
+        var nonNullLlmOutput = llmOutputText == null ? "" : llmOutputText;
+        var parsed = new ParsedOutput(nonNullLlmOutput, new ContextFragment.StringFragment(nonNullLlmOutput, "ai Response"));
+
+        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopReason());
+
+        // Push the new context state with the added history entry
+        TaskEntry newEntry = topContext().createTaskEntry(messages);
+        var finalEntry = compress ? compressHistory(newEntry) : newEntry;
+        Future<String> actionFuture = submitSummarizeTaskForConversation(action);
+        pushContext(ctx -> ctx.addHistoryEntry(finalEntry, parsed, actionFuture, originalContents));
     }
 
     public List<Context> getContextHistory() {

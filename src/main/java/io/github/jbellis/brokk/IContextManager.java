@@ -44,9 +44,6 @@ public interface IContextManager {
         // no-op
     }
 
-    default void addToHistory(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String action) {
-    }
-
     default IAnalyzer getAnalyzer() {
         return getProject().getAnalyzer();
     }

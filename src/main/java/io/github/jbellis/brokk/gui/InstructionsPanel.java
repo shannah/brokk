@@ -1,8 +1,8 @@
 package io.github.jbellis.brokk.gui;
 
-import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.ArchitectAgent;
 import io.github.jbellis.brokk.CodeAgent;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
@@ -42,6 +42,7 @@ public class InstructionsPanel extends JPanel {
     private final RSyntaxTextArea commandInputField;
     private final JComboBox<String> modelDropdown;
     private final VoiceInputButton micButton;
+    private final JButton agentButton;
     private final JButton codeButton;
     private final JButton askButton;
     private final JButton searchButton;
@@ -75,6 +76,11 @@ public class InstructionsPanel extends JPanel {
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
         // Initialize Buttons first
+        agentButton = new JButton("Agent"); // Initialize the agent button
+        agentButton.setMnemonic(KeyEvent.VK_G); // Mnemonic for Agent
+        agentButton.setToolTipText("Run the multi-step agent to execute the current plan");
+        agentButton.addActionListener(e -> runAgentCommand());
+
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
         codeButton.setToolTipText("Tell the LLM to write code to solve this problem using the current context");
@@ -214,6 +220,7 @@ public class InstructionsPanel extends JPanel {
     private JPanel buildActionBar() {
         JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
+        actionButtonsPanel.add(agentButton);
         actionButtonsPanel.add(codeButton);
         actionButtonsPanel.add(askButton);
         actionButtonsPanel.add(searchButton);
@@ -430,8 +437,8 @@ public class InstructionsPanel extends JPanel {
         var project = contextManager.getProject();
         project.pauseAnalyzerRebuilds();
         try {
-            // Pass chrome (IConsoleIO) instead of contextManager directly
-            CodeAgent.runSession(contextManager.getCoder(), chrome, model, input);
+            var result = CodeAgent.runSession(contextManager, model, input);
+            contextManager.addToHistory(result, false);
         } finally {
             project.resumeAnalyzerRebuilds();
         }
@@ -459,14 +466,20 @@ public class InstructionsPanel extends JPanel {
             } else if (response.error() != null) {
                  chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
              } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
-                var aiResponse = response.chatResponse().aiMessage();
-                // Check if the response is valid before adding to history
-                if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
-                    // Pass empty map for originalContents as Ask doesn't modify files
-                    contextManager.addToHistory(List.of(messages.getLast(), aiResponse), Map.of(), question);
-                } else {
-                    chrome.systemOutput("Ask command completed with an empty response.");
-                }
+                    var aiResponse = response.chatResponse().aiMessage();
+                    // Check if the response is valid before adding to history
+                    if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
+                        // Construct SessionResult for 'Ask'
+                        var sessionResult = new CodeAgent.SessionResult(
+                                List.of(messages.getLast(), aiResponse),
+                                Map.of(), // No original contents for Ask
+                                "Ask: " + question,
+                                aiResponse.text(),
+                                CodeAgent.StopReason.SUCCESS);
+                        contextManager.addToHistory(sessionResult, false);
+                    } else {
+                        chrome.systemOutput("Ask command completed with an empty response.");
+                    }
             } else {
                 chrome.systemOutput("Ask command completed with no response data.");
             }
@@ -476,6 +489,27 @@ public class InstructionsPanel extends JPanel {
              logger.error("Error during 'Ask' execution", e);
              chrome.toolErrorRaw("Internal error during ask command: " + e.getMessage());
          }
+    }
+
+    /**
+     * Executes the core logic for the "Agent" command.
+     * This runs inside the Runnable passed to contextManager.submitAction.
+     * @param goal The initial user instruction passed to the agent.
+     */
+    private void executeAgentCommand(StreamingChatLanguageModel model, String goal) {
+        var contextManager = chrome.getContextManager();
+        try {
+            // The plan existence check happens in runAgentCommand before submitting
+            chrome.systemOutput("Architect engaged");
+            var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
+            agent.execute();
+            chrome.systemOutput("Architect Agent finished executing"); // Final status on normal completion
+        } catch (CancellationException cex) {
+             chrome.systemOutput("Agent execution cancelled.");
+        } catch (Exception e) {
+             logger.error("Error during Agent execution", e);
+             chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
+        }
     }
 
     /**
@@ -491,7 +525,7 @@ public class InstructionsPanel extends JPanel {
              var contextManager = chrome.getContextManager();
              // run a search agent, passing the specific model and tool registry
              // Pass chrome (IConsoleIO) instead of contextManager directly
-             var agent = new SearchAgent(query, contextManager, contextManager.getCoder(), chrome, model, contextManager.getToolRegistry());
+             var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry());
              var result = agent.execute();
              if (result == null) {
                  // Agent execution was likely cancelled or errored, agent should log details
@@ -535,6 +569,38 @@ public class InstructionsPanel extends JPanel {
     }
 
     // --- Action Handlers ---
+
+    public void runAgentCommand() {
+        var selectedModel = getSelectedModel();
+        if (selectedModel == null) {
+            chrome.toolError("Please select a valid model from the dropdown.");
+            return;
+        }
+        var contextManager = chrome.getContextManager();
+        var currentPlan = contextManager.selectedContext().getPlan();
+        if (currentPlan == null || currentPlan.text().isBlank()) {
+            chrome.toolErrorRaw("Please provide a plan in the context before running the Agent.");
+            return;
+        }
+
+        disableButtons();
+        // Save model before submitting task
+        var modelName = contextManager.getModels().nameOf(selectedModel);
+        chrome.getProject().setLastUsedModel(modelName);
+        // Get the goal from the input field
+        var goal = commandInputField.getText();
+        if (goal.isBlank()) {
+            chrome.toolErrorRaw("Please provide an initial goal or instruction for the Agent.");
+            enableButtons(); // Re-enable buttons since we are not proceeding
+            return;
+        }
+        chrome.getProject().addToTextHistory(goal, 20);
+        clearCommandInput();
+
+        // Submit the action, calling the private execute method inside the lambda, passing the goal
+        var future = contextManager.submitAction("Agent", "Executing plan...", () -> executeAgentCommand(selectedModel, goal));
+        chrome.setCurrentUserTask(future);
+    }
 
     // Private helper to get the selected model.
     private StreamingChatLanguageModel getSelectedModel() {
@@ -645,11 +711,12 @@ public class InstructionsPanel extends JPanel {
     }
 
     // Methods to disable and enable buttons.
-    public void disableButtons() {
-        SwingUtilities.invokeLater(() -> {
-            codeButton.setEnabled(false);
-            askButton.setEnabled(false);
-            searchButton.setEnabled(false);
+     public void disableButtons() {
+         SwingUtilities.invokeLater(() -> {
+            agentButton.setEnabled(false); // Disable agent button
+             codeButton.setEnabled(false);
+             askButton.setEnabled(false);
+             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
             modelDropdown.setEnabled(false);
@@ -661,11 +728,12 @@ public class InstructionsPanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             boolean modelsAvailable = modelDropdown.getItemCount() > 0 &&
                     !String.valueOf(modelDropdown.getSelectedItem()).startsWith("No Model") && // check selected value
-                    !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
-            modelDropdown.setEnabled(modelsAvailable);
-            codeButton.setEnabled(modelsAvailable);
-            askButton.setEnabled(modelsAvailable);
-            searchButton.setEnabled(modelsAvailable);
+                     !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
+             modelDropdown.setEnabled(modelsAvailable);
+            agentButton.setEnabled(modelsAvailable); // Enable agent button based on model availability
+             codeButton.setEnabled(modelsAvailable);
+             askButton.setEnabled(modelsAvailable);
+             searchButton.setEnabled(modelsAvailable);
             runButton.setEnabled(true);
             stopButton.setEnabled(false);
             micButton.setEnabled(true); // Enable mic button

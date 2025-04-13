@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageDeserializer;
 import dev.langchain4j.data.message.ChatMessageSerializer;
+import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 
 import java.io.IOException;
@@ -44,6 +45,7 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
      *
      * @param sequence The sequence number for this task.
      * @param sessionMessages The full list of messages from the session, starting with the user's request.
+     *                        (So, NOT including system messages, workspace messages, example edit messages, etc.)
      * @return A new TaskEntry instance.
      */
     public static TaskEntry fromSession(int sequence, List<ChatMessage> sessionMessages) {

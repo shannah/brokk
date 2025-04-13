@@ -13,52 +13,44 @@ import java.awt.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+
+import io.github.jbellis.brokk.EditBlock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+
 /**
- * A panel that stores Markdown text incrementally, supporting normal text blocks
- * and fenced code blocks. We maintain an "active" block of text or code until
- * we see a fence that switches modes. This avoids splitting Markdown headings
- * or lists when text arrives in multiple chunks.
+ * A Swing JPanel designed to display formatted text content which may include
+ * standard Markdown, Markdown code fences (```), and Brokk-specific `SEARCH/REPLACE` edit blocks.
  *
- * The state machine logic:
- * - TEXT mode: we accumulate normal lines (Markdown) in a single JEditorPane.
- *   If we encounter a code fence (``` + optional info), we finalize the text block,
- *   parse the fence info, switch to CODE mode, and create a new code block.
- * - CODE mode: we accumulate lines in an RSyntaxTextArea. If we encounter a code
- *   fence, we finalize the code block, switch to TEXT mode, and create a new text block.
+ * Rendering logic prioritizes Edit Blocks:
+ * <ol>
+ *   <li>The panel attempts to parse the entire text content using {@link EditBlock#parseEditBlocks(String)}.</li>
+ *   <li>If parsing is successful and one or more valid {@link EditBlock.SearchReplaceBlock} instances are found,
+ *       the panel renders *only* these edit blocks, each within its own visually distinct section.
+ *       Any text outside the recognized blocks is ignored in this mode.</li>
+ *   <li>If parsing fails (e.g., malformed block syntax) or if no valid blocks are found, the panel
+ *       falls back to rendering the *entire* original text content. In this fallback mode:
+ *          - If a parsing error occurred, the content is rendered as plain text to show the user the raw,
+ *            potentially malformed input.
+ *          - Otherwise (no blocks found, but no parse error), the content is rendered as Markdown,
+ *            with standard ``` code fences being displayed as themed, syntax-highlighted code areas.</li>
+ * </ol>
+ * The display is updated completely whenever {@link #append(String)} or {@link #setText(String)} is called.
  */
-class MarkdownOutputPanel extends JPanel implements Scrollable
-{
+class MarkdownOutputPanel extends JPanel implements Scrollable {
     private static final Logger logger = LogManager.getLogger(MarkdownOutputPanel.class);
 
-    // We track partial text so we can parse incrementally.
-    private enum ParseState { TEXT, CODE }
-
-    // Holds *all* the raw Markdown appended so far (for getText()).
-    private final StringBuilder markdownBuffer = new StringBuilder();
-
-    // Current parse mode
-    private ParseState currentState = ParseState.TEXT;
-
-    // Accumulates text lines in the current mode
-    private final StringBuilder currentBlockContent = new StringBuilder();
-
-    // Tracks code fence info (e.g. "java", "python") for the current code block
-    private String currentFenceInfo = "";
-
-    // The active text editor pane (if currentState = TEXT), or null if in CODE mode
-    private JEditorPane activeTextPane = null;
-
-    // The active code area (if currentState = CODE), or null if in TEXT mode
-    private RSyntaxTextArea activeCodeArea = null;
+    // Holds *all* the raw text (Markdown or Edit Blocks) appended so far.
+    private final StringBuilder contentBuffer = new StringBuilder();
 
     // Listeners to notify whenever text changes
     private final List<Runnable> textChangeListeners = new ArrayList<>();
-    private String pendingBuffer = "";
 
-    // Flexmark parser and renderer for normal Markdown blocks
+    // Flexmark parser and renderer for Markdown segments
     private final Parser parser;
     private final HtmlRenderer renderer;
 
@@ -68,25 +60,20 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     private Color codeBackgroundColor = null;
     private Color codeBorderColor = null;
 
-    public MarkdownOutputPanel()
-    {
+    public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(true);
 
         // Build the Flexmark parser for normal text blocks
         parser = Parser.builder().build();
         renderer = HtmlRenderer.builder().build();
-
-        // Initially start a text block
-        startTextBlock();
     }
 
     /**
      * Updates the theme colors used by this panel. Must be called before adding text,
      * or whenever you want to re-theme existing blocks.
      */
-    public void updateTheme(boolean isDark)
-    {
+    public void updateTheme(boolean isDark) {
         this.isDarkTheme = isDark;
 
         if (isDark) {
@@ -125,39 +112,26 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Clears all text and displayed components. The parse state is reset.
      */
-    public void clear()
-    {
+    public void clear() {
         logger.debug("Clearing all content from MarkdownOutputPanel");
-
-        markdownBuffer.setLength(0);
+        contentBuffer.setLength(0);
         removeAll();
-
-        currentState = ParseState.TEXT;
-        currentBlockContent.setLength(0);
-        currentFenceInfo = "";
-
-        activeTextPane = null;
-        activeCodeArea = null;
-
-        // Start fresh in TEXT mode
-        startTextBlock();
-
+        // Spinner state is reset by removeAll(); hideSpinner handles the reference
+        spinnerPanel = null;
         revalidate();
         repaint();
+        textChangeListeners.forEach(Runnable::run); // Notify listeners about the change
     }
 
     /**
      * Appends more Markdown text. We parse only the newly appended segment
      * and update the active text/code block(s) as needed.
      */
-    public void append(String text)
-    {
+    public void append(String text) {
         assert text != null;
         if (!text.isEmpty()) {
-            markdownBuffer.append(text);
-            parseIncremental(text);
-            revalidate();
-            repaint();
+            contentBuffer.append(text);
+            rerender(); // Re-parse and render the entire content
             textChangeListeners.forEach(Runnable::run);
         }
     }
@@ -165,174 +139,203 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     /**
      * Sets the entire text buffer to the given Markdown, re-parsing from scratch.
      */
-    public void setText(String text)
-    {
+    public void setText(String text) {
         assert text != null;
         clear();
         append(text);
     }
 
     /**
-     * Returns the entire unrendered Markdown text so far.
+     * Returns the entire raw text content buffer.
      */
-    public String getText()
-    {
-        return markdownBuffer.toString();
+    public String getText() {
+        return contentBuffer.toString();
     }
 
     /**
      * Let callers listen for changes in the text.
      */
-    public void addTextChangeListener(Runnable listener)
-    {
-         textChangeListeners.add(listener);
+    public void addTextChangeListener(Runnable listener) {
+        textChangeListeners.add(listener);
     }
 
     /**
-     * Parses newly appended text incrementally.
-     * We look for fences (```), and whenever we switch modes,
-     * we finalize the old block and start a new one.
+     * Re-parses the entire contentBuffer and updates the displayed components.
+     * It first attempts to parse using EditBlock.parseUpdateBlocks. If successful,
+     * it renders the edit blocks. Otherwise, it renders the content as Markdown.
      */
-    private void parseIncremental(String newText)
-    {
-        var textToParse = pendingBuffer + newText;
-        pendingBuffer = "";
-        var backtickCount = 0;
-        for (int i = textToParse.length() - 1; i >= 0 && textToParse.charAt(i) == '`'; i--) {
-            backtickCount++;
+    private void rerender() {
+        // Preserve the spinner if it's showing
+        Component potentialSpinner = null;
+        if (getComponentCount() > 0) {
+             var lastComponent = getComponent(getComponentCount() - 1);
+             if (lastComponent == spinnerPanel) { // spinnerPanel is null if not showing
+                 potentialSpinner = lastComponent;
+             }
         }
-        if (backtickCount > 0 && backtickCount < 3) {
-            pendingBuffer = textToParse.substring(textToParse.length() - backtickCount);
-            textToParse = textToParse.substring(0, textToParse.length() - backtickCount);
-        }
-        var lines = textToParse.split("\\r?\\n", -1);
+        // Remove all components except the spinner
+        removeAll();
 
-        for (int i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            int startIdx = 0;
-            while (true) {
-                var fencePos = line.indexOf("```", startIdx);
-                if (fencePos < 0) {
-                    // No more fences in this line: append everything to current block
-                    currentBlockContent.append(line.substring(startIdx));
-                    // Only add a newline if this isn't the last line of the chunk
-                    // (in the corner case where the last line ended with a newline, split() will give us an extra
-                    // empty line, so we still don't want to add a newline in that case)
-                    if (i < lines.length - 1) {
-                        currentBlockContent.append("\n");
-                    }
-                    updateActiveBlock();
-                    break;
-                }
+        String content = contentBuffer.toString();
+        // Attempt to parse the content as a series of SEARCH/REPLACE blocks.
+        // Note: Using parseEditBlocks based on original goal and build errors with parseUpdateBlocks
+        var parseResult = EditBlock.parseEditBlocks(content);
 
-                // Append everything before the fence to the current block
-                currentBlockContent.append(line, startIdx, fencePos);
-                updateActiveBlock();
-
-                // We found a fence, so finalize the current block
-                finalizeActiveBlock();
-
-                // Switch modes
-                if (currentState == ParseState.TEXT) {
-                    // We were in TEXT, so we must move to CODE
-                    currentState = ParseState.CODE;
-                    parseFenceInfo(line, fencePos + 3); // parse language
-                    startCodeBlock();
-                } else {
-                    // We were in CODE, so switch to TEXT
-                    currentState = ParseState.TEXT;
-                    currentFenceInfo = "";
-                    startTextBlock();
-                }
-
-                // Advance past the fence
-                startIdx = fencePos + 3;
+        if (parseResult.parseError() == null && !parseResult.blocks().isEmpty()) {
+            // Option 1: Content parsed successfully as EditBlocks
+            logger.debug("Rendering content as EditBlocks");
+            for (var block : parseResult.blocks()) {
+                add(renderEditBlockComponent(block));
+            }
+        } else {
+            // Option 2: Content is not valid EditBlocks (or contains surrounding text), treat as raw text/Markdown.
+            // If there was a parse error, render literally to show the user the malformed input.
+            // Otherwise, render as Markdown.
+            if (parseResult.parseError() != null) {
+                 logger.debug("Rendering content as plain text due to EditBlock parse error");
+                 JEditorPane textPane = createPlainTextPane(content); // Render literally
+                 add(textPane);
+            } else {
+                logger.debug("Rendering content as Markdown (EditBlock parse returned empty or content wasn't solely blocks)");
+                renderMarkdownContent(content); // Render as potentially rich Markdown
             }
         }
+
+        // Re-add spinner at the end if it was preserved
+        if (potentialSpinner != null) {
+             add(potentialSpinner);
+        }
+
+        revalidate();
+        repaint();
     }
 
     /**
-     * Extracts a possible fence info (language id) that appears immediately
-     * after the fence marker. Example: ```java
+     * Renders a string containing Markdown, handling ``` code fences.
+     * Adds the resulting JEditorPane (for text) and RSyntaxTextArea (for code) components
+     * directly to this panel.
+     *
+     * @param markdownContent The Markdown content to render.
      */
-    private void parseFenceInfo(String line, int fenceInfoStart)
-    {
-        var fenceRemainder = line.substring(fenceInfoStart).stripLeading();
-        var parts = fenceRemainder.split("\\s+", 2);
-        if (parts.length > 0 && !parts[0].isEmpty()) {
-            currentFenceInfo = parts[0].toLowerCase();
-            logger.debug("Parsed fence info: {}", currentFenceInfo);
-        } else {
-            currentFenceInfo = "";
+    private void renderMarkdownContent(String markdownContent) {
+        // Regex to find code blocks ```optional_info \n content ```
+        // DOTALL allows . to match newline characters
+        // reluctant quantifier *? ensures it finds the *next* ```
+        Pattern codeBlockPattern = Pattern.compile("(?s)```(\\w*)[\\r\\n]?(.*?)```");
+        Matcher matcher = codeBlockPattern.matcher(markdownContent);
+
+        int lastMatchEnd = 0;
+
+        while (matcher.find()) {
+            // 1. Render the text segment before the code block
+            String textSegment = markdownContent.substring(lastMatchEnd, matcher.start());
+            if (!textSegment.isEmpty()) {
+                JEditorPane textPane = createHtmlPane();
+                var html = renderer.render(parser.parse(textSegment));
+                textPane.setText("<html><body>" + html + "</body></html>");
+                add(textPane);
+            }
+
+            // 2. Render the code block
+            String fenceInfo = matcher.group(1).toLowerCase();
+            String codeContent = matcher.group(2);
+            RSyntaxTextArea codeArea = createConfiguredCodeArea(fenceInfo, codeContent);
+            add(codeAreaInPanel(codeArea));
+
+            lastMatchEnd = matcher.end();
+        }
+
+        // Render any remaining text segment after the last code block
+        String remainingText = markdownContent.substring(lastMatchEnd).trim(); // Trim whitespace
+        if (!remainingText.isEmpty()) {
+            JEditorPane textPane = createHtmlPane();
+            // Render potentially trimmed segment as HTML
+            var html = renderer.render(parser.parse(remainingText));
+            textPane.setText("<html><body>" + html + "</body></html>");
+            add(textPane);
         }
     }
 
     /**
-     * Create a new text block and set it as activeTextPane. Clears currentBlockContent.
+     * Creates a JPanel visually representing a single SEARCH/REPLACE block.
+     *
+     * @param block The SearchReplaceBlock to render.
+     * @return A JPanel containing components for the block.
      */
-    private void startTextBlock()
-    {
-        logger.debug("Starting new TEXT block");
+    private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block) {
+        var blockPanel = new JPanel();
+        blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
+        blockPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
+                BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY: Color.LIGHT_GRAY, 1) // Border
+        ));
+        blockPanel.setBackground(textBackgroundColor); // Match overall background
+        blockPanel.setAlignmentX(LEFT_ALIGNMENT); // Align components to the left
 
-        // Create a new JEditorPane
-        activeTextPane = createHtmlPane();
-        add(activeTextPane);
+        // Header label (Filename)
+        var headerLabel = new JLabel(String.format("File: %s", block.filename()));
+        headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD));
+        headerLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5)); // Padding
+        headerLabel.setAlignmentX(LEFT_ALIGNMENT);
+        blockPanel.add(headerLabel);
 
-        currentBlockContent.setLength(0);
-        activeCodeArea = null;
+        // Separator
+        blockPanel.add(new JSeparator());
+
+        // "SEARCH" section
+        blockPanel.add(createEditBlockSectionLabel("SEARCH"));
+        var searchArea = createConfiguredCodeArea("", block.beforeText()); // Use "none" syntax
+        searchArea.setBackground(isDarkTheme ? new Color(55, 55, 55) : new Color(245, 245, 245)); // Slightly different background
+        blockPanel.add(codeAreaInPanel(searchArea, 1)); // Use thinner border for inner parts
+
+        // Separator
+        blockPanel.add(new JSeparator());
+
+        // "REPLACE" section
+        blockPanel.add(createEditBlockSectionLabel("REPLACE"));
+        var replaceArea = createConfiguredCodeArea("", block.afterText()); // Use "none" syntax
+        replaceArea.setBackground(isDarkTheme ? new Color(55, 55, 55) : new Color(245, 245, 245)); // Slightly different background
+        blockPanel.add(codeAreaInPanel(replaceArea, 1)); // Use thinner border for inner parts
+
+        // Adjust panel size
+        blockPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, blockPanel.getPreferredSize().height));
+
+        return blockPanel;
+    }
+
+    /** Helper to create consistent labels for SEARCH/REPLACE sections */
+    private JLabel createEditBlockSectionLabel(String title) {
+         var label = new JLabel(title);
+         label.setFont(label.getFont().deriveFont(Font.ITALIC));
+         label.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5)); // Padding
+         label.setAlignmentX(LEFT_ALIGNMENT);
+         return label;
     }
 
     /**
-     * Create a new code block and set it as activeCodeArea. Clears currentBlockContent.
+     * Creates a JEditorPane configured for plain text display.
+     * Ensures background color matches the theme.
      */
-    private void startCodeBlock()
-    {
-        logger.debug("Starting new CODE block: {}", currentFenceInfo);
-
-        activeCodeArea = createConfiguredCodeArea(currentFenceInfo, "");
-        add(codeAreaInPanel(activeCodeArea));
-
-        currentBlockContent.setLength(0);
-        activeTextPane = null;
-    }
-
-    /**
-     * Finalize the current block so it no longer receives appended text.
-     * We do not remove it, just treat it as "closed".
-     */
-    private void finalizeActiveBlock()
-    {
-        if (currentState == ParseState.TEXT && activeTextPane != null) {
-            // Last update before we freeze
-            updateActiveBlock();
-            activeTextPane = null;
-            logger.debug("Finalized TEXT block");
-        } else if (currentState == ParseState.CODE && activeCodeArea != null) {
-            updateActiveBlock();
-            activeCodeArea = null;
-            logger.debug("Finalized CODE block");
-        }
-        currentBlockContent.setLength(0);
-    }
-
-    /**
-     * Update the currently active block with the content in currentBlockContent.
-     */
-    private void updateActiveBlock()
-    {
-        if (currentState == ParseState.TEXT && activeTextPane != null) {
-            var html = renderer.render(parser.parse(currentBlockContent.toString()));
-            activeTextPane.setText("<html><body>" + html + "</body></html>");
-        } else if (currentState == ParseState.CODE) {
-            activeCodeArea.setText(currentBlockContent.toString());
-        }
-    }
+     private JEditorPane createPlainTextPane(String text) {
+         var plainPane = new JEditorPane();
+         DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
+         caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
+         plainPane.setContentType("text/plain"); // Set content type to plain text
+         plainPane.setText(text); // Set text directly
+         plainPane.setEditable(false);
+         plainPane.setAlignmentX(LEFT_ALIGNMENT);
+         if (textBackgroundColor != null) {
+             plainPane.setBackground(textBackgroundColor);
+             // Set foreground based on theme for plain text
+             plainPane.setForeground(isDarkTheme ? new Color(230, 230, 230) : Color.BLACK);
+         }
+         return plainPane;
+     }
 
     /**
      * Creates an RSyntaxTextArea for a code block, setting the syntax style and theme.
      */
-    private RSyntaxTextArea createConfiguredCodeArea(String fenceInfo, String content)
-    {
+    private RSyntaxTextArea createConfiguredCodeArea(String fenceInfo, String content) {
         var codeArea = new RSyntaxTextArea(content);
         codeArea.setEditable(false);
         codeArea.setLineWrap(true);
@@ -369,30 +372,39 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
     }
 
     /**
-     * Wraps an RSyntaxTextArea in a panel with a border and vertical spacing.
+     * Wraps an RSyntaxTextArea in a panel with padding and border.
+     * Allows specifying border thickness.
      */
-    private JPanel codeAreaInPanel(RSyntaxTextArea textArea)
-    {
+    private JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness) {
         var panel = new JPanel(new BorderLayout());
+        // Use code background for the outer padding panel
         panel.setBackground(codeBackgroundColor);
         panel.setAlignmentX(LEFT_ALIGNMENT);
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, textArea.getPreferredSize().height));
+        // Padding outside the border
         panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 0, 0));
 
         var textAreaPanel = new JPanel(new BorderLayout());
-        textAreaPanel.setBackground(codeBackgroundColor);
-        textAreaPanel.setBorder(BorderFactory.createLineBorder(codeBorderColor, 3, true));
+        // Use text area's actual background for the inner panel
+        textAreaPanel.setBackground(textArea.getBackground());
+        // Border around the text area
+        textAreaPanel.setBorder(BorderFactory.createLineBorder(codeBorderColor, borderThickness, true));
         textAreaPanel.add(textArea);
 
         panel.add(textAreaPanel);
+        // Adjust panel size
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, panel.getPreferredSize().height));
         return panel;
+    }
+
+    /** Wraps an RSyntaxTextArea in a panel with default border thickness (3). */
+    private JPanel codeAreaInPanel(RSyntaxTextArea textArea) {
+        return codeAreaInPanel(textArea, 3);
     }
 
     /**
      * Creates a JEditorPane for HTML content. We set base CSS to match the theme.
      */
-    private JEditorPane createHtmlPane()
-    {
+    private JEditorPane createHtmlPane() {
         var htmlPane = new JEditorPane();
         DefaultCaret caret = (DefaultCaret) htmlPane.getCaret();
         caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
@@ -437,8 +449,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
      *
      * @param message The text to display next to the spinner (e.g. "Thinking...")
      */
-    public void showSpinner(String message)
-    {
+    public void showSpinner(String message) {
         if (spinnerPanel != null) {
             // Already showing, update the message and return
             spinnerPanel.setMessage(message);
@@ -448,58 +459,52 @@ class MarkdownOutputPanel extends JPanel implements Scrollable
         spinnerPanel = new SpinnerIndicatorPanel(message, isDarkTheme, textBackgroundColor);
 
         // Add to the end of this panel. Since we have a BoxLayout (Y_AXIS),
-        // it shows up below the existing text or code blocks.
-        this.add(spinnerPanel);
+        // it shows up below the existing rendered content.
+        add(spinnerPanel);
 
-        this.revalidate();
-        this.repaint();
+        revalidate();
+        repaint();
     }
 
     /**
      * Hides the spinner panel if it is visible, removing it from the UI.
      */
-    public void hideSpinner()
-    {
+    public void hideSpinner() {
         if (spinnerPanel == null) {
             return; // not showing
         }
-        this.remove(spinnerPanel);
-        spinnerPanel = null;
+        remove(spinnerPanel); // Remove from components
+        spinnerPanel = null; // Release reference
 
-        this.revalidate();
-        this.repaint();
+        revalidate();
+        repaint();
     }
 
     // --- Scrollable interface methods ---
 
     @Override
-    public Dimension getPreferredScrollableViewportSize()
-    {
+    public Dimension getPreferredScrollableViewportSize() {
         return getPreferredSize();
     }
 
     @Override
-    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
-    {
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
         return 20;
     }
 
     @Override
-    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
-    {
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
         return orientation == SwingConstants.VERTICAL
                 ? visibleRect.height : visibleRect.width;
     }
 
     @Override
-    public boolean getScrollableTracksViewportWidth()
-    {
+    public boolean getScrollableTracksViewportWidth() {
         return true;
     }
 
     @Override
-    public boolean getScrollableTracksViewportHeight()
-    {
+    public boolean getScrollableTracksViewportHeight() {
         return false;
     }
 }
