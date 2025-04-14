@@ -21,4 +21,8 @@ public interface IConsoleIO {
     default void showOutputSpinner(String message) {}
 
     default void hideOutputSpinner() {}
+
+    default String getLlmOutputText() {
+        throw new UnsupportedOperationException();
+    }
 }

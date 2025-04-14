@@ -77,13 +77,17 @@ public class CodeAgent {
      * Represents the outcome of a CodeAgent session, containing all necessary information
      * to update the context history.
      *
-     * @param messages The list of chat messages exchanged during the session.
-     * @param originalContents A map of project files to their original content before edits.
      * @param actionDescription A description of the user's goal for the session.
-     * @param finalLlmOutput The final raw text output from the LLM.
-     * @param stopDetails The reason the session concluded.
+     * @param messages          The list of chat messages exchanged during the session.
+     * @param originalContents  A map of project files to their original content before edits.
+     * @param finalLlmOutput    The final raw text output from the LLM.
+     * @param stopDetails       The reason the session concluded.
      */
-    public record SessionResult(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String actionDescription, String finalLlmOutput, StopDetails stopDetails) {}
+    public record SessionResult(String actionDescription,
+                                List<ChatMessage> messages,
+                                Map<ProjectFile, String> originalContents, // for undo
+                                String finalLlmOutput, // since quick edit doesn't change llm output directly
+                                StopDetails stopDetails) {}
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
@@ -265,18 +269,16 @@ public class CodeAgent {
 
         // Conclude session
         assert stopDetails != null; // Ensure a stop reason was set before exiting the loop
-        String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
         boolean completedSuccessfully = (stopDetails.reason() == StopReason.SUCCESS);
         String finalActionDescription = completedSuccessfully
                 ? userInput
                 : userInput + " [" + stopDetails.reason().name() + "]";
 
         var sessionResult = new SessionResult(
-                List.copyOf(sessionMessages),
+                finalActionDescription, List.copyOf(sessionMessages),
                 Map.copyOf(originalContents),
-                finalActionDescription,
-                finalLlmOutput,
-                stopDetails // Use the StopDetails object
+                io.getLlmOutputText(),
+                stopDetails
         );
 
         if (completedSuccessfully) {
@@ -587,14 +589,14 @@ public class CodeAgent {
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
               io.toolErrorRaw("Quick edit failed or was cancelled.");
               // Add to history even if canceled, so we can potentially undo any partial changes
-              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", new StopDetails(StopReason.INTERRUPTED)), false);
+              cm.addToHistory(new SessionResult("Quick Edit (canceled): " + file.getFileName(), pendingHistory, originalContents, "", new StopDetails(StopReason.INTERRUPTED)), false);
               return fileContents; // Return original content
           }
           var responseText = result.chatResponse().aiMessage().text();
           if (responseText == null || responseText.isBlank()) {
               io.toolErrorRaw("LLM returned empty response for quick edit.");
               // Add to history even if it failed
-              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, new StopDetails(StopReason.EMPTY_RESPONSE)), false);
+              cm.addToHistory(new SessionResult("Quick Edit (failed): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.EMPTY_RESPONSE)), false);
               return fileContents; // Return original content
           }
   
@@ -606,7 +608,7 @@ public class CodeAgent {
           if (newSnippet.isEmpty()) {
               io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
               // Add to history even if it failed
-               cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, new StopDetails(StopReason.PARSE_ERROR)), false);
+               cm.addToHistory(new SessionResult("Quick Edit (failed parse): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.PARSE_ERROR)), false);
               return fileContents; // Return original content
           }
   
@@ -614,17 +616,17 @@ public class CodeAgent {
           try {
               EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
               // Save to context history - pendingHistory already contains both the instruction and the response
-              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, new StopDetails(StopReason.SUCCESS)), false);
+              cm.addToHistory(new SessionResult("Quick Edit: " + instructions, pendingHistory, originalContents, responseText, new StopDetails(StopReason.SUCCESS)), false);
               return newStripped; // Return the new snippet that was applied
           } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
               io.toolErrorRaw("Failed to replace text: " + e.getMessage());
               // Add to history even if it failed, include exception message as details
-               cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+               cm.addToHistory(new SessionResult("Quick Edit (failed match): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
               return fileContents; // Return original content on failure
           } catch (IOException e) {
               io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
               // Add to history even if it failed, include exception message as details
-              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+              cm.addToHistory(new SessionResult("Quick Edit (failed write): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
               return fileContents; // Return original content on failure
           }
     }

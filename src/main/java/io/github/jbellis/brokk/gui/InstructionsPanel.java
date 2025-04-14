@@ -471,9 +471,8 @@ public class InstructionsPanel extends JPanel {
                     if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
                         // Construct SessionResult for 'Ask'
                         var sessionResult = new CodeAgent.SessionResult(
-                                List.of(messages.getLast(), aiResponse),
+                                "Ask: " + question, List.of(messages.getLast(), aiResponse),
                                 Map.of(), // No original contents for Ask
-                                "Ask: " + question,
                                 aiResponse.text(),
                                 new CodeAgent.StopDetails(CodeAgent.StopReason.SUCCESS));
                         contextManager.addToHistory(sessionResult, false);

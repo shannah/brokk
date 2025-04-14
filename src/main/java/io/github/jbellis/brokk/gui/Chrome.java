@@ -365,6 +365,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
+    @Override
     public String getLlmOutputText() {
         return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmOutputText(), null);
     }
