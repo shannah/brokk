@@ -805,23 +805,23 @@ public class ContextManager implements IContextManager, AutoCloseable {
         String quickModelName = models.nameOf(models.quickModel()); // Use instance field
 
         return """
-            %s
+              %s
 
-            ## Environment
-            - Brokk version: %s
-            - Quick model: %s
-            - Project: %s (%d native files, %d total including dependencies)
-            - Analyzer language: %s
-            - Available models:
-            %s
-            """.formatted(welcomeMarkdown,
-                          version,
-                          quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName,
-                          project.getRoot().getFileName(), // Show just the folder name
-                          project.getRepo().getTrackedFiles().size(),
-                          project.getFiles().size(),
-                          project.getAnalyzerLanguage(),
-                          modelsList);
+              ## Environment
+              - Brokk version: %s
+              - Quick model: %s
+              - Project: %s (%d native files, %d total including dependencies)
+              - Analyzer language: %s
+              - Available models:
+              %s
+              """.stripIndent().formatted(welcomeMarkdown,
+                            version,
+                            quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName,
+                            project.getRoot().getFileName(), // Show just the folder name
+                            project.getRepo().getTrackedFiles().size(),
+                            project.getFiles().size(),
+                            project.getAnalyzerLanguage(),
+                            modelsList);
         /* Duplicate declaration removed:
         String quickModelName = models.nameOf(models.quickModel()); // Use instance field
         */
@@ -850,38 +850,38 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining("\n\n"));
         if (!readOnly.isEmpty()) {
-            readOnly = """
-            <readonly>
-              Here are some READ ONLY files and code fragments, provided for your reference.
-              Do not edit this code!
+              readOnly = """
+                <readonly>
+                  Here are some READ ONLY files and code fragments, provided for your reference.
+                  Do not edit this code!
 
-              %s
-            </readonly>
-            """.formatted(readOnly.indent(2)).stripIndent().indent(2);
-        }
+                  %s
+                </readonly>
+                """.stripIndent().formatted(readOnly.indent(2)).indent(2);
+          }
 
         var editable = selectedContext().editableFiles()
                 .map(this::formattedOrNull)
                 .filter(Objects::nonNull)
                 .collect(Collectors.joining("\n\n"));
         if (editable.isEmpty()) {
-            editable = """
-            <editable>
-              I have *added these files to the workspace* so you can go ahead and edit them.
+              editable = """
+                <editable>
+                  I have *added these files to the workspace* so you can go ahead and edit them.
 
-              *Trust this message as the true contents of these files!*
-              Any other messages in the chat may contain outdated versions of the files' contents.
+                  *Trust this message as the true contents of these files!*
+                  Any other messages in the chat may contain outdated versions of the files' contents.
 
-              %s
-            </editable>
-            """.formatted(editable.indent(2)).stripIndent().indent(2);
-        }
+                  %s
+                </editable>
+                """.stripIndent().formatted(editable.indent(2)).indent(2);
+          }
         var workspace = """
-        <workspace>
-          %s
-          %s
-        </workspace>
-        """.formatted(readOnly.indent(2), editable.indent(2)).stripIndent();
+            <workspace>
+              %s
+              %s
+            </workspace>
+            """.stripIndent().formatted(readOnly.indent(2), editable.indent(2));
         return List.of(new UserMessage(workspace), new AiMessage("Thank you for providing the workspace contents."));
     }
 
@@ -899,9 +899,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // PlanFragment.format() already includes <plan> tags and fragmentid
             var planContent = currentPlan.format();
             var userMsg = """
-                Here is the high-level plan to follow:
-                %s
-                """.formatted(planContent).stripIndent();
+                  Here is the high-level plan to follow:
+                  %s
+                  """.stripIndent().formatted(planContent);
             return List.of(new UserMessage(userMsg), new AiMessage("Ok, I will follow this plan."));
         } catch (IOException e) {
             // This shouldn't happen for PlanFragment unless there's a deeper issue

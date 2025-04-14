@@ -76,31 +76,30 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
     public String toString() {
         if (isCompressed()) {
             return """
-                <task sequence=%s summarized=true>
-                %s
-                </task>
-                """.formatted(sequence, summary.indent(2).stripTrailing()).stripIndent();
+              <task sequence=%s summarized=true>
+              %s
+              </task>
+              """.stripIndent().formatted(sequence, summary.indent(2).stripTrailing());
         }
 
         var logText = log.stream()
-                .map(message -> {
-                    var text = Models.getText(message);
-                    return """
-                    <message type=%s>
-                    %s
-                    </message>
-                    """.formatted(message.type().name().toLowerCase(), text.indent(2).stripTrailing()).stripIndent();
-                })
-                .collect(Collectors.joining("\n"));
-        return """
-        <task sequence=%s>
-        %s
-        %s
-        </task>
-        """.formatted(sequence,
-                      description.indent(2).stripTrailing(),
-                      logText.indent(2).stripTrailing())
-                .stripIndent();
+                  .map(message -> {
+                      var text = Models.getText(message);
+                      return """
+                      <message type=%s>
+                      %s
+                      </message>
+                      """.stripIndent().formatted(message.type().name().toLowerCase(), text.indent(2).stripTrailing());
+                  })
+                  .collect(Collectors.joining("\n"));
+          return """
+          <task sequence=%s>
+          %s
+          %s
+          </task>
+          """.stripIndent().formatted(sequence,
+                        description.indent(2).stripTrailing(),
+                        logText.indent(2).stripTrailing());
     }
 
     // --- Custom Serialization using Proxy Pattern ---

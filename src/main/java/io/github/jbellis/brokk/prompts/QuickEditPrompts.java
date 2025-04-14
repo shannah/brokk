@@ -47,7 +47,7 @@ public final class QuickEditPrompts {
         %s
         ```
         </source>
-        """.formatted(relatedCode.format(), fileContents).stripIndent());
+        """.stripIndent().formatted(relatedCode.format(), fileContents));
 
         return List.of(um, new AiMessage("I will update the target code in the source file to implement your instructions."));
     }
@@ -64,7 +64,7 @@ public final class QuickEditPrompts {
         %s
         </goal>
         Think about how to implement the goal, then return the replacement code fenced with triple backticks. Omit language or other markdown options.
-        """.formatted(target, instructions);
+        """.stripIndent().formatted(target, instructions);
     }
 
     /**
@@ -74,13 +74,13 @@ public final class QuickEditPrompts {
         assert styleGuide != null;
         
         return """
-        <instructions>
-        %s
-        </instructions>
-        <style_guide>
-        %s
-        </style_guide>
-        """.stripIndent().formatted(systemIntro(), styleGuide);
+          <instructions>
+          %s
+          </instructions>
+          <style_guide>
+          %s
+          </style_guide>
+          """.stripIndent().formatted(systemIntro(), styleGuide);
     }
 
     /**

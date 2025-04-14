@@ -79,10 +79,10 @@ public interface ContextFragment extends Serializable {
         @Override
         default String format() throws IOException {
             return """
-            <file path="%s" fragmentid="%d">
-            %s
-            </file>
-            """.formatted(file().toString(), id(), text()).stripIndent();
+              <file path="%s" fragmentid="%d">
+              %s
+              </file>
+              """.stripIndent().formatted(file().toString(), id(), text());
         }
     }
 
@@ -169,10 +169,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() throws IOException {
              return """
-             <file path="%s" revision="%s">
-             %s
-             </file>
-             """.formatted(file().toString(), revision(), text()).stripIndent();
+               <file path="%s" revision="%s">
+               %s
+               </file>
+               """.stripIndent().formatted(file().toString(), revision(), text());
         }
 
         @Override
@@ -234,10 +234,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() throws IOException {
             return """
-            <fragment description="%s" fragmentid="%d">
-            %s
-            </fragment>
-            """.formatted(description(), id(), text()).stripIndent();
+              <fragment description="%s" fragmentid="%d">
+              %s
+              </fragment>
+              """.stripIndent().formatted(description(), id(), text());
         }
 
         @Override
@@ -339,13 +339,13 @@ public interface ContextFragment extends Serializable {
             }
             // Format non-empty plans for the LLM
             return """
-            <plan>
-            This is the long-term plan for our project. Usually your current goal is only a part of this plan,
-            but the entire plan is provided so you can keep the big picture in mind while you work:
+              <plan>
+              This is the long-term plan for our project. Usually your current goal is only a part of this plan,
+              but the entire plan is provided so you can keep the big picture in mind while you work:
 
-            %s
-            </plan>
-            """.formatted(text()).stripIndent();
+              %s
+              </plan>
+              """.stripIndent().formatted(text());
         }
 
         @Override
@@ -690,17 +690,17 @@ public interface ContextFragment extends Serializable {
         public String format() {
             assert !isEmpty();
             return """
-            <summary classes="%s" fragmentid="%d">
-            %s
-            </summary>
-            """.formatted(
-                    skeletons.keySet().stream()
-                            .map(CodeUnit::fqName)
-                            .sorted()
-                            .collect(Collectors.joining(", ")),
-                    id(),
-                    text()
-            ).stripIndent();
+              <summary classes="%s" fragmentid="%d">
+              %s
+              </summary>
+              """.stripIndent().formatted(
+                      skeletons.keySet().stream()
+                              .map(CodeUnit::fqName)
+                              .sorted()
+                              .collect(Collectors.joining(", ")),
+                      id(),
+                      text()
+              );
         }
 
         @Override
@@ -753,10 +753,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() {
             return """
-            <history>
-            %s
-            </history>
-            """.formatted(text()).stripIndent();
+              <history>
+              %s
+              </history>
+              """.stripIndent().formatted(text());
         }
 
         @Override

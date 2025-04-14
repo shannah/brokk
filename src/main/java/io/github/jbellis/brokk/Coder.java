@@ -555,7 +555,7 @@ public class Coder {
                         <toolcall id="%s" name="%s">
                         %s
                         </toolcall>
-                        """.formatted(tr.id(), tr.toolName(), tr.text()).stripIndent())
+                        """.stripIndent().formatted(tr.id(), tr.toolName(), tr.text()))
                 .collect(Collectors.joining("\n"));
     }
 
@@ -606,7 +606,7 @@ public class Coder {
                   }
                 ]
               }
-            """.formatted(e.getMessage()).stripIndent();
+            """.stripIndent().formatted(e.getMessage());
 
         return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
@@ -645,26 +645,26 @@ public class Coder {
 
         // Function to generate retry instructions
         Function<Throwable, String> retryInstructionsProvider = e -> """
-            Your previous response was not valid: %s
-            You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
-            
-            IMPORTANT: Try solving a smaller piece of the problem if you're hitting token limits.
-            
-            REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
-            Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
-            {
-              "tool_calls": [
-                {
-                  "name": "$tool_name",
-                  "arguments": {
-                    "$arg1": "$value1",
-                    "$arg2": "$value2",
-                    ...
+              Your previous response was not valid: %s
+              You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
+
+              IMPORTANT: Try solving a smaller piece of the problem if you're hitting token limits.
+
+              REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
+              Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
+              {
+                "tool_calls": [
+                  {
+                    "name": "$tool_name",
+                    "arguments": {
+                      "$arg1": "$value1",
+                      "$arg2": "$value2",
+                      ...
+                    }
                   }
-                }
-              ]
-            }
-            """.formatted(e.getMessage()).stripIndent();
+                ]
+              }
+              """.stripIndent().formatted(e.getMessage());
 
         return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
@@ -861,48 +861,48 @@ public class Coder {
                                 assert description != null;
 
                                 return """
-                                <parameter name="%s" type="%s" required="%s">
-                                %s
-                                </parameter>
-                                """.formatted(
-                                        entry.getKey(),
-                                        type,
-                                        tool.parameters().required().contains(entry.getKey()),
-                                        description
-                                );
+                <parameter name="%s" type="%s" required="%s">
+                %s
+                </parameter>
+                """.stripIndent().formatted(
+                                          entry.getKey(),
+                                          type,
+                                          tool.parameters().required().contains(entry.getKey()),
+                                          description
+                                  );
                             })
                             .collect(Collectors.joining("\n"));
 
                     return """
-                    <tool name="%s">
-                    %s
-                    %s
-                    </tool>
-                    """.formatted(tool.name(),
-                                  tool.description(),
-                                  parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
+                      <tool name="%s">
+                      %s
+                      %s
+                      </tool>
+                      """.stripIndent().formatted(tool.name(),
+                                    tool.description(),
+                                    parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
                 }).collect(Collectors.joining("\n"));
 
         // if you change this you probably also need to change emulatedToolInstructionsPresent
         return """
-        %d available tools:
-        %s
+          %d available tools:
+          %s
 
-        ONLY return a top-level JSON object with this structure:
-        {
-          "tool_calls": [
-            {
-              "name": "tool_name",
-              "arguments": {
-                "arg1": "value1",
-                "arg2": "value2"
+          ONLY return a top-level JSON object with this structure:
+          {
+            "tool_calls": [
+              {
+                "name": "tool_name",
+                "arguments": {
+                  "arg1": "value1",
+                  "arg2": "value2"
+                }
               }
-            }
-          ]
-        }
+            ]
+          }
 
-        Include all the tool calls necessary to satisfy the request in a single array!
-        """.formatted(tools.size(), toolsDescription);
+          Include all the tool calls necessary to satisfy the request in a single array!
+          """.stripIndent().formatted(tools.size(), toolsDescription);
     }
 
     /**

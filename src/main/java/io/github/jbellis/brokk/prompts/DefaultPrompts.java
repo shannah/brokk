@@ -65,7 +65,6 @@ public abstract class DefaultPrompts {
         var editableContents = cm.getEditableSummary();
         var readOnlyContents = cm.getReadOnlySummary();
         var workspaceBuilder = new StringBuilder();
-        workspaceBuilder.append("- Root: ").append(cm.getRoot().getFileName());
         if (!editableContents.isBlank()) {
             workspaceBuilder.append("\n- Editable files: ").append(editableContents);
         }
@@ -81,49 +80,49 @@ public abstract class DefaultPrompts {
         var styleGuide = cm.getProject().getStyleGuide();
 
         return """
-                        <instructions>
-                        %s
-                        </instructions>
-                        <workspace-summary>
-                        %s
-                        </workspace-summary>
-                        <style_guide>
-                        %s
-                        </style_guide>
-                """.stripIndent().formatted(systemIntro(reminder), workspaceSummary, styleGuide).trim();
+          <instructions>
+          %s
+          </instructions>
+          <workspace-summary>
+          %s
+          </workspace-summary>
+          <style_guide>
+          %s
+          </style_guide>
+          """.stripIndent().formatted(systemIntro(reminder), workspaceSummary, styleGuide).trim();
     }
 
     public String systemIntro(String reminder) {
         return """
-                Act as an expert software developer.
-                Always use best practices when coding.
-                Respect and use existing conventions, libraries, etc. that are already present in the code base.
-                
-                %s
-                
-                Take requests for changes to the supplied code.
-                If the request is ambiguous, ask questions.
-                
-                Once you understand the request you MUST:
-                
-                1. Decide if you need to propose *SEARCH/REPLACE* edits for any code whose source is not available.
-                   You can create new files without asking!
-                   But if you need to propose changes to code you can't see,
-                   you *MUST* tell the user their full filename names and ask them to *add the files to the chat*;
-                   end your reply and wait for their approval.
-                   But if you only need to change individual functions whose code you can see,
-                   you may do so without having the entire file in the Workspace.
-                
-                2. Explain the needed changes in a few short sentences.
-                
-                3. Describe each change with a *SEARCH/REPLACE* block.
+        Act as an expert software developer.
+        Always use best practices when coding.
+        Respect and use existing conventions, libraries, etc. that are already present in the code base.
+        
+        %s
+        
+        Take requests for changes to the supplied code.
+        If the request is ambiguous, ask questions.
+        
+        Once you understand the request you MUST:
+        
+        1. Decide if you need to propose *SEARCH/REPLACE* edits for any code whose source is not available.
+           You can create new files without asking!
+           But if you need to propose changes to code you can't see,
+           you *MUST* tell the user their full filename names and ask them to *add the files to the chat*;
+           end your reply and wait for their approval.
+           But if you only need to change individual functions whose code you can see,
+           you may do so without having the entire file in the Workspace.
+        
+        2. Explain the needed changes in a few short sentences.
+        
+        3. Describe each change with a *SEARCH/REPLACE* block.
 
-                All changes to files must use this *SEARCH/REPLACE* block format.
+        All changes to files must use this *SEARCH/REPLACE* block format.
 
-                If a file is read-only or unavailable, ask the user to add it or make it editable.
-                
-                If you are struggling to use a dependency or API correctly, stop and ask the user for help.
-                """.formatted(reminder).stripIndent();
+        If a file is read-only or unavailable, ask the user to add it or make it editable.
+        
+        If you are struggling to use a dependency or API correctly, stop and ask the user for help.
+        """.stripIndent().formatted(reminder);
     }
 
     public List<ChatMessage> exampleMessages() {
@@ -253,6 +252,6 @@ public abstract class DefaultPrompts {
        
         %s
         </rules>
-        """.formatted(reminder).stripIndent();
+        """.stripIndent().formatted(reminder);
     }
 }

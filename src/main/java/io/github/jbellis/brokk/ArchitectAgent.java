@@ -118,11 +118,11 @@ public class ArchitectAgent {
                 .map(CodeUnit::fqName)
                 .collect(Collectors.joining(","));
         var stringResult = """
-        %s
-        
-        Full list of potentially relevant classes:
-        %s
-        """.formatted(searchResult.text(), relevantClasses);
+            %s
+
+            Full list of potentially relevant classes:
+            %s
+            """.stripIndent().formatted(searchResult.text(), relevantClasses);
 
         logger.debug(stringResult);
         return stringResult;
@@ -279,18 +279,18 @@ public class ArchitectAgent {
         var planText = currentPlan != null ? currentPlan.text() : "(none)";
 
         var userMsg = """
-        %s
+            %s
 
-        <goal>
-        %s
-        </goal>
+            <goal>
+            %s
+            </goal>
 
-        <plan>
-        %s
-        </plan>
+            <plan>
+            %s
+            </plan>
 
-        Please decide the next tool action(s) to make progress towards resolving the current task.
-        """.formatted(topClassesText, goal, planText).stripIndent();
+            Please decide the next tool action(s) to make progress towards resolving the current task.
+            """.stripIndent().formatted(topClassesText, goal, planText);
 
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),

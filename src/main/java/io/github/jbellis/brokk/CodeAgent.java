@@ -641,16 +641,16 @@ public class CodeAgent {
                 : "";
         var pluralize = singular ? "" : "s";
         var failedApplyMessage = """
-        # %d SEARCH/REPLACE block%s failed to match!
-        
-        %s
-        
-        Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
-        please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
-        check the filename carefully.
-        
-        %s
-        """.formatted(count, pluralize, failedText, pluralize, pluralize, successfulText).stripIndent();
+          # %d SEARCH/REPLACE block%s failed to match!
+
+          %s
+
+          Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
+          please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
+          check the filename carefully.
+
+          %s
+          """.stripIndent().formatted(count, pluralize, failedText, pluralize, pluralize, successfulText);
 
         io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
         return failedApplyMessage; // Return the message to be sent to the LLM
