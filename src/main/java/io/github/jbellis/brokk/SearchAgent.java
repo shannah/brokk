@@ -79,15 +79,15 @@ public class SearchAgent {
 
     public SearchAgent(String query,
                        ContextManager contextManager,
-                       StreamingChatLanguageModel model,
-                       ToolRegistry toolRegistry) {
-        this.query = query;
-        this.contextManager = contextManager;
-        this.analyzer = contextManager.getProject().getAnalyzer();
-        this.coder = contextManager.getCoder();
-        this.io = contextManager.getIo();
-        this.model = model;
-        this.toolRegistry = toolRegistry;
+                          StreamingChatLanguageModel model,
+                          ToolRegistry toolRegistry) {
+          this.query = query;
+          this.contextManager = contextManager;
+          this.analyzer = contextManager.getProject().getAnalyzer();
+          this.coder = contextManager.getCoder(query);
+          this.io = contextManager.getIo();
+          this.model = model;
+          this.toolRegistry = toolRegistry;
 
         // Set initial state based on analyzer presence
         allowSearch = !analyzer.isEmpty();

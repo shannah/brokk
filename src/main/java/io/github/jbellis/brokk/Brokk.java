@@ -118,9 +118,7 @@ public class Brokk {
         var contextManager = new ContextManager(projectPath);
 
         var io = new Chrome(contextManager);
-        var coder = new Coder(io, projectPath, contextManager);
-
-        contextManager.resolveCircularReferences(io, coder);
+        contextManager.resolveCircularReferences(io);
 
         // Check and potentially force setting Data Retention Policy *before* showing main window fully
         // but *after* the project and UI frame are created

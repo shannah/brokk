@@ -67,7 +67,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
     private Chrome io; // for UI feedback - Initialized in resolveCircularReferences
-    private Coder coder; // Initialized in resolveCircularReferences
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
@@ -131,9 +130,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * Called from Brokk to finish wiring up references to Chrome and Coder
      */
-    public void resolveCircularReferences(Chrome chrome, Coder coder) {
+    public void resolveCircularReferences(Chrome chrome) {
         this.io = chrome;
-        this.coder = coder;
 
         // Set up the listener for analyzer events
         var analyzerListener = new AnalyzerListener() {
@@ -216,8 +214,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return project;
     }
 
-    public Coder getCoder() {
-        return coder;
+    public Coder getCoder(String taskDescription) {
+        return new Coder(this, taskDescription);
     }
 
     @Override
@@ -1011,13 +1009,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
-            protected String doInBackground() {
-                var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
-                // Use quickModel for summarization
-                var result = coder.sendMessage(models.quickestModel(), msgs); // Use instance field
-                 if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-                    logger.warn("Summarization failed or was cancelled.");
-                    return "Summarization failed.";
+              protected String doInBackground() {
+                  var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
+                  // Use quickModel for summarization
+                  var result = getCoder("Summarize paste").sendMessage(models.quickestModel(), msgs); // Use instance field
+                   if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                      logger.warn("Summarization failed or was cancelled.");
+                      return "Summarization failed.";
                  }
                  return result.chatResponse().aiMessage().text();
             }
@@ -1036,13 +1034,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
-            protected String doInBackground() {
-                var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
-                 // Use quickModel for summarization
-                var result = coder.sendMessage(models.quickestModel(), msgs); // Use instance field
-                 if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-                     logger.warn("Summarization failed or was cancelled.");
-                     return "Summarization failed.";
+              protected String doInBackground() {
+                  var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
+                   // Use quickModel for summarization
+                  var result = getCoder(input).sendMessage(models.quickestModel(), msgs); // Use instance field
+                   if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                       logger.warn("Summarization failed or was cancelled.");
+                       return "Summarization failed.";
                  }
                  return result.chatResponse().aiMessage().text();
             }
@@ -1099,19 +1097,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Ensures build details are loaded or inferred using BuildAgent if necessary.
      * Runs asynchronously in the background.
      */
-    private void ensureBuildDetailsAsync() {
-        BuildDetails currentDetails = project.getBuildDetails();
-        if (currentDetails != null) {
-            logger.debug("Loaded existing build details {}", currentDetails);
-            return;
-        }
+  private void ensureBuildDetailsAsync() {
+      BuildDetails currentDetails = project.getBuildDetails();
+      if (currentDetails != null) {
+          logger.debug("Loaded existing build details {}", currentDetails);
+          return;
+      }
 
-        // No details found, run the BuildAgent asynchronously
-        submitBackgroundTask("Inferring build details", () -> {
-            BuildAgent agent = new BuildAgent(coder, toolRegistry);
-            BuildDetails inferredDetails = null;
-            try {
-                inferredDetails = agent.execute(); // This runs the agent loop
+      // No details found, run the BuildAgent asynchronously
+      submitBackgroundTask("Inferring build details", () -> {
+          BuildAgent agent = new BuildAgent(getCoder("Infer build details"), toolRegistry);
+          BuildDetails inferredDetails = null;
+          try {
+              inferredDetails = agent.execute(); // This runs the agent loop
             } catch (Exception e) {
                 logger.error("BuildAgent execution failed", e);
                 io.toolError("Build Information Agent failed: " + e.getMessage());
@@ -1214,10 +1212,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                var result = coder.sendMessage(models.quickestModel(), messages); // Use instance field
-                 if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-                     io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
-                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
+                  var result = getCoder("Generate style guide").sendMessage(models.quickestModel(), messages); // Use instance field
+                   if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                       io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
+                       project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
                      return null;
                  }
                 var styleGuide = result.chatResponse().aiMessage().text();
@@ -1248,12 +1246,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         // Compress
-        var historyString = entry.toString();
-        var msgs = SummarizerPrompts.instance.compressHistory(historyString);
-        var result = coder.sendMessage(models.quickModel(), msgs);
+          var historyString = entry.toString();
+          var msgs = SummarizerPrompts.instance.compressHistory(historyString);
+          var result = getCoder("Compress history entry").sendMessage(models.quickModel(), msgs);
 
-        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
-            logger.warn("History compression failed for entry '{}': {}", entry.description(),
+          if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+              logger.warn("History compression failed for entry '{}': {}", entry.description(),
                         result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
             return entry;
         }

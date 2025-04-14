@@ -98,13 +98,14 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput, boolean rejectReadonlyEdits)
-    {
-        var io = contextManager.getIo();
-        var coder = contextManager.getCoder();
+  public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput, boolean rejectReadonlyEdits)
+  {
+      var io = contextManager.getIo();
+      // Create Coder instance with the user's input as the task description
+      var coder = contextManager.getCoder(userInput);
 
-        // Track original contents of files before any changes
-        var originalContents = new HashMap<ProjectFile, String>();
+      // Track original contents of files before any changes
+      var originalContents = new HashMap<ProjectFile, String>();
 
         // We'll collect the conversation as ChatMessages to store in context history.
         var sessionMessages = new ArrayList<ChatMessage>();
@@ -197,11 +198,11 @@ public class CodeAgent {
             stopDetails = checkInterruption(io);
             if (stopDetails != null) break;
 
-            // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-            var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, io, rejectReadonlyEdits);
-            if (!readOnlyFiles.isEmpty()) {
-                var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
-                stopDetails = new StopDetails(StopReason.READ_ONLY_EDIT, filenames);
+              // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
+              var readOnlyFiles = autoAddReferencedFiles(blocks, coder, io, rejectReadonlyEdits);
+              if (!readOnlyFiles.isEmpty()) {
+                  var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
+                  stopDetails = new StopDetails(StopReason.READ_ONLY_EDIT, filenames);
                 break;
             }
 
@@ -331,42 +332,42 @@ public class CodeAgent {
        * Otherwise, it returns an empty list.
        *
        * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
-       *         or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
-       */
-      private static List<ProjectFile> autoAddReferencedFiles(
-              List<EditBlock.SearchReplaceBlock> blocks,
-              ContextManager contextManager,
-              IConsoleIO io,
-              boolean rejectReadonlyEdits
-      ) {
-          var coder = contextManager.getCoder();
-          var filesToAdd = blocks.stream()
-                  .map(EditBlock.SearchReplaceBlock::filename)
-                .filter(Objects::nonNull)
-                .distinct()
-                .map(coder.contextManager::toFile)
-                .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
-                .toList();
-
-        if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
-            var readOnlyFiles = filesToAdd.stream()
-                    .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
+         *         or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
+         */
+        private static List<ProjectFile> autoAddReferencedFiles(
+                List<EditBlock.SearchReplaceBlock> blocks,
+                Coder coder,
+                IConsoleIO io,
+                boolean rejectReadonlyEdits
+        ) {
+            // Use the passed coder instance directly
+            var filesToAdd = blocks.stream()
+                    .map(EditBlock.SearchReplaceBlock::filename)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .map(coder.contextManager::toFile) // Use coder.contextManager
+                    .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
                     .toList();
-            if (!readOnlyFiles.isEmpty()) {
-                  io.systemOutput(
-                          "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
-                                  .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
-                  // Return the list of read-only files that caused the issue
-                  return readOnlyFiles;
-              }
-              io.systemOutput("Editing additional files " + filesToAdd);
-              coder.contextManager.editFiles(filesToAdd);
-          }
-          // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
-          return List.of();
-      }
-  
-      /**
+
+            if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
+                var readOnlyFiles = filesToAdd.stream()
+                        .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
+                        .toList();
+                if (!readOnlyFiles.isEmpty()) {
+                    io.systemOutput(
+                            "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
+                                    .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
+                    // Return the list of read-only files that caused the issue
+                    return readOnlyFiles;
+                }
+                io.systemOutput("Editing additional files " + filesToAdd);
+                coder.contextManager.editFiles(filesToAdd);
+            }
+            // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
+            return List.of();
+        }
+
+        /**
      * Runs the build verification command (once available) and appends any build error text to buildErrors list.
      * Returns true if the build/verification was successful or skipped, false otherwise.
      */
@@ -397,11 +398,11 @@ public class CodeAgent {
      * @param coder     The Coder instance.
      * @param userGoal  The original user goal for the session.
      * @return A CompletableFuture containing the suggested verification command string (or null if none/error/no details).
-     */
-    private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder, String userGoal) {
-        return CompletableFuture.supplyAsync(() -> {
-            BuildDetails details = cm.getProject().getBuildDetails();
-            if (details == null) {
+   */
+  private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder, String userGoal) {
+      return CompletableFuture.supplyAsync(() -> {
+          BuildDetails details = cm.getProject().getBuildDetails();
+          if (details == null) {
                 logger.warn("No build details available, cannot determine verification command.");
                 // Return null to indicate no command could be determined due to missing details
                 return null;
@@ -481,11 +482,11 @@ public class CodeAgent {
      * @param cm     The ContextManager instance.
      * @param coder  The Coder instance.
      * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found or an error occurs.
-     */
-    private static List<ProjectFile> getTestFiles(ContextManager cm, Coder coder) {
-        // Get all files from the project
-        Set<ProjectFile> allProjectFiles = cm.getProject().getFiles();
-        if (allProjectFiles.isEmpty()) {
+   */
+  private static List<ProjectFile> getTestFiles(ContextManager cm, Coder coder) {
+      // Get all files from the project
+      Set<ProjectFile> allProjectFiles = cm.getProject().getFiles();
+      if (allProjectFiles.isEmpty()) {
             logger.debug("No files found in project to identify test files.");
             return List.of();
         }
@@ -548,14 +549,14 @@ public class CodeAgent {
      */
     public static String runQuickSession(ContextManager cm,
                                          IConsoleIO io,
-                                         ProjectFile file,
-                                         String oldText,
-                                         String instructions)
-    {
-        var coder = cm.getCoder();
-        var analyzer = cm.getAnalyzer();
+                                           ProjectFile file,
+                                           String oldText,
+                                           String instructions)
+  {
+      var coder = cm.getCoder("Quick Edit: " + instructions);
+      var analyzer = cm.getAnalyzer();
 
-        // Use up to 5 related classes as context
+      // Use up to 5 related classes as context
         var seeds = analyzer.getClassesInFile(file).stream()
                 .collect(Collectors.toMap(CodeUnit::fqName, cls -> 1.0));
         var relatedCode = Context.buildAutoContext(analyzer, seeds, Set.of(), 5);
@@ -731,11 +732,11 @@ public class CodeAgent {
 
     /**
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
-     */
-    private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
-        if (buildResults.size() < 2) {
-            return true;
-        }
+   */
+  private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
+      if (buildResults.size() < 2) {
+          return true;
+      }
 
         var messages = BuildPrompts.instance.collectBuildProgressingMessages(buildResults);
         var response = coder.sendMessage(coder.contextManager.getModels().quickModel(), messages).chatResponse().aiMessage().text().trim();

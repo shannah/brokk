@@ -448,22 +448,22 @@ public class InstructionsPanel extends JPanel {
      * Executes the core logic for the "Ask" command.
      * This runs inside the Runnable passed to contextManager.submitAction.
      */
-    private void executeAskCommand(StreamingChatLanguageModel model, String question) {
-        try {
-            var contextManager = chrome.getContextManager();
-            if (question.isBlank()) {
-                chrome.toolErrorRaw("Please provide a question");
-                return;
-            }
-            // Provide the prompt messages
-            var messages = new LinkedList<>(AskPrompts.instance.collectMessages(contextManager));
-            messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
+  private void executeAskCommand(StreamingChatLanguageModel model, String question) {
+      try {
+          var contextManager = chrome.getContextManager();
+          if (question.isBlank()) {
+              chrome.toolErrorRaw("Please provide a question");
+              return;
+          }
+          // Provide the prompt messages
+          var messages = new LinkedList<>(AskPrompts.instance.collectMessages(contextManager));
+          messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
-            // stream from coder using the provided model
-            var response = contextManager.getCoder().sendStreaming(model, messages, true);
-            if (response.cancelled()) {
-                chrome.systemOutput("Ask command cancelled!");
-            } else if (response.error() != null) {
+          // stream from coder using the provided model
+          var response = contextManager.getCoder(question).sendStreaming(model, messages, true);
+          if (response.cancelled()) {
+              chrome.systemOutput("Ask command cancelled!");
+          } else if (response.error() != null) {
                  chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
              } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
                     var aiResponse = response.chatResponse().aiMessage();

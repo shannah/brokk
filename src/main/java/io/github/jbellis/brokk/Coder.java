@@ -61,9 +61,10 @@ public class Coder {
     final IContextManager contextManager;
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
 
-    public Coder(IConsoleIO io, Path sourceRoot, IContextManager contextManager) {
-        this.io = io;
+    public Coder(ContextManager contextManager, String taskDescription) {
         this.contextManager = contextManager;
+        this.io = contextManager.getIo();
+        var sourceRoot = contextManager.getRoot();
         this.historyFile = sourceRoot.resolve(".brokk").resolve("llm.log");
     }
 

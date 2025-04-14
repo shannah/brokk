@@ -659,11 +659,11 @@ public class GitCommitTab extends JPanel {
             return null;
         }
 
-        // Use quickest model for commit messages via ContextManager
-        var result = contextManager.getCoder().sendMessage(contextManager.getModels().quickestModel(), messages);
-        if (result.cancelled()) {
-            SwingUtilities.invokeLater(() -> chrome.systemOutput("Commit message suggestion cancelled."));
-            return null;
+          // Use quickest model for commit messages via ContextManager
+          var result = contextManager.getCoder("Infer commit message").sendMessage(contextManager.getModels().quickestModel(), messages);
+          if (result.cancelled()) {
+              SwingUtilities.invokeLater(() -> chrome.systemOutput("Commit message suggestion cancelled."));
+              return null;
         }
         if (result.error() != null) {
             SwingUtilities.invokeLater(() -> chrome.systemOutput("LLM error during commit message suggestion: " + result.error().getMessage()));
