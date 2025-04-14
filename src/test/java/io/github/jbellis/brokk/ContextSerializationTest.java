@@ -127,7 +127,7 @@ public class ContextSerializationTest {
         // Add fragments that use Future
         CompletableFuture<String> descFuture = CompletableFuture.completedFuture("description");
         context = context.addPasteFragment(
-            new ContextFragment.PasteFragment("paste content", descFuture), 
+            new ContextFragment.PasteTextFragment("paste content", descFuture),
             descFuture
         );
         
@@ -161,7 +161,7 @@ public class ContextSerializationTest {
         assertTrue(fragmentTypes.contains(ContextFragment.StringFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.SearchFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.SkeletonFragment.class));
-        assertTrue(fragmentTypes.contains(ContextFragment.PasteFragment.class));
+        assertTrue(fragmentTypes.contains(ContextFragment.PasteTextFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.UsageFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.StacktraceFragment.class));
         

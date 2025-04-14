@@ -230,7 +230,7 @@ public class Context implements Serializable {
     /**
      * Adds a virtual fragment and uses the same future for both fragment description and action
      */
-    public Context addPasteFragment(ContextFragment.PasteFragment fragment, Future<String> summaryFuture) {
+    public Context addPasteFragment(ContextFragment.PasteTextFragment fragment, Future<String> summaryFuture) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(fragment);
 

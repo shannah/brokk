@@ -16,7 +16,6 @@ import io.github.jbellis.brokk.gui.dialogs.PlanDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
-import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.CopyExternalPrompts;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import io.github.jbellis.brokk.util.StackTrace;
@@ -1055,7 +1054,7 @@ public class ContextPanel extends JPanel {
         Future<String> summaryFuture = contextManager.submitSummarizeTaskForPaste(content); // Qualify contextManager
         String finalContent = content;
         contextManager.pushContext(ctx -> { // Qualify contextManager
-            var fragment = new ContextFragment.PasteFragment(finalContent, summaryFuture);
+            var fragment = new ContextFragment.PasteTextFragment(finalContent, summaryFuture);
             return ctx.addPasteFragment(fragment, summaryFuture);
         });
 

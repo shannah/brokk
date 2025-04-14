@@ -5,6 +5,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 
+import java.awt.*;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
@@ -455,22 +456,14 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class PasteFragment extends VirtualFragment {
-        private static final long serialVersionUID = 2L;
-        private final String text;
-        private transient Future<String> descriptionFuture;
+    abstract class PasteFragment extends ContextFragment.VirtualFragment {
+        private static final long serialVersionUID = 1L;
 
-        public PasteFragment(String text, Future<String> descriptionFuture) {
+        protected transient Future<String> descriptionFuture;
+
+        public PasteFragment(Future<String> descriptionFuture) {
             super();
-            assert text != null;
-            assert descriptionFuture != null;
-            this.text = text;
             this.descriptionFuture = descriptionFuture;
-        }
-
-        @Override
-        public String text() {
-            return text;
         }
 
         @Override
@@ -483,11 +476,6 @@ public interface ContextFragment extends Serializable {
                 }
             }
             return "(Summarizing. This does not block LLM requests)";
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
         }
 
         @Override
@@ -514,6 +502,54 @@ public interface ContextFragment extends Serializable {
             in.defaultReadObject();
             String desc = (String) in.readObject();
             this.descriptionFuture = java.util.concurrent.CompletableFuture.completedFuture(desc);
+        }
+    }
+
+    class PasteTextFragment extends PasteFragment {
+        private static final long serialVersionUID = 3L;
+        private final String text;
+
+        public PasteTextFragment(String text, Future<String> descriptionFuture) {
+            super(descriptionFuture);
+            assert text != null;
+            assert descriptionFuture != null;
+            this.text = text;
+        }
+
+        @Override
+        public String text() {
+            return text;
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return true;
+        }
+    }
+
+    class PasteImageFragment extends PasteFragment {
+        private static final long serialVersionUID = 1L;
+        private final Image image;
+
+        public PasteImageFragment(Image image, Future<String> descriptionFuture) {
+            super(descriptionFuture);
+            assert image != null;
+            assert descriptionFuture != null;
+            this.image = image;
+        }
+
+        @Override
+        public String text() {
+            throw new UnsupportedOperationException();
+        }
+
+        public Image image() {
+            return image;
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return false;
         }
     }
 
