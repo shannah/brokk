@@ -80,7 +80,7 @@ public class ArchitectAgent {
             String instructions
     ) {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
-        var result = CodeAgent.runSession(contextManager, model, instructions);
+        var result = CodeAgent.runSession(contextManager, model, instructions, false);
         contextManager.addToHistory(result, true);
         var stopReason = result.stopReason();
         String summary = """

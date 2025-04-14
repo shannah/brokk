@@ -75,7 +75,7 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput)
+    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput, boolean rejectReadonlyEdits)
     {
         var io = contextManager.getIo();
         var coder = contextManager.getCoder();
@@ -175,7 +175,7 @@ public class CodeAgent {
             if (stopReason != null) break;
 
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-            stopReason = autoAddReferencedFiles(blocks, contextManager, io);
+            stopReason = autoAddReferencedFiles(blocks, contextManager, io, rejectReadonlyEdits);
             if (stopReason != null) break;
 
             // Apply all accumulated blocks
@@ -301,7 +301,8 @@ public class CodeAgent {
     private static StopReason autoAddReferencedFiles(
             List<EditBlock.SearchReplaceBlock> blocks,
             ContextManager contextManager,
-            IConsoleIO io
+            IConsoleIO io,
+            boolean rejectReadonlyEdits
     ) {
         var coder = contextManager.getCoder();
         var filesToAdd = blocks.stream()
@@ -312,7 +313,7 @@ public class CodeAgent {
                 .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
                 .toList();
 
-        if (!filesToAdd.isEmpty()) {
+        if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
             var readOnlyFiles = filesToAdd.stream()
                     .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
                     .toList();

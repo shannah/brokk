@@ -437,7 +437,7 @@ public class InstructionsPanel extends JPanel {
         var project = contextManager.getProject();
         project.pauseAnalyzerRebuilds();
         try {
-            var result = CodeAgent.runSession(contextManager, model, input);
+            var result = CodeAgent.runSession(contextManager, model, input, true);
             contextManager.addToHistory(result, false);
         } finally {
             project.resumeAnalyzerRebuilds();
