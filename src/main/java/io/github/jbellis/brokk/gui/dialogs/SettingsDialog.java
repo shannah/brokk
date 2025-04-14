@@ -329,7 +329,7 @@ public class SettingsDialog extends JDialog {
             // --- Informational Text ---
             // Adjust top inset for spacing after the description labels
             gbc.insets = new Insets(15, 5, 5, 5); // Add spacing above info text
-            infoLabel = new JLabel("<html>Data retention policy affects which AI models are allowed. In particular, Deepseek models are not available under the Minimal Data Retention policy, since Deepseek will train on API requests independently of Brokk.</html>");
+            infoLabel = new JLabel("<html>Data retention policy affects which AI models are allowed. In particular, Deepseek models are not available under the Essential Use Only policy, since Deepseek will train on API requests independently of Brokk.</html>");
             infoLabel.setFont(infoLabel.getFont().deriveFont(infoLabel.getFont().getSize() * 0.9f));
             gbc.gridx = 0;
             gbc.gridy = y++;
