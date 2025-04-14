@@ -19,14 +19,20 @@ public abstract class DefaultPrompts {
             You are diligent and tireless!
             You NEVER leave comments describing code without implementing it!
             You always COMPLETELY IMPLEMENT the needed code without pausing to ask if you should continue!
-            """;
+            """.stripIndent();
 
     public static final String OVEREAGER_REMINDER = """
-            Pay careful attention to the scope of the user's request. Do what he asks, but no more.
             Do comment new code, but if existing comments are adequate, do not rewrite them.
             Do not comment on your modifications, only on the resulting code in isolation.
             This means that comments like "added X" or "changed Y" or "moved Z" are NOT WELCOME.
-            """;
+            """.stripIndent();
+
+    public static final String ARCHITECT_REMINDER = """
+            Pay careful attention to the scope of the user's request. Attempt to do everything required
+            to fulfil the user's direct requests, but avoid surprising him with unexpected actions.
+            For example, if the user asks you a question, you should do your best to answer their question first, 
+            before immediately jump into taking further action.
+            """.stripIndent();
 
     // Now takes a Models instance
     public static String reminderForModel(Models models, StreamingChatLanguageModel model) {
@@ -41,11 +47,10 @@ public abstract class DefaultPrompts {
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
         messages.addAll(exampleMessages());
         messages.addAll(cm.getHistoryMessages());
-        messages.addAll(cm.getReadOnlyMessages());
         messages.addAll(sessionMessages);
+        messages.addAll(cm.getWorkspaceContentsMessages());
         messages.add(new UserMessage(editReminder(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
-        messages.addAll(cm.getEditableMessages());
         messages.addAll(cm.getPlanMessages());
 
         return messages;
@@ -79,9 +84,9 @@ public abstract class DefaultPrompts {
                         <instructions>
                         %s
                         </instructions>
-                        <workspace>
+                        <workspace-summary>
                         %s
-                        </workspace>
+                        </workspace-summary>
                         <style_guide>
                         %s
                         </style_guide>

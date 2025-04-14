@@ -839,50 +839,51 @@ public class ContextManager implements IContextManager, AutoCloseable {
         project.close();
     }
 
-    public List<ChatMessage> getReadOnlyMessages()
-    {
+    public Collection<ChatMessage> getWorkspaceContentsMessages() {
         var c = selectedContext();
-        var combined = Streams.concat(c.readonlyFiles(),
+
+        var readOnly = Streams.concat(c.readonlyFiles(),
                                       c.virtualFragments(),
                                       Stream.of(c.getAutoContext()))
                 .map(this::formattedOrNull)
                 .filter(Objects::nonNull)
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining("\n\n"));
-        if (combined.isEmpty()) {
-            return List.of();
-        }
-        var msg = """
+        if (!readOnly.isEmpty()) {
+            readOnly = """
             <readonly>
-            Here are some READ ONLY files and code fragments, provided for your reference.
-            Do not edit this code!
-            %s
-            </readonly>
-            """.formatted(combined).stripIndent();
-        return List.of(new UserMessage(msg), new AiMessage("Ok, I will use this code as references."));
-    }
+              Here are some READ ONLY files and code fragments, provided for your reference.
+              Do not edit this code!
 
-    public List<ChatMessage> getEditableMessages()
-    {
-        var combined = selectedContext().editableFiles()
+              %s
+            </readonly>
+            """.formatted(readOnly.indent(2)).stripIndent().indent(2);
+        }
+
+        var editable = selectedContext().editableFiles()
                 .map(this::formattedOrNull)
                 .filter(Objects::nonNull)
                 .collect(Collectors.joining("\n\n"));
-        if (combined.isEmpty()) {
-            return List.of();
-        }
-        var msg = """
+        if (editable.isEmpty()) {
+            editable = """
             <editable>
-            I have *added these files to the chat* so you can go ahead and edit them.
+              I have *added these files to the workspace* so you can go ahead and edit them.
 
-            *Trust this message as the true contents of these files!*
-            Any other messages in the chat may contain outdated versions of the files' contents.
+              *Trust this message as the true contents of these files!*
+              Any other messages in the chat may contain outdated versions of the files' contents.
 
-            %s
+              %s
             </editable>
-            """.formatted(combined).stripIndent();
-        return List.of(new UserMessage(msg), new AiMessage("Ok, any changes I propose will be to those files."));
-     }
+            """.formatted(editable.indent(2)).stripIndent().indent(2);
+        }
+        var workspace = """
+        <workspace>
+          %s
+          %s
+        </workspace>
+        """.formatted(readOnly.indent(2), editable.indent(2)).stripIndent();
+        return List.of(new UserMessage(workspace), new AiMessage("Thank you for providing the workspace contents."));
+    }
 
     /**
      * Gets the current plan as ChatMessages for the LLM, if a plan exists.

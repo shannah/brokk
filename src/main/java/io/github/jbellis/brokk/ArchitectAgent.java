@@ -5,11 +5,11 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
@@ -18,7 +18,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ArchitectAgent {
@@ -99,28 +99,30 @@ public class ArchitectAgent {
     ) {
         logger.debug("callSearchAgent invoked with query: {}", query);
 
-        // Instantiate and run SearchAgent, passing all required arguments
+        // Instantiate and run SearchAgent
         var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry);
-        var searchResult = searchAgent.execute(); // Correct method is execute(), query passed to constructor
+        var searchResult = searchAgent.execute();
 
-        if (searchResult == null || searchResult.text() == null || searchResult.text().isBlank()) {
+        // TODO add result to Conversation History
+
+        assert searchResult != null;
+        if (searchResult instanceof ContextFragment.StringFragment) {
             logger.warn("SearchAgent returned null or empty result for query: {}", query);
-            return "SearchAgent returned no results.";
+            return searchResult.text();
         }
 
-        // Add the fragment using ContextManager
-        var querySummary = contextManager.addSearchFragment(searchResult);
+        var relevantClasses = searchResult.sources(contextManager.getProject()).stream()
+                .map(CodeUnit::fqName)
+                .collect(Collectors.joining(","));
+        var stringResult = """
+        %s
+        
+        Full list of potentially relevant classes:
+        %s
+        """.formatted(searchResult.text(), relevantClasses);
 
-        // The full result text is in the context, so just return a confirmation
-        String summary;
-        try {
-            summary = "SearchAgent completed. Results added to context fragment #%d: %s"
-                    .formatted(searchResult.id(), querySummary.get());
-        } catch (InterruptedException |ExecutionException e) {
-            throw new RuntimeException(e);
-        }
-        logger.debug(summary);
-        return summary;
+        logger.debug(stringResult);
+        return stringResult;
     }
 
 
@@ -283,7 +285,7 @@ public class ArchitectAgent {
         Please decide the next tool action(s) to make progress towards resolving the current task.
         """.formatted(topClassesText, goal, planText).stripIndent();
 
-        return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager).stream(),
+        return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
                               Stream.of(new UserMessage(userMsg))).toList();
     }
 

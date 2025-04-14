@@ -1,29 +1,20 @@
 package io.github.jbellis.brokk.prompts;
 
-import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextManager;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 public abstract class ArchitectPrompts extends DefaultPrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
 
-    public List<ChatMessage> collectMessages(ContextManager cm) {
-        return Streams.concat(Stream.of(new SystemMessage(formatIntro(cm, DefaultPrompts.LAZY_REMINDER))),
-                              collectMessagesInternal(cm).stream())
-                        .toList();
-    }
-
-    private List<ChatMessage> collectMessagesInternal(ContextManager cm) {
+    public List<ChatMessage> collectMessages(ContextManager cm, List<ChatMessage> sessionMessages) {
         var messages = new ArrayList<ChatMessage>();
-        messages.addAll(cm.getHistoryMessages());
-        messages.addAll(cm.getReadOnlyMessages());
-        messages.addAll(cm.getEditableMessages());
-        messages.addAll(cm.getPlanMessages());
+        messages.add(new SystemMessage(formatIntro(cm, DefaultPrompts.ARCHITECT_REMINDER)));
+        messages.addAll(sessionMessages);
+        messages.addAll(cm.getWorkspaceContentsMessages());
         return messages;
     }
 
@@ -53,10 +44,11 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
 
         Code Agent IS NOT ABLE to manipulate the workspace! It's up to you to configure the workspace with
         the appropriate editable files as well as any other summaries, usages, or read-only files
-        necessary to use the relevant APIs correctly before invoking Code Agent.
+        necessary to use the relevant APIs correctly before invoking Code Agent. This means not just adding
+        the relevant content needed for your requested changes, but also removing the irrelevant to avoid confusion!
 
-        Be verbose in your instructions to the other agents so they know how to help. Don't assume
-        that they will be able to infer it just from the workspace or the plan.
+        Other Agents ARE NOT ABLE to see our conversation! Your instructions must be self-contained and complete,
+        besides the workspace itself that is the only information they will have.
 
         Your current plan and the workspace (files and code fragments) are visible to all agents.
 
