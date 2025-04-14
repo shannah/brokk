@@ -5,6 +5,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
@@ -214,8 +215,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return project;
     }
 
-    public Coder getCoder(String taskDescription) {
-        return new Coder(taskDescription, this);
+    @Override
+    public Coder getCoder(StreamingChatLanguageModel model, String taskDescription) {
+        return new Coder(model, taskDescription, this);
     }
 
     @Override
@@ -1012,7 +1014,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
               protected String doInBackground() {
                   var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                   // Use quickModel for summarization
-                  var result = getCoder("Summarize paste").sendMessage(models.quickestModel(), msgs); // Use instance field
+                  var result = getCoder(models.quickestModel(), "Summarize paste").sendMessage(msgs); // Use instance field
                    if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                       logger.warn("Summarization failed or was cancelled.");
                       return "Summarization failed.";
@@ -1037,7 +1039,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
               protected String doInBackground() {
                   var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
                    // Use quickModel for summarization
-                  var result = getCoder(input).sendMessage(models.quickestModel(), msgs); // Use instance field
+                  var result = getCoder(models.quickestModel(), input).sendMessage(msgs); // Use instance field
                    if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                        logger.warn("Summarization failed or was cancelled.");
                        return "Summarization failed.";
@@ -1106,7 +1108,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
       // No details found, run the BuildAgent asynchronously
       submitBackgroundTask("Inferring build details", () -> {
-          BuildAgent agent = new BuildAgent(getCoder("Infer build details"), toolRegistry);
+          BuildAgent agent = new BuildAgent(getCoder(models.systemModel(), "Infer build details"), toolRegistry);
           BuildDetails inferredDetails = null;
           try {
               inferredDetails = agent.execute(); // This runs the agent loop
@@ -1212,7 +1214,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                  var result = getCoder("Generate style guide").sendMessage(models.quickestModel(), messages); // Use instance field
+                  var result = getCoder(models.quickestModel(), "Generate style guide").sendMessage(messages); // Use instance field
                    if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                        io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                        project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
@@ -1248,7 +1250,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Compress
           var historyString = entry.toString();
           var msgs = SummarizerPrompts.instance.compressHistory(historyString);
-          var result = getCoder("Compress history entry").sendMessage(models.quickModel(), msgs);
+          var result = getCoder(models.quickModel(), "Compress history entry").sendMessage(msgs);
 
           if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
               logger.warn("History compression failed for entry '{}': {}", entry.description(),

@@ -61,8 +61,10 @@ public class Coder {
     private final Path sessionHistoryDir; // Directory for this session's history files
     final IContextManager contextManager;
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
+    private final StreamingChatLanguageModel model;
 
-    public Coder(String taskDescription, IContextManager contextManager) {
+    public Coder(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager) {
+        this.model = model;
         this.contextManager = contextManager;
         this.io = contextManager.getIo();
         var sourceRoot = contextManager.getProject().getRoot();
@@ -87,29 +89,26 @@ public class Coder {
      * Sends a user query to the LLM with streaming. Tools are not used.
      * Writes to conversation history. Optionally echoes partial tokens to the console.
      *
-     * @param model The LLM model to use
      * @param messages The messages to send
      * @param echo Whether to echo LLM responses to the console as they stream
      * @return The final response from the LLM as a record containing ChatResponse, errors, etc.
      */
-    public StreamingResult sendStreaming(StreamingChatLanguageModel model, List<ChatMessage> messages, boolean echo) {
-        return sendMessageWithRetry(model, messages, List.of(), ToolChoice.AUTO, echo, MAX_ATTEMPTS);
+    public StreamingResult sendStreaming(List<ChatMessage> messages, boolean echo) {
+        return sendMessageWithRetry(messages, List.of(), ToolChoice.AUTO, echo, MAX_ATTEMPTS);
     }
 
     /**
      * Actually performs one streaming call to the LLM, returning once the response
      * is done or there's an error. If 'echo' is true, partial tokens go to console.
      */
-    private StreamingResult doSingleStreamingCall(StreamingChatLanguageModel model,
-                                                  ChatRequest request,
+    private StreamingResult doSingleStreamingCall(ChatRequest request,
                                                   boolean echo) {
-        var result = doSingleStreamingCallInternal(model, request, echo);
+        var result = doSingleStreamingCallInternal(request, echo);
         writeToHistory(model, request, result);
         return result;
     }
 
-    private StreamingResult doSingleStreamingCallInternal(StreamingChatLanguageModel model,
-                                                          ChatRequest request,
+    private StreamingResult doSingleStreamingCallInternal(ChatRequest request,
                                                           boolean echo) {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
@@ -219,34 +218,20 @@ public class Coder {
     }
 
     /**
-     * Convenience method to send messages to the "quickest" model without tools or streaming echo.
-     */
-    public String sendMessage(List<ChatMessage> messages) {
-        var result = sendMessage(contextManager.getModels().quickestModel(), messages, List.of(), ToolChoice.AUTO, false);
-        if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-            // Include the error message in the exception if available
-            String errorMsg = result.error() != null ? ": " + result.error().getMessage() : "";
-            throw new IllegalStateException("LLM returned null or error" + errorMsg, result.error());
-        }
-        return result.chatResponse().aiMessage().text().trim();
-    }
-
-    /**
      * Sends messages to a given model, no tools, no streaming echo.
      */
-    public StreamingResult sendMessage(StreamingChatLanguageModel model, List<ChatMessage> messages) {
-        return sendMessage(model, messages, List.of(), ToolChoice.AUTO, false);
+    public StreamingResult sendMessage(List<ChatMessage> messages) {
+        return sendMessage(messages, List.of(), ToolChoice.AUTO, false);
     }
 
     /**
      * Sends messages to a model with possible tools and a chosen tool usage policy.
      */
-    public StreamingResult sendMessage(StreamingChatLanguageModel model,
-                                       List<ChatMessage> messages,
+    public StreamingResult sendMessage(List<ChatMessage> messages,
                                        List<ToolSpecification> tools,
                                        ToolChoice toolChoice,
                                        boolean echo) {
-        var result = sendMessageWithRetry(model, messages, tools, toolChoice, echo, MAX_ATTEMPTS);
+        var result = sendMessageWithRetry(messages, tools, toolChoice, echo, MAX_ATTEMPTS);
         var cr = result.chatResponse();
 
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
@@ -263,7 +248,7 @@ public class Coder {
             extraMessages.add(cr.aiMessage());
             extraMessages.add(new UserMessage("At least one tool execution request is REQUIRED. Please call a tool."));
 
-            result = sendMessageWithRetry(model, extraMessages, tools, toolChoice, echo, MAX_ATTEMPTS);
+            result = sendMessageWithRetry(extraMessages, tools, toolChoice, echo, MAX_ATTEMPTS);
             cr = result.chatResponse();
         }
 
@@ -274,8 +259,7 @@ public class Coder {
      * Retries a request up to maxAttempts times on connectivity or empty-result errors,
      * using exponential backoff. Responsible for writeToHistory.
      */
-    private StreamingResult sendMessageWithRetry(StreamingChatLanguageModel model,
-                                                 List<ChatMessage> messages,
+    private StreamingResult sendMessageWithRetry(List<ChatMessage> messages,
                                                  List<ToolSpecification> tools,
                                                  ToolChoice toolChoice,
                                                  boolean echo,
@@ -387,7 +371,7 @@ public class Coder {
         }
 
         var request = builder.build();
-        return doSingleStreamingCall(model, request, echo);
+        return doSingleStreamingCall(request, echo);
     }
 
     /**
@@ -402,17 +386,16 @@ public class Coder {
                                          ToolChoice toolChoice,
                                          boolean echo) {
         if (contextManager.getModels().supportsJsonSchema(model)) {
-            return emulateToolsUsingJsonSchema(model, messages, tools, toolChoice, echo);
+            return emulateToolsUsingJsonSchema(messages, tools, toolChoice, echo);
         } else {
-            return emulateToolsUsingJsonObject(model, messages, tools, toolChoice, echo);
+            return emulateToolsUsingJsonObject(messages, tools, toolChoice, echo);
         }
     }
 
     /**
      * Common helper for emulating function calling tools using JSON output
      */
-    private StreamingResult emulateToolsCommon(StreamingChatLanguageModel model,
-                                               List<ChatMessage> messages,
+    private StreamingResult emulateToolsCommon(List<ChatMessage> messages,
                                                List<ToolSpecification> tools,
                                                ToolChoice toolChoice,
                                                boolean echo,
@@ -433,7 +416,7 @@ public class Coder {
 
         for (int attempt = 1; attempt <= maxTries; attempt++) {
             var request = requestBuilder.apply(attemptMessages);
-            var singleCallResult = doSingleStreamingCall(model, request, echo);
+            var singleCallResult = doSingleStreamingCall(request, echo);
 
             if (singleCallResult.cancelled) {
                 return singleCallResult; // user interrupt
@@ -571,8 +554,7 @@ public class Coder {
     /**
      * Emulates function calling for models that support structured output with JSON schema
      */
-    private StreamingResult emulateToolsUsingJsonSchema(StreamingChatLanguageModel model,
-                                                        List<ChatMessage> messages,
+    private StreamingResult emulateToolsUsingJsonSchema(List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
                                                         boolean echo) {
@@ -615,14 +597,13 @@ public class Coder {
                   }
                 """.stripIndent().formatted(e.getMessage());
 
-        return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
+        return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
 
     /**
      * Emulates function calling for models that don't support schema but can output JSON based on text instructions
      */
-    private StreamingResult emulateToolsUsingJsonObject(StreamingChatLanguageModel model,
-                                                        List<ChatMessage> messages,
+    private StreamingResult emulateToolsUsingJsonObject(List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
                                                         boolean echo) {
@@ -672,7 +653,7 @@ public class Coder {
                 }
                 """.stripIndent().formatted(e.getMessage());
 
-        return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
+        return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
 
     private static boolean emulatedToolInstructionsPresent(List<ChatMessage> messages) {

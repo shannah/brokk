@@ -55,7 +55,6 @@ public class SearchAgent {
     private final ContextManager contextManager;
     private final Coder coder;
     private final IConsoleIO io;
-    private final StreamingChatLanguageModel model;
     private final ToolRegistry toolRegistry;
 
         // Budget and action control state
@@ -79,15 +78,15 @@ public class SearchAgent {
 
     public SearchAgent(String query,
                        ContextManager contextManager,
-                          StreamingChatLanguageModel model,
-                          ToolRegistry toolRegistry) {
-          this.query = query;
-          this.contextManager = contextManager;
-          this.analyzer = contextManager.getProject().getAnalyzer();
-          this.coder = contextManager.getCoder(query);
-          this.io = contextManager.getIo();
-          this.model = model;
-          this.toolRegistry = toolRegistry;
+                       StreamingChatLanguageModel model,
+                       ToolRegistry toolRegistry)
+    {
+        this.query = query;
+        this.contextManager = contextManager;
+        this.analyzer = contextManager.getProject().getAnalyzer();
+        this.coder = contextManager.getCoder(model, query);
+        this.io = contextManager.getIo();
+        this.toolRegistry = toolRegistry;
 
         // Set initial state based on analyzer presence
         allowSearch = !analyzer.isEmpty();
@@ -181,7 +180,7 @@ public class SearchAgent {
             )));
 
             // TODO can we use a different model for summarization?
-            var result = coder.sendMessage(model, messages);
+            var result = coder.sendMessage(messages);
             if (result.error() != null) {
                  logger.warn("Summarization failed or was cancelled.");
                  return step.execResult.resultText(); // Return raw result on failure
@@ -224,7 +223,7 @@ public class SearchAgent {
             Make sure to include the fully qualified source (class, method, etc) as well as the code.
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var result = coder.sendMessage(model, messages);
+            var result = coder.sendMessage(messages);
             if (result.cancelled()) {
                 io.systemOutput("Cancelled context evaluation; stopping search");
                 return null; // Propagate cancellation
@@ -371,7 +370,7 @@ public class SearchAgent {
             </information>
             """.stripIndent().formatted(query, initialContextResult)));
 
-            var response = coder.sendMessage(model, messages).chatResponse();
+            var response = coder.sendMessage(messages).chatResponse();
             return response.aiMessage().text();
         });
     }
@@ -634,7 +633,7 @@ public class SearchAgent {
              // Pass an instance of the tools class, correct typo, add missing parenthesis
              tools.addAll(toolRegistry.getTools(this, List.of("answerSearch", "abortSearch")));
          }
-         var result = coder.sendMessage(model, messages, tools, ToolChoice.REQUIRED, false);
+         var result = coder.sendMessage(messages, tools, ToolChoice.REQUIRED, false);
 
          if (result.cancelled()) {
              Thread.currentThread().interrupt();

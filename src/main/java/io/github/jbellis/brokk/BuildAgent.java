@@ -83,7 +83,7 @@ public class BuildAgent {
             }
 
             // Call the Coder to get the LLM's response, including potential tool calls
-            var result = coder.sendMessage(model, messages, tools, ToolChoice.REQUIRED, false);
+            var result = coder.sendMessage(messages, tools, ToolChoice.REQUIRED, false);
 
             if (result.cancelled()) {
                 logger.error("Unexpected request cancellation in build agent");

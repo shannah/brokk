@@ -75,9 +75,6 @@ public class CoderTest {
                 return models;
             }
         };
-
-        // Create a Coder instance using the temp directory and the real ContextManager
-        coder = new Coder("tests", contextManager);
     }
 
     // Simple tool for testing
@@ -104,11 +101,12 @@ public class CoderTest {
                 System.out.println("Testing model: " + modelName);
                 // Get model instance via the Models object
                 StreamingChatLanguageModel model = models.get(modelName);
+                var coder = contextManager.getCoder(model, "testModels");
                 assertNotNull(model, "Failed to get model instance for: " + modelName);
 
                 // Use the non-streaming sendMessage variant for simplicity in testing basic connectivity
                 // Note: This uses the internal retry logic of Coder.sendMessage
-                var result = coder.sendMessage(model, messages);
+                var result = coder.sendMessage(messages);
 
                 assertNotNull(result, "Result should not be null for model: " + modelName);
                 assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
@@ -160,10 +158,11 @@ public class CoderTest {
             try {
                 System.out.println("Testing tool calling for model: " + modelName);
                 StreamingChatLanguageModel model = models.get(modelName);
+                var coder = contextManager.getCoder(model, "testToolCalling");
                 assertNotNull(model, "Failed to get model instance for: " + modelName);
 
                 // Use the sendMessage variant that includes tools
-                var result = coder.sendMessage(model, messages, toolSpecifications, ToolChoice.REQUIRED, false);
+                var result = coder.sendMessage(messages, toolSpecifications, ToolChoice.REQUIRED, false);
 
                 assertNotNull(result, "Result should not be null for model: " + modelName);
                 assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);

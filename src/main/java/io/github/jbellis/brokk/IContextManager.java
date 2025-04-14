@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -71,6 +72,10 @@ public interface IContextManager {
     }
 
     default ToolRegistry getToolRegistry() {
+        throw new UnsupportedOperationException();
+    }
+
+    default Coder getCoder(StreamingChatLanguageModel model, String tests) {
         throw new UnsupportedOperationException();
     }
 }

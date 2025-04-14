@@ -460,7 +460,7 @@ public class InstructionsPanel extends JPanel {
           messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
           // stream from coder using the provided model
-          var response = contextManager.getCoder(question).sendStreaming(model, messages, true);
+          var response = contextManager.getCoder(model, question).sendStreaming(messages, true);
           if (response.cancelled()) {
               chrome.systemOutput("Ask command cancelled!");
           } else if (response.error() != null) {

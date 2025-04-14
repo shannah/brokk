@@ -119,7 +119,7 @@ public class CodeAgent {
   {
       var io = contextManager.getIo();
       // Create Coder instance with the user's input as the task description
-      var coder = contextManager.getCoder(userInput);
+      var coder = contextManager.getCoder(model, userInput);
 
       // Track original contents of files before any changes
       var originalContents = new HashMap<ProjectFile, String>();
@@ -131,7 +131,7 @@ public class CodeAgent {
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
 
         // Start verification command inference concurrently
-        var verificationCommandFuture = determineVerificationCommandAsync(contextManager, coder, userInput);
+        var verificationCommandFuture = determineVerificationCommandAsync(contextManager, contextManager.getCoder(contextManager.getModels().quickModel(), "Infer tests"), userInput);
 
         // Retry-loop state tracking
         int parseFailures = 0;
@@ -153,7 +153,7 @@ public class CodeAgent {
                                                                       DefaultPrompts.reminderForModel(contextManager.getModels(), model));
             allMessages.add(nextRequest);
 
-            var streamingResult = coder.sendStreaming(model, allMessages, true);
+            var streamingResult = coder.sendStreaming(allMessages, true);
             stopDetails = checkLlmErrorOrEmpty(streamingResult, io);
             if (stopDetails != null) break;
 
@@ -274,7 +274,7 @@ public class CodeAgent {
             }
 
             // Build failed => check if it's improving or floundering
-            if (!buildErrors.isEmpty() && !isBuildProgressing(coder, buildErrors)) {
+            if (!buildErrors.isEmpty() && !isBuildProgressing(contextManager.getCoder(contextManager.getModels().quickModel(), "Infer build progress"), buildErrors)) {
                 io.systemOutput("Build errors are not improving; ending session");
                 // Use the last build error message as details
                 stopDetails = new StopDetails(StopReason.BUILD_ERROR, buildErrors.getLast());
@@ -467,7 +467,7 @@ public class CodeAgent {
             List<ChatMessage> messages = List.of(systemMessage, userMessage);
 
             // Call the quick model synchronously within the async task
-            var result = coder.sendMessage(cm.getModels().quickestModel(), messages);
+            var result = coder.sendMessage(messages);
 
             if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 logger.warn("Failed to determine verification command: {}",
@@ -532,7 +532,7 @@ public class CodeAgent {
         List<ChatMessage> messages = List.of(systemMessage, userMessage);
 
         // Call the quick model synchronously
-        var result = coder.sendMessage(cm.getModels().quickestModel(), messages);
+        var result = coder.sendMessage(messages);
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.error("Failed to get test files from LLM: {}",
@@ -570,7 +570,7 @@ public class CodeAgent {
                                            String oldText,
                                            String instructions)
   {
-      var coder = cm.getCoder("Quick Edit: " + instructions);
+      var coder = cm.getCoder(cm.getModels().quickModel(), "Quick Edit: " + instructions);
       var analyzer = cm.getAnalyzer();
 
       // Use up to 5 related classes as context
@@ -602,7 +602,7 @@ public class CodeAgent {
         pendingHistory.add(new UserMessage(instructionsMsg));
 
         // No echo for Quick Edit, use instance quickModel
-        var result = coder.sendStreaming(cm.getModels().quickModel(), messages, false);
+        var result = coder.sendStreaming(messages, false);
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
               io.toolErrorRaw("Quick edit failed or was cancelled.");
@@ -750,20 +750,20 @@ public class CodeAgent {
     /**
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
    */
-  private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
-      if (buildResults.size() < 2) {
-          return true;
-      }
+    private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
+        if (buildResults.size() < 2) {
+            return true;
+        }
 
         var messages = BuildPrompts.instance.collectBuildProgressingMessages(buildResults);
-        var response = coder.sendMessage(coder.contextManager.getModels().quickModel(), messages).chatResponse().aiMessage().text().trim();
+        var response = coder.sendMessage(messages).chatResponse().aiMessage().text().trim();
 
         // Keep trying until we get one of our expected tokens
         while (!response.contains("BROKK_PROGRESSING") && !response.contains("BROKK_FLOUNDERING")) {
             messages = new ArrayList<>(messages);
             messages.add(new AiMessage(response));
             messages.add(new UserMessage("Please indicate either BROKK_PROGRESSING or BROKK_FLOUNDERING."));
-            response = coder.sendMessage(messages);
+            response = coder.sendMessage(messages).chatResponse().aiMessage().text().trim();
         }
 
         return response.contains("BROKK_PROGRESSING");
