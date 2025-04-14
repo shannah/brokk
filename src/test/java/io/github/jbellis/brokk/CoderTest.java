@@ -42,7 +42,7 @@ public class CoderTest {
     }
 
     private static Coder coder;
-    private static ContextManager contextManager; // Add field for ContextManager
+    private static IContextManager contextManager; // Add field for ContextManager
 
     @TempDir
     static Path tempDir; // JUnit Jupiter provides a temporary directory
@@ -50,13 +50,34 @@ public class CoderTest {
     @BeforeAll
     static void setUp() {
         // Create ContextManager, which initializes Models internally
-        contextManager = new ContextManager(tempDir);
-        // Initialize models directly, passing a default policy for testing
-        contextManager.getModels().reinit(Project.DataRetentionPolicy.MINIMAL);
+        var consoleIO = new NoOpConsoleIO();
+        var project = new IProject() {
+            @Override
+            public Path getRoot() {
+                return tempDir;
+            }
+        };
+        var models = new Models();
+        models.reinit(Project.DataRetentionPolicy.MINIMAL);
+        contextManager = new IContextManager() {
+            @Override
+            public IConsoleIO getIo() {
+                return consoleIO;
+            }
+
+            @Override
+            public IProject getProject() {
+                return project;
+            }
+
+            @Override
+            public Models getModels() {
+                return models;
+            }
+        };
 
         // Create a Coder instance using the temp directory and the real ContextManager
-        var consoleIO = new NoOpConsoleIO();
-        coder = new Coder(consoleIO, tempDir, contextManager);
+        coder = new Coder("tests", contextManager);
     }
 
     // Simple tool for testing

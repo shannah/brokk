@@ -47,6 +47,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.github.jbellis.brokk.CodeAgent.SessionResult.getShortDescription;
+
 /**
  * The main orchestrator for sending requests to an LLM, possibly with tools, collecting
  * streaming responses, etc.
@@ -56,16 +58,29 @@ public class Coder {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final IConsoleIO io;
-    private final Path historyFile;
-    private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private final Path sessionHistoryDir; // Directory for this session's history files
     final IContextManager contextManager;
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
 
-    public Coder(ContextManager contextManager, String taskDescription) {
+    public Coder(String taskDescription, IContextManager contextManager) {
         this.contextManager = contextManager;
         this.io = contextManager.getIo();
-        var sourceRoot = contextManager.getRoot();
-        this.historyFile = sourceRoot.resolve(".brokk").resolve("llm.log");
+        var sourceRoot = contextManager.getProject().getRoot();
+        var historyBaseDir = sourceRoot.resolve(".brokk").resolve("llm-history");
+
+        // Create session directory name
+        var timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
+        // Use the static method from CodeAgent.SessionResult for consistency
+        var sessionDesc = getShortDescription(taskDescription);
+        var sessionDirName = String.format("%s %s", timestamp, sessionDesc);
+        this.sessionHistoryDir = historyBaseDir.resolve(sessionDirName);
+
+        // Create the directory
+        try {
+            Files.createDirectories(this.sessionHistoryDir);
+        } catch (IOException e) {
+            logger.error("Failed to create history directory {}", this.sessionHistoryDir, e);
+        }
     }
 
     /**
@@ -87,8 +102,15 @@ public class Coder {
      */
     private StreamingResult doSingleStreamingCall(StreamingChatLanguageModel model,
                                                   ChatRequest request,
-                                                  boolean echo)
-    {
+                                                  boolean echo) {
+        var result = doSingleStreamingCallInternal(model, request, echo);
+        writeToHistory(model, request, result);
+        return result;
+    }
+
+    private StreamingResult doSingleStreamingCallInternal(StreamingChatLanguageModel model,
+                                                          ChatRequest request,
+                                                          boolean echo) {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         var canceled = new AtomicBoolean(false);
@@ -111,8 +133,6 @@ public class Coder {
         // Write request details to history
         var tools = request.parameters().toolSpecifications();
 
-        writeRequestToHistory(request.messages(), tools);
-
         if (Thread.currentThread().isInterrupted()) {
             return new StreamingResult(null, true, null);
         }
@@ -122,7 +142,7 @@ public class Coder {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
                         boolean isEditToolCall = tools != null && tools.stream().anyMatch(tool ->
-                                "replaceFile".equals(tool.name()) || "replaceLines".equals(tool.name()));
+                                                                                                  "replaceFile".equals(tool.name()) || "replaceLines".equals(tool.name()));
                         boolean isEmulatedEditToolCall = contextManager.getModels().requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
                         if (isEditToolCall || isEmulatedEditToolCall) {
                             io.showOutputSpinner("Editing files ...");
@@ -204,9 +224,9 @@ public class Coder {
     public String sendMessage(List<ChatMessage> messages) {
         var result = sendMessage(contextManager.getModels().quickestModel(), messages, List.of(), ToolChoice.AUTO, false);
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-             // Include the error message in the exception if available
-             String errorMsg = result.error() != null ? ": " + result.error().getMessage() : "";
-             throw new IllegalStateException("LLM returned null or error" + errorMsg, result.error());
+            // Include the error message in the exception if available
+            String errorMsg = result.error() != null ? ": " + result.error().getMessage() : "";
+            throw new IllegalStateException("LLM returned null or error" + errorMsg, result.error());
         }
         return result.chatResponse().aiMessage().text().trim();
     }
@@ -225,8 +245,7 @@ public class Coder {
                                        List<ChatMessage> messages,
                                        List<ToolSpecification> tools,
                                        ToolChoice toolChoice,
-                                       boolean echo)
-    {
+                                       boolean echo) {
         var result = sendMessageWithRetry(model, messages, tools, toolChoice, echo, MAX_ATTEMPTS);
         var cr = result.chatResponse();
 
@@ -236,8 +255,7 @@ public class Coder {
                 && result.error == null
                 && !tools.isEmpty()
                 && !cr.aiMessage().hasToolExecutionRequests()
-                && toolChoice == ToolChoice.REQUIRED)
-        {
+                && toolChoice == ToolChoice.REQUIRED) {
             logger.debug("Enforcing tool selection");
             io.systemOutput("Enforcing tool selection");
 
@@ -261,8 +279,7 @@ public class Coder {
                                                  List<ToolSpecification> tools,
                                                  ToolChoice toolChoice,
                                                  boolean echo,
-                                                 int maxAttempts)
-    {
+                                                 int maxAttempts) {
         Throwable lastError = null;
         int attempt = 0;
         // Get model name once using instance field
@@ -273,12 +290,11 @@ public class Coder {
                          modelName, attempt, messages.getLast());
 
             if (echo) {
-                io.showOutputSpinner("Thinking...");    
+                io.showOutputSpinner("Thinking...");
             }
-            
+
             var response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
             if (response.cancelled) {
-                writeToHistory("Cancelled", "LLM request cancelled by user");
                 return response;
             }
             if (response.error == null) {
@@ -287,8 +303,6 @@ public class Coder {
                 boolean isEmpty = (cr.aiMessage().text() == null || cr.aiMessage().text().isBlank())
                         && !cr.aiMessage().hasToolExecutionRequests();
                 if (!isEmpty) {
-                    // success!
-                    writeToHistory("Response", cr.aiMessage().text());
                     return response;
                 }
             }
@@ -325,13 +339,11 @@ public class Coder {
 
         // If we get here, we failed all attempts
         if (lastError == null) {
-            // LLM returned empty or null
-            writeToHistory("Error", "LLM returned empty response after max retries");
+            // LLM returned empty or null - log error to the current request's file
             var dummy = ChatResponse.builder().aiMessage(new AiMessage("Empty response after max retries")).build();
             return new StreamingResult(dummy, false, new IllegalStateException("LLM empty or null after max retries"));
         }
-        // Return last error
-        writeToHistory("Error", lastError.getClass() + ": " + lastError.getMessage());
+        // Return last error - log error to the current request's file
         var cr = ChatResponse.builder().aiMessage(new AiMessage("Error: " + lastError.getMessage())).build();
         return new StreamingResult(cr, false, lastError);
     }
@@ -339,14 +351,15 @@ public class Coder {
     /**
      * Sends messages to model in a single attempt. If the model doesn't natively support
      * function calling for these tools, we emulate it using a JSON Schema approach.
+     * This method now also triggers writing the request to the history file.
      */
     private StreamingResult doSingleSendMessage(StreamingChatLanguageModel model,
                                                 List<ChatMessage> messages,
                                                 List<ToolSpecification> tools,
                                                 ToolChoice toolChoice,
-                                                boolean echo)
-    {
-        writeRequestToHistory(messages, tools);
+                                                boolean echo) {
+        // Note: writeRequestToHistory is now called *within* this method,
+        // right before doSingleStreamingCall, to ensure it uses the final `messagesToSend`.
 
         var messagesToSend = messages;
         // Preprocess messages *only* if no tools are being requested for this call.
@@ -387,8 +400,7 @@ public class Coder {
                                          List<ChatMessage> messages,
                                          List<ToolSpecification> tools,
                                          ToolChoice toolChoice,
-                                         boolean echo)
-    {
+                                         boolean echo) {
         if (contextManager.getModels().supportsJsonSchema(model)) {
             return emulateToolsUsingJsonSchema(model, messages, tools, toolChoice, echo);
         } else {
@@ -400,13 +412,12 @@ public class Coder {
      * Common helper for emulating function calling tools using JSON output
      */
     private StreamingResult emulateToolsCommon(StreamingChatLanguageModel model,
-                                              List<ChatMessage> messages,
-                                              List<ToolSpecification> tools,
-                                              ToolChoice toolChoice,
-                                              boolean echo,
-                                              Function<List<ChatMessage>, ChatRequest> requestBuilder,
-                                              Function<Throwable, String> retryInstructionsProvider)
-    {
+                                               List<ChatMessage> messages,
+                                               List<ToolSpecification> tools,
+                                               ToolChoice toolChoice,
+                                               boolean echo,
+                                               Function<List<ChatMessage>, ChatRequest> requestBuilder,
+                                               Function<Throwable, String> retryInstructionsProvider) {
         assert !tools.isEmpty();
 
         // Preprocess messages to combine tool results with subsequent user messages for emulation
@@ -465,16 +476,12 @@ public class Coder {
                 }
 
                 // Otherwise, add the failed AI message and a new user message with retry instructions
-                io.systemOutput("Retry " + attempt + "/" + (maxTries-1) + ": Invalid JSON response, requesting proper format.");
+                io.systemOutput("Retry " + attempt + "/" + (maxTries - 1) + ": Invalid JSON response, requesting proper format.");
                 // Add the raw response that failed parsing
                 attemptMessages.add(new AiMessage(lastResponse.aiMessage().text()));
                 // Add the user message requesting correction
                 String instructions = retryInstructionsProvider.apply(e);
                 attemptMessages.add(new UserMessage(instructions));
-
-                // Record retry in history
-                writeToHistory("Retry Attempt " + attempt,
-                               "Invalid JSON: " + lastResponse.aiMessage().text() + "\nRetry instructions:\n" + instructions);
             }
         }
 
@@ -568,8 +575,7 @@ public class Coder {
                                                         List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
-                                                        boolean echo)
-    {
+                                                        boolean echo) {
         // Build a top-level JSON schema with "tool_calls" as an array of objects
         var toolNames = tools.stream().map(ToolSpecification::name).distinct().toList();
         var schema = buildToolCallsSchema(toolNames);
@@ -590,24 +596,24 @@ public class Coder {
 
         // Build request creator function
         Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages ->
-            ChatRequest.builder()
-                .messages(attemptMessages)
-                .parameters(requestParams)
-                .build();
+                ChatRequest.builder()
+                        .messages(attemptMessages)
+                        .parameters(requestParams)
+                        .build();
 
         // Function to generate retry instructions
         Function<Throwable, String> retryInstructionsProvider = e -> """
-            Your previous response was invalid or did not contain tool_calls: %s
-            Please ensure you only return a JSON object matching the schema:
-              {
-                "tool_calls": [
+                Your previous response was invalid or did not contain tool_calls: %s
+                Please ensure you only return a JSON object matching the schema:
                   {
-                    "name": "...",
-                    "arguments": { ... }
+                    "tool_calls": [
+                      {
+                        "name": "...",
+                        "arguments": { ... }
+                      }
+                    ]
                   }
-                ]
-              }
-            """.stripIndent().formatted(e.getMessage());
+                """.stripIndent().formatted(e.getMessage());
 
         return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
@@ -619,8 +625,7 @@ public class Coder {
                                                         List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
-                                                        boolean echo)
-    {
+                                                        boolean echo) {
         var instructionsPresent = emulatedToolInstructionsPresent(messages);
         logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
 
@@ -635,37 +640,37 @@ public class Coder {
 
         // Build request creator function
         Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages ->
-            ChatRequest.builder()
-                .messages(attemptMessages)
-                .parameters(ChatRequestParameters.builder()
-                             .responseFormat(ResponseFormat.builder()
-                                     .type(ResponseFormatType.JSON)
-                                     .build())
-                             .build())
-                .build();
+                ChatRequest.builder()
+                        .messages(attemptMessages)
+                        .parameters(ChatRequestParameters.builder()
+                                            .responseFormat(ResponseFormat.builder()
+                                                                    .type(ResponseFormatType.JSON)
+                                                                    .build())
+                                            .build())
+                        .build();
 
         // Function to generate retry instructions
         Function<Throwable, String> retryInstructionsProvider = e -> """
-              Your previous response was not valid: %s
-              You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
-
-              IMPORTANT: Try solving a smaller piece of the problem if you're hitting token limits.
-
-              REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
-              Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
-              {
-                "tool_calls": [
-                  {
-                    "name": "$tool_name",
-                    "arguments": {
-                      "$arg1": "$value1",
-                      "$arg2": "$value2",
-                      ...
+                Your previous response was not valid: %s
+                You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
+                
+                IMPORTANT: Try solving a smaller piece of the problem if you're hitting token limits.
+                
+                REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
+                Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
+                {
+                  "tool_calls": [
+                    {
+                      "name": "$tool_name",
+                      "arguments": {
+                        "$arg1": "$value1",
+                        "$arg2": "$value2",
+                        ...
+                      }
                     }
-                  }
-                ]
-              }
-              """.stripIndent().formatted(e.getMessage());
+                  ]
+                }
+                """.stripIndent().formatted(e.getMessage());
 
         return emulateToolsCommon(model, initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
@@ -678,7 +683,7 @@ public class Coder {
                     && t.contains("top-level JSON");
         });
     }
-    
+
     private static boolean emulatedEditToolInstructionsPresent(List<ChatMessage> messages) {
         return emulatedToolInstructionsPresent(messages) && messages.stream().anyMatch(m -> {
             var t = Models.getText(m);
@@ -841,7 +846,8 @@ public class Coder {
                                             case JsonIntegerSchema __ -> "integer";
                                             case JsonNumberSchema __ -> "number";
                                             case JsonBooleanSchema __ -> "boolean";
-                                            default -> throw new IllegalArgumentException("Unsupported array item type: " + itemSchema);
+                                            default ->
+                                                    throw new IllegalArgumentException("Unsupported array item type: " + itemSchema);
                                         };
                                         type = "array of %s".formatted(itemType);
                                     }
@@ -862,75 +868,79 @@ public class Coder {
                                 assert description != null;
 
                                 return """
-                <parameter name="%s" type="%s" required="%s">
-                %s
-                </parameter>
-                """.stripIndent().formatted(
-                                          entry.getKey(),
-                                          type,
-                                          tool.parameters().required().contains(entry.getKey()),
-                                          description
-                                  );
+                                        <parameter name="%s" type="%s" required="%s">
+                                        %s
+                                        </parameter>
+                                        """.stripIndent().formatted(
+                                        entry.getKey(),
+                                        type,
+                                        tool.parameters().required().contains(entry.getKey()),
+                                        description
+                                );
                             })
                             .collect(Collectors.joining("\n"));
 
                     return """
-                      <tool name="%s">
-                      %s
-                      %s
-                      </tool>
-                      """.stripIndent().formatted(tool.name(),
-                                    tool.description(),
-                                    parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
+                            <tool name="%s">
+                            %s
+                            %s
+                            </tool>
+                            """.stripIndent().formatted(tool.name(),
+                                                        tool.description(),
+                                                        parametersInfo.isEmpty() ? "(No parameters)" : parametersInfo);
                 }).collect(Collectors.joining("\n"));
 
         // if you change this you probably also need to change emulatedToolInstructionsPresent
         return """
-          %d available tools:
-          %s
-
-          ONLY return a top-level JSON object with this structure:
-          {
-            "tool_calls": [
-              {
-                "name": "tool_name",
-                "arguments": {
-                  "arg1": "value1",
-                  "arg2": "value2"
+                %d available tools:
+                %s
+                
+                ONLY return a top-level JSON object with this structure:
+                {
+                  "tool_calls": [
+                    {
+                      "name": "tool_name",
+                      "arguments": {
+                        "arg1": "value1",
+                        "arg2": "value2"
+                      }
+                    }
+                  ]
                 }
-              }
-            ]
-          }
-
-          Include all the tool calls necessary to satisfy the request in a single array!
-          """.stripIndent().formatted(tools.size(), toolsDescription);
+                
+                Include all the tool calls necessary to satisfy the request in a single array!
+                """.stripIndent().formatted(tools.size(), toolsDescription);
     }
 
     /**
-     * Writes messages and (optionally) tool specs to the .brokk/llm.log for debugging.
+     * Writes history information to session-specific files.
      */
-    private void writeRequestToHistory(List<ChatMessage> messages, List<ToolSpecification> tools) {
-        String text = messages.stream()
-                .map(m -> m.type() + ": " + Models.getText(m))
-                .collect(Collectors.joining("\n"));
-
-        if (tools != null && !tools.isEmpty()) {
-            text += "\n\nTools:\n" + tools.stream()
-                    .map(t -> " - " + t.name() + ": " + t.description())
-                    .collect(Collectors.joining("\n"));
+    private void writeToHistory(StreamingChatLanguageModel model, ChatRequest request, StreamingResult result) {
+        if (sessionHistoryDir == null) {
+            // History directory creation failed in constructor, do nothing.
+            return;
         }
-
-        writeToHistory("Request", text);
-    }
-
-    private void writeToHistory(String header, String text) {
-        var formatted = "\n# %s at %s\n\n%s\n".formatted(header, LocalDateTime.now().format(dtf), text);
-
         try {
-            Files.createDirectories(historyFile.getParent());
-            Files.writeString(historyFile, formatted, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            var timestamp = LocalDateTime.now(); // timestamp finished, not started
+
+            // write the request and response in a single go
+            String lastUserMessageText = request.messages().stream()
+                    .filter(m -> m instanceof UserMessage)
+                    .reduce((first, second) -> second) // Get last UserMessage
+                    .map(Models::getText)
+                    .orElse("no-user-message");
+            String shortDesc = getShortDescription(lastUserMessageText);
+            String formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
+                                                                                 contextManager.getModels().nameOf(model),
+                                                                                 TaskEntry.formatMessages(request.messages()));
+            var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());
+            String fileTimestamp = timestamp.format(DateTimeFormatter.ofPattern("HH-mm-ss"));
+            var filePath = sessionHistoryDir.resolve(String.format("%s %s.log", fileTimestamp, shortDesc));
+            var options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE};
+            logger.debug("Writing history to new file: {}", filePath);
+            Files.writeString(filePath, formattedRequest + formattedResponse, options);
         } catch (IOException e) {
-            io.toolErrorRaw("Failed to write to history: " + e.getMessage());
+            logger.error("Failed to write LLM history file", e);
         }
     }
 
@@ -938,12 +948,11 @@ public class Coder {
      * The result of a streaming call. Usually you only need the final ChatResponse
      * unless cancelled or error is non-null.
      */
-    public record StreamingResult(
-            ChatResponse chatResponse,
-            ChatResponse originalResponse,
-            int outputTokenCount,
-            boolean cancelled,
-            Throwable error) {
+    public record StreamingResult(ChatResponse chatResponse,
+                                  ChatResponse originalResponse,
+                                  int outputTokenCount,
+                                  boolean cancelled,
+                                  Throwable error) {
         public StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
             this(chatResponse, chatResponse, -1, cancelled, error);
         }
@@ -956,6 +965,17 @@ public class Coder {
             // Must have either a chatResponse or an error/cancel
             assert cancelled || error != null || chatResponse != null;
             assert (originalResponse == null) == (chatResponse == null);
+        }
+
+        public String formatted() {
+            if (cancelled) {
+                return "Cancelled";
+            }
+            if (error != null) {
+                return "Error: " + error.getMessage();
+            }
+
+            return originalResponse.toString();
         }
     }
 }

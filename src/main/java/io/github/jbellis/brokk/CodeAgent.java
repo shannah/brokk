@@ -18,6 +18,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -87,7 +88,23 @@ public class CodeAgent {
                                 List<ChatMessage> messages,
                                 Map<ProjectFile, String> originalContents, // for undo
                                 String finalLlmOutput, // since quick edit doesn't change llm output directly
-                                StopDetails stopDetails) {}
+                                StopDetails stopDetails)
+    {
+        public SessionResult {
+            assert actionDescription != null;
+            assert messages != null;
+            assert originalContents != null;
+            assert finalLlmOutput != null;
+            assert stopDetails != null;
+        }
+
+        public static String getShortDescription(String description) {
+            var cleaned = description.replaceAll("[^a-zA-Z0-9\\s]", "");
+            return cleaned.split("\\s+").length <= 5
+                   ? cleaned
+                   : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, 5));
+        }
+    }
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
@@ -751,5 +768,4 @@ public class CodeAgent {
 
         return response.contains("BROKK_PROGRESSING");
     }
-
 }

@@ -3,8 +3,8 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageDeserializer;
 import dev.langchain4j.data.message.ChatMessageSerializer;
-import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -82,7 +82,19 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
               """.stripIndent().formatted(sequence, summary.indent(2).stripTrailing());
         }
 
-        var logText = log.stream()
+        var logText = formatMessages(log);
+        return """
+          <task sequence=%s>
+          %s
+          %s
+          </task>
+          """.stripIndent().formatted(sequence,
+                        description.indent(2).stripTrailing(),
+                        logText.indent(2).stripTrailing());
+    }
+
+    public static @NotNull String formatMessages(List<ChatMessage> messages) {
+        return messages.stream()
                   .map(message -> {
                       var text = Models.getText(message);
                       return """
@@ -92,14 +104,6 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
                       """.stripIndent().formatted(message.type().name().toLowerCase(), text.indent(2).stripTrailing());
                   })
                   .collect(Collectors.joining("\n"));
-          return """
-          <task sequence=%s>
-          %s
-          %s
-          </task>
-          """.stripIndent().formatted(sequence,
-                        description.indent(2).stripTrailing(),
-                        logText.indent(2).stripTrailing());
     }
 
     // --- Custom Serialization using Proxy Pattern ---

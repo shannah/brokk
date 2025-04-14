@@ -215,7 +215,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Coder getCoder(String taskDescription) {
-        return new Coder(this, taskDescription);
+        return new Coder(taskDescription, this);
     }
 
     @Override
@@ -1287,8 +1287,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // Use the final LLM output text from the result to create ParsedOutput
         // Ensure llmOutputText is not null, default to empty string if necessary
-        var nonNullLlmOutput = llmOutputText == null ? "" : llmOutputText;
-        var parsed = new ParsedOutput(nonNullLlmOutput, new ContextFragment.StringFragment(nonNullLlmOutput, "ai Response"));
+        var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
 
         logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopDetails());
 
