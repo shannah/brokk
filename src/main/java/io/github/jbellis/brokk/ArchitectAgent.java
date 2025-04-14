@@ -5,6 +5,7 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
@@ -28,6 +29,8 @@ public class ArchitectAgent {
     private final StreamingChatLanguageModel model;
     private final ToolRegistry toolRegistry;
     private final String goal;
+    // History of this agent's interactions
+    private final List<ChatMessage> architectMessages = new ArrayList<>();
 
     private TokenUsage totalUsage = new TokenUsage(0,0);
 
@@ -135,7 +138,7 @@ public class ArchitectAgent {
         logger.debug("BrokkAgent starting project with plan: {}", currentPlan);
 
         while (true) {
-            // 3) Build the prompt to let the LLM choose a tool
+            // 3) Build the prompt messages, including history
             var messages = buildPrompt();
 
             // 4) Figure out which tools are allowed in this step
@@ -172,12 +175,11 @@ public class ArchitectAgent {
             logger.debug("LLM response: {}", response);
 
             totalUsage = TokenUsage.sum(totalUsage, response.chatResponse().tokenUsage());
-            // parse the tool requests
+            // Add the request and response to message history
             var aiMessage = response.chatResponse().aiMessage();
-            if (!aiMessage.hasToolExecutionRequests()) {
-                logger.debug("No tool requests found in LLM response. Possibly just final text. We'll end plan.");
-                return;
-            }
+            architectMessages.add(messages.getLast());
+            architectMessages.add(aiMessage);
+
             var toolRequests = aiMessage.toolExecutionRequests();
             logger.debug("Tool requests are {}", toolRequests);
 
@@ -225,20 +227,25 @@ public class ArchitectAgent {
 
             // 7) Execute remaining tool calls in the desired order:
             // First updatePlan, then any other tools, then callSearchAgent, then callCodeAgent.
+            // First updatePlan, then any other tools, then callSearchAgent, then callCodeAgent.
             for (var req : updatePlanReqs) {
                 var toolResult = toolRegistry.executeTool(this, req);
+                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
             for (var req : otherReqs) {
                 var toolResult = toolRegistry.executeTool(req);
+                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
             for (var req : searchAgentReqs) {
                 var toolResult = toolRegistry.executeTool(this, req);
+                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
             for (var req : codeAgentReqs) {
                 var toolResult = toolRegistry.executeTool(this, req);
+                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
         }
@@ -285,6 +292,7 @@ public class ArchitectAgent {
         Please decide the next tool action(s) to make progress towards resolving the current task.
         """.formatted(topClassesText, goal, planText).stripIndent();
 
+        // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
                               Stream.of(new UserMessage(userMsg))).toList();
     }
