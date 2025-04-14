@@ -69,7 +69,7 @@ public interface ContextFragment extends Serializable {
     }
 
     sealed interface PathFragment extends ContextFragment
-            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment // Add GitHistoryFragment here
+            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment
     {
         BrokkFile file();
 
@@ -184,7 +184,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String toString() {
-            return "GitHistoryFragment('%s' @%s)".formatted(file, shortRevision());
+            return "GitFileFragment('%s' @%s)".formatted(file, shortRevision());
         }
     }
 

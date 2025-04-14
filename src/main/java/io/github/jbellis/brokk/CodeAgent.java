@@ -566,14 +566,14 @@ public class CodeAgent {
      */
     public static String runQuickSession(ContextManager cm,
                                          IConsoleIO io,
-                                           ProjectFile file,
-                                           String oldText,
-                                           String instructions)
-  {
-      var coder = cm.getCoder(cm.getModels().quickModel(), "Quick Edit: " + instructions);
-      var analyzer = cm.getAnalyzer();
+                                         ProjectFile file,
+                                         String oldText,
+                                         String instructions)
+    {
+        var coder = cm.getCoder(cm.getModels().quickModel(), "Quick Edit: " + instructions);
+        var analyzer = cm.getAnalyzer();
 
-      // Use up to 5 related classes as context
+        // Use up to 5 related classes as context
         var seeds = analyzer.getClassesInFile(file).stream()
                 .collect(Collectors.toMap(CodeUnit::fqName, cls -> 1.0));
         var relatedCode = Context.buildAutoContext(analyzer, seeds, Set.of(), 5);
@@ -605,48 +605,48 @@ public class CodeAgent {
         var result = coder.sendStreaming(messages, false);
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-              io.toolErrorRaw("Quick edit failed or was cancelled.");
-              // Add to history even if canceled, so we can potentially undo any partial changes
-              cm.addToHistory(new SessionResult("Quick Edit (canceled): " + file.getFileName(), pendingHistory, originalContents, "", new StopDetails(StopReason.INTERRUPTED)), false);
-              return fileContents; // Return original content
-          }
-          var responseText = result.chatResponse().aiMessage().text();
-          if (responseText == null || responseText.isBlank()) {
-              io.toolErrorRaw("LLM returned empty response for quick edit.");
-              // Add to history even if it failed
-              cm.addToHistory(new SessionResult("Quick Edit (failed): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.EMPTY_RESPONSE)), false);
-              return fileContents; // Return original content
-          }
-  
-          // Add the response to pending history
-          pendingHistory.add(new AiMessage(responseText));
-  
-          // Extract the new snippet
-          var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
-          if (newSnippet.isEmpty()) {
-              io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
-              // Add to history even if it failed
-               cm.addToHistory(new SessionResult("Quick Edit (failed parse): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.PARSE_ERROR)), false);
-              return fileContents; // Return original content
-          }
-  
-          String newStripped = newSnippet.stripLeading();
-          try {
-              EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
-              // Save to context history - pendingHistory already contains both the instruction and the response
-              cm.addToHistory(new SessionResult("Quick Edit: " + instructions, pendingHistory, originalContents, responseText, new StopDetails(StopReason.SUCCESS)), false);
-              return newStripped; // Return the new snippet that was applied
-          } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
-              io.toolErrorRaw("Failed to replace text: " + e.getMessage());
-              // Add to history even if it failed, include exception message as details
-               cm.addToHistory(new SessionResult("Quick Edit (failed match): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
-              return fileContents; // Return original content on failure
-          } catch (IOException e) {
-              io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
-              // Add to history even if it failed, include exception message as details
-              cm.addToHistory(new SessionResult("Quick Edit (failed write): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
-              return fileContents; // Return original content on failure
-          }
+            io.toolErrorRaw("Quick edit failed or was cancelled.");
+            // Add to history even if canceled, so we can potentially undo any partial changes
+            cm.addToHistory(new SessionResult("Quick Edit (canceled): " + file.getFileName(), pendingHistory, originalContents, "", new StopDetails(StopReason.INTERRUPTED)), false);
+            return fileContents; // Return original content
+        }
+        var responseText = result.chatResponse().aiMessage().text();
+        if (responseText == null || responseText.isBlank()) {
+            io.toolErrorRaw("LLM returned empty response for quick edit.");
+            // Add to history even if it failed
+            cm.addToHistory(new SessionResult("Quick Edit (failed): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.EMPTY_RESPONSE)), false);
+            return fileContents; // Return original content
+        }
+
+        // Add the response to pending history
+        pendingHistory.add(new AiMessage(responseText));
+
+        // Extract the new snippet
+        var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
+        if (newSnippet.isEmpty()) {
+            io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
+            // Add to history even if it failed
+            cm.addToHistory(new SessionResult("Quick Edit (failed parse): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.PARSE_ERROR)), false);
+            return fileContents; // Return original content
+        }
+
+        String newStripped = newSnippet.stripLeading();
+        try {
+            EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
+            // Save to context history - pendingHistory already contains both the instruction and the response
+            cm.addToHistory(new SessionResult("Quick Edit: " + instructions, pendingHistory, originalContents, responseText, new StopDetails(StopReason.SUCCESS)), false);
+            return newStripped; // Return the new snippet that was applied
+        } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
+            io.toolErrorRaw("Failed to replace text: " + e.getMessage());
+            // Add to history even if it failed, include exception message as details
+            cm.addToHistory(new SessionResult("Quick Edit (failed match): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+            return fileContents; // Return original content on failure
+        } catch (IOException e) {
+            io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
+            // Add to history even if it failed, include exception message as details
+            cm.addToHistory(new SessionResult("Quick Edit (failed write): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+            return fileContents; // Return original content on failure
+        }
     }
 
     /** Formats the history of build errors for the LLM retry prompt. */
