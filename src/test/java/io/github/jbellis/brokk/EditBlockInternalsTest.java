@@ -400,5 +400,60 @@ class EditBlockInternalsTest {
                 """;
 
         assertThrows(EditBlock.AmbiguousMatchException.class, () -> EditBlock.replaceMostSimilarChunk(original, "line1\n", "replaced\n"));
-    }
-}
+      }
+  
+      @Test
+      void testExtractCodeFromTripleBackticks() {
+          // Case 1: Language specifier present, code starts on next line
+          String input1 = """
+                  ```java
+                  System.out.println("Hello");
+                  ```
+                  """;
+          // Expect content starting *after* the first newline
+          assertEquals("System.out.println(\"Hello\");\n", EditBlock.extractCodeFromTripleBackticks(input1));
+  
+          // Case 2: No language specifier, code starts on next line
+          String input2 = """
+                  ```
+                  Just code here.
+                  ```
+                  """;
+          assertEquals("Just code here.\n", EditBlock.extractCodeFromTripleBackticks(input2));
+  
+          // Case 3: Empty content block (only newline between backticks)
+          String input3 = """
+                  ```
+  
+                  ```
+                  """;
+           // The newline between the opening and closing backticks is captured
+          assertEquals("\n", EditBlock.extractCodeFromTripleBackticks(input3));
+  
+          // Case 4: Content on the same line as opening backticks (should not match pattern)
+          String input4 = "```System.out.println(\"Inline\");```";
+          // No match because content isn't on the line *after* the opening ```
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks(input4));
+  
+          // Case 5: No backticks
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks("Just plain text."));
+  
+          // Case 6: Only opening backticks with language specifier and newline
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks("```java\nSome code"));
+  
+          // Case 7: Only closing backticks
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks("Some code\n```"));
+  
+          // Case 8: Empty string input
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks(""));
+  
+           // Case 9: Backticks with only language specifier and newline, nothing else
+          String input9 = "```python\n```";
+           // Empty content captured after the newline
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks(input9));
+  
+          // Case 10: Backticks with language specifier, but no newline after it (invalid)
+          String input10 = "```python```";
+          assertEquals("", EditBlock.extractCodeFromTripleBackticks(input10));
+      }
+  }

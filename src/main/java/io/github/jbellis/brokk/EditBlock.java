@@ -34,16 +34,19 @@ public class EditBlock {
 
     /**
      * Helper that returns the first code block found between triple backticks.
-     * Returns an empty string if none found.
+     * Skips any text on the same line as the opening backticks (like language specifiers)
+     * and starts capturing from the next line.
+     * Returns an empty string if no valid block is found.
      */
     static String extractCodeFromTripleBackticks(String text) {
-        // Pattern: ``` some code ```
+        // Pattern: ``` followed by optional non-newline chars, then newline, then capture until ```
         var matcher = Pattern.compile(
-                "```(.*?)```",
+                "```[^\\n]*\\n(.*?)```", // Skip first line, capture starting from the second
                 Pattern.DOTALL
         ).matcher(text);
 
         if (matcher.find()) {
+            // group(1) captures the content between the newline and the closing ```
             return matcher.group(1);
         }
         return "";
