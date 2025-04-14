@@ -1292,7 +1292,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var nonNullLlmOutput = llmOutputText == null ? "" : llmOutputText;
         var parsed = new ParsedOutput(nonNullLlmOutput, new ContextFragment.StringFragment(nonNullLlmOutput, "ai Response"));
 
-        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopReason());
+        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopDetails());
 
         // Push the new context state with the added history entry
         TaskEntry newEntry = topContext().createTaskEntry(messages);

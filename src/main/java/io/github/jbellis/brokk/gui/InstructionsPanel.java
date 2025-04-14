@@ -475,7 +475,7 @@ public class InstructionsPanel extends JPanel {
                                 Map.of(), // No original contents for Ask
                                 "Ask: " + question,
                                 aiResponse.text(),
-                                CodeAgent.StopReason.SUCCESS);
+                                new CodeAgent.StopDetails(CodeAgent.StopReason.SUCCESS));
                         contextManager.addToHistory(sessionResult, false);
                     } else {
                         chrome.systemOutput("Ask command completed with an empty response.");

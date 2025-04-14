@@ -54,6 +54,25 @@ public class CodeAgent {
         READ_ONLY_EDIT
     }
 
+    public record StopDetails(StopReason reason, String details) {
+        public StopDetails {
+            assert reason != null;
+            assert details != null;
+        }
+
+        public StopDetails(StopReason reason) {
+            this(reason, "");
+        }
+
+        @Override
+        public String toString() {
+            if (details.isEmpty()) {
+                return reason.toString();
+            }
+            return "%s:\n%s".formatted(reason.toString(), details);
+        }
+    }
+
     /**
      * Represents the outcome of a CodeAgent session, containing all necessary information
      * to update the context history.
@@ -62,9 +81,9 @@ public class CodeAgent {
      * @param originalContents A map of project files to their original content before edits.
      * @param actionDescription A description of the user's goal for the session.
      * @param finalLlmOutput The final raw text output from the LLM.
-     * @param stopReason The reason the session concluded.
+     * @param stopDetails The reason the session concluded.
      */
-    public record SessionResult(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String actionDescription, String finalLlmOutput, StopReason stopReason) {}
+    public record SessionResult(List<ChatMessage> messages, Map<ProjectFile, String> originalContents, String actionDescription, String finalLlmOutput, StopDetails stopDetails) {}
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
@@ -101,11 +120,11 @@ public class CodeAgent {
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
 
         io.systemOutput("Code Agent started: `%s`".formatted(userInput));
-        StopReason stopReason;
+        StopDetails stopDetails;
 
         while (true) {
-            stopReason = checkInterruption(io);
-            if (stopReason != null) break;
+            stopDetails = checkInterruption(io);
+            if (stopDetails != null) break;
 
             // Prepare and send request to LLM
             var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages,
@@ -113,8 +132,8 @@ public class CodeAgent {
             allMessages.add(nextRequest);
 
             var streamingResult = coder.sendStreaming(model, allMessages, true);
-            stopReason = checkLlmErrorOrEmpty(streamingResult, io);
-            if (stopReason != null) break;
+            stopDetails = checkLlmErrorOrEmpty(streamingResult, io);
+            if (stopDetails != null) break;
 
             // Append request/response to session history
             var llmResponse = streamingResult.chatResponse();
@@ -137,7 +156,7 @@ public class CodeAgent {
                     // No blocks parsed successfully
                     parseFailures++;
                     if (parseFailures > MAX_PARSE_ATTEMPTS) {
-                        stopReason = StopReason.PARSE_ERROR;
+                        stopDetails = new StopDetails(StopReason.PARSE_ERROR);
                         io.systemOutput("Parse error limit reached; ending session");
                         break;
                     }
@@ -166,17 +185,21 @@ public class CodeAgent {
             // If no blocks are pending and we haven't applied anything yet, assume we're done
             if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
                 io.systemOutput("No edits found in response; ending session");
-                stopReason = StopReason.SUCCESS;
+                stopDetails = new StopDetails(StopReason.SUCCESS);
                 break;
             }
 
             // Check for interruption again before applying
-            stopReason = checkInterruption(io);
-            if (stopReason != null) break;
+            stopDetails = checkInterruption(io);
+            if (stopDetails != null) break;
 
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-            stopReason = autoAddReferencedFiles(blocks, contextManager, io, rejectReadonlyEdits);
-            if (stopReason != null) break;
+            var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, io, rejectReadonlyEdits);
+            if (!readOnlyFiles.isEmpty()) {
+                var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
+                stopDetails = new StopDetails(StopReason.READ_ONLY_EDIT, filenames);
+                break;
+            }
 
             // Apply all accumulated blocks
             var editResult = EditBlock.applyEditBlocks(contextManager, io, blocks);
@@ -201,7 +224,13 @@ public class CodeAgent {
                 if (!parseRetryPrompt.isEmpty()) {
                     if (applyFailures >= MAX_PARSE_ATTEMPTS) {
                         io.systemOutput("Parse/Apply retry limit reached; ending session");
-                        stopReason = StopReason.APPLY_ERROR;
+                        // Capture filenames from the failed blocks for details
+                        var failedFilenames = editResult.failedBlocks().stream()
+                                .map(fb -> fb.block().filename())
+                                .filter(Objects::nonNull) // Ensure filename is not null
+                                .distinct()
+                                .collect(Collectors.joining(","));
+                        stopDetails = new StopDetails(StopReason.APPLY_ERROR, failedFilenames);
                         break;
                     }
                     io.systemOutput("Attempting to fix apply/match errors...");
@@ -218,14 +247,15 @@ public class CodeAgent {
             blocksAppliedWithoutBuild = 0; // reset after each build attempt
 
             if (buildSuccess) {
-                stopReason = StopReason.SUCCESS;
+                stopDetails = new StopDetails(StopReason.SUCCESS);
                 break;
             }
 
             // Build failed => check if it's improving or floundering
             if (!buildErrors.isEmpty() && !isBuildProgressing(coder, buildErrors)) {
                 io.systemOutput("Build errors are not improving; ending session");
-                stopReason = StopReason.BUILD_ERROR;
+                // Use the last build error message as details
+                stopDetails = new StopDetails(StopReason.BUILD_ERROR, buildErrors.getLast());
                 break;
             }
 
@@ -234,79 +264,82 @@ public class CodeAgent {
         }
 
         // Conclude session
-        assert stopReason != null;
+        assert stopDetails != null; // Ensure a stop reason was set before exiting the loop
         String finalLlmOutput = sessionMessages.isEmpty() ? "" : Models.getText(sessionMessages.getLast());
-        boolean completedSuccessfully = (stopReason == StopReason.SUCCESS);
+        boolean completedSuccessfully = (stopDetails.reason() == StopReason.SUCCESS);
         String finalActionDescription = completedSuccessfully
                 ? userInput
-                : userInput + " [" + stopReason.name() + "]";
+                : userInput + " [" + stopDetails.reason().name() + "]";
 
         var sessionResult = new SessionResult(
                 List.copyOf(sessionMessages),
                 Map.copyOf(originalContents),
                 finalActionDescription,
                 finalLlmOutput,
-                stopReason
+                stopDetails // Use the StopDetails object
         );
 
-        if (completedSuccessfully)
-        {
+        if (completedSuccessfully) {
             io.systemOutput("Code Agent finished!");
         }
         return sessionResult;
     }
 
     /**
-     * Checks if the current thread is interrupted. Returns StopReason.INTERRUPTED if so,
-     * or null if everything is fine.
-     */
-    private static StopReason checkInterruption(IConsoleIO io) {
-        if (Thread.currentThread().isInterrupted()) {
-            io.systemOutput("Session interrupted");
-            return StopReason.INTERRUPTED;
+     * Checks if the current thread is interrupted. Returns StopDetails(StopReason.INTERRUPTED) if so,
+       * or null if everything is fine.
+       */
+      private static StopDetails checkInterruption(IConsoleIO io) {
+          if (Thread.currentThread().isInterrupted()) {
+              io.systemOutput("Session interrupted");
+              return new StopDetails(StopReason.INTERRUPTED);
+          }
+          return null;
+      }
+  
+      /**
+       * Checks if a streaming result is empty or errored. If so, logs and returns StopDetails;
+       * otherwise returns null to proceed.
+       */
+      private static StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
+          if (streamingResult.cancelled()) {
+              io.systemOutput("Session interrupted");
+              return new StopDetails(StopReason.INTERRUPTED);
+          }
+          if (streamingResult.error() != null) {
+              io.systemOutput("LLM returned an error even after retries. Ending session");
+              return new StopDetails(StopReason.LLM_ERROR);
+          }
+          var llmResponse = streamingResult.chatResponse();
+          if (llmResponse == null) {
+              io.systemOutput("Empty LLM response even after retries. Ending session.");
+              return new StopDetails(StopReason.EMPTY_RESPONSE);
+          }
+          var text = llmResponse.aiMessage().text();
+          if (text.isBlank()) {
+              io.systemOutput("Blank LLM response even after retries. Ending session.");
+              return new StopDetails(StopReason.EMPTY_RESPONSE);
         }
         return null;
     }
 
     /**
-     * Checks if a streaming result is empty or errored. If so, logs and returns a StopReason;
-     * otherwise returns null to proceed.
-     */
-    private static StopReason checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
-        if (streamingResult.cancelled()) {
-            io.systemOutput("Session interrupted");
-            return StopReason.INTERRUPTED;
-        }
-        if (streamingResult.error() != null) {
-            io.systemOutput("LLM returned an error even after retries. Ending session");
-            return StopReason.LLM_ERROR;
-        }
-        var llmResponse = streamingResult.chatResponse();
-        if (llmResponse == null) {
-            io.systemOutput("Empty LLM response even after retries. Ending session.");
-            return StopReason.EMPTY_RESPONSE;
-        }
-        var text = llmResponse.aiMessage().text();
-        if (text.isBlank()) {
-            io.systemOutput("Blank LLM response even after retries. Ending session.");
-            return StopReason.EMPTY_RESPONSE;
-        }
-        return null;
-    }
-
-    /**
-     * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
-     * Returns READ_ONLY_EDIT if the user tries to edit read-only files, otherwise null.
-     */
-    private static StopReason autoAddReferencedFiles(
-            List<EditBlock.SearchReplaceBlock> blocks,
-            ContextManager contextManager,
-            IConsoleIO io,
-            boolean rejectReadonlyEdits
-    ) {
-        var coder = contextManager.getCoder();
-        var filesToAdd = blocks.stream()
-                .map(EditBlock.SearchReplaceBlock::filename)
+       * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
+       * If `rejectReadonlyEdits` is true, it returns a list of read-only files attempted to be edited.
+       * Otherwise, it returns an empty list.
+       *
+       * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
+       *         or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
+       */
+      private static List<ProjectFile> autoAddReferencedFiles(
+              List<EditBlock.SearchReplaceBlock> blocks,
+              ContextManager contextManager,
+              IConsoleIO io,
+              boolean rejectReadonlyEdits
+      ) {
+          var coder = contextManager.getCoder();
+          var filesToAdd = blocks.stream()
+                  .map(EditBlock.SearchReplaceBlock::filename)
                 .filter(Objects::nonNull)
                 .distinct()
                 .map(coder.contextManager::toFile)
@@ -318,18 +351,20 @@ public class CodeAgent {
                     .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
                     .toList();
             if (!readOnlyFiles.isEmpty()) {
-                io.systemOutput(
-                        "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
-                                .formatted(readOnlyFiles));
-                return StopReason.READ_ONLY_EDIT;
-            }
-            io.systemOutput("Editing additional files " + filesToAdd);
-            coder.contextManager.editFiles(filesToAdd);
-        }
-        return null;
-    }
-
-    /**
+                  io.systemOutput(
+                          "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
+                                  .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
+                  // Return the list of read-only files that caused the issue
+                  return readOnlyFiles;
+              }
+              io.systemOutput("Editing additional files " + filesToAdd);
+              coder.contextManager.editFiles(filesToAdd);
+          }
+          // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
+          return List.of();
+      }
+  
+      /**
      * Runs the build verification command (once available) and appends any build error text to buildErrors list.
      * Returns true if the build/verification was successful or skipped, false otherwise.
      */
@@ -550,48 +585,48 @@ public class CodeAgent {
         var result = coder.sendStreaming(cm.getModels().quickModel(), messages, false);
 
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-            io.toolErrorRaw("Quick edit failed or was cancelled.");
-            // Add to history even if canceled, so we can potentially undo any partial changes
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", StopReason.INTERRUPTED), false);
-            return fileContents; // Return original content
-        }
-        var responseText = result.chatResponse().aiMessage().text();
-        if (responseText == null || responseText.isBlank()) {
-            io.toolErrorRaw("LLM returned empty response for quick edit.");
-            // Add to history even if it failed
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, StopReason.EMPTY_RESPONSE), false);
-            return fileContents; // Return original content
-        }
-
-        // Add the response to pending history
-        pendingHistory.add(new AiMessage(responseText));
-
-        // Extract the new snippet
-        var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
-        if (newSnippet.isEmpty()) {
-            io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
-            // Add to history even if it failed
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, StopReason.PARSE_ERROR), false);
-            return fileContents; // Return original content
-        }
-
-        String newStripped = newSnippet.stripLeading();
-        try {
-            EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
-            // Save to context history - pendingHistory already contains both the instruction and the response
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, StopReason.SUCCESS), false);
-            return newStripped; // Return the new snippet that was applied
-        } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
-            io.toolErrorRaw("Failed to replace text: " + e.getMessage());
-            // Add to history even if it failed
-             cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, StopReason.APPLY_ERROR), false);
-            return fileContents; // Return original content on failure
-        } catch (IOException e) {
-            io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
-            // Add to history even if it failed
-            cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, StopReason.APPLY_ERROR), false);
-            return fileContents; // Return original content on failure
-        }
+              io.toolErrorRaw("Quick edit failed or was cancelled.");
+              // Add to history even if canceled, so we can potentially undo any partial changes
+              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (canceled): " + file.getFileName(), "", new StopDetails(StopReason.INTERRUPTED)), false);
+              return fileContents; // Return original content
+          }
+          var responseText = result.chatResponse().aiMessage().text();
+          if (responseText == null || responseText.isBlank()) {
+              io.toolErrorRaw("LLM returned empty response for quick edit.");
+              // Add to history even if it failed
+              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed): " + file.getFileName(), responseText, new StopDetails(StopReason.EMPTY_RESPONSE)), false);
+              return fileContents; // Return original content
+          }
+  
+          // Add the response to pending history
+          pendingHistory.add(new AiMessage(responseText));
+  
+          // Extract the new snippet
+          var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
+          if (newSnippet.isEmpty()) {
+              io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
+              // Add to history even if it failed
+               cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed parse): " + file.getFileName(), responseText, new StopDetails(StopReason.PARSE_ERROR)), false);
+              return fileContents; // Return original content
+          }
+  
+          String newStripped = newSnippet.stripLeading();
+          try {
+              EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
+              // Save to context history - pendingHistory already contains both the instruction and the response
+              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit: " + instructions, responseText, new StopDetails(StopReason.SUCCESS)), false);
+              return newStripped; // Return the new snippet that was applied
+          } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
+              io.toolErrorRaw("Failed to replace text: " + e.getMessage());
+              // Add to history even if it failed, include exception message as details
+               cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed match): " + file.getFileName(), responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+              return fileContents; // Return original content on failure
+          } catch (IOException e) {
+              io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
+              // Add to history even if it failed, include exception message as details
+              cm.addToHistory(new SessionResult(pendingHistory, originalContents, "Quick Edit (failed write): " + file.getFileName(), responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+              return fileContents; // Return original content on failure
+          }
     }
 
     /** Formats the history of build errors for the LLM retry prompt. */

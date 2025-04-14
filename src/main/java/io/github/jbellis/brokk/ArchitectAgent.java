@@ -82,10 +82,10 @@ public class ArchitectAgent {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
         var result = CodeAgent.runSession(contextManager, model, instructions, false);
         contextManager.addToHistory(result, true);
-        var stopReason = result.stopReason();
+        var stopDetails = result.stopDetails();
         String summary = """
-        CodeAgent concluded with stop reason: "%s."
-        """.formatted(stopReason).stripIndent();
+        CodeAgent concluded: %s
+        """.formatted(stopDetails).stripIndent();
         logger.debug("Summary for callCodeAgent: {}", summary);
         return summary;
     }
