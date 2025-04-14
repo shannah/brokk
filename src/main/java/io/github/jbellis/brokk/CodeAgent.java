@@ -625,21 +625,14 @@ public class CodeAgent {
         boolean singular = (count == 1);
         var failedText = failedBlocks.stream()
                 .map(f -> {
-                    var fname = (f.block().filename() == null ? "(none)" : f.block().filename());
                     return """
-                    ## Failed to match in file `%s` (Reason: %s)
-                    ```
-                    <<<<<<< SEARCH
-                    %s
-                    =======
-                    %s
-                    >>>>>>> REPLACE
+                    ## Failed to match (%s)
                     ```
                     %s
-                    """.stripIndent().formatted(fname,
-                                                f.reason(),
-                                                f.block().beforeText(),
-                                                f.block().afterText(),
+                    ```
+                    %s
+                    """.stripIndent().formatted(f.reason(),
+                                                f.block().toString(),
                                                 f.commentary());
                 })
                 .collect(Collectors.joining("\n\n"));
