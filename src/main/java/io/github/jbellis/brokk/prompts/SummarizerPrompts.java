@@ -58,7 +58,7 @@ public class SummarizerPrompts {
         <text>
         %s
         </text>
-        """.stripIndent().formatted(actionTxt, wordBudget);
+        """.stripIndent().formatted(wordBudget, actionTxt);
     }
 
     public String systemIntro() {
