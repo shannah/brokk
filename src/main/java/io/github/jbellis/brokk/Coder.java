@@ -129,9 +129,6 @@ public class Coder {
             }
         };
 
-        // Write request details to history
-        var tools = request.parameters().toolSpecifications();
-
         if (Thread.currentThread().isInterrupted()) {
             return new StreamingResult(null, true, null);
         }
@@ -140,18 +137,8 @@ public class Coder {
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
-                        boolean isEditToolCall = tools != null && tools.stream().anyMatch(tool ->
-                                                                                                  "replaceFile".equals(tool.name()) || "replaceLines".equals(tool.name()));
-                        boolean isEmulatedEditToolCall = contextManager.getModels().requiresEmulatedTools(model) && emulatedEditToolInstructionsPresent(request.messages());
-                        if (isEditToolCall || isEmulatedEditToolCall) {
-                            io.showOutputSpinner("Editing files ...");
-                            if (!isEmulatedEditToolCall) {
-                                io.llmOutput(token);
-                            }
-                        } else {
-                            io.llmOutput(token);
-                            io.hideOutputSpinner();
-                        }
+                        io.llmOutput(token);
+                        io.hideOutputSpinner();
                     }
                 });
             }
@@ -504,12 +491,13 @@ public class Coder {
         var pendingTerms = new ArrayList<ToolExecutionResultMessage>();
         for (var msg : originalMessages) {
             if (msg instanceof ToolExecutionResultMessage term) {
-                // Collect consecutive tool results
+                // Collect consecutive tool results to group together
                 pendingTerms.add(term);
                 continue;
             }
-            // Current message is not a tool result. Check if we have pending results.
+
             if (!pendingTerms.isEmpty()) {
+                // Current message is not a tool result. Check if we have pending results.
                 String formattedResults = formatToolResults(pendingTerms);
                 if (msg instanceof UserMessage userMessage) {
                     // Combine pending results with this user message
@@ -525,10 +513,18 @@ public class Coder {
                 }
                 // Clear pending results as they've been handled
                 pendingTerms.clear();
-            } else {
-                // No pending tool results, just add the current message
-                processedMessages.add(msg);
+                continue;
             }
+
+            if (msg instanceof AiMessage) {
+                // pull the tool requests into plaintext, OpenAi is fine with it but it confuses Anthropic and Gemini
+                // to see tool requests in the history if there are no tools defined for the current request
+                processedMessages.add(new AiMessage(Models.getRepr(msg)));
+                continue;
+            }
+
+            // else just add the original message
+            processedMessages.add(msg);
         }
 
         // Handle any trailing tool results - this is invalid.

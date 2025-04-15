@@ -350,7 +350,7 @@ public final class Models {
                 var toolText = am.toolExecutionRequests().stream()
                         .map(tr -> "%s(%s)".formatted(tr.name(), tr.arguments()))
                         .collect(Collectors.joining("\n"));
-                yield "%s\n%s".formatted(raw, toolText);
+                yield "%s\nTool calls:\n%s".formatted(raw, toolText);
             }
             case UserMessage um -> {
                 yield um.contents().stream()
