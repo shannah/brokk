@@ -6,6 +6,7 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * Manages dynamically loaded models via LiteLLM.
@@ -325,7 +327,7 @@ public final class Models {
         return switch (message) {
             case SystemMessage sm -> sm.text();
             case AiMessage am -> am.text();
-            case UserMessage um -> um.singleText();
+            case UserMessage um -> um.contents().stream().filter(c -> c instanceof TextContent).map(c -> ((TextContent) c).text()).collect(Collectors.joining("\n"));
             case ToolExecutionResultMessage tr -> "%s: %s".formatted(tr.toolName(), tr.text());
             default -> throw new UnsupportedOperationException(message.getClass().toString());
         };

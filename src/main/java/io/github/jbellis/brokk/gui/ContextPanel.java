@@ -242,26 +242,26 @@ public class ContextPanel extends JPanel {
                     final ContextFragment fragmentToShow = selected;
 
                     if (fragmentToShow instanceof ContextFragment.PlanFragment) {
-    JMenuItem editPlanItem = new JMenuItem("Edit Plan");
-    editPlanItem.addActionListener(evt -> {
-        var currentPlan = contextManager.selectedContext().getPlan();
-        var dialog = new PlanDialog(chrome, contextManager, currentPlan);
-        dialog.setVisible(true);
-    });
-    contextMenu.add(editPlanItem);
-    contextMenu.addSeparator();
-    JMenuItem copyItem = new JMenuItem("Copy");
-    copyItem.addActionListener(evt -> {
-        var selectedList = java.util.List.of(fragmentToShow);
-        chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, selectedList);
-    });
-    contextMenu.add(copyItem);
-    JMenuItem dropItem = new JMenuItem("Drop");
-    dropItem.addActionListener(evt -> {
-        contextManager.setPlan(io.github.jbellis.brokk.ContextFragment.PlanFragment.EMPTY);
-    });
-    contextMenu.add(dropItem);
-} else if (row >= 0) {
+                        JMenuItem editPlanItem = new JMenuItem("Edit Plan");
+                        editPlanItem.addActionListener(evt -> {
+                            var currentPlan = contextManager.selectedContext().getPlan();
+                            var dialog = new PlanDialog(chrome, contextManager, currentPlan);
+                            dialog.setVisible(true);
+                        });
+                        contextMenu.add(editPlanItem);
+                        contextMenu.addSeparator();
+                        JMenuItem copyItem = new JMenuItem("Copy");
+                        copyItem.addActionListener(evt -> {
+                            var selectedList = java.util.List.of(fragmentToShow);
+                            chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, selectedList);
+                        });
+                        contextMenu.add(copyItem);
+                        JMenuItem dropItem = new JMenuItem("Drop");
+                        dropItem.addActionListener(evt -> {
+                            contextManager.setPlan(io.github.jbellis.brokk.ContextFragment.PlanFragment.EMPTY);
+                        });
+                        contextMenu.add(dropItem);
+                    } else if (row >= 0) {
                         // Show Contents as the first action
                         JMenuItem showContentsItem = new JMenuItem("Show Contents");
                         // Use the effectively final variable in the lambda
@@ -336,21 +336,21 @@ public class ContextPanel extends JPanel {
 
                             JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
                             editAllRefsItem.addActionListener(e1 -> {
-                            var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, selectedFragments);
-                        });
+                                var selectedFragments = getSelectedFragments();
+                                chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, selectedFragments);
+                            });
 
-                        JMenuItem readAllRefsItem = new JMenuItem("Read All References");
-                        readAllRefsItem.addActionListener(e1 -> {
-                            var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = performContextActionAsync(ContextAction.READ, selectedFragments);
-                        });
+                            JMenuItem readAllRefsItem = new JMenuItem("Read All References");
+                            readAllRefsItem.addActionListener(e1 -> {
+                                var selectedFragments = getSelectedFragments();
+                                chrome.currentUserTask = performContextActionAsync(ContextAction.READ, selectedFragments);
+                            });
 
-                        JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
-                        summarizeAllRefsItem.addActionListener(e1 -> {
-                            var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
-                        });
+                            JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
+                            summarizeAllRefsItem.addActionListener(e1 -> {
+                                var selectedFragments = getSelectedFragments();
+                                chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
+                            });
 
                             contextMenu.add(editAllRefsItem);
                             contextMenu.add(readAllRefsItem);
@@ -375,11 +375,11 @@ public class ContextPanel extends JPanel {
 
                         if (!contextManager.selectedContext().equals(contextManager.topContext())) {
                             dropSelectionItem.setEnabled(false);
-                    } else if (contextTable.getSelectedRowCount() == 1 && fragmentToShow instanceof ContextFragment.AutoContext) {
-                        // Check if AutoContext is enabled using the fragmentToShow variable
-                        dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
-                    }
-                } else {
+                        } else if (contextTable.getSelectedRowCount() == 1 && fragmentToShow instanceof ContextFragment.AutoContext) {
+                            // Check if AutoContext is enabled using the fragmentToShow variable
+                            dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
+                        }
+                    } else {
                         // No row selected - show the popup with all options
                         tablePopupMenu.show(contextTable, e.getX(), e.getY());
                     }
@@ -397,11 +397,11 @@ public class ContextPanel extends JPanel {
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         // Add Ctrl+V shortcut for paste in the table
-            contextTable.registerKeyboardAction(
-                    e -> chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of()),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
-                    JComponent.WHEN_FOCUSED
-            );
+        contextTable.registerKeyboardAction(
+                e -> chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of()),
+                KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+                JComponent.WHEN_FOCUSED
+        );
 
         // Setup right-click popup menu for when no rows are selected
         tablePopupMenu = new JPopupMenu();
@@ -410,65 +410,65 @@ public class ContextPanel extends JPanel {
         JMenu addMenu = new JMenu("Add");
 
         JMenuItem editMenuItem = new JMenuItem("Edit Files");
-            editMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, List.<ContextFragment>of());
-            });
-            // Only add Edit Files when git is present
-            if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
+        editMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, List.<ContextFragment>of());
+        });
+        // Only add Edit Files when git is present
+        if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
             addMenu.add(editMenuItem);
         }
 
         JMenuItem readMenuItem = new JMenuItem("Read Files");
-            readMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = performContextActionAsync(ContextAction.READ, List.<ContextFragment>of());
-            });
-            addMenu.add(readMenuItem);
+        readMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = performContextActionAsync(ContextAction.READ, List.<ContextFragment>of());
+        });
+        addMenu.add(readMenuItem);
 
-            JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
-            summarizeMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, List.<ContextFragment>of());
-            });
-            addMenu.add(summarizeMenuItem);
+        JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
+        summarizeMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, List.<ContextFragment>of());
+        });
+        addMenu.add(summarizeMenuItem);
 
         JMenuItem symbolMenuItem = new JMenuItem("Symbol Usage");
-            symbolMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = findSymbolUsageAsync();
-            });
-            addMenu.add(symbolMenuItem);
+        symbolMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = findSymbolUsageAsync();
+        });
+        addMenu.add(symbolMenuItem);
 
         JMenuItem callersMenuItem = new JMenuItem("Callers");
-            callersMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = findMethodCallersAsync();
-            });
-            addMenu.add(callersMenuItem);
+        callersMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = findMethodCallersAsync();
+        });
+        addMenu.add(callersMenuItem);
 
         JMenuItem calleesMenuItem = new JMenuItem("Callees");
-            calleesMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = findMethodCalleesAsync();
-            });
-            addMenu.add(calleesMenuItem);
+        calleesMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = findMethodCalleesAsync();
+        });
+        addMenu.add(calleesMenuItem);
 
         tablePopupMenu.add(addMenu);
         tablePopupMenu.addSeparator();
 
         JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
-            dropAllMenuItem.addActionListener(e -> {
+        dropAllMenuItem.addActionListener(e -> {
 
-                chrome.currentUserTask = performContextActionAsync(ContextAction.DROP, List.<ContextFragment>of());
-            });
-            tablePopupMenu.add(dropAllMenuItem);
+            chrome.currentUserTask = performContextActionAsync(ContextAction.DROP, List.<ContextFragment>of());
+        });
+        tablePopupMenu.add(dropAllMenuItem);
 
-            JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
-            copyAllMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, List.<ContextFragment>of());
-            });
-            tablePopupMenu.add(copyAllMenuItem);
+        JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
+        copyAllMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, List.<ContextFragment>of());
+        });
+        tablePopupMenu.add(copyAllMenuItem);
 
-            JMenuItem pasteMenuItem = new JMenuItem("Paste");
-            pasteMenuItem.addActionListener(e -> {
-                chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of());
-            });
-            tablePopupMenu.add(pasteMenuItem);
+        JMenuItem pasteMenuItem = new JMenuItem("Paste");
+        pasteMenuItem.addActionListener(e -> {
+            chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of());
+        });
+        tablePopupMenu.add(pasteMenuItem);
 
         // Register the popup menu with the theme manager
         if (chrome.themeManager != null) {
@@ -758,8 +758,7 @@ public class ContextPanel extends JPanel {
     /**
      * Shows the symbol selection dialog and adds usage information for the selected symbol.
      */
-    public Future<?> findSymbolUsageAsync()
-    {
+    public Future<?> findSymbolUsageAsync() {
         // Use contextManager's task submission
         return contextManager.submitContextTask("Find Symbol Usage", () -> {
             try {
@@ -785,8 +784,7 @@ public class ContextPanel extends JPanel {
     /**
      * Shows the method selection dialog and adds callers information for the selected method.
      */
-    public Future<?> findMethodCallersAsync()
-    {
+    public Future<?> findMethodCallersAsync() {
         // Use contextManager's task submission
         return contextManager.submitContextTask("Find Method Callers", () -> {
             try {
@@ -813,8 +811,7 @@ public class ContextPanel extends JPanel {
     /**
      * Shows the call graph dialog and adds callees information for the selected method.
      */
-    public Future<?> findMethodCalleesAsync()
-    {
+    public Future<?> findMethodCalleesAsync() {
         // Use contextManager's task submission
         return contextManager.submitContextTask("Find Method Callees", () -> {
             try {
@@ -825,7 +822,7 @@ public class ContextPanel extends JPanel {
                 }
 
                 var dialog = showCallGraphDialog("Select Method for Callees", false);
-                 if (dialog == null || !dialog.isConfirmed() || dialog.getSelectedMethod() == null || dialog.getSelectedMethod().isBlank()) {
+                if (dialog == null || !dialog.isConfirmed() || dialog.getSelectedMethod() == null || dialog.getSelectedMethod().isBlank()) {
                     chrome.systemOutput("No method selected."); // Use chrome
                 } else {
                     // Use contextManager
@@ -841,8 +838,7 @@ public class ContextPanel extends JPanel {
     /**
      * Show the symbol selection dialog with a type filter
      */
-    private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter)
-    {
+    private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter) {
         var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
         var dialogRef = new AtomicReference<SymbolSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
@@ -866,8 +862,7 @@ public class ContextPanel extends JPanel {
     /**
      * Show the call graph dialog for configuring method and depth
      */
-    private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph)
-    {
+    private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph) {
         var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
         var dialogRef = new AtomicReference<CallGraphDialog>();
         SwingUtil.runOnEDT(() -> {
@@ -1004,64 +999,91 @@ public class ContextPanel extends JPanel {
     }
 
     private void doPasteAction() {
-        // Get text from clipboard
-        String clipboardText;
-        try {
-            var clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-            var contents = clipboard.getContents(null);
-            if (contents == null || !contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
-                chrome.toolErrorRaw("No text on clipboard"); // Qualify chrome
-                return;
-            }
-            clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
-            if (clipboardText.isBlank()) {
-                chrome.toolErrorRaw("Clipboard is empty"); // Qualify chrome
-                return;
-            }
-        } catch (Exception e) {
-            chrome.toolErrorRaw("Failed to read clipboard: " + e.getMessage()); // Qualify chrome
+        var clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        var contents = clipboard.getContents(null);
+        if (contents == null) {
+            chrome.toolErrorRaw("Clipboard is empty or unavailable");
             return;
         }
 
-        // Process the clipboard text
-        clipboardText = clipboardText.trim();
-        String content = clipboardText;
-        boolean wasUrl = false;
-
-        if (isUrl(clipboardText)) {
+        // Prioritize Image Flavor
+        if (contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.imageFlavor)) {
             try {
-                chrome.systemOutput("Fetching " + clipboardText); // Qualify chrome
-                // Use the static method from ContextTools
-                content = io.github.jbellis.brokk.tools.ContextTools.fetchUrlContent(new URI(clipboardText));
-                // Use the standard HTML converter
-                content = HtmlToMarkdown.maybeConvertToMarkdown(content);
-                wasUrl = true;
-                chrome.actionComplete(); // Qualify chrome
-            } catch (IOException | URISyntaxException e) { // Catch URISyntaxException too
-                chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage()); // Qualify chrome
-                // Continue with the URL as text if fetch fails
-                content = clipboardText; // Reset content to original URL string on error
+                var image = (java.awt.Image) contents.getTransferData(java.awt.datatransfer.DataFlavor.imageFlavor);
+                // Call ContextManager to handle the image paste
+                contextManager.addPastedImageFragment(image); // Qualify contextManager
+                chrome.systemOutput("Pasted image added to context"); // Qualify chrome
+            } catch (Exception e) {
+                logger.error("Failed to get image data from clipboard", e); // Qualify logger
+                if (e.getMessage().contains("INCR")) {
+                    chrome.toolErrorRaw("Unable to paste image data from Windows to Brokk running under WSL. This is a limitation of WSL. You can write the image to a file and read it that way instead.");
+                } else {
+                    chrome.toolErrorRaw("Unexpected error pasting image data; see debug log for details");
+                }
             }
-        }
-
-        // Try to parse as stacktrace
-        var stacktrace = StackTrace.parse(content);
-        if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) { // Qualify contextManager
             return;
         }
 
-        // Add as string fragment (possibly converted from HTML)
-        Future<String> summaryFuture = contextManager.submitSummarizeTaskForPaste(content); // Qualify contextManager
-        String finalContent = content;
-        contextManager.pushContext(ctx -> { // Qualify contextManager
-            var fragment = new ContextFragment.PasteTextFragment(finalContent, summaryFuture);
-            return ctx.addPasteFragment(fragment, summaryFuture);
-        });
+        // Text Flavor
+        if (contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
+            String clipboardText;
+            try {
+                clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
+                if (clipboardText.isBlank()) {
+                    chrome.toolErrorRaw("Clipboard text is empty"); // Qualify chrome
+                    return;
+                }
+            } catch (Exception e) {
+                logger.error("Failed to get text data from clipboard", e); // Qualify logger
+                chrome.toolErrorRaw("Failed to read clipboard text: " + e.getMessage()); // Qualify chrome
+                return; // Return after handling the exception
+            }
 
-        // Inform the user about what happened
-        String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-        chrome.systemOutput(message); // Qualify chrome
-    }
+            // Process the clipboard text
+            clipboardText = clipboardText.trim();
+            String content = clipboardText;
+            boolean wasUrl = false;
+
+            if (isUrl(clipboardText)) {
+                try {
+                    chrome.systemOutput("Fetching " + clipboardText); // Qualify chrome
+                    // Use the static method from ContextTools
+                    content = io.github.jbellis.brokk.tools.ContextTools.fetchUrlContent(new URI(clipboardText));
+                    // Use the standard HTML converter
+                    content = HtmlToMarkdown.maybeConvertToMarkdown(content);
+                    wasUrl = true;
+                    chrome.actionComplete(); // Qualify chrome
+                } catch (IOException | URISyntaxException e) { // Catch URISyntaxException too
+                    chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage()); // Qualify chrome
+                    // Continue with the URL as text if fetch fails
+                    content = clipboardText; // Reset content to original URL string on error
+                }
+            }
+
+            // Try to parse as stacktrace
+            var stacktrace = StackTrace.parse(content);
+            if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) { // Qualify contextManager
+                return;
+            }
+
+            // Add as string fragment (possibly converted from HTML)
+            Future<String> summaryFuture = contextManager.submitSummarizePastedText(content); // Qualify contextManager
+            String finalContent = content;
+            contextManager.pushContext(ctx -> { // Qualify contextManager
+                var fragment = new ContextFragment.PasteTextFragment(finalContent, summaryFuture);
+                // Using addVirtualFragment as PasteTextFragment extends VirtualFragment
+                return ctx.addVirtualFragment(fragment);
+            });
+
+            // Inform the user about what happened
+            String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
+            chrome.systemOutput(message); // Qualify chrome
+        } // End of text flavor handling
+        else {
+            // Neither image nor text flavor supported
+            chrome.toolErrorRaw("Unsupported clipboard content type"); // Qualify chrome
+        }
+    } // End of doPasteAction method
 
     private void doDropAction(List<? extends ContextFragment> selectedFragments) // Use wildcard
     {

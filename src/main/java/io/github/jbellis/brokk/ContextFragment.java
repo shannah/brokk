@@ -31,6 +31,12 @@ public interface ContextFragment extends Serializable {
     String text() throws IOException;
     /** content formatted for LLM */
     String format() throws IOException;
+    default boolean isText() {
+        return true;
+    }
+    default Image image() {
+        throw new UnsupportedOperationException();
+    }
 
     /**
      * code sources found in this fragment
@@ -45,7 +51,7 @@ public interface ContextFragment extends Serializable {
     Set<ProjectFile> files(IProject project);
 
     /**
-     * should classes found in this fragment be included in AutoContext?
+     * should AutoContext exclude classes found in this fragment?
      */
     boolean isEligibleForAutoContext();
 
@@ -119,7 +125,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public boolean isEligibleForAutoContext() {
-            return true;
+            return isText();
         }
 
         @Override
@@ -232,6 +238,7 @@ public interface ContextFragment extends Serializable {
         public int id() {
             return id;
         }
+
         @Override
         public String format() throws IOException {
             return """
@@ -276,6 +283,11 @@ public interface ContextFragment extends Serializable {
         public int hashCode() {
             // Use id for hashCode
             return Integer.hashCode(id());
+        }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return isText();
         }
     }
 
@@ -399,11 +411,6 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
-        }
-
-        @Override
         public String toString() {
             return "StringFragment('%s')".formatted(description);
         }
@@ -443,11 +450,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "Search: " + query;
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
         }
 
         @Override
@@ -520,11 +522,6 @@ public interface ContextFragment extends Serializable {
         public String text() {
             return text;
         }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
-        }
     }
 
     class PasteImageFragment extends PasteFragment {
@@ -539,17 +536,27 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public boolean isText() {
+            return false;
+        }
+
+        @Override
         public String text() {
             throw new UnsupportedOperationException();
         }
 
+        @Override
         public Image image() {
             return image;
         }
 
         @Override
-        public boolean isEligibleForAutoContext() {
-            return false;
+        public String format() throws IOException {
+            return """
+              <fragment description="%s" fragmentid="%d">
+              [Image content provided out of band]
+              </fragment>
+              """.stripIndent().formatted(description(), id(), text());
         }
     }
 
@@ -590,11 +597,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "stacktrace of " + exception;
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
         }
     }
 
@@ -643,11 +645,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "%s of %s".formatted(type, targetIdentifier);
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return true;
         }
     }
 

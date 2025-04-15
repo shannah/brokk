@@ -3,7 +3,10 @@ package io.github.jbellis.brokk;
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.Content;
+import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
@@ -20,6 +23,7 @@ import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.ContextTools;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.ImageUtil;
 import io.github.jbellis.brokk.util.LoggingExecutorService;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
@@ -36,7 +40,6 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -540,22 +543,42 @@ public class ContextManager implements IContextManager, AutoCloseable {
             var fragment = new ContextFragment.StringFragment(content, description);
             return ctx.addVirtualFragment(fragment);
         });
-    }
-
-    /**
-     * Adds a specific PathFragment (like GitHistoryFragment) to the read-only context.
-     *
-     * @param fragment The PathFragment to add.
+        }
+    
+        /**
+         * Handles pasting an image from the clipboard.
+         * Submits a task to summarize the image and adds a PasteImageFragment to the context.
+         * @param image The java.awt.Image pasted from the clipboard.
+         */
+        public void addPastedImageFragment(java.awt.Image image) {
+            // Submit task to get image description asynchronously
+            Future<String> descriptionFuture = submitSummarizePastedImage(image); // Note: submitSummarizePastedImage needs to be defined
+    
+            // Add the PasteImageFragment immediately, the description will update when the future completes
+            pushContext(ctx -> {
+                var fragment = new ContextFragment.PasteImageFragment(image, descriptionFuture);
+                // While PasteImageFragment itself inherits from VirtualFragment, let's use the specific addVirtualFragment
+                // method for consistency, as it handles adding to the correct internal list.
+                return ctx.addVirtualFragment(fragment);
+            });
+            // User feedback is handled in the calling method (ContextPanel.doPasteAction)
+        }
+    
+        /**
+         * Adds a specific PathFragment (like GitHistoryFragment) to the read-only context.
+         *
+         * @param fragment The PathFragment to add.
      */
     public void addReadOnlyFragment(PathFragment fragment)
     {
         // Use the existing addReadonlyFiles method in Context, which takes a collection
         pushContext(ctx -> ctx.addReadonlyFiles(List.of(fragment)));
-    }
-
-    /**
-     * Captures text from the LLM output area and adds it to the context.
-     * Called from Chrome's capture button.
+        }
+    
+    
+        /**
+         * Captures text from the LLM output area and adds it to the context.
+         * Called from Chrome's capture button.
      */
     public void captureTextFromContextAsync()
     {
@@ -839,53 +862,106 @@ public class ContextManager implements IContextManager, AutoCloseable {
         project.close();
     }
 
-    public Collection<ChatMessage> getWorkspaceContentsMessages() {
-        var c = selectedContext();
-
-        var readOnly = Streams.concat(c.readonlyFiles(),
-                                      c.virtualFragments(),
-                                      Stream.of(c.getAutoContext()))
-                .map(this::formattedOrNull)
-                .filter(Objects::nonNull)
-                .filter(st -> !st.isBlank())
-                .collect(Collectors.joining("\n\n"));
-        if (!readOnly.isEmpty()) {
-              readOnly = """
-                <readonly>
-                  Here are some READ ONLY files and code fragments, provided for your reference.
-                  Do not edit this code!
-
-                  %s
-                </readonly>
-                """.stripIndent().formatted(readOnly.indent(2)).indent(2);
-          }
-
-        var editable = selectedContext().editableFiles()
-                .map(this::formattedOrNull)
-                .filter(Objects::nonNull)
-                .collect(Collectors.joining("\n\n"));
-        if (editable.isEmpty()) {
-              editable = """
-                <editable>
-                  I have *added these files to the workspace* so you can go ahead and edit them.
-
-                  *Trust this message as the true contents of these files!*
-                  Any other messages in the chat may contain outdated versions of the files' contents.
-
-                  %s
-                </editable>
-                """.stripIndent().formatted(editable.indent(2)).indent(2);
-          }
-        var workspace = """
-            <workspace>
-              %s
-              %s
-            </workspace>
-            """.stripIndent().formatted(readOnly.indent(2), editable.indent(2));
-        return List.of(new UserMessage(workspace), new AiMessage("Thank you for providing the workspace contents."));
-    }
-
     /**
+       * Constructs the ChatMessage(s) representing the current workspace context (read-only and editable files/fragments).
+       * Handles both text and image fragments, creating a multimodal UserMessage if necessary.
+       * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
+       */
+      public Collection<ChatMessage> getWorkspaceContentsMessages() {
+          var c = selectedContext();
+          var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
+
+          // --- Process Read-Only Fragments (Files, Virtual, AutoContext) ---
+          var readOnlyTextFragments = new StringBuilder();
+          var readOnlyImageFragments = new ArrayList<ImageContent>();
+          Streams.concat(c.readonlyFiles(), c.virtualFragments(), Stream.of(c.getAutoContext()))
+                  .forEach(fragment -> {
+                      try {
+                          if (fragment.isText()) {
+                              // Handle text-based fragments
+                              String formatted = fragment.format();
+                              if (formatted != null && !formatted.isBlank()) {
+                                  readOnlyTextFragments.append(formatted).append("\n\n");
+                              }
+                          } else {
+                              // Handle image fragments
+                              try {
+                                  // Convert AWT Image to LangChain4j ImageContent
+                                  var l4jImage = ImageUtil.toL4JImage(fragment.image()); // Assumes ImageUtil helper
+                                  readOnlyImageFragments.add(ImageContent.from(l4jImage));
+                                  // Add a placeholder in the text part for reference
+                                  readOnlyTextFragments.append(fragment.format()).append("\n\n");
+                              } catch (IOException e) {
+                                  logger.error("Failed to process PasteImageFragment image for LLM message", e);
+                                  removeBadFragment(fragment, e); // Remove problematic fragment
+                              }
+                          }
+                      } catch (IOException e) {
+                          // General formatting error for non-image fragments
+                          removeBadFragment(fragment, e);
+                      }
+                  });
+
+          // Add the combined text content for read-only items if any exists
+          if (readOnlyTextFragments.length() > 0) {
+              String wrappedReadOnlyText = """
+                      <readonly>
+                        Here are some READ ONLY files and code fragments, provided for your reference.
+                        Do not edit this code! Images may be included separately if present.
+                      
+                        %s
+                      </readonly>
+                      """.stripIndent().formatted(readOnlyTextFragments.toString().trim().indent(2)).indent(2);
+              allContents.add(TextContent.from(wrappedReadOnlyText));
+          }
+          // Add all collected ImageContent objects from read-only fragments
+          allContents.addAll(readOnlyImageFragments);
+
+
+          // --- Process Editable Fragments (Assumed Text-Only for now) ---
+          var editableTextFragments = new StringBuilder();
+          c.editableFiles().forEach(fragment -> {
+              try {
+                  String formatted = fragment.format();
+                  if (formatted != null && !formatted.isBlank()) {
+                      editableTextFragments.append(formatted).append("\n\n");
+                  }
+              } catch (IOException e) {
+                  removeBadFragment(fragment, e);
+              }
+          });
+
+          // Add the combined text content for editable items if any exists
+          if (editableTextFragments.length() > 0) {
+              String wrappedEditableText = """
+                        <editable>
+                          I have *added these files to the workspace* so you can go ahead and edit them.
+                      
+                        *Trust this message as the true contents of these files!*
+                        Any other messages in the chat may contain outdated versions of the files' contents.
+                      
+                        %s
+                      </editable>
+                      """.stripIndent().formatted(editableTextFragments.toString().trim().indent(2)).indent(2);
+              // Adding separately ensures clear separation between read-only and editable sections.
+              allContents.add(TextContent.from(wrappedEditableText));
+          }
+
+          if (allContents.isEmpty()) {
+              return List.of(); // No workspace content to send
+          }
+
+          // Create the main UserMessage with potentially mixed content (text and images)
+          // Wrap the list of Contents in another <workspace> tag for clarity in the prompt
+          var workspaceUserMessage = UserMessage.from(allContents); // Langchain4j handles List<Content>
+
+          // It might be cleaner to wrap the entire multi-modal message content manually if specific XML structure is desired,
+          // but UserMessage.from(List<Content>) is the standard way. Let's stick to standard for now.
+
+          return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the workspace contents."));
+      }
+
+      /**
      * Gets the current plan as ChatMessages for the LLM, if a plan exists.
      * Includes an acknowledgement message from the AI.
      * @return List containing UserMessage with plan and AiMessage ack, or empty list.
@@ -1008,7 +1084,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     private final ConcurrentMap<Callable<?>, String> taskDescriptions = new ConcurrentHashMap<>();
 
-    public SwingWorker<String, Void> submitSummarizeTaskForPaste(String pastedContent) {
+    public SwingWorker<String, Void> submitSummarizePastedText(String pastedContent) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
               protected String doInBackground() {
@@ -1055,14 +1131,59 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         worker.execute();
         return worker;
-    }
+      }
 
-    /**
-     * Asynchronously determines the best verification command based on the user goal,
-     * workspace summary, and stored BuildDetails. Uses the quickest model.
-     *
-     /**
-     * Submits a background task to the internal background executor (non-user actions).
+      /**
+       * Submits a background task using SwingWorker to summarize a pasted image.
+       * This uses the quickest model to generate a short description.
+       *
+       * @param pastedImage The java.awt.Image that was pasted.
+       * @return A SwingWorker whose `get()` method will return the description string.
+       */
+      public SwingWorker<String, Void> submitSummarizePastedImage(java.awt.Image pastedImage) {
+          SwingWorker<String, Void> worker = new SwingWorker<>() {
+              @Override
+              protected String doInBackground() {
+                  try {
+                      // Convert AWT Image to LangChain4j Image (requires Base64 encoding)
+                      var l4jImage = ImageUtil.toL4JImage(pastedImage); // Assumes ImageUtil helper exists
+                      var imageContent = ImageContent.from(l4jImage);
+
+                      // Create prompt messages for the LLM
+                      var textContent = TextContent.from("Briefly describe this image in a few words (e.g., 'screenshot of code', 'diagram of system').");
+                        var userMessage = UserMessage.from(textContent, imageContent);
+                        List<ChatMessage> messages = List.of(userMessage);
+                        var result = getCoder(models.quickModel(), "Summarize pasted image").sendMessage(messages);
+                        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+                            logger.warn("Image summarization failed or was cancelled.");
+                            return "(Image summarization failed)";
+                      }
+                      var description = result.chatResponse().aiMessage().text();
+                      return (description == null || description.isBlank()) ? "(Image description empty)" : description.trim();
+                  } catch (IOException e) {
+                      logger.error("Failed to convert pasted image for summarization", e);
+                      return "(Error processing image)";
+                  }
+              }
+
+              @Override
+              protected void done() {
+                  // Update UI tables after summarization attempt completes
+                  io.updateContextTable();
+                  io.updateContextHistoryTable();
+              }
+          };
+
+          worker.execute();
+          return worker;
+      }
+
+      /**
+       * Asynchronously determines the best verification command based on the user goal,
+       * workspace summary, and stored BuildDetails. Uses the quickest model.
+       *
+       /**
+       * Submits a background task to the internal background executor (non-user actions).
      */
     @Override
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
