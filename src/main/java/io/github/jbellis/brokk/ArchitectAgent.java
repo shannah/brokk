@@ -12,6 +12,7 @@ import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
+import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,11 +20,18 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
+
+    // Helper record to associate a SearchAgent task Future with its request
+    private record SearchTask(ToolExecutionRequest request, Future<ToolExecutionResult> future) {}
 
     private final ContextManager contextManager;
     private final StreamingChatLanguageModel model;
@@ -241,14 +249,53 @@ public class ArchitectAgent {
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
 
-            // execute search agents in parallel, Gemini likes to kick off a lot
-            var searchResults = searchAgentReqs.stream().parallel()
-                    .map(req -> toolRegistry.executeTool(this, req))
-                    .toList();
-            // architectMessages is not threadsafe so mutate separately
-            for (var result: searchResults) {
-                architectMessages.add(ToolExecutionResultMessage.from(result.request(), result.resultText()));
-                logger.debug("Executed tool '{}' => result: {}", result.request().name(), result.resultText());
+            // Submit search agent tasks to run in the background
+            var searchAgentTasks = new ArrayList<SearchTask>();
+            for (var req : searchAgentReqs) {
+                Callable<ToolExecutionResult> task = () -> {
+                    var result = toolRegistry.executeTool(this, req);
+                    logger.debug("Finished SearchAgent task for request: {}", req.name());
+                    return result;
+                };
+                var taskDescription = "SearchAgent: " + SessionResult.getShortDescription(req.arguments());
+                var future = contextManager.submitBackgroundTask(taskDescription, task);
+                searchAgentTasks.add(new SearchTask(req, future));
+            }
+
+            // Collect search results, handling potential interruptions/cancellations
+            boolean interrupted = false;
+            for (var searchTask : searchAgentTasks) {
+                var request = searchTask.request();
+                var future = searchTask.future();
+                try {
+                    // If already interrupted, don't wait, just try to cancel
+                    if (interrupted) {
+                        future.cancel(true);
+                        continue;
+                    }
+                    var toolResult = future.get(); // Wait for completion
+                    architectMessages.add(ToolExecutionResultMessage.from(toolResult.request(), toolResult.resultText()));
+                    logger.debug("Collected result for tool '{}' => result: {}", toolResult.request().name(), toolResult.resultText());
+                } catch (CancellationException e) {
+                    logger.warn("SearchAgent task for request '{}' was cancelled.", request.name());
+                    interrupted = true;
+                } catch (InterruptedException e) {
+                    logger.warn("Interrupted while waiting for SearchAgent task '{}'.", request.name());
+                    Thread.currentThread().interrupt(); // Restore interrupt status
+                    interrupted = true;
+                } catch (ExecutionException e) {
+                    logger.warn("Error executing SearchAgent task '{}'", request.name(), e.getCause());
+                    var errorMessage = "Error executing SearchAgent '%s': %s".formatted(request.name(), e.getCause().getMessage());
+                    architectMessages.add(ToolExecutionResultMessage.from(request, errorMessage));
+                }
+            }
+
+            // If we were interrupted, cancel remaining futures and exit the main execute loop.
+            if (interrupted) {
+                logger.debug("ArchitectAgent execution interrupted, cancelling remaining SearchAgent tasks.");
+                searchAgentTasks.forEach(p -> p.future().cancel(true)); // Cancel any not already processed/cancelled
+                contextManager.getIo().systemOutput("ArchitectAgent cancelled by user");
+                return;
             }
 
             // code agent calls are done serially so they don't stomp on each others' feet
