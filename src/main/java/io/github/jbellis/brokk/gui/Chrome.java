@@ -10,8 +10,6 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
-import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
-import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -344,7 +342,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         SwingUtilities.invokeLater(() -> {
             contextPanel.populateContextTable(ctx);
             if (resetOutput) {
-                historyOutputPanel.resetLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().output());
+                historyOutputPanel.resetLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().text());
             }
             updateCaptureButtons();
         });
@@ -386,12 +384,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public String getInputText() {
         return instructionsPanel.getInputText();
-    }
-
-    public void clear() {
-        SwingUtilities.invokeLater(() -> {
-            historyOutputPanel.clear();
-        });
     }
 
     public void disableUserActionButtons() {

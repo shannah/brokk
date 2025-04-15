@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -471,11 +472,11 @@ public class InstructionsPanel extends JPanel {
                     // Check if the response is valid before adding to history
                     if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
                         // Construct SessionResult for 'Ask'
-                        var sessionResult = new SessionResult(
-                                "Ask: " + question, List.of(messages.getLast(), aiResponse),
-                                Map.of(), // No original contents for Ask
-                                chrome.getLlmOutputText(),
-                                new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
+                        var sessionResult = new SessionResult("Ask: " + question,
+                                                              List.of(messages.getLast(), aiResponse),
+                                                              Map.of(), // No undo contents for Ask
+                                                              chrome.getLlmOutputText(),
+                                                              new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
                         contextManager.addToHistory(sessionResult, false);
                     } else {
                         chrome.systemOutput("Ask command completed with an empty response.");
@@ -521,19 +522,12 @@ public class InstructionsPanel extends JPanel {
          }
          try {
              var contextManager = chrome.getContextManager();
-             // run a search agent, passing the specific model and tool registry
-             // Pass chrome (IConsoleIO) instead of contextManager directly
              var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry());
              var result = agent.execute();
-             if (result == null) {
-                 // Agent execution was likely cancelled or errored, agent should log details
-                 chrome.systemOutput("Search did not complete successfully.");
-             } else {
-                 chrome.clear();
-                 String textResult = result.text();
-                 chrome.llmOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, textResult));
-                 contextManager.addSearchFragment(result);
-             }
+             assert result != null;
+             // Search does not stream to llmOutput, so set the final answer here
+             chrome.setLlmOutput(result.output().text());
+             contextManager.addToHistory(result, false);
          } catch (CancellationException cex) {
              chrome.systemOutput("Search command cancelled.");
          } catch (Exception e) {

@@ -67,10 +67,10 @@ public class Context implements Serializable {
     /** Unique transient identifier for this context instance */
     transient final int id;
 
-    public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
+    public record ParsedOutput(String text, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
-            assert output != null;
-            assert !output.isBlank(); // at the very least we should have the preamble we populate it with
+            assert text != null;
+            assert !text.isBlank(); // at the very least we should have the preamble we populate it with
             assert parsedFragment != null;
         }
     }
@@ -238,12 +238,6 @@ public class Context implements Serializable {
         });
 
         return withFragments(editableFiles, readonlyFiles, newFragments, actionFuture);
-    }
-
-    public Context addSearchFragment(Future<String> query, ParsedOutput parsed) {
-        var newFragments = new ArrayList<>(virtualFragments);
-        newFragments.add(parsed.parsedFragment);
-        return new Context(newId(), contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, taskHistory, Map.of(), parsed, query).refresh();
     }
 
     public Context removeBadFragment(ContextFragment f) {
@@ -509,12 +503,11 @@ public class Context implements Serializable {
 
     /**
      * Creates a new TaskEntry with the correct sequence number based on the current history.
-     * @param messages The chat messages for the new task.
      * @return A new TaskEntry.
      */
-    public TaskEntry createTaskEntry(List<ChatMessage> messages) {
+    public TaskEntry createTaskEntry(SessionResult result) {
         int nextSequence = taskHistory.isEmpty() ? 1 : taskHistory.getLast().sequence() + 1;
-        return TaskEntry.fromSession(nextSequence, messages);
+        return TaskEntry.fromSession(nextSequence, result);
     }
 
     /**
@@ -587,6 +580,7 @@ public class Context implements Serializable {
             try {
                 return action.get();
             } catch (Exception e) {
+                logger.warn("Error retrieving action", e);
                 return "(Error retrieving action)";
             }
         }

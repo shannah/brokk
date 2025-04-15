@@ -225,13 +225,11 @@ public class CodeAgent {
         String finalActionDescription = completedSuccessfully
                 ? userInput
                 : userInput + " [" + stopDetails.reason().name() + "]";
-
-        var sessionResult = new SessionResult(
-                finalActionDescription, List.copyOf(sessionMessages),
-                Map.copyOf(originalContents),
-                io.getLlmOutputText(),
-                stopDetails
-        );
+        var sessionResult = new SessionResult(finalActionDescription,
+                                              List.copyOf(sessionMessages),
+                                              Map.copyOf(originalContents),
+                                              io.getLlmOutputText(),
+                                              stopDetails);
 
         if (completedSuccessfully) {
             io.systemOutput("Code Agent finished!");

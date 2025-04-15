@@ -48,13 +48,9 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
      *                        (So, NOT including system messages, workspace messages, example edit messages, etc.)
      * @return A new TaskEntry instance.
      */
-    public static TaskEntry fromSession(int sequence, List<ChatMessage> sessionMessages) {
-        assert sessionMessages != null && !sessionMessages.isEmpty();
-
-        ChatMessage firstMessage = sessionMessages.getFirst();
-        assert firstMessage instanceof UserMessage : firstMessage;
-        String job = Models.getText(firstMessage);
-        return new TaskEntry(sequence, job, sessionMessages.subList(1, sessionMessages.size()), null);
+    public static TaskEntry fromSession(int sequence, SessionResult result) {
+        assert result != null;
+        return new TaskEntry(sequence, result.actionDescription(), result.messages(), null);
     }
 
     public static TaskEntry fromCompressed(int sequence, String compressedLog) {

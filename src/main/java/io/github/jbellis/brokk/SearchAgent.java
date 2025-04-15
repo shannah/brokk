@@ -193,7 +193,7 @@ public class SearchAgent {
      * Execute the search process, iterating through queries until completion.
      * @return The final set of discovered code units
      */
-    public ContextFragment.VirtualFragment execute() {
+    public SessionResult execute() {
         io.systemOutput("Search Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(query)));
 
         // If context exists, ask LLM to evaluate its relevance and kick off async summary
@@ -322,11 +322,11 @@ public class SearchAgent {
                  assert results.size() == 1 : "Answer action should be solitary";
                  // Validate explanation before creating fragment
                  String explanation = firstResult.execResult.resultText();
-                 if (explanation == null || explanation.isBlank() || explanation.equals("Success")) {
+                 if (explanation == null || explanation.isBlank() || explanation.split("\\s").length < 5) {
                      logger.error("LLM provided blank explanation for 'answer' tool.");
-                     return new ContextFragment.StringFragment("Error: Agent failed to generate a valid answer explanation.", "Search Error: " + query);
+                     return errorResult(new SessionResult.StopDetails(SessionResult.StopReason.SEARCH_INVALID_ANSWER));
                  }
-                 return createFinalFragment(firstResult); // Takes ToolHistoryEntry
+                 return createFinalFragment(firstResult);
             } else if (firstToolName.equals("abortSearch")) {
                  logger.debug("Search aborted by agent");
                  assert results.size() == 1 : "Abort action should be solitary";
@@ -337,14 +337,27 @@ public class SearchAgent {
                      logger.warn("LLM provided blank explanation for 'abort' tool. Using default.");
                  }
                  // Return the abort explanation as a simple fragment
-                 return new ContextFragment.StringFragment("Search Aborted: " + explanation, "Search Aborted: " + query);
+                 return errorResult(new SessionResult.StopDetails(SessionResult.StopReason.SEARCH_IMPOSSIBLE, explanation));
             }
         }
 
         logger.debug("Search ended because we hit the tokens cutoff or we were interrupted");
-        return new ContextFragment.SearchFragment(query,
-                                                  "No final answer provided, check the debug log for details",
-                                                  Set.of());
+        return errorResult(new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED));
+    }
+
+    private SessionResult errorResult(SessionResult.StopDetails details) {
+        var fragment = new ContextFragment.StringFragment(details.explanation(), "%s: %s".formatted(details.reason(), query));
+        return new SessionResult("Search: " + query,
+                                 forgeMessagesForResult(),
+                                 Map.of(),
+                                 new Context.ParsedOutput("# Query\n\n%s\n\n# No Answer\n%s\n".formatted(query, details.explanation()), fragment),
+                                 details);
+    }
+
+    private List<ChatMessage> forgeMessagesForResult() {
+        return actionHistory.stream()
+                .map(the -> (ChatMessage) new AiMessage(Models.getRepr(the.request)))
+                .toList();
     }
 
     /**
@@ -1072,7 +1085,7 @@ public class SearchAgent {
 
 
     /** Generates the final context fragment based on the last successful action (answer/abort). */
-    private ContextFragment.VirtualFragment createFinalFragment(ToolHistoryEntry finalStep) {
+    private SessionResult createFinalFragment(ToolHistoryEntry finalStep) {
         var request = finalStep.request;
         var execResult = finalStep.execResult;
         var explanationText = execResult.resultText();
@@ -1082,56 +1095,54 @@ public class SearchAgent {
         assert execResult.status() == ToolExecutionResult.Status.SUCCESS : "createFinalFragment called with failed step";
         assert explanationText != null && !explanationText.isBlank() && !explanationText.equals("Success") : "createFinalFragment called with blank/default explanation";
 
-        try {
-            var arguments = finalStep.argumentsMap(); // Use helper
-             // Ensure classNames is treated as List<String>
-             Object classNamesObj = arguments.get("classNames");
-             List<String> classNames = new ArrayList<>();
-             if (classNamesObj instanceof List<?> list) {
-                 list.forEach(item -> {
-                     if (item instanceof String s) {
-                         classNames.add(s);
-                     }
-                 });
-             } else if (classNamesObj != null) {
-                  logger.warn("Expected 'classNames' to be a List<String>, but got: {}", classNamesObj.getClass());
-             }
-
-            logger.debug("LLM-determined relevant classes for final answer are {}", classNames);
-
-            // Combine LLM list with all tracked names for broader context, then coalesce
-            Set<String> combinedNames = new HashSet<>(classNames);
-            // TODO I'm skeptical that just throwing in all the classes examined during the search is the right approach
-            // -- would we get better results parsing the answer for classname matches?
-            combinedNames.addAll(trackedClassNames);
-            logger.debug("Combined tracked and LLM classes before coalesce: {}", combinedNames);
-            var coalesced = combinedNames.stream()
-                    .map(this::extractClassNameFromSymbol) // Normalize before filtering
-                    .distinct() // Ensure uniqueness after normalization
-                    .filter(c -> combinedNames.stream() // Coalesce inner classes
-                                    .map(this::extractClassNameFromSymbol)
-                                    .noneMatch(c2 -> !c.equals(c2) && c.startsWith(c2 + "$")))
-                    .sorted() // Consistent order
-                    .toList();
-             logger.debug("Coalesced relevant classes: {}", coalesced);
-
-            // Map final classes to CodeUnits representing the files they are in
-            var sources = coalesced.stream()
-                    .map(analyzer::getFileFor) // Get Option<ProjectFile>
-                    .filter(Option::isDefined) // Filter out classes where file couldn't be found
-                    .map(Option::get)          // Get ProjectFile
-                    .distinct()                // Get unique files
-                    .map(pf -> CodeUnit.cls(pf, pf.toString())) // Create CodeUnit representing the file
-                    .collect(Collectors.toSet());
-
-             logger.debug("Final sources identified (files): {}", sources.stream().map(CodeUnit::source).toList());
-            // Use the validated explanation from the result text
-            return new ContextFragment.SearchFragment(query, explanationText, sources);
-        } catch (Exception e) {
-            logger.error("Error creating final SearchFragment", e);
-            // Fallback to string fragment with the explanation
-            return new ContextFragment.StringFragment(explanationText, "Search Result (error processing sources): " + query);
+        var arguments = finalStep.argumentsMap(); // Use helper
+        // Ensure classNames is treated as List<String>
+        Object classNamesObj = arguments.get("classNames");
+        List<String> classNames = new ArrayList<>();
+        if (classNamesObj instanceof List<?> list) {
+            list.forEach(item -> {
+                if (item instanceof String s) {
+                    classNames.add(s);
+                }
+            });
+        } else if (classNamesObj != null) {
+            logger.warn("Expected 'classNames' to be a List<String>, but got: {}", classNamesObj.getClass());
         }
+
+        logger.debug("LLM-determined relevant classes for final answer are {}", classNames);
+
+        // Combine LLM list with all tracked names for broader context, then coalesce
+        Set<String> combinedNames = new HashSet<>(classNames);
+        // TODO I'm skeptical that just throwing in all the classes examined during the search is the right approach
+        // -- would we get better results parsing the answer for classname matches?
+        combinedNames.addAll(trackedClassNames);
+        logger.debug("Combined tracked and LLM classes before coalesce: {}", combinedNames);
+        var coalesced = combinedNames.stream()
+                .map(this::extractClassNameFromSymbol) // Normalize before filtering
+                .distinct() // Ensure uniqueness after normalization
+                .filter(c -> combinedNames.stream() // Coalesce inner classes
+                        .map(this::extractClassNameFromSymbol)
+                        .noneMatch(c2 -> !c.equals(c2) && c.startsWith(c2 + "$")))
+                .sorted() // Consistent order
+                .toList();
+        logger.debug("Coalesced relevant classes: {}", coalesced);
+
+        // Map final classes to CodeUnits representing the files they are in
+        var sources = coalesced.stream()
+                .map(analyzer::getFileFor) // Get Option<ProjectFile>
+                .filter(Option::isDefined) // Filter out classes where file couldn't be found
+                .map(Option::get)          // Get ProjectFile
+                .distinct()                // Get unique files
+                .map(pf -> CodeUnit.cls(pf, pf.toString())) // Create CodeUnit representing the file
+                .collect(Collectors.toSet());
+
+        logger.debug("Final sources identified (files): {}", sources.stream().map(CodeUnit::source).toList());
+        var fragment = new ContextFragment.SearchFragment(query, explanationText, sources);
+        return new SessionResult("Search: " + query,
+                                 forgeMessagesForResult(),
+                                 Map.of(),
+                                 new Context.ParsedOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, explanationText), fragment),
+                                 new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
     }
 
     @Tool(value = "Provide a final answer to the query. Use this when you have enough information to fully address the query.")

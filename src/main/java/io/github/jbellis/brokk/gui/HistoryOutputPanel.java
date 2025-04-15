@@ -475,15 +475,6 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     /**
-     * Clears the LLM output area
-     */
-    public void clear() {
-        llmStreamArea.clear();
-    }
-
-    // appendSystemOutput removed
-
-    /**
      * Sets the enabled state of the copy text button
      */
     public void setCopyButtonEnabled(boolean enabled) {

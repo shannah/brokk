@@ -116,12 +116,12 @@ public class ArchitectAgent {
         // TODO add result to Conversation History
 
         assert searchResult != null;
-        if (searchResult instanceof ContextFragment.StringFragment) {
+        if (searchResult.stopDetails().reason() != SessionResult.StopReason.SUCCESS) {
             logger.warn("SearchAgent returned null or empty result for query: {}", query);
-            return searchResult.text();
+            return searchResult.stopDetails().toString();
         }
 
-        var relevantClasses = searchResult.sources(contextManager.getProject()).stream()
+        var relevantClasses = searchResult.output().parsedFragment().sources(contextManager.getProject()).stream()
                 .map(CodeUnit::fqName)
                 .collect(Collectors.joining(","));
         var stringResult = """
@@ -129,7 +129,7 @@ public class ArchitectAgent {
 
             Full list of potentially relevant classes:
             %s
-            """.stripIndent().formatted(searchResult.text(), relevantClasses);
+            """.stripIndent().formatted(searchResult.output().text(), relevantClasses);
 
         logger.debug(stringResult);
         return stringResult;

@@ -60,7 +60,7 @@ public class ContextSerializationTest {
          assertNotNull(deserialized.getAutoContext());
         
         // We injected output
-        assertEquals("stub", deserialized.parsedOutput.output());
+        assertEquals("stub", deserialized.parsedOutput.text());
     }
     
     @Test

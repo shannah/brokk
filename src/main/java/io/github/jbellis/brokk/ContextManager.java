@@ -43,7 +43,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -487,31 +486,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
-
-    /**
-     * Add search fragment from agent result
-     *
-     * @return a summary of the search
-     */
-    public Future<String> addSearchFragment(VirtualFragment fragment)
-    {
-        Future<String> query;
-        if (fragment.description().split("\\s").length > 10) {
-            query = submitSummarizeTaskForConversation(fragment.description());
-        } else {
-            query = CompletableFuture.completedFuture(fragment.description());
-        }
-
-        var llmOutputText = io.getLlmOutputText();
-        if (llmOutputText == null) {
-            io.systemOutput("Interrupted!");
-            return query;
-        }
-
-        var parsed = new ParsedOutput(llmOutputText, fragment);
-        pushContext(ctx -> ctx.addSearchFragment(query, parsed));
-        return query;
-    }
 
     /**
      * Adds any virtual fragment directly
@@ -1361,8 +1335,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Adds a completed CodeAgent session result to the context history.
      * This is the primary method for adding history after a CodeAgent run.
      *
-     * @param result   The result object from CodeAgent.runSession. Can be null.
-     * @param null if the session is empty, otehrwise returns the new TaskEntry
+     * returns null if the session is empty, otherwise returns the new TaskEntry
      */
     public TaskEntry addToHistory(SessionResult result, boolean compress) {
         assert result != null;
@@ -1371,22 +1344,16 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return null;
         }
 
-        var messages = result.messages();
         var originalContents = result.originalContents();
         var action = result.actionDescription(); // This already includes the stop reason if not SUCCESS
-        var llmOutputText = result.finalLlmOutput();
-
-        // Use the final LLM output text from the result to create ParsedOutput
-        // Ensure llmOutputText is not null, default to empty string if necessary
-        var parsed = new ParsedOutput(llmOutputText, new ContextFragment.StringFragment(llmOutputText, "ai Response"));
 
         logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopDetails());
 
         // Push the new context state with the added history entry
-        TaskEntry newEntry = topContext().createTaskEntry(messages);
+        TaskEntry newEntry = topContext().createTaskEntry(result);
         var finalEntry = compress ? compressHistory(newEntry) : newEntry;
         Future<String> actionFuture = submitSummarizeTaskForConversation(action);
-        var newContext = pushContext(ctx -> ctx.addHistoryEntry(finalEntry, parsed, actionFuture, originalContents));
+        var newContext = pushContext(ctx -> ctx.addHistoryEntry(finalEntry, result.output(), actionFuture, originalContents));
         return newContext.getTaskHistory().getLast();
     }
 

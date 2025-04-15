@@ -18,17 +18,30 @@ import java.util.Map;
  * @param stopDetails       The reason the session concluded.
  */
 public record SessionResult(String actionDescription,
-                            List<ChatMessage> messages,
+                            List<ChatMessage> messages, // for Task History context
                             Map<ProjectFile, String> originalContents, // for undo
-                            String finalLlmOutput, // since quick edit doesn't change llm output directly
+                            Context.ParsedOutput output,
                             StopDetails stopDetails)
 {
     public SessionResult {
         assert actionDescription != null;
         assert messages != null;
         assert originalContents != null;
-        assert finalLlmOutput != null;
+        assert output != null;
         assert stopDetails != null;
+    }
+
+    public SessionResult(String actionDescription,
+                         List<ChatMessage> messages,
+                         Map<ProjectFile, String> originalContents,
+                         String outputString,
+                         StopDetails stopDetails)
+    {
+        this(actionDescription,
+             messages,
+             originalContents,
+             new Context.ParsedOutput(outputString, new ContextFragment.StringFragment(outputString, "AI Response")),
+             stopDetails);
     }
 
     public static String getShortDescription(String description) {
@@ -59,13 +72,17 @@ public record SessionResult(String actionDescription,
         /** Build errors occurred and were not improving after retries. */
         BUILD_ERROR,
         /** The LLM attempted to edit a read-only file. */
-        READ_ONLY_EDIT
+        READ_ONLY_EDIT,
+        /** the LLM called answer() but did not provide a result */
+        SEARCH_INVALID_ANSWER,
+        /** the LLM determined that it was not possible to answer the query */
+        SEARCH_IMPOSSIBLE;
     }
 
-    public record StopDetails(StopReason reason, String details) {
+    public record StopDetails(StopReason reason, String explanation) {
         public StopDetails {
             assert reason != null;
-            assert details != null;
+            assert explanation != null;
         }
 
         public StopDetails(StopReason reason) {
@@ -74,10 +91,10 @@ public record SessionResult(String actionDescription,
 
         @Override
         public String toString() {
-            if (details.isEmpty()) {
+            if (explanation.isEmpty()) {
                 return reason.toString();
             }
-            return "%s:\n%s".formatted(reason.toString(), details);
+            return "%s:\n%s".formatted(reason.toString(), explanation);
         }
     }
 }

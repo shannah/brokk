@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -22,6 +23,7 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -348,7 +350,7 @@ public final class Models {
                     yield raw;
                 }
                 var toolText = am.toolExecutionRequests().stream()
-                        .map(tr -> "%s(%s)".formatted(tr.name(), tr.arguments()))
+                        .map(Models::getRepr)
                         .collect(Collectors.joining("\n"));
                 yield "%s\nTool calls:\n%s".formatted(raw, toolText);
             }
@@ -368,6 +370,10 @@ public final class Models {
             case ToolExecutionResultMessage tr -> "%s -> %s".formatted(tr.toolName(), tr.text());
             default -> throw new UnsupportedOperationException(message.getClass().toString());
         };
+    }
+
+    public static @NotNull String getRepr(ToolExecutionRequest tr) {
+        return "%s(%s)".formatted(tr.name(), tr.arguments());
     }
 
     /**
