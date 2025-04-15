@@ -4,6 +4,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import dev.langchain4j.data.message.ChatMessage;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -80,7 +81,7 @@ public class ContextSerializationTest {
         Context context = new Context(mockContextManager, 5)
             .addEditableFiles(List.of(new ContextFragment.ProjectPathFragment(projectFile)))
             .addReadonlyFiles(List.of(new ContextFragment.ExternalPathFragment(externalFile)))
-            .addVirtualFragment(new ContextFragment.StringFragment("virtual content", "Virtual Fragment"));
+            .addVirtualFragment(new ContextFragment.StringFragment("virtual content", "Virtual Fragment", SyntaxConstants.SYNTAX_STYLE_NONE));
         
         // Serialize and deserialize
         byte[] serialized = Context.serialize(context);
@@ -118,7 +119,7 @@ public class ContextSerializationTest {
 
         // Add examples of each VirtualFragment type
         context = context
-            .addVirtualFragment(new ContextFragment.StringFragment("string content", "String Fragment"))
+            .addVirtualFragment(new ContextFragment.StringFragment("string content", "String Fragment", SyntaxConstants.SYNTAX_STYLE_NONE))
             .addVirtualFragment(new ContextFragment.SearchFragment("query", "explanation", Set.of(CodeUnit.cls(mockFile, "Test"))))
             .addVirtualFragment(new ContextFragment.SkeletonFragment(
                 Map.of(CodeUnit.cls(mockFile, "com.test.Test"), "class Test {}")
@@ -244,10 +245,7 @@ public class ContextSerializationTest {
         // Create many virtual fragments
         List<ContextFragment.VirtualFragment> virtualFragments = new ArrayList<>();
         for (int i = 0; i < 15; i++) {
-            virtualFragments.add(new ContextFragment.StringFragment(
-                "content " + i, 
-                "Fragment " + i
-            ));
+            virtualFragments.add(new ContextFragment.StringFragment("content " + i, "Fragment " + i, SyntaxConstants.SYNTAX_STYLE_NONE));
         }
         
         Context context = new Context(mockContextManager, 50);
@@ -287,9 +285,10 @@ public class ContextSerializationTest {
         // Add history using fromSession, which extracts the first UserMessage as description
         // Provide dummy original contents and parsed output as they are not the focus here
         var originalContents = Map.<ProjectFile, String>of();
-        var parsedOutput = new Context.ParsedOutput("Output", new ContextFragment.StringFragment("Output", "dummy"));
+        var parsedOutput = new Context.ParsedOutput("Output", new ContextFragment.StringFragment("Output", "dummy", SyntaxConstants.SYNTAX_STYLE_NONE));
         Future<String> action = CompletableFuture.completedFuture("Test Task");
-        var taskEntry = context.createTaskEntry(sessionMessages);
+        var result = new SessionResult("What is the capital of France?", sessionMessages, Map.of(), parsedOutput, new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
+        var taskEntry = context.createTaskEntry(result);
         context = context.addHistoryEntry(taskEntry, parsedOutput, action, originalContents);
 
         // Serialize and deserialize
@@ -303,9 +302,7 @@ public class ContextSerializationTest {
         // Verify TaskEntry content (first message becomes description, rest becomes log)
         assertEquals("What is the capital of France?", deserializedTask.description(), "Task description should match the first UserMessage.");
         assertNotNull(deserializedTask.log(), "Task log should not be null after deserialization.");
-        assertEquals(1, deserializedTask.log().size(), "Task log should contain the remaining messages (AI response).");
-        assertInstanceOf(dev.langchain4j.data.message.AiMessage.class, deserializedTask.log().getFirst(), "The message in the log should be an AiMessage.");
-        assertEquals("The capital of France is Paris.", Models.getText(deserializedTask.log().getFirst()), "AI message content should match.");
+        assertEquals(sessionMessages, deserializedTask.log(), "Task log should contain the session messages.");
         assertNull(deserializedTask.summary(), "Task should not be summarized (summary field should be null).");
     }
 }
