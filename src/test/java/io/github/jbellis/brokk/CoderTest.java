@@ -126,7 +126,8 @@ public class CoderTest {
             } catch (Throwable t) {
                 // Catch assertion errors or any other exceptions during the test for this model
                 failures.put(modelName, t);
-                System.err.println("Failure testing model " + modelName + ": " + t.getMessage());
+                System.err.println("Failure testing model " + modelName + ": ");
+                t.printStackTrace();
             }
         });
 

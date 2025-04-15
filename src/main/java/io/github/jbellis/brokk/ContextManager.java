@@ -219,11 +219,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     @Override
-    public Coder getCoder(StreamingChatLanguageModel model, String taskDescription) {
-        return new Coder(model, taskDescription, this);
-    }
-
-    @Override
     public ProjectFile toFile(String relName)
     {
         return new ProjectFile(root, relName);

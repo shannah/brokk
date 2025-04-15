@@ -75,7 +75,7 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default Coder getCoder(StreamingChatLanguageModel model, String tests) {
-        throw new UnsupportedOperationException();
+    default Coder getCoder(StreamingChatLanguageModel model, String taskDescription) {
+        return new Coder(model, taskDescription, this);
     }
 }
