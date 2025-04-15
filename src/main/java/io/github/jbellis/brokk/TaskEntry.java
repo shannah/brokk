@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Represents a single task interaction, including the user request ("job") and the full conversation log.
- * The log can be compressed for storage.
+ * Represents a single task interaction for the Task History, including the user request ("description") and the full LLM message log.
+ * The log can be compressed to save context space while retaining the most relevant information.
  * This record is serializable, using langchain4j's JSON serialization for ChatMessage lists.
  *
  * @param sequence      A unique sequence number for ordering tasks.

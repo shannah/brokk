@@ -1101,9 +1101,10 @@ public class SearchAgent {
 
             // Combine LLM list with all tracked names for broader context, then coalesce
             Set<String> combinedNames = new HashSet<>(classNames);
+            // TODO I'm skeptical that just throwing in all the classes examined during the search is the right approach
+            // -- would we get better results parsing the answer for classname matches?
             combinedNames.addAll(trackedClassNames);
             logger.debug("Combined tracked and LLM classes before coalesce: {}", combinedNames);
-
             var coalesced = combinedNames.stream()
                     .map(this::extractClassNameFromSymbol) // Normalize before filtering
                     .distinct() // Ensure uniqueness after normalization
