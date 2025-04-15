@@ -227,16 +227,25 @@ public class ArchitectAgent {
             }
 
             // 7) Execute remaining tool calls in the desired order:
+
+            // "Other" (mostly context manipulations) should all be fast, parallel execution is not needed
             for (var req : otherReqs) {
                 var toolResult = toolRegistry.executeTool(req);
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
-            for (var req : searchAgentReqs) {
-                var toolResult = toolRegistry.executeTool(this, req);
-                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
-                logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
+
+            // execute search agents in parallel, Gemini likes to kick off a lot
+            var searchResults = searchAgentReqs.stream().parallel()
+                    .map(req -> toolRegistry.executeTool(this, req))
+                    .toList();
+            // architectMessages is not threadsafe so mutate separately
+            for (var result: searchResults) {
+                architectMessages.add(ToolExecutionResultMessage.from(result.request(), result.resultText()));
+                logger.debug("Executed tool '{}' => result: {}", result.request().name(), result.resultText());
             }
+
+            // code agent calls are done serially so they don't stomp on each others' feet
             for (var req : codeAgentReqs) {
                 var toolResult = toolRegistry.executeTool(this, req);
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
