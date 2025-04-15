@@ -279,18 +279,29 @@ public class ArchitectAgent {
         var planText = currentPlan != null ? currentPlan.text() : "(none)";
 
         var userMsg = """
-            %s
+        %s
 
-            <goal>
-            %s
-            </goal>
+        <goal>
+        %s
+        </goal>
 
-            <plan>
-            %s
-            </plan>
+        <plan>
+        %s
+        </plan>
 
-            Please decide the next tool action(s) to make progress towards resolving the current task.
-            """.stripIndent().formatted(topClassesText, goal, planText);
+        Please decide the next tool action(s) to make progress towards resolving the goal.
+        
+        You are encouraged to call multiple tools simultaneously, especially
+        - when using updatePlan, call the next tools to start working on the new plan at the same time
+        - when searching for relevant code, you can invoke callSearchAgent multiple times at once
+        - when manipulating context, make all needed manipulations at once
+
+        Conversely, it does not make sense to call multiple tools with
+        - callCodeAgent, since you want to see what changes get made before proceeding
+        - projectFinished or abortProject, since they terminate execution
+
+        When you are done, call projectFinished or abortProject.
+        """.stripIndent().formatted(topClassesText, goal, planText);
 
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
