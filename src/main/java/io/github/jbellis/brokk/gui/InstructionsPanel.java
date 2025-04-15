@@ -498,8 +498,6 @@ public class InstructionsPanel extends JPanel {
     private void executeAgentCommand(StreamingChatLanguageModel model, String goal) {
         var contextManager = chrome.getContextManager();
         try {
-            // The plan existence check happens in runAgentCommand before submitting
-            chrome.systemOutput("Architect engaged");
             var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
             agent.execute();
             chrome.systemOutput("Architect Agent finished executing"); // Final status on normal completion

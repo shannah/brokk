@@ -270,8 +270,8 @@ public class Coder {
         String modelName = contextManager.getModels().nameOf(model);
 
         while (attempt++ < maxAttempts) {
-            logger.debug("Sending request to {} attempt {} [only last message shown]: {}",
-                         modelName, attempt, messages.getLast());
+            logger.debug("Sending request to {} attempt {}: {}",
+                         modelName, attempt, CodeAgent.SessionResult.getShortDescription(Models.getText(messages.getLast()), 12));
 
             if (echo) {
                 io.showOutputSpinner("Thinking...");
@@ -574,7 +574,7 @@ public class Coder {
         var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
         var initialMessages = new ArrayList<>(messages);
         initialMessages.set(initialMessages.size() - 1, modified);
-        logger.debug("Modified messages are {}", initialMessages);
+        logger.trace("Modified messages are {}", initialMessages);
 
         // Build request creator function
         Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages ->
@@ -616,7 +616,7 @@ public class Coder {
             var instructions = getInstructions(tools);
             var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
             initialMessages.set(initialMessages.size() - 1, modified);
-            logger.debug("Modified messages are {}", initialMessages);
+            logger.trace("Modified messages are {}", initialMessages);
         }
 
         // Build request creator function
@@ -729,7 +729,7 @@ public class Coder {
      */
     private static StreamingResult parseJsonToToolRequests(StreamingResult result, ObjectMapper mapper) {
         String rawText = result.chatResponse.aiMessage().text();
-        logger.debug("parseJsonToToolRequests: rawText={}", rawText);
+        logger.trace("parseJsonToToolRequests: rawText={}", rawText);
 
         JsonNode root;
         try {
@@ -796,7 +796,7 @@ public class Coder {
             toolExecutionRequests.add(toolExecutionRequest);
         }
 
-        logger.debug("Generated tool execution requests: {}", toolExecutionRequests);
+        logger.trace("Generated tool execution requests: {}", toolExecutionRequests);
 
         // Create a properly formatted AiMessage with tool execution requests
         var aiMessage = new AiMessage("[json]", toolExecutionRequests);
@@ -846,7 +846,7 @@ public class Coder {
                                     }
                                     default -> throw new IllegalArgumentException("Unsupported schema type: " + schema);
                                 }
-                                assert description != null;
+                                assert description != null : "null description for " + entry;
 
                                 return """
                                         <parameter name="%s" type="%s" required="%s">
@@ -911,15 +911,16 @@ public class Coder {
                     .map(Models::getText)
                     .orElse("no-user-message");
             String shortDesc = getShortDescription(lastUserMessageText);
-            String formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
-                                                                                 contextManager.getModels().nameOf(model),
-                                                                                 TaskEntry.formatMessages(request.messages()));
+            var formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
+                                                                              contextManager.getModels().nameOf(model),
+                                                                              TaskEntry.formatMessages(request.messages()));
+            var formattedTools = request.toolSpecifications() == null ? "" : "# Tools:\n\n" + request.toolSpecifications().stream().map(ToolSpecification::toString).collect(Collectors.joining("\n"));
             var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());
             String fileTimestamp = timestamp.format(DateTimeFormatter.ofPattern("HH-mm-ss"));
             var filePath = sessionHistoryDir.resolve(String.format("%s %s.log", fileTimestamp, shortDesc));
             var options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE};
             logger.debug("Writing history to new file: {}", filePath);
-            Files.writeString(filePath, formattedRequest + formattedResponse, options);
+            Files.writeString(filePath, formattedRequest + formattedTools + formattedResponse, options);
         } catch (IOException e) {
             logger.error("Failed to write LLM history file", e);
         }

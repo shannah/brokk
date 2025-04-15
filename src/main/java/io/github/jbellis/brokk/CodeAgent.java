@@ -99,10 +99,14 @@ public class CodeAgent {
         }
 
         public static String getShortDescription(String description) {
-            var cleaned = description.replaceAll("[^a-zA-Z0-9\\s]", "");
-            return cleaned.split("\\s+").length <= 5
-                   ? cleaned
-                   : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, 5));
+            return getShortDescription(description, 5);
+        }
+
+        public static String getShortDescription(String description, int words) {
+            var cleaned = description.trim().replaceAll("[^a-zA-Z0-9\\s]", "");
+            return cleaned.split("\\s+").length <= words
+                    ? cleaned
+                    : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, words));
         }
     }
 
@@ -163,7 +167,7 @@ public class CodeAgent {
             sessionMessages.add(llmResponse.aiMessage());
 
             String llmText = llmResponse.aiMessage().text();
-            logger.debug("response:\n{}", llmText);
+            logger.debug("got response"); // details in Coder's llm-history
 
             // Parse any edit blocks from LLM response
             var parseResult = EditBlock.parseEditBlocks(llmText);
