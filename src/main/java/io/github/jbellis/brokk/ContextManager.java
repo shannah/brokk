@@ -8,7 +8,6 @@ import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
@@ -984,42 +983,46 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * push context changes with a function that modifies the current context
+     * Push context changes with a function that modifies the current context.
+     * Returns the new context, or null if no changes were made by the generator.
      */
-    public void pushContext(Function<Context, Context> contextGenerator)
+    public Context pushContext(Function<Context, Context> contextGenerator)
     {
         Context newContext = contextHistory.pushContext(contextGenerator);
-        if (newContext != null) {
-            io.updateContextHistoryTable(newContext);
-            project.saveContext(newContext);
-
-            if (newContext.getTaskHistory().isEmpty()) {
-                return;
-            }
-
-            var cf = new ContextFragment.ConversationFragment(newContext.getTaskHistory());
-            int tokenCount = Models.getApproximateTokens(cf.format());
-            if (tokenCount > 32 * 1024) {
-                // Show a dialog asking if we should compress the history
-                SwingUtilities.invokeLater(() -> {
-                    int choice = JOptionPane.showConfirmDialog(io.getFrame(),
-                            """
-                            The conversation history is getting long (%,d lines or about %,d tokens).
-                            Compressing it can improve performance and reduce cost.
-
-                            Compress history now?
-                            """.formatted(cf.format().split("\n").length, tokenCount),
-                            "Compress History?",
-                            JOptionPane.YES_NO_OPTION,
-                            JOptionPane.QUESTION_MESSAGE);
-
-                    if (choice == JOptionPane.YES_OPTION) {
-                        // Call the async compression method if user agrees
-                        compressHistoryAsync();
-                    }
-                });
-            }
+        if (newContext == null) {
+            return null;
         }
+
+        io.updateContextHistoryTable(newContext);
+        project.saveContext(newContext);
+        if (newContext.getTaskHistory().isEmpty()) {
+            return newContext;
+        }
+
+        var cf = new ContextFragment.ConversationFragment(newContext.getTaskHistory());
+        int tokenCount = Models.getApproximateTokens(cf.format());
+        if (tokenCount > 32 * 1024) {
+            // Show a dialog asking if we should compress the history
+            SwingUtilities.invokeLater(() -> {
+                int choice = JOptionPane.showConfirmDialog(io.getFrame(),
+                        """
+                        The conversation history is getting long (%,d lines or about %,d tokens).
+                        Compressing it can improve performance and reduce cost.
+
+                        Compress history now?
+                        """.formatted(cf.format().split("\n").length, tokenCount),
+                        "Compress History?",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE);
+
+                if (choice == JOptionPane.YES_OPTION) {
+                    // Call the async compression method if user agrees
+                    compressHistoryAsync();
+                }
+            });
+        }
+
+        return newContext;
     }
 
     /**
@@ -1359,13 +1362,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * This is the primary method for adding history after a CodeAgent run.
      *
      * @param result   The result object from CodeAgent.runSession. Can be null.
-     * @param compress
+     * @param null if the session is empty, otehrwise returns the new TaskEntry
      */
-    public void addToHistory(CodeAgent.SessionResult result, boolean compress) {
+    public TaskEntry addToHistory(CodeAgent.SessionResult result, boolean compress) {
         assert result != null;
         if (result.messages().isEmpty()) {
             logger.debug("Skipping adding empty session result to history.");
-            return;
+            return null;
         }
 
         var messages = result.messages();
@@ -1383,7 +1386,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         TaskEntry newEntry = topContext().createTaskEntry(messages);
         var finalEntry = compress ? compressHistory(newEntry) : newEntry;
         Future<String> actionFuture = submitSummarizeTaskForConversation(action);
-        pushContext(ctx -> ctx.addHistoryEntry(finalEntry, parsed, actionFuture, originalContents));
+        var newContext = pushContext(ctx -> ctx.addHistoryEntry(finalEntry, parsed, actionFuture, originalContents));
+        return newContext.getTaskHistory().getLast();
     }
 
     public List<Context> getContextHistory() {

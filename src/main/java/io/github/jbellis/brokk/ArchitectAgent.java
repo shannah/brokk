@@ -81,11 +81,18 @@ public class ArchitectAgent {
     ) {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
         var result = CodeAgent.runSession(contextManager, model, instructions, false);
-        contextManager.addToHistory(result, true);
+        var entry = contextManager.addToHistory(result, true);
         var stopDetails = result.stopDetails();
         String summary = """
-        CodeAgent concluded: %s
-        """.formatted(stopDetails).stripIndent();
+        CodeAgent concluded.
+        <summary>
+        %s
+        </summary>
+        
+        <stop-details>
+        %s
+        </stop-details>
+        """.stripIndent().formatted(entry.summary(), stopDetails);
         logger.debug("Summary for callCodeAgent: {}", summary);
         return summary;
     }
@@ -127,7 +134,6 @@ public class ArchitectAgent {
         logger.debug(stringResult);
         return stringResult;
     }
-
 
     /**
      * Run the multi-step project until we either produce a final answer, abort, or run out of tasks.
