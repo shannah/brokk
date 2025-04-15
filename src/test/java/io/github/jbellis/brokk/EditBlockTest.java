@@ -415,20 +415,38 @@ class EditBlockTest {
     @Test
     void testForgivingDividerMultipleMatches() {
         String content = """
-        <<<<<<< SEARCH foo.txt
-        line A
-        =======
-        line B
-        =======
-        line C
-        >>>>>>> REPLACE foo.txt
-        """;
+            <<<<<<< SEARCH foo.txt
+            line A
+            =======
+            line B
+            =======
+            line C
+            >>>>>>> REPLACE foo.txt
+            """;
 
         var result = EditBlock.parseEditBlocks(content);
         // Because we found more than one standalone "=======" line in the SEARCH->REPLACE block,
         // the parser should treat it as an error for that block, producing zero blocks.
         assertEquals(0, result.blocks().size(), "No successful blocks expected when multiple dividers found");
         assertNotNull(result.parseError(), "Should report parse error on multiple matches");
+    }
+
+    @Test
+    void testRejectMultipleDividersWithFilenames() {
+        // believe it or not I saw GP2.5 do this in the wild
+        String content = """
+            <<<<<<< SEARCH foo.txt
+            line A
+            ======= foo.txt
+            line B
+            ======= foo.txt
+            line C
+            >>>>>>> REPLACE foo.txt
+            """;
+
+        var result = EditBlock.parseEditBlocks(content);
+        assertEquals(0, result.blocks().size(), "Should reject blocks with multiple named dividers");
+        assertNotNull(result.parseError(), "Should report parse error on multiple named dividers");
     }
 
     @Test
