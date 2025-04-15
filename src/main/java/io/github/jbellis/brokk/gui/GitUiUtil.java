@@ -180,7 +180,7 @@ public final class GitUiUtil
             }
             SwingUtilities.invokeLater(() -> {
                 var fragment = new ContextFragment.GitFileFragment(file, commitId);
-                chrome.openFragmentPreview(fragment, SyntaxConstants.SYNTAX_STYLE_JAVA);
+                chrome.openFragmentPreview(fragment);
             });
         });
     }

@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -506,30 +507,81 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
-    /**
-     * Opens a preview window for a context fragment
-     *
-     * @param fragment   The fragment to preview
-     * @param syntaxType The syntax highlighting style to use
-     */
-    /**
+        /**
+         * Creates and shows a standard preview JFrame for a given component.
+         * Handles title, default close operation, loading/saving bounds using the "preview" key,
+         * and visibility.
+         *
+         * @param contextManager The context manager for accessing project settings.
+         * @param title The title for the JFrame.
+         * @param contentComponent The JComponent to display within the frame.
+         */
+        private void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
+            JFrame previewFrame = new JFrame(title);
+            previewFrame.setContentPane(contentComponent);
+            previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+
+            var project = contextManager.getProject();
+            assert project != null;
+            var storedBounds = project.getPreviewWindowBounds(); // Use preview bounds
+            if (storedBounds != null && storedBounds.width > 0 && storedBounds.height > 0) {
+                previewFrame.setBounds(storedBounds);
+                 if (!isPositionOnScreen(storedBounds.x, storedBounds.y)) {
+                    previewFrame.setLocationRelativeTo(frame); // Center if off-screen
+                }
+            } else {
+                 previewFrame.setSize(800, 600); // Default size if no bounds saved
+                 previewFrame.setLocationRelativeTo(frame); // Center relative to main window
+            }
+
+
+            // Add listener to save bounds using the "preview" key
+            previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
+                @Override
+                public void componentMoved(java.awt.event.ComponentEvent e) {
+                    project.savePreviewWindowBounds(previewFrame); // Save JFrame bounds
+                }
+                @Override
+                public void componentResized(java.awt.event.ComponentEvent e) {
+                    project.savePreviewWindowBounds(previewFrame); // Save JFrame bounds
+                }
+            });
+
+            // Add ESC key binding to close the window
+            var rootPane = previewFrame.getRootPane();
+            var actionMap = rootPane.getActionMap();
+            var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+
+            inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeWindow");
+            actionMap.put("closeWindow", new AbstractAction() {
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    previewFrame.dispose();
+                }
+            });
+
+            previewFrame.setVisible(true);
+        }
+
+        /**
          * Opens a preview window for a context fragment.
          * Uses PreviewTextPanel for text fragments and PreviewImagePanel for image fragments.
+         * Uses MarkdownOutputPanel for Markdown and Diff fragments.
          *
-         * @param fragment   The fragment to preview.
-         * @param syntaxType The syntax highlighting style to use (for text fragments).
+         * @param fragment The fragment to preview.
          */
-        public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
+        public void openFragmentPreview(ContextFragment fragment) {
             try {
                 String title = "Preview: " + fragment.description();
-                
+
                 if (!fragment.isText()) {
                     // Handle image fragments
                     if (fragment instanceof ContextFragment.PasteImageFragment pif) {
                         var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
                         imagePanel.setImage(pif.image());
-                        PreviewImagePanel.showFrame(contextManager, title, imagePanel);
+                        showPreviewFrame(contextManager, title, imagePanel); // Use helper
                     } else if (fragment instanceof ContextFragment.ImageFileFragment iff) {
+                         // PreviewImagePanel has its own static showInFrame that uses showPreviewFrame
                         PreviewImagePanel.showInFrame(frame, contextManager, iff.file(), themeManager);
                     }
                     return;
@@ -538,14 +590,31 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 // Handle text fragments
                 String content = fragment.text();
                 if (fragment instanceof ContextFragment.GitFileFragment ghf) {
-                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, syntaxType, themeManager, ghf);
-                    PreviewTextPanel.showFrame(contextManager, title, previewPanel);
+                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, fragment.syntaxStyle(), themeManager, ghf);
+                    showPreviewFrame(contextManager, title, previewPanel); // Use helper
                 } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
-                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, syntaxType, themeManager, null);
-                    PreviewTextPanel.showFrame(contextManager, title, previewPanel);
+                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
+                     showPreviewFrame(contextManager, title, previewPanel); // Use helper
                 } else {
-                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, null, content, syntaxType, themeManager, null);
-                    PreviewTextPanel.showFrame(contextManager, title, previewPanel);
+                    // Handle Markdown, Diff, or plain text virtual fragments
+                    if (fragment.syntaxStyle().equals(SyntaxConstants.SYNTAX_STYLE_MARKDOWN)
+                        || fragment.syntaxStyle().equals(ContextFragment.SYNTAX_STYLE_DIFF))
+                    {
+                        // Use MarkdownOutputPanel for Markdown and Diff
+                        var markdownPanel = new MarkdownOutputPanel();
+                        markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
+                        markdownPanel.setText(content);
+
+                        // Wrap in a scroll pane
+                        var scrollPane = new JScrollPane(markdownPanel);
+                        scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+                        showPreviewFrame(contextManager, title, scrollPane); // Use helper
+                    } else {
+                        // Use PreviewTextPanel for other virtual/plain text fragments
+                        var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);
+                        showPreviewFrame(contextManager, title, previewPanel); // Use helper
+                    }
                 }
             } catch (IOException ex) {
                 toolErrorRaw("Error reading fragment content: " + ex.getMessage());
@@ -555,9 +624,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         }
 
-    private void loadWindowSizeAndPosition() {
-        var project = getProject();
-        if (project == null) {
+        private void loadWindowSizeAndPosition() {
+            var project = getProject();
+            if (project == null) {
             frame.setLocationRelativeTo(null);
             return;
         }

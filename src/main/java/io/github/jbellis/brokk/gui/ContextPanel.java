@@ -723,7 +723,7 @@ public class ContextPanel extends JPanel {
      * Shows a preview of the fragment contents
      */
     private void showFragmentPreview(ContextFragment fragment) {
-        chrome.openFragmentPreview(fragment, "text/java");
+        chrome.openFragmentPreview(fragment);
     }
 
     /**
