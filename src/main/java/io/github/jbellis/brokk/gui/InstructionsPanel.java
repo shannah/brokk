@@ -473,7 +473,7 @@ public class InstructionsPanel extends JPanel {
                         var sessionResult = new CodeAgent.SessionResult(
                                 "Ask: " + question, List.of(messages.getLast(), aiResponse),
                                 Map.of(), // No original contents for Ask
-                                aiResponse.text(),
+                                chrome.getLlmOutputText(),
                                 new CodeAgent.StopDetails(CodeAgent.StopReason.SUCCESS));
                         contextManager.addToHistory(sessionResult, false);
                     } else {
