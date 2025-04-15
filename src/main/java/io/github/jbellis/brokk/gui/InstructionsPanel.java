@@ -502,7 +502,6 @@ public class InstructionsPanel extends JPanel {
         try {
             var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
             agent.execute();
-            chrome.systemOutput("Architect Agent finished executing"); // Final status on normal completion
         } catch (CancellationException cex) {
              chrome.systemOutput("Agent execution cancelled.");
         } catch (Exception e) {

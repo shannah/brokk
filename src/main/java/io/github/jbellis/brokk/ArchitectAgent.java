@@ -57,25 +57,26 @@ public class ArchitectAgent {
      * A tool for finishing the plan with a final answer. Similar to 'answerSearch' in SearchAgent.
      */
     @Tool("Provide a final answer to the multi-step plan. Use this when you're done or have everything you need.")
-    public String projectFinished(
+    public void projectFinished(
             @P("A final explanation or summary addressing all tasks. Format it in Markdown if desired.")
             String finalExplanation
     ) {
-        logger.debug("Plan concluded with answer: {}", finalExplanation);
-        // Return it so the user sees it as a final conclusion
-        return finalExplanation;
+        var msg = "Architect Agent project complete: %s".formatted(finalExplanation);
+        logger.debug(msg);
+        contextManager.getIo().systemOutput(msg);
     }
 
     /**
      * A tool to abort the plan if you cannot proceed or if it is irrelevant.
      */
     @Tool("Abort the entire plan. Use this if the tasks are impossible or out of scope.")
-    public String abortProject(
+    public void abortProject(
             @P("Explain why the plan must be aborted.")
             String reason
     ) {
-        logger.debug("Plan aborted with reason: {}", reason);
-        return "Aborted: " + reason;
+        var msg = "Architect Agent project aborted: %s".formatted(reason);
+        logger.debug(msg);
+        contextManager.getIo().systemOutput(msg);
     }
 
     /**

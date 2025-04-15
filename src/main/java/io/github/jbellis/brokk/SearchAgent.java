@@ -266,7 +266,7 @@ public class SearchAgent {
 
             // If thread interrupted, bail out
             if (Thread.interrupted()) {
-                io.systemOutput("Interrupted; stopping search");
+                io.systemOutput("Search Agent interrupted");
                 return null;
             }
 
@@ -287,7 +287,7 @@ public class SearchAgent {
             // Decide what action(s) to take for this query
             var toolRequests = determineNextActions();
             if (Thread.interrupted()) {
-                io.systemOutput("Interrupted; stopping search");
+                io.systemOutput("Search Agent interrupted");
                 return null;
             }
             if (toolRequests.isEmpty()) {
