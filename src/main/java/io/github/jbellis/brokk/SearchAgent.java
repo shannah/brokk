@@ -84,7 +84,7 @@ public class SearchAgent {
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
-        this.coder = contextManager.getCoder(model, query);
+        this.coder = contextManager.getCoder(model, "Search: " + query);
         this.io = contextManager.getIo();
         this.toolRegistry = toolRegistry;
 
@@ -194,7 +194,7 @@ public class SearchAgent {
      * @return The final set of discovered code units
      */
     public ContextFragment.VirtualFragment execute() {
-        io.systemOutput("Search Agent engaged: `%s`".formatted(query));
+        io.systemOutput("Search Agent engaged: `%s...`".formatted(CodeAgent.SessionResult.getShortDescription(query)));
 
         // If context exists, ask LLM to evaluate its relevance and kick off async summary
         var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {

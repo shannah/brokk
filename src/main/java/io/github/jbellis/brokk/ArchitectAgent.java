@@ -134,6 +134,7 @@ public class ArchitectAgent {
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
     public void execute() {
+        contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(goal));
         var currentPlan = contextManager.selectedContext().getPlan();
         logger.debug("BrokkAgent starting project with plan: {}", currentPlan);
 
@@ -159,7 +160,7 @@ public class ArchitectAgent {
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
-            var response = contextManager.getCoder(model, goal).sendMessage(messages, toolSpecs, ToolChoice.REQUIRED, false);
+            var response = contextManager.getCoder(model, "Architect: goal").sendMessage(messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (response.cancelled()) {
                 logger.debug("Project canceled by user. Stopping now.");
                 return;

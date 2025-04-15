@@ -119,7 +119,7 @@ public class CodeAgent {
   {
       var io = contextManager.getIo();
       // Create Coder instance with the user's input as the task description
-      var coder = contextManager.getCoder(model, userInput);
+      var coder = contextManager.getCoder(model, "Code: " + userInput);
 
       // Track original contents of files before any changes
       var originalContents = new HashMap<ProjectFile, String>();
@@ -141,7 +141,7 @@ public class CodeAgent {
         var buildErrors = new ArrayList<String>();
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
 
-        io.systemOutput("Code Agent started: `%s`".formatted(userInput));
+        io.systemOutput("Code Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(userInput)));
         StopDetails stopDetails;
 
         while (true) {
@@ -570,7 +570,7 @@ public class CodeAgent {
                                          String oldText,
                                          String instructions)
     {
-        var coder = cm.getCoder(cm.getModels().quickModel(), "Quick Edit: " + instructions);
+        var coder = cm.getCoder(cm.getModels().quickModel(), "QuickEdit: " + instructions);
         var analyzer = cm.getAnalyzer();
 
         // Use up to 5 related classes as context
