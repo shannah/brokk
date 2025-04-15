@@ -554,7 +554,7 @@ public class InstructionsPanel extends JPanel {
 
         // Add to context history with the output text
         contextManager.pushContext(ctx -> {
-            var runFrag = new ContextFragment.StringFragment(output, "Run " + input);
+            var runFrag = new ContextFragment.StringFragment(output, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
             var parsed = new ParsedOutput(llmOutputText, runFrag);
             return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
         });

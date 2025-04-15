@@ -40,7 +40,7 @@ public record SessionResult(String actionDescription,
         this(actionDescription,
              messages,
              originalContents,
-             new Context.ParsedOutput(outputString, new ContextFragment.StringFragment(outputString, "AI Response")),
+             new Context.ParsedOutput(outputString, new ContextFragment.StringFragment(outputString, "AI Response", ContextFragment.SYNTAX_STYLE_DIFF)),
              stopDetails);
     }
 

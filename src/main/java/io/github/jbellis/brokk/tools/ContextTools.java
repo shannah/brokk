@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -159,7 +160,8 @@ public class ContextTools {
         // Use the ContextManager's method to add the string fragment
         String description = "Content from " + urlString;
         // ContextManager handles pushing the context update
-        contextManager.addStringFragment(content, description);
+        var fragment = new ContextFragment.StringFragment(content, description, SyntaxConstants.SYNTAX_STYLE_NONE);
+        contextManager.pushContext(ctx -> ctx.addVirtualFragment(fragment));
 
         return "Added content from URL [%s] as a read-only text fragment.".formatted(urlString);
     }
@@ -179,7 +181,8 @@ public class ContextTools {
         }
 
         // Use the ContextManager's method to add the string fragment
-        contextManager.addStringFragment(content, description);
+        var fragment = new ContextFragment.StringFragment(content, description, SyntaxConstants.SYNTAX_STYLE_NONE);
+        contextManager.pushContext(ctx -> ctx.addVirtualFragment(fragment));
 
         return "Added text fragment '%s'.".formatted(description);
     }
@@ -352,7 +355,7 @@ public class ContextTools {
             String sourceCodeWithHeader = entry.getValue();
             String description = "Source for method " + methodName;
             // Create and add the fragment
-            var fragment = new ContextFragment.StringFragment(sourceCodeWithHeader, description);
+            var fragment = new ContextFragment.StringFragment(sourceCodeWithHeader, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
             contextManager.addVirtualFragment(fragment);
             count++;
         }

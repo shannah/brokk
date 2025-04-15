@@ -50,7 +50,7 @@ public final class GitUiUtil
                                 .map(ProjectFile::getFileName)
                                 .collect(Collectors.joining(", "))
                 );
-                var fragment = new ContextFragment.StringFragment(diff, description);
+                var fragment = new ContextFragment.StringFragment(diff, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added uncommitted diff for " + selectedFiles.size() + " file(s) to context");
             } catch (Exception ex) {
@@ -106,7 +106,7 @@ public final class GitUiUtil
                 }
                 var shortHash = (commitId.length() > 7) ? commitId.substring(0, 7) : commitId;
                 var description = "Diff of %s [%s]".formatted(file.getFileName(), shortHash);
-                var fragment = new ContextFragment.StringFragment(diff, description);
+                var fragment = new ContextFragment.StringFragment(diff, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added changes for " + file.getFileName() + " to context");
             } catch (Exception e) {
@@ -230,7 +230,7 @@ public final class GitUiUtil
                         : firstShort + ".." + lastShort;
                 var description = "Diff of %s [%s]".formatted(filesTxt, hashTxt);
 
-                var fragment = new ContextFragment.StringFragment(diff, description);
+                var fragment = new ContextFragment.StringFragment(diff, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added changes for commit range to context");
             } catch (Exception ex) {
@@ -281,7 +281,7 @@ public final class GitUiUtil
                         .collect(Collectors.joining(", "));
                 var description = "Diff of %s [%s]".formatted(filesTxt, shortHash);
 
-                var fragment = new ContextFragment.StringFragment(diffs, description);
+                var fragment = new ContextFragment.StringFragment(diffs, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
                 contextManager.addVirtualFragment(fragment);
                 chrome.systemOutput("Added changes for selected files in commit range to context");
             } catch (Exception ex) {

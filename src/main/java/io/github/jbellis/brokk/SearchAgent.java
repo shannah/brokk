@@ -21,6 +21,7 @@ import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import scala.Option;
 import scala.Tuple2;
 
@@ -346,7 +347,7 @@ public class SearchAgent {
     }
 
     private SessionResult errorResult(SessionResult.StopDetails details) {
-        var fragment = new ContextFragment.StringFragment(details.explanation(), "%s: %s".formatted(details.reason(), query));
+        var fragment = new ContextFragment.StringFragment(details.explanation(), "%s: %s".formatted(details.reason(), query), SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
         return new SessionResult("Search: " + query,
                                  forgeMessagesForResult(),
                                  Map.of(),

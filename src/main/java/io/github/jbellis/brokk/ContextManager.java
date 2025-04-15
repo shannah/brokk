@@ -9,7 +9,6 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
-import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextHistory.UndoResult;
@@ -496,42 +495,28 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Adds a simple string content as a virtual fragment.
-     * @param content The text content.
-     * @param description A description for the fragment.
+     * Handles pasting an image from the clipboard.
+     * Submits a task to summarize the image and adds a PasteImageFragment to the context.
+     * @param image The java.awt.Image pasted from the clipboard.
      */
-    public void addStringFragment(String content, String description) {
-        // This directly pushes a new context state with the added fragment.
-        // Instantiate the StringFragment and add it via addVirtualFragment.
+    public void addPastedImageFragment(java.awt.Image image) {
+        // Submit task to get image description asynchronously
+        Future<String> descriptionFuture = submitSummarizePastedImage(image); // Note: submitSummarizePastedImage needs to be defined
+
+        // Add the PasteImageFragment immediately, the description will update when the future completes
         pushContext(ctx -> {
-            var fragment = new ContextFragment.StringFragment(content, description);
+            var fragment = new ContextFragment.PasteImageFragment(image, descriptionFuture);
+            // While PasteImageFragment itself inherits from VirtualFragment, let's use the specific addVirtualFragment
+            // method for consistency, as it handles adding to the correct internal list.
             return ctx.addVirtualFragment(fragment);
         });
-        }
-    
-        /**
-         * Handles pasting an image from the clipboard.
-         * Submits a task to summarize the image and adds a PasteImageFragment to the context.
-         * @param image The java.awt.Image pasted from the clipboard.
-         */
-        public void addPastedImageFragment(java.awt.Image image) {
-            // Submit task to get image description asynchronously
-            Future<String> descriptionFuture = submitSummarizePastedImage(image); // Note: submitSummarizePastedImage needs to be defined
-    
-            // Add the PasteImageFragment immediately, the description will update when the future completes
-            pushContext(ctx -> {
-                var fragment = new ContextFragment.PasteImageFragment(image, descriptionFuture);
-                // While PasteImageFragment itself inherits from VirtualFragment, let's use the specific addVirtualFragment
-                // method for consistency, as it handles adding to the correct internal list.
-                return ctx.addVirtualFragment(fragment);
-            });
-            // User feedback is handled in the calling method (ContextPanel.doPasteAction)
-        }
-    
-        /**
-         * Adds a specific PathFragment (like GitHistoryFragment) to the read-only context.
-         *
-         * @param fragment The PathFragment to add.
+        // User feedback is handled in the calling method (ContextPanel.doPasteAction)
+    }
+
+    /**
+     * Adds a specific PathFragment (like GitHistoryFragment) to the read-only context.
+     *
+     * @param fragment The PathFragment to add.
      */
     public void addReadOnlyFragment(PathFragment fragment)
     {

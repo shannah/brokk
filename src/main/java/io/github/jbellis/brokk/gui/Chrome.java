@@ -525,17 +525,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 
                 if (!fragment.isText()) {
                     // Handle image fragments
-                    if (fragment instanceof ContextFragment.PasteImageFragment) {
-                            var imageFragment = (ContextFragment.PasteImageFragment) fragment;
-                            var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
-                            imagePanel.setImage(imageFragment.image());
-                            PreviewImagePanel.showFrame(contextManager, title, imagePanel);
-                    } else if (fragment instanceof ContextFragment.PathFragment) {
-                        var pathFragment = (ContextFragment.PathFragment) fragment;
-                        var file = pathFragment.file();
-                        if (file != null && !file.isText()) {
-                            PreviewImagePanel.showInFrame(frame, contextManager, file, themeManager);
-                        }
+                    if (fragment instanceof ContextFragment.PasteImageFragment pif) {
+                        var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
+                        imagePanel.setImage(pif.image());
+                        PreviewImagePanel.showFrame(contextManager, title, imagePanel);
+                    } else if (fragment instanceof ContextFragment.ImageFileFragment iff) {
+                        PreviewImagePanel.showInFrame(frame, contextManager, iff.file(), themeManager);
                     }
                     return;
                 }

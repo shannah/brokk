@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -93,7 +94,7 @@ public class Context implements Serializable {
     }
 
     private static @NotNull ParsedOutput getWelcomeOutput(String initialOutputText) {
-        return new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "Welcome"));
+        return new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "Welcome", SyntaxConstants.SYNTAX_STYLE_MARKDOWN));
     }
 
     /**

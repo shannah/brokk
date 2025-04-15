@@ -11,6 +11,7 @@ import com.github.difflib.algorithm.DiffAlgorithmListener;
 import com.github.difflib.patch.Patch;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -225,7 +226,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             String diffText = String.join("\n", unifiedDiff);
 
             var description = "Captured Diff: %s vs %s".formatted(leftFileTitle, rightFileTitle);
-            var fragment = new ContextFragment.StringFragment(diffText, description);
+            var fragment = new ContextFragment.StringFragment(diffText, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
             contextManager.addVirtualFragment(fragment);
             contextManager.getIo().systemOutput("Added captured diff to context: " + description);
         });

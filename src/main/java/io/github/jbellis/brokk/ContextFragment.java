@@ -4,10 +4,11 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.awt.*;
 import java.io.IOException;
-import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Path;
 import java.util.List;
@@ -18,6 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public interface ContextFragment extends Serializable {
+    String SYNTAX_STYLE_DIFF = "DIFF";
+
     // Static counter for all fragments
     AtomicInteger NEXT_ID = new AtomicInteger(1);
     
@@ -50,6 +53,8 @@ public interface ContextFragment extends Serializable {
      */
     Set<ProjectFile> files(IProject project);
 
+    String syntaxStyle();
+
     /**
      * should AutoContext exclude classes found in this fragment?
      */
@@ -69,11 +74,10 @@ public interface ContextFragment extends Serializable {
                 .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
     }
-    
-        sealed interface PathFragment extends ContextFragment
-                permits ProjectPathFragment, GitFileFragment, ExternalPathFragment, ImageFileFragment
-        {
-            BrokkFile file();
+
+    sealed interface PathFragment extends ContextFragment
+            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment, ImageFileFragment {
+        BrokkFile file();
 
         @Override
         default Set<ProjectFile> files(IProject project) {
@@ -86,12 +90,17 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        default public String syntaxStyle() {
+            return FileTypeUtil.get().guessContentType(file().absPath().toFile());
+        }
+
+        @Override
         default String format() throws IOException {
             return """
-              <file path="%s" fragmentid="%d">
-              %s
-              </file>
-              """.stripIndent().formatted(file().toString(), id(), text());
+            <file path="%s" fragmentid="%d">
+            %s
+            </file>
+            """.stripIndent().formatted(file().toString(), id(), text());
         }
     }
 
@@ -293,15 +302,15 @@ public interface ContextFragment extends Serializable {
             // Should not happen if bf is ProjectFile or ExternalFile
             throw new IllegalArgumentException("Unsupported BrokkFile subtype: " + bf.getClass().getName());
         }
-    
-        abstract class VirtualFragment implements ContextFragment {
+
+    abstract class VirtualFragment implements ContextFragment {
         private static final long serialVersionUID = 2L;
         private final int id;
 
         public VirtualFragment() {
             this.id = NEXT_ID.getAndIncrement();
         }
-        
+
         @Override
         public int id() {
             return id;
@@ -310,10 +319,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() throws IOException {
             return """
-              <fragment description="%s" fragmentid="%d">
-              %s
-              </fragment>
-              """.stripIndent().formatted(description(), id(), text());
+            <fragment description="%s" fragmentid="%d">
+            %s
+            </fragment>
+            """.stripIndent().formatted(description(), id(), text());
         }
 
         @Override
@@ -363,9 +372,11 @@ public interface ContextFragment extends Serializable {
         private static final long serialVersionUID = 2L;
         private final String text;
         private final String description;
+        private final String syntaxStyle;
 
-        public StringFragment(String text, String description) {
+        public StringFragment(String text, String description, String syntaxStyle) {
             super();
+            this.syntaxStyle = syntaxStyle;
             assert text != null;
             assert description != null;
             this.text = text;
@@ -380,6 +391,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return description;
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return syntaxStyle;
         }
 
         @Override
@@ -422,6 +438,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "Search: " + query;
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
         }
 
         @Override
@@ -491,6 +512,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public String syntaxStyle() {
+            // TODO infer from contents
+            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
+        }
+
+        @Override
         public String text() {
             return text;
         }
@@ -520,6 +547,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public Image image() {
             return image;
+        }
+
+        @Override
+        public String syntaxStyle() {
+            throw new UnsupportedOperationException();
         }
 
         @Override
@@ -570,6 +602,11 @@ public interface ContextFragment extends Serializable {
         public String description() {
             return "stacktrace of " + exception;
         }
+
+        @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_NONE;
+        }
     }
 
     static String toClassname(String methodname) {
@@ -617,6 +654,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "%s of %s".formatted(type, targetIdentifier);
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_JAVA;
         }
     }
 
@@ -709,11 +751,17 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_JAVA;
+        }
+
+        @Override
         public String toString() {
             return "SkeletonFragment('%s')".formatted(description());
         }
     }
 
+    /** represents the entire Task History */
     class ConversationFragment extends VirtualFragment {
         private static final long serialVersionUID = 3L;
         private final List<TaskEntry> history;
@@ -767,6 +815,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public String toString() {
             return "ConversationFragment(" + history.size() + " tasks)";
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return SYNTAX_STYLE_DIFF;
         }
     }
 
@@ -851,6 +904,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public String toString() {
             return "AutoContext('%s')".formatted(description());
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_JAVA;
         }
     }
 }
