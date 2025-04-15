@@ -25,7 +25,6 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.Future; // Import Future
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,9 +41,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *   <li>Quick Results dialog providing real-time feedback during code modifications.</li>
  * </ul>
  */
-public class PreviewPanel extends JPanel
+public class PreviewTextPanel extends JPanel
 {
-    private static final Logger logger = LogManager.getLogger(PreviewPanel.class);
+    private static final Logger logger = LogManager.getLogger(PreviewTextPanel.class);
     private final PreviewTextArea textArea;
     private final JTextField searchField;
     private final JButton nextButton;
@@ -60,12 +59,12 @@ public class PreviewPanel extends JPanel
     private final ProjectFile file;
     private final ContextFragment fragment;
 
-    public PreviewPanel(ContextManager contextManager,
-                        ProjectFile file,
-                        String content,
-                        String syntaxStyle,
-                        GuiTheme guiTheme,
-                        ContextFragment fragment)
+    public PreviewTextPanel(ContextManager contextManager,
+                            ProjectFile file,
+                            String content,
+                            String syntaxStyle,
+                            GuiTheme guiTheme,
+                            ContextFragment fragment)
     {
         super(new BorderLayout());
         assert contextManager != null;
@@ -232,14 +231,14 @@ public class PreviewPanel extends JPanel
         try {
             String content = file == null ? "" : file.read(); // Get content file
             String title = file == null ? "Preview" : "View File: " + file;
-            PreviewPanel previewPanel = new PreviewPanel(contextManager, file, content, syntaxStyle, guiTheme, null);
+            PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, file, content, syntaxStyle, guiTheme, null);
             showFrame(contextManager, title, previewPanel);
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(parentFrame, "Error reading content: " + ex.getMessage(), "Read Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    public static void showFrame(ContextManager contextManager, String title, PreviewPanel previewPanel) {
+    public static void showFrame(ContextManager contextManager, String title, PreviewTextPanel previewPanel) {
         JFrame frame = new JFrame(title);
         frame.setContentPane(previewPanel);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
@@ -313,7 +312,7 @@ public class PreviewPanel extends JPanel
             Action quickEditAction = new AbstractAction("Quick Edit") {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    PreviewPanel.this.showQuickEditDialog(getSelectedText());
+                    PreviewTextPanel.this.showQuickEditDialog(getSelectedText());
                 }
             };
             quickEditAction.setEnabled(false);
@@ -682,7 +681,7 @@ public class PreviewPanel extends JPanel
             public void actionPerformed(ActionEvent e) {
                 // Only close if search field doesn't have focus
                 if (!searchField.hasFocus()) {
-                    Window window = SwingUtilities.getWindowAncestor(PreviewPanel.this);
+                    Window window = SwingUtilities.getWindowAncestor(PreviewTextPanel.this);
                     if (window != null) {
                         window.dispose();
                     }

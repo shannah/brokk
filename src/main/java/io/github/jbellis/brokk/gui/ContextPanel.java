@@ -586,10 +586,16 @@ public class ContextPanel extends JPanel {
         int totalLines = 0;
         StringBuilder fullText = new StringBuilder();
         for (var frag : allFragments) {
-            var text = getTextSafe(frag);
-            fullText.append(text).append("\n");
-            int loc = text.split("\\r?\\n", -1).length;
-            totalLines += loc;
+            String locText;
+            if (frag.isText()) {
+                var text = getTextSafe(frag);
+                fullText.append(text).append("\n");
+                int loc = text.split("\\r?\\n", -1).length;
+                totalLines += loc;
+                locText = "%,d".formatted(loc);
+            } else {
+                locText = "Image";
+            }
             var desc = frag.description();
 
             // Mark editable if it's in the editable streams
@@ -609,7 +615,7 @@ public class ContextPanel extends JPanel {
                         .collect(Collectors.toList());
             }
 
-            tableModel.addRow(new Object[]{loc, desc, fileReferences, frag});
+            tableModel.addRow(new Object[]{locText, desc, fileReferences, frag});
         }
 
         var approxTokens = Models.getApproximateTokens(fullText.toString());

@@ -8,7 +8,10 @@ import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.gui.dialogs.PreviewPanel;
+import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
+import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
+import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
+import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -358,8 +361,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         for (Window window : Window.getWindows()) {
             if (window instanceof JFrame && window != frame) {
                 Container contentPane = ((JFrame) window).getContentPane();
-                if (contentPane instanceof PreviewPanel) {
-                    ((PreviewPanel) contentPane).updateTheme(themeManager);
+                if (contentPane instanceof PreviewTextPanel) {
+                    ((PreviewTextPanel) contentPane).updateTheme(themeManager);
                 }
             }
         }
@@ -518,37 +521,52 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * @param syntaxType The syntax highlighting style to use
      */
     /**
-     * Opens a preview window for a context fragment.
-     * For RepoPathFragments with a ProjectFile, uses showInDialog; otherwise, it calls showDialog.
-     *
-     * @param fragment   The fragment to preview.
-     * @param syntaxType The syntax highlighting style to use.
-     */
-    public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
-        try {
-            // Use fragment.description() for title, handle specific fragment types for PreviewPanel
-            String title = "Preview: " + fragment.description();
-            String content = fragment.text();
+         * Opens a preview window for a context fragment.
+         * Uses PreviewTextPanel for text fragments and PreviewImagePanel for image fragments.
+         *
+         * @param fragment   The fragment to preview.
+         * @param syntaxType The syntax highlighting style to use (for text fragments).
+         */
+        public void openFragmentPreview(ContextFragment fragment, String syntaxType) {
+            try {
+                String title = "Preview: " + fragment.description();
+                
+                if (!fragment.isText()) {
+                    // Handle image fragments
+                    if (fragment instanceof ContextFragment.PasteImageFragment) {
+                            var imageFragment = (ContextFragment.PasteImageFragment) fragment;
+                            var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
+                            imagePanel.setImage(imageFragment.image());
+                            PreviewImagePanel.showFrame(contextManager, title, imagePanel);
+                    } else if (fragment instanceof ContextFragment.PathFragment) {
+                        var pathFragment = (ContextFragment.PathFragment) fragment;
+                        var file = pathFragment.file();
+                        if (file != null && !file.isText()) {
+                            PreviewImagePanel.showInFrame(frame, contextManager, file, themeManager);
+                        }
+                    }
+                    return;
+                }
 
-            if (fragment instanceof ContextFragment.GitFileFragment ghf) {
-                // Pass the GitHistoryFragment itself to the panel constructor/frame
-                PreviewPanel previewPanel = new PreviewPanel(contextManager, ghf.file(), content, syntaxType, themeManager, ghf);
-                PreviewPanel.showFrame(contextManager, title, previewPanel);
-            } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
-                // Pass the ProjectFile for regular project path fragments
-                PreviewPanel previewPanel = new PreviewPanel(contextManager, ppf.file(), content, syntaxType, themeManager, null);
-                PreviewPanel.showFrame(contextManager, title, previewPanel);
-            } else {
-                // Pass null for file and fragment for other types (like StringFragment)
-                PreviewPanel previewPanel = new PreviewPanel(contextManager, null, content, syntaxType, themeManager, null);
-                PreviewPanel.showFrame(contextManager, title, previewPanel);
+                // Handle text fragments
+                String content = fragment.text();
+                if (fragment instanceof ContextFragment.GitFileFragment ghf) {
+                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, syntaxType, themeManager, ghf);
+                    PreviewTextPanel.showFrame(contextManager, title, previewPanel);
+                } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
+                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, syntaxType, themeManager, null);
+                    PreviewTextPanel.showFrame(contextManager, title, previewPanel);
+                } else {
+                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, null, content, syntaxType, themeManager, null);
+                    PreviewTextPanel.showFrame(contextManager, title, previewPanel);
+                }
+            } catch (IOException ex) {
+                toolErrorRaw("Error reading fragment content: " + ex.getMessage());
+            } catch (Exception ex) {
+                logger.debug("Error opening preview", ex);
+                toolErrorRaw("Error opening preview: " + ex.getMessage());
             }
-        } catch (IOException ex) {
-            toolErrorRaw("Error reading fragment content: " + ex.getMessage());
-        } catch (Exception ex) {
-            toolErrorRaw("Error opening preview: " + ex.getMessage());
         }
-    }
 
     private void loadWindowSizeAndPosition() {
         var project = getProject();

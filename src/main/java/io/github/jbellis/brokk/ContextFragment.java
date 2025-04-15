@@ -34,7 +34,7 @@ public interface ContextFragment extends Serializable {
     default boolean isText() {
         return true;
     }
-    default Image image() {
+    default Image image() throws IOException {
         throw new UnsupportedOperationException();
     }
 
@@ -53,7 +53,9 @@ public interface ContextFragment extends Serializable {
     /**
      * should AutoContext exclude classes found in this fragment?
      */
-    boolean isEligibleForAutoContext();
+    default boolean isEligibleForAutoContext() {
+        return isText();
+    }
 
     static Set<ProjectFile> parseRepoFiles(String text, IProject project) {
         var exactMatches = project.getFiles().stream().parallel()
@@ -67,11 +69,11 @@ public interface ContextFragment extends Serializable {
                 .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
     }
-
-    sealed interface PathFragment extends ContextFragment
-            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment
-    {
-        BrokkFile file();
+    
+        sealed interface PathFragment extends ContextFragment
+                permits ProjectPathFragment, GitFileFragment, ExternalPathFragment, ImageFileFragment
+        {
+            BrokkFile file();
 
         @Override
         default Set<ProjectFile> files(IProject project) {
@@ -121,11 +123,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public Set<CodeUnit> sources(IProject project) {
             return project.getAnalyzer().getClassesInFile(file);
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return isText();
         }
 
         @Override
@@ -215,18 +212,89 @@ public interface ContextFragment extends Serializable {
         public boolean isEligibleForAutoContext() {
             return false;
         }
-    }
-
-    static PathFragment toPathFragment(BrokkFile bf) {
-        if (bf instanceof ProjectFile repo) {
-            return new ProjectPathFragment(repo);
-        } else if (bf instanceof ExternalFile ext) {
-            return new ExternalPathFragment(ext);
         }
-        throw new IllegalArgumentException("Unknown BrokkFile subtype: " + bf.getClass().getName());
-    }
-
-    abstract class VirtualFragment implements ContextFragment {
+    
+        /**
+         * Represents an image file, either from the project or external.
+         */
+        record ImageFileFragment(BrokkFile file, int id) implements PathFragment {
+            private static final long serialVersionUID = 1L;
+    
+            public ImageFileFragment(BrokkFile file) {
+                this(file, NEXT_ID.getAndIncrement());
+                assert !file.isText() : "ImageFileFragment should only be used for non-text files";
+            }
+    
+            @Override
+            public String shortDescription() {
+                return file().getFileName();
+            }
+    
+            @Override
+            public String description() {
+                 if (file instanceof ProjectFile pf && !pf.getParent().isEmpty()) {
+                    return "%s [%s]".formatted(file.getFileName(), pf.getParent());
+                 }
+                 return file.toString(); // For ExternalFile or root ProjectFile
+            }
+    
+            @Override
+            public boolean isText() {
+                return false;
+            }
+    
+            @Override
+            public String text() {
+                throw new UnsupportedOperationException();
+            }
+    
+            @Override
+            public Image image() throws IOException {
+                return javax.imageio.ImageIO.read(file.absPath().toFile());
+            }
+    
+            @Override
+            public Set<CodeUnit> sources(IProject project) {
+                return Set.of();
+            }
+    
+             @Override
+            public Set<ProjectFile> files(IProject project) {
+                return (file instanceof ProjectFile pf) ? Set.of(pf) : Set.of();
+            }
+    
+            @Override
+            public String format() {
+                // Format for LLM, indicating image content (similar to PasteImageFragment)
+                return """
+                  <file path="%s" fragmentid="%d">
+                  [Image content provided out of band]
+                  </file>
+                  """.stripIndent().formatted(file().toString(), id());
+            }
+    
+            @Override
+            public String toString() {
+                return "ImageFileFragment('%s')".formatted(file);
+            }
+        }
+    
+        static PathFragment toPathFragment(BrokkFile bf) {
+            if (bf.isText()) {
+                if (bf instanceof ProjectFile repo) {
+                    return new ProjectPathFragment(repo);
+                } else if (bf instanceof ExternalFile ext) {
+                    return new ExternalPathFragment(ext);
+                }
+            } else {
+                // If it's not text, treat it as an image
+                return new ImageFileFragment(bf);
+            }
+            // Should not happen if bf is ProjectFile or ExternalFile
+            throw new IllegalArgumentException("Unsupported BrokkFile subtype: " + bf.getClass().getName());
+        }
+    
+        abstract class VirtualFragment implements ContextFragment {
         private static final long serialVersionUID = 2L;
         private final int id;
 

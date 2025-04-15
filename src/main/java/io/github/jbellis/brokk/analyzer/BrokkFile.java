@@ -17,10 +17,12 @@ public interface BrokkFile extends Serializable {
         return Files.exists(absPath());
     }
 
+    /** best guess as to whether a file is text and hence eligible for substring search */
     default boolean isText() {
         try {
             return Files.isRegularFile(absPath())
-                    && (FileExtensions.EXTENSIONS.stream().anyMatch(ext -> absPath().endsWith(ext))
+                    && FileExtensions.IMAGE_EXTENSIONS.stream().noneMatch(ext -> FileExtensions.matches(absPath(), ext))
+                    && (FileExtensions.TEXT_EXTENSIONS.stream().anyMatch(ext -> FileExtensions.matches(absPath(), ext))
                         || Files.size(absPath()) < 128 * 1024);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
