@@ -42,7 +42,8 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
 
         ## 2. Codebase Investigation
         - Use Search Agent to search for key functions, classes, or variables related to the goal.
-        - Read and understand relevant code snippets, and add them to the Workspace for Code Agent.
+        - Add relevant files, usage information, and code snippets to the Workspace to examine them
+          yourself and to expose them to Code Agent.
         - Identify the root cause of the problem.
         - Update the Workspace context continuously as you improve your understanding.
 
@@ -92,7 +93,8 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
         # Working with other agents
 
         The Workspace of files and code fragments is visible to all agents, but
-        other agents ARE NOT ABLE to see our conversation! Your instructions must be self-contained and complete;
+        other agents ARE NOT ABLE to see our conversation, including the results of other agent calls! 
+        Your instructions must therefore be self-contained and complete;
         besides the Workspace itself that is the only information they will have.
 
         DO NOT assume that the workspace is correctly configured to start solving the goal! You MUST
