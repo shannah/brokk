@@ -161,15 +161,20 @@ public class ArchitectAgent {
             // 5) Ask the LLM for the next step with tools required
             var response = coder.sendMessage(messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (response.cancelled()) {
-                logger.debug("Project canceled by user. Stopping now.");
+                var msg = "Project canceled by user. Stopping now.";
+                logger.debug(msg);
+                contextManager.getIo().systemOutput(msg);
                 return;
             }
             if (response.error() != null) {
                 logger.debug("Error from LLM while deciding next action: {}", response.error().getMessage());
+                contextManager.getIo().systemOutput("Error from LLM while deciding next action (see debug log for details)");
                 return;
             }
             if (response.chatResponse() == null || response.chatResponse().aiMessage() == null) {
-                logger.debug("Empty LLM response. Stopping plan now.");
+                var msg = "Empty LLM response. Stopping plan now.";
+                logger.debug(msg);
+                contextManager.getIo().systemOutput(msg);
                 return;
             }
             logger.debug("LLM response: {}", response);
