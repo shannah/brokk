@@ -34,6 +34,8 @@ import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.MalformedInputException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -626,7 +628,14 @@ public class ContextPanel extends JPanel {
         try {
             return fragment.text();
         } catch (IOException e) {
-            chrome.systemOutput("Error reading fragment: " + e.getMessage());
+            String msg;
+            if (e instanceof CharacterCodingException) {
+                msg = "Unable to read fragment `%s` (probable non-text data)".formatted(fragment.description());
+            } else {
+                msg = "Unable to read fragment `%s`".formatted(fragment.description());
+            }
+            logger.debug(msg, e);
+            chrome.systemOutput(msg);
             contextManager.removeBadFragment(fragment, e);
             return "";
         }
@@ -985,8 +994,10 @@ public class ContextPanel extends JPanel {
                 try {
                     sb.append(frag.text()).append("\n\n");
                 } catch (IOException e) {
-                    contextManager.removeBadFragment(frag, e); // Qualify contextManager
-                    chrome.toolErrorRaw("Error reading fragment: " + e.getMessage()); // Qualify chrome
+                    contextManager.removeBadFragment(frag, e);
+                    var msg = "Error reading fragment `%s`".formatted(frag.description());
+                    logger.debug(msg, e);
+                    chrome.toolErrorRaw(msg);
                 }
             }
             content = sb.toString();
