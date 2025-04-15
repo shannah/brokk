@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
@@ -326,9 +327,45 @@ public final class Models {
     public static String getText(ChatMessage message) {
         return switch (message) {
             case SystemMessage sm -> sm.text();
-            case AiMessage am -> am.text();
+            case AiMessage am -> am.text() == null ? am.text() : "";
             case UserMessage um -> um.contents().stream().filter(c -> c instanceof TextContent).map(c -> ((TextContent) c).text()).collect(Collectors.joining("\n"));
-            case ToolExecutionResultMessage tr -> "%s: %s".formatted(tr.toolName(), tr.text());
+            case ToolExecutionResultMessage tr -> "%s -> %s".formatted(tr.toolName(), tr.text());
+            default -> throw new UnsupportedOperationException(message.getClass().toString());
+        };
+    }
+
+    /**
+     * Primary difference from getText:
+     * 1. Includes tool requests
+     * 2. Includes placeholder for images
+     */
+    public static String getRepr(ChatMessage message) {
+        return switch (message) {
+            case SystemMessage sm -> sm.text();
+            case AiMessage am -> {
+                var raw = am.text() == null ? "" : am.text();
+                if (!am.hasToolExecutionRequests()) {
+                    yield raw;
+                }
+                var toolText = am.toolExecutionRequests().stream()
+                        .map(tr -> "%s(%s)".formatted(tr.name(), tr.arguments()))
+                        .collect(Collectors.joining("\n"));
+                yield "%s\n%s".formatted(raw, toolText);
+            }
+            case UserMessage um -> {
+                yield um.contents().stream()
+                        .map(c -> {
+                            if (c instanceof TextContent) {
+                                return ((TextContent) c).text();
+                            } else if (c instanceof ImageContent) {
+                                return "[Image]";
+                            } else {
+                                throw new UnsupportedOperationException(c.getClass().toString());
+                            }
+                        })
+                        .collect(Collectors.joining("\n"));
+            }
+            case ToolExecutionResultMessage tr -> "%s -> %s".formatted(tr.toolName(), tr.text());
             default -> throw new UnsupportedOperationException(message.getClass().toString());
         };
     }

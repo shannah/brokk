@@ -96,7 +96,7 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
     public static @NotNull String formatMessages(List<ChatMessage> messages) {
         return messages.stream()
                   .map(message -> {
-                      var text = Models.getText(message);
+                      var text = Models.getRepr(message);
                       return """
                       <message type=%s>
                       %s
