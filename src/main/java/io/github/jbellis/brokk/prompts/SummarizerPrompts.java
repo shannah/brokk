@@ -52,12 +52,12 @@ public class SummarizerPrompts {
 
     private static @NotNull String getRequest(String actionTxt, int wordBudget) {
         return """
-        <text>
-        %s
-        </text>
         <goal>
         Here is my text, please summarize it in %d words or fewer.
         </goal>
+        <text>
+        %s
+        </text>
         """.stripIndent().formatted(actionTxt, wordBudget);
     }
 
