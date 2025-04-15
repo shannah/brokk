@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.BuildAgent.BuildDetails;
@@ -28,12 +27,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
+
+    // Regex to identify test files. Looks for "test" or "tests" surrounded by separators or camelCase boundaries.
+    private static final Pattern TEST_FILE_PATTERN = Pattern.compile(
+            "(?i).*(?:[/\\\\.]|\\b|_|(?<=[a-z])(?=[A-Z]))tests?(?:[/\\\\.]|\\b|_|(?=[A-Z][a-z])|$).*"
+    );
 
     /** Enum representing the reason a CodeAgent session concluded. */
     public enum StopReason {
@@ -119,14 +125,14 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-  public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput, boolean rejectReadonlyEdits)
-  {
-      var io = contextManager.getIo();
-      // Create Coder instance with the user's input as the task description
-      var coder = contextManager.getCoder(model, "Code: " + userInput);
+    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput, boolean rejectReadonlyEdits)
+    {
+        var io = contextManager.getIo();
+        // Create Coder instance with the user's input as the task description
+        var coder = contextManager.getCoder(model, "Code: " + userInput);
 
-      // Track original contents of files before any changes
-      var originalContents = new HashMap<ProjectFile, String>();
+        // Track original contents of files before any changes
+        var originalContents = new HashMap<ProjectFile, String>();
 
         // We'll collect the conversation as ChatMessages to store in context history.
         var sessionMessages = new ArrayList<ChatMessage>();
@@ -135,7 +141,7 @@ public class CodeAgent {
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
 
         // Start verification command inference concurrently
-        var verificationCommandFuture = determineVerificationCommandAsync(contextManager, contextManager.getCoder(contextManager.getModels().quickModel(), "Infer tests"), userInput);
+        var verificationCommandFuture = determineVerificationCommandAsync(contextManager, contextManager.getCoder(contextManager.getModels().quickModel(), "Infer tests"));
 
         // Retry-loop state tracking
         int parseFailures = 0;
@@ -219,11 +225,11 @@ public class CodeAgent {
             stopDetails = checkInterruption(io);
             if (stopDetails != null) break;
 
-              // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-              var readOnlyFiles = autoAddReferencedFiles(blocks, coder, io, rejectReadonlyEdits);
-              if (!readOnlyFiles.isEmpty()) {
-                  var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
-                  stopDetails = new StopDetails(StopReason.READ_ONLY_EDIT, filenames);
+            // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
+            var readOnlyFiles = autoAddReferencedFiles(blocks, coder, io, rejectReadonlyEdits);
+            if (!readOnlyFiles.isEmpty()) {
+                var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
+                stopDetails = new StopDetails(StopReason.READ_ONLY_EDIT, filenames);
                 break;
             }
 
@@ -311,84 +317,110 @@ public class CodeAgent {
 
     /**
      * Checks if the current thread is interrupted. Returns StopDetails(StopReason.INTERRUPTED) if so,
-       * or null if everything is fine.
-       */
-      private static StopDetails checkInterruption(IConsoleIO io) {
-          if (Thread.currentThread().isInterrupted()) {
-              io.systemOutput("Session interrupted");
-              return new StopDetails(StopReason.INTERRUPTED);
-          }
-          return null;
-      }
-  
-      /**
-       * Checks if a streaming result is empty or errored. If so, logs and returns StopDetails;
-       * otherwise returns null to proceed.
-       */
-      private static StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
-          if (streamingResult.cancelled()) {
-              io.systemOutput("Session interrupted");
-              return new StopDetails(StopReason.INTERRUPTED);
-          }
-          if (streamingResult.error() != null) {
-              io.systemOutput("LLM returned an error even after retries. Ending session");
-              return new StopDetails(StopReason.LLM_ERROR);
-          }
-          var llmResponse = streamingResult.chatResponse();
-          if (llmResponse == null) {
-              io.systemOutput("Empty LLM response even after retries. Ending session.");
-              return new StopDetails(StopReason.EMPTY_RESPONSE);
-          }
-          var text = llmResponse.aiMessage().text();
-          if (text.isBlank()) {
-              io.systemOutput("Blank LLM response even after retries. Ending session.");
-              return new StopDetails(StopReason.EMPTY_RESPONSE);
+     * or null if everything is fine.
+     */
+    private static StopDetails checkInterruption(IConsoleIO io) {
+        if (Thread.currentThread().isInterrupted()) {
+            io.systemOutput("Session interrupted");
+            return new StopDetails(StopReason.INTERRUPTED);
         }
         return null;
     }
 
     /**
-       * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
-       * If `rejectReadonlyEdits` is true, it returns a list of read-only files attempted to be edited.
-       * Otherwise, it returns an empty list.
-       *
-       * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
-         *         or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
-         */
-        private static List<ProjectFile> autoAddReferencedFiles(
-                List<EditBlock.SearchReplaceBlock> blocks,
-                Coder coder,
-                IConsoleIO io,
-                boolean rejectReadonlyEdits
-        ) {
-            // Use the passed coder instance directly
-            var filesToAdd = blocks.stream()
-                    .map(EditBlock.SearchReplaceBlock::filename)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .map(coder.contextManager::toFile) // Use coder.contextManager
-                    .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
-                    .toList();
+     * Checks if a streaming result is empty or errored. If so, logs and returns StopDetails;
+     * otherwise returns null to proceed.
+     */
+    private static StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
+        if (streamingResult.cancelled()) {
+            io.systemOutput("Session interrupted");
+            return new StopDetails(StopReason.INTERRUPTED);
+        }
+        if (streamingResult.error() != null) {
+            io.systemOutput("LLM returned an error even after retries. Ending session");
+            return new StopDetails(StopReason.LLM_ERROR);
+        }
+        var llmResponse = streamingResult.chatResponse();
+        if (llmResponse == null) {
+            io.systemOutput("Empty LLM response even after retries. Ending session.");
+            return new StopDetails(StopReason.EMPTY_RESPONSE);
+        }
+        var text = llmResponse.aiMessage().text();
+        if (text.isBlank()) {
+            io.systemOutput("Blank LLM response even after retries. Ending session.");
+            return new StopDetails(StopReason.EMPTY_RESPONSE);
+        }
+        return null;
+    }
 
-            if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
-                var readOnlyFiles = filesToAdd.stream()
-                        .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
-                        .toList();
-                if (!readOnlyFiles.isEmpty()) {
-                    io.systemOutput(
-                            "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
-                                    .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
-                    // Return the list of read-only files that caused the issue
-                    return readOnlyFiles;
-                }
-                io.systemOutput("Editing additional files " + filesToAdd);
-                coder.contextManager.editFiles(filesToAdd);
-            }
-            // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
+    /**
+     * Identifies test files within the project based on file path matching a regex pattern.
+     * This method runs synchronously.
+     *
+     * @param cm The ContextManager instance.
+     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found.
+     */
+    private static List<ProjectFile> getTestFiles(ContextManager cm) {
+        // Assuming cm.getProject().getFiles() returns Set<ProjectFile> based on other CM APIs.
+        // If it returns Set<BrokkFile>, a conversion/cast might be needed depending on their relationship.
+        Set<ProjectFile> allProjectFiles = cm.getProject().getFiles();
+        if (allProjectFiles.isEmpty()) {
+            logger.debug("No files found in project to identify test files.");
             return List.of();
         }
 
-        /**
+        // Filter files based on the regex pattern matching their path string
+        var testFiles = allProjectFiles.stream()
+                .filter(file -> TEST_FILE_PATTERN.matcher(file.toString()).matches())
+                .toList();
+
+        logger.debug("Identified {} test files via regex.", testFiles.size());
+        return testFiles;
+    }
+
+
+    /**
+     * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
+     * If `rejectReadonlyEdits` is true, it returns a list of read-only files attempted to be edited.
+     * Otherwise, it returns an empty list.
+     *
+     * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
+     *         or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
+     */
+    private static List<ProjectFile> autoAddReferencedFiles(
+            List<EditBlock.SearchReplaceBlock> blocks,
+            Coder coder,
+            IConsoleIO io,
+            boolean rejectReadonlyEdits
+    ) {
+        // Use the passed coder instance directly
+        var filesToAdd = blocks.stream()
+                .map(EditBlock.SearchReplaceBlock::filename)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(coder.contextManager::toFile) // Use coder.contextManager
+                .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
+                .toList();
+
+        if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
+            var readOnlyFiles = filesToAdd.stream()
+                    .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
+                    .toList();
+            if (!readOnlyFiles.isEmpty()) {
+                io.systemOutput(
+                        "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
+                                .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
+                // Return the list of read-only files that caused the issue
+                return readOnlyFiles;
+            }
+            io.systemOutput("Editing additional files " + filesToAdd);
+            coder.contextManager.editFiles(filesToAdd);
+        }
+        // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
+        return List.of();
+    }
+
+    /**
      * Runs the build verification command (once available) and appends any build error text to buildErrors list.
      * Returns true if the build/verification was successful or skipped, false otherwise.
      */
@@ -412,153 +444,80 @@ public class CodeAgent {
 
     /**
      * Asynchronously determines the best verification command based on the user goal,
-     * workspace summary, and stored BuildDetails. Uses the quickest model.
+     * workspace summary, and stored BuildDetails.
      * Runs on the ContextManager's background task executor.
+     * Determines the command by checking for relevant test files in the workspace
+     * and the availability of a specific test command in BuildDetails.
      *
      * @param cm        The ContextManager instance.
-     * @param coder     The Coder instance.
-     * @param userGoal  The original user goal for the session.
-     * @return A CompletableFuture containing the suggested verification command string (or null if none/error/no details).
-   */
-  private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder, String userGoal) {
-      return CompletableFuture.supplyAsync(() -> {
-          BuildDetails details = cm.getProject().getBuildDetails();
-          if (details == null) {
+     * @param coder     The Coder instance (not used in the new logic, but kept for signature compatibility if needed elsewhere).
+     * @return A CompletableFuture containing the suggested verification command string (either specific test command or build/lint command),
+     *         or null if BuildDetails are unavailable.
+     */
+    private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder) {
+        // Runs asynchronously on the background executor provided by ContextManager
+        return CompletableFuture.supplyAsync(() -> {
+            // Retrieve build details from the project associated with the ContextManager
+            BuildDetails details = cm.getProject().getBuildDetails();
+            if (details == null) {
                 logger.warn("No build details available, cannot determine verification command.");
-                // Return null to indicate no command could be determined due to missing details
                 return null;
             }
 
-            String workspaceSummary = DefaultPrompts.formatWorkspaceSummary(cm);
+            // Identify all files considered test files within the entire project using the regex pattern
+            var projectTestFiles = getTestFiles(cm);
 
-            // Construct the prompt for the quick model
-            var systemMessage = new SystemMessage("""
-            You are a build assistant. Based on the user's goal, the project workspace, and known build details,
-            determine the best single shell command to run as a minimal "smoke test" verifying that the changes achieve the goal.
-            This should usually involve a few specific tests, but if the project is small, running all tests is reasonable;
-            if no tests look relevant, it's fine to simply compile or lint the project without tests.
-            IF A TEST FILE ISN'T SHOWN, IT DOES NOT EXIST, DO NOT GUESS AT ADDITIONAL TESTS.
-            """.stripIndent());
+            // Get the set of files currently loaded in the workspace (both editable and read-only ProjectFiles)
+            var workspaceFiles = Stream.concat(cm.getEditableFiles().stream(), cm.getReadonlyFiles().stream())
+                    .collect(Collectors.toSet());
 
-            // Run getTestFiles synchronously within this async task
-            List<ProjectFile> testFiles = getTestFiles(cm, coder);
-            String testFilesString = testFiles.isEmpty() ? "(none found)" :
-                                     testFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\\n"));
+            // Check if any of the identified project test files are present in the current workspace set
+            var workspaceTestFiles = projectTestFiles.stream().filter(workspaceFiles::contains).toList();
 
-            var userMessage = new UserMessage("""
-            **Build Details:**
-            Commands: %s
-            Instructions: %s
-
-            **Workspace Summary:**
-            %s
-
-            **Test files**
-            %s
-
-            **User Goal:**
-            %s
-
-            Respond ONLY with the raw shell command, no explanation, formatting, or markdown. If no verification is needed or possible, respond with an empty string.
-            """.stripIndent().formatted(
-                    details.buildLintCommand(),
-                    details.instructions(),
-                    workspaceSummary,
-                    testFilesString,
-                    userGoal
-            ));
-
-            List<ChatMessage> messages = List.of(systemMessage, userMessage);
-
-            // Call the quick model synchronously within the async task
-            var result = coder.sendMessage(messages);
-
-            if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
-                logger.warn("Failed to determine verification command: {}",
-                            result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
-                // Fallback to build/lint command on LLM failure
+            // Decide which command to use
+            if (workspaceTestFiles.isEmpty()) {
+                logger.debug("No relevant test files found in workspace, using build/lint command: {}", details.buildLintCommand());
                 return details.buildLintCommand();
             }
 
-            String command = result.chatResponse().aiMessage().text();
-            // Check for null/blank/unavailable *before* trimming, as trim() on null throws NPE
-            if (command == null || command.isBlank() || command.equals(Models.UNAVAILABLE)) {
-                 logger.warn("LLM returned unusable verification command: '{}'. Falling back to build/lint command.", command);
-                 return details.buildLintCommand(); // Fallback to default build/lint
-             }
+            // Construct the prompt for the LLM
+            logger.debug("Found relevant tests {}, asking LLM for specific command.", workspaceTestFiles);
+            var prompt = """
+                        Given the build details and the list of test files modified or relevant to the recent changes,
+                        give the shell command to run *only* these specific tests. (You may chain multiple
+                        commands with &&, if necessary.)
+                        
+                        Build Details:
+                        Test All Command: %s
+                        Build/Lint Command: %s
+                        Other Instructions: %s
+                        
+                        Test Files to execute:
+                        %s
+                        
+                        Provide *only* the command line string to execute these specific tests.
+                        Do not include any explanation or formatting.
+                        If you cannot determine a more specific command, respond with an empty string.
+                        """.formatted(details.testAllCommand(),
+                                      details.buildLintCommand(),
+                                      details.instructions(),
+                                      workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
+            // Ask the LLM
+            var llmResult = coder.sendMessage(List.of(new UserMessage(prompt)));
+            var suggestedCommand = llmResult.chatResponse() != null && llmResult.chatResponse().aiMessage() != null
+                    ? llmResult.chatResponse().aiMessage().text().trim()
+                    : null; // Handle potential nulls from LLM response
 
-            // Basic cleanup: remove potential markdown backticks
-            command = command.trim().replace("```", "");
-            logger.info("Determined verification command: `{}`", command);
-            return command;
-
-        }, cm.getBackgroundTasks()); // Ensure this runs on the CM's background executor
+            // Use the suggested command if valid, otherwise fallback
+            if (suggestedCommand != null && !suggestedCommand.isBlank()) {
+                logger.info("LLM suggested specific test command: '{}'", suggestedCommand);
+                return suggestedCommand;
+            } else {
+                logger.warn("LLM did not suggest a specific test command. Falling back to default");
+                return details.buildLintCommand();
+            }
+        }, cm.getBackgroundTasks());
     }
-
-    /**
-     * Identifies test files within the project using the quickest LLM.
-     * This method runs synchronously as it's expected to be called within an async task.
-     * No caching is performed here.
-     *
-     * @param cm     The ContextManager instance.
-     * @param coder  The Coder instance.
-     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found or an error occurs.
-   */
-  private static List<ProjectFile> getTestFiles(ContextManager cm, Coder coder) {
-      // Get all files from the project
-      Set<ProjectFile> allProjectFiles = cm.getProject().getFiles();
-      if (allProjectFiles.isEmpty()) {
-            logger.debug("No files found in project to identify test files.");
-            return List.of();
-        }
-
-        // Format file paths for the LLM prompt
-        String fileListString = allProjectFiles.stream()
-                .map(ProjectFile::toString) // Use relative path
-                .sorted()
-                .collect(Collectors.joining("\n"));
-
-        // Construct the prompt for the quick model
-        var systemMessage = new SystemMessage("""
-        You are a file analysis assistant. Your task is to identify test files from the provided list.
-        Analyze the file paths and names. Return ONLY the paths of the files that appear to be test files.
-        Each test file path should be on a new line. Do not include any explanation, headers, or formatting.
-        If no test files are found, return an empty response.
-        """.stripIndent());
-
-        var userMessage = new UserMessage("""
-        Project Files:
-        %s
-
-        Identify the test files from the list above and return their full paths, one per line.
-        """.stripIndent().formatted(fileListString));
-
-        List<ChatMessage> messages = List.of(systemMessage, userMessage);
-
-        // Call the quick model synchronously
-        var result = coder.sendMessage(messages);
-
-        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
-            logger.error("Failed to get test files from LLM: {}",
-                         result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
-            return List.of();
-        }
-
-        String responseText = result.chatResponse().aiMessage().text();
-        if (responseText == null || responseText.isBlank()) {
-            logger.debug("LLM did not identify any test files.");
-            return List.of();
-        } else {
-            // Use contains for robustness against minor formatting variations from the LLM
-            var testFiles = allProjectFiles.stream()
-                    .parallel() // Can parallelize the filtering
-                    .filter(filename -> responseText.contains(filename.toString()))
-                    .toList(); // Collect to list
-            logger.debug("Identified {} test files via LLM.", testFiles.size());
-            return testFiles;
-        }
-    }
-
 
     /**
      * Runs a quick-edit session where we:
@@ -661,8 +620,8 @@ public class CodeAgent {
         StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
         for (int i = 0; i < buildErrors.size(); i++) {
             query.append("=== Attempt ").append(i + 1).append(" ===\n")
-                 .append(buildErrors.get(i))
-                 .append("\n\n");
+                    .append(buildErrors.get(i))
+                    .append("\n\n");
         }
         query.append("Please fix these build errors.");
         return query.toString();
@@ -753,7 +712,7 @@ public class CodeAgent {
 
     /**
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
-   */
+     */
     private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
         if (buildResults.size() < 2) {
             return true;
