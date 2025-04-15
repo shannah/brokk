@@ -17,7 +17,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,81 +39,6 @@ public class CodeAgent {
     private static final Pattern TEST_FILE_PATTERN = Pattern.compile(
             "(?i).*(?:[/\\\\.]|\\b|_|(?<=[a-z])(?=[A-Z]))tests?(?:[/\\\\.]|\\b|_|(?=[A-Z][a-z])|$).*"
     );
-
-    /** Enum representing the reason a CodeAgent session concluded. */
-    public enum StopReason {
-        /** The agent successfully completed the goal. */
-        SUCCESS,
-        /** The user interrupted the session. */
-        INTERRUPTED,
-        /** The LLM returned an error after retries. */
-        LLM_ERROR,
-        /** The LLM returned an empty or blank response after retries. */
-        EMPTY_RESPONSE,
-        /** The LLM response could not be parsed after retries. */
-        PARSE_ERROR,
-        /** Applying edits failed after retries. */
-        APPLY_ERROR,
-        /** Build errors occurred and were not improving after retries. */
-        BUILD_ERROR,
-        /** The LLM attempted to edit a read-only file. */
-        READ_ONLY_EDIT
-    }
-
-    public record StopDetails(StopReason reason, String details) {
-        public StopDetails {
-            assert reason != null;
-            assert details != null;
-        }
-
-        public StopDetails(StopReason reason) {
-            this(reason, "");
-        }
-
-        @Override
-        public String toString() {
-            if (details.isEmpty()) {
-                return reason.toString();
-            }
-            return "%s:\n%s".formatted(reason.toString(), details);
-        }
-    }
-
-    /**
-     * Represents the outcome of a CodeAgent session, containing all necessary information
-     * to update the context history.
-     *
-     * @param actionDescription A description of the user's goal for the session.
-     * @param messages          The list of chat messages exchanged during the session.
-     * @param originalContents  A map of project files to their original content before edits.
-     * @param finalLlmOutput    The final raw text output from the LLM.
-     * @param stopDetails       The reason the session concluded.
-     */
-    public record SessionResult(String actionDescription,
-                                List<ChatMessage> messages,
-                                Map<ProjectFile, String> originalContents, // for undo
-                                String finalLlmOutput, // since quick edit doesn't change llm output directly
-                                StopDetails stopDetails)
-    {
-        public SessionResult {
-            assert actionDescription != null;
-            assert messages != null;
-            assert originalContents != null;
-            assert finalLlmOutput != null;
-            assert stopDetails != null;
-        }
-
-        public static String getShortDescription(String description) {
-            return getShortDescription(description, 5);
-        }
-
-        public static String getShortDescription(String description, int words) {
-            var cleaned = description.trim().replaceAll("[^a-zA-Z0-9\\s]", "");
-            return cleaned.split("\\s+").length <= words
-                    ? cleaned
-                    : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, words));
-        }
-    }
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
@@ -152,7 +76,7 @@ public class CodeAgent {
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
 
         io.systemOutput("Code Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(userInput)));
-        StopDetails stopDetails;
+        SessionResult.StopDetails stopDetails;
 
         while (true) {
             stopDetails = checkInterruption(io);
@@ -188,7 +112,7 @@ public class CodeAgent {
                     // No blocks parsed successfully
                     parseFailures++;
                     if (parseFailures > MAX_PARSE_ATTEMPTS) {
-                        stopDetails = new StopDetails(StopReason.PARSE_ERROR);
+                        stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.PARSE_ERROR);
                         io.systemOutput("Parse error limit reached; ending session");
                         break;
                     }
@@ -217,7 +141,7 @@ public class CodeAgent {
             // If no blocks are pending and we haven't applied anything yet, assume we're done
             if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
                 io.systemOutput("No edits found in response; ending session");
-                stopDetails = new StopDetails(StopReason.SUCCESS);
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
                 break;
             }
 
@@ -229,7 +153,7 @@ public class CodeAgent {
             var readOnlyFiles = autoAddReferencedFiles(blocks, coder, io, rejectReadonlyEdits);
             if (!readOnlyFiles.isEmpty()) {
                 var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
-                stopDetails = new StopDetails(StopReason.READ_ONLY_EDIT, filenames);
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.READ_ONLY_EDIT, filenames);
                 break;
             }
 
@@ -262,7 +186,7 @@ public class CodeAgent {
                                 .filter(Objects::nonNull) // Ensure filename is not null
                                 .distinct()
                                 .collect(Collectors.joining(","));
-                        stopDetails = new StopDetails(StopReason.APPLY_ERROR, failedFilenames);
+                        stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, failedFilenames);
                         break;
                     }
                     io.systemOutput("Attempting to fix apply/match errors...");
@@ -279,7 +203,7 @@ public class CodeAgent {
             blocksAppliedWithoutBuild = 0; // reset after each build attempt
 
             if (buildSuccess) {
-                stopDetails = new StopDetails(StopReason.SUCCESS);
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
                 break;
             }
 
@@ -287,7 +211,7 @@ public class CodeAgent {
             if (!buildErrors.isEmpty() && !isBuildProgressing(contextManager.getCoder(contextManager.getModels().quickModel(), "Infer build progress"), buildErrors)) {
                 io.systemOutput("Build errors are not improving; ending session");
                 // Use the last build error message as details
-                stopDetails = new StopDetails(StopReason.BUILD_ERROR, buildErrors.getLast());
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.BUILD_ERROR, buildErrors.getLast());
                 break;
             }
 
@@ -297,7 +221,7 @@ public class CodeAgent {
 
         // Conclude session
         assert stopDetails != null; // Ensure a stop reason was set before exiting the loop
-        boolean completedSuccessfully = (stopDetails.reason() == StopReason.SUCCESS);
+        boolean completedSuccessfully = (stopDetails.reason() == SessionResult.StopReason.SUCCESS);
         String finalActionDescription = completedSuccessfully
                 ? userInput
                 : userInput + " [" + stopDetails.reason().name() + "]";
@@ -319,10 +243,10 @@ public class CodeAgent {
      * Checks if the current thread is interrupted. Returns StopDetails(StopReason.INTERRUPTED) if so,
      * or null if everything is fine.
      */
-    private static StopDetails checkInterruption(IConsoleIO io) {
+    private static SessionResult.StopDetails checkInterruption(IConsoleIO io) {
         if (Thread.currentThread().isInterrupted()) {
             io.systemOutput("Session interrupted");
-            return new StopDetails(StopReason.INTERRUPTED);
+            return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
         }
         return null;
     }
@@ -331,24 +255,24 @@ public class CodeAgent {
      * Checks if a streaming result is empty or errored. If so, logs and returns StopDetails;
      * otherwise returns null to proceed.
      */
-    private static StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
+    private static SessionResult.StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
         if (streamingResult.cancelled()) {
             io.systemOutput("Session interrupted");
-            return new StopDetails(StopReason.INTERRUPTED);
+            return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
         }
         if (streamingResult.error() != null) {
             io.systemOutput("LLM returned an error even after retries. Ending session");
-            return new StopDetails(StopReason.LLM_ERROR);
+            return new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR);
         }
         var llmResponse = streamingResult.chatResponse();
         if (llmResponse == null) {
             io.systemOutput("Empty LLM response even after retries. Ending session.");
-            return new StopDetails(StopReason.EMPTY_RESPONSE);
+            return new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE);
         }
         var text = llmResponse.aiMessage().text();
         if (text.isBlank()) {
             io.systemOutput("Blank LLM response even after retries. Ending session.");
-            return new StopDetails(StopReason.EMPTY_RESPONSE);
+            return new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE);
         }
         return null;
     }
@@ -570,14 +494,14 @@ public class CodeAgent {
         if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
             io.toolErrorRaw("Quick edit failed or was cancelled.");
             // Add to history even if canceled, so we can potentially undo any partial changes
-            cm.addToHistory(new SessionResult("Quick Edit (canceled): " + file.getFileName(), pendingHistory, originalContents, "", new StopDetails(StopReason.INTERRUPTED)), false);
+            cm.addToHistory(new SessionResult("Quick Edit (canceled): " + file.getFileName(), pendingHistory, originalContents, "", new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED)), false);
             return fileContents; // Return original content
         }
         var responseText = result.chatResponse().aiMessage().text();
         if (responseText == null || responseText.isBlank()) {
             io.toolErrorRaw("LLM returned empty response for quick edit.");
             // Add to history even if it failed
-            cm.addToHistory(new SessionResult("Quick Edit (failed): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.EMPTY_RESPONSE)), false);
+            cm.addToHistory(new SessionResult("Quick Edit (failed): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE)), false);
             return fileContents; // Return original content
         }
 
@@ -589,7 +513,7 @@ public class CodeAgent {
         if (newSnippet.isEmpty()) {
             io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
             // Add to history even if it failed
-            cm.addToHistory(new SessionResult("Quick Edit (failed parse): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.PARSE_ERROR)), false);
+            cm.addToHistory(new SessionResult("Quick Edit (failed parse): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.PARSE_ERROR)), false);
             return fileContents; // Return original content
         }
 
@@ -597,17 +521,17 @@ public class CodeAgent {
         try {
             EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
             // Save to context history - pendingHistory already contains both the instruction and the response
-            cm.addToHistory(new SessionResult("Quick Edit: " + instructions, pendingHistory, originalContents, responseText, new StopDetails(StopReason.SUCCESS)), false);
+            cm.addToHistory(new SessionResult("Quick Edit: " + instructions, pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS)), false);
             return newStripped; // Return the new snippet that was applied
         } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
             io.toolErrorRaw("Failed to replace text: " + e.getMessage());
             // Add to history even if it failed, include exception message as details
-            cm.addToHistory(new SessionResult("Quick Edit (failed match): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+            cm.addToHistory(new SessionResult("Quick Edit (failed match): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, e.getMessage())), false);
             return fileContents; // Return original content on failure
         } catch (IOException e) {
             io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
             // Add to history even if it failed, include exception message as details
-            cm.addToHistory(new SessionResult("Quick Edit (failed write): " + file.getFileName(), pendingHistory, originalContents, responseText, new StopDetails(StopReason.APPLY_ERROR, e.getMessage())), false);
+            cm.addToHistory(new SessionResult("Quick Edit (failed write): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, e.getMessage())), false);
             return fileContents; // Return original content on failure
         }
     }

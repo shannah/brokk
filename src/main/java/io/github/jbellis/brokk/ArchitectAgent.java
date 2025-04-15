@@ -140,7 +140,7 @@ public class ArchitectAgent {
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
     public void execute() {
-        contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(CodeAgent.SessionResult.getShortDescription(goal)));
+        contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(goal)));
         var coder = contextManager.getCoder(model, "Architect: " + goal);
 
         while (true) {

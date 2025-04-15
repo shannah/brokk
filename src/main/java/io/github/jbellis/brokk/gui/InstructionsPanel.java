@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.SearchAgent;
+import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
@@ -470,11 +471,11 @@ public class InstructionsPanel extends JPanel {
                     // Check if the response is valid before adding to history
                     if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
                         // Construct SessionResult for 'Ask'
-                        var sessionResult = new CodeAgent.SessionResult(
+                        var sessionResult = new SessionResult(
                                 "Ask: " + question, List.of(messages.getLast(), aiResponse),
                                 Map.of(), // No original contents for Ask
                                 chrome.getLlmOutputText(),
-                                new CodeAgent.StopDetails(CodeAgent.StopReason.SUCCESS));
+                                new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
                         contextManager.addToHistory(sessionResult, false);
                     } else {
                         chrome.systemOutput("Ask command completed with an empty response.");

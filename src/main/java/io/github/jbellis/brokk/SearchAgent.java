@@ -194,7 +194,7 @@ public class SearchAgent {
      * @return The final set of discovered code units
      */
     public ContextFragment.VirtualFragment execute() {
-        io.systemOutput("Search Agent engaged: `%s...`".formatted(CodeAgent.SessionResult.getShortDescription(query)));
+        io.systemOutput("Search Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(query)));
 
         // If context exists, ask LLM to evaluate its relevance and kick off async summary
         var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {

@@ -1364,7 +1364,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * @param result   The result object from CodeAgent.runSession. Can be null.
      * @param null if the session is empty, otehrwise returns the new TaskEntry
      */
-    public TaskEntry addToHistory(CodeAgent.SessionResult result, boolean compress) {
+    public TaskEntry addToHistory(SessionResult result, boolean compress) {
         assert result != null;
         if (result.messages().isEmpty()) {
             logger.debug("Skipping adding empty session result to history.");

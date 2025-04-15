@@ -47,7 +47,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static io.github.jbellis.brokk.CodeAgent.SessionResult.getShortDescription;
+import static io.github.jbellis.brokk.SessionResult.getShortDescription;
 
 /**
  * The main orchestrator for sending requests to an LLM, possibly with tools, collecting
@@ -258,7 +258,7 @@ public class Coder {
 
         while (attempt++ < maxAttempts) {
             logger.debug("Sending request to {} attempt {}: {}",
-                         modelName, attempt, CodeAgent.SessionResult.getShortDescription(Models.getText(messages.getLast()), 12));
+                         modelName, attempt, SessionResult.getShortDescription(Models.getText(messages.getLast()), 12));
 
             if (echo) {
                 io.showOutputSpinner("Thinking...");
