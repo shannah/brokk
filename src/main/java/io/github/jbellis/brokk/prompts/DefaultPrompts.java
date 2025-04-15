@@ -51,7 +51,6 @@ public abstract class DefaultPrompts {
         messages.addAll(cm.getWorkspaceContentsMessages());
         messages.add(new UserMessage(editReminder(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
-        messages.addAll(cm.getPlanMessages());
 
         return messages;
     }
@@ -73,7 +72,6 @@ public abstract class DefaultPrompts {
         }
         return workspaceBuilder.toString();
     }
-
 
     protected String formatIntro(ContextManager cm, String reminder) {
         var workspaceSummary = formatWorkspaceSummary(cm);

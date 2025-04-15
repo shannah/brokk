@@ -576,11 +576,6 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         var contextManager = chrome.getContextManager();
-        var currentPlan = contextManager.selectedContext().getPlan();
-        if (currentPlan == null || currentPlan.text().isBlank()) {
-            chrome.toolErrorRaw("Please provide a plan in the context before running the Agent.");
-            return;
-        }
 
         disableButtons();
         // Save model before submitting task
@@ -597,7 +592,7 @@ public class InstructionsPanel extends JPanel {
         clearCommandInput();
 
         // Submit the action, calling the private execute method inside the lambda, passing the goal
-        var future = contextManager.submitAction("Agent", "Executing plan...", () -> executeAgentCommand(selectedModel, goal));
+        var future = contextManager.submitAction("Agent", "Executing project...", () -> executeAgentCommand(selectedModel, goal));
         chrome.setCurrentUserTask(future);
     }
 

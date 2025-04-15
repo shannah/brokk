@@ -12,7 +12,6 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
-import io.github.jbellis.brokk.gui.dialogs.PlanDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
@@ -35,7 +34,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.MalformedInputException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -243,27 +241,7 @@ public class ContextPanel extends JPanel {
                     // Assign to effectively final variable for use in lambdas
                     final ContextFragment fragmentToShow = selected;
 
-                    if (fragmentToShow instanceof ContextFragment.PlanFragment) {
-                        JMenuItem editPlanItem = new JMenuItem("Edit Plan");
-                        editPlanItem.addActionListener(evt -> {
-                            var currentPlan = contextManager.selectedContext().getPlan();
-                            var dialog = new PlanDialog(chrome, contextManager, currentPlan);
-                            dialog.setVisible(true);
-                        });
-                        contextMenu.add(editPlanItem);
-                        contextMenu.addSeparator();
-                        JMenuItem copyItem = new JMenuItem("Copy");
-                        copyItem.addActionListener(evt -> {
-                            var selectedList = java.util.List.of(fragmentToShow);
-                            chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, selectedList);
-                        });
-                        contextMenu.add(copyItem);
-                        JMenuItem dropItem = new JMenuItem("Drop");
-                        dropItem.addActionListener(evt -> {
-                            contextManager.setPlan(io.github.jbellis.brokk.ContextFragment.PlanFragment.EMPTY);
-                        });
-                        contextMenu.add(dropItem);
-                    } else if (row >= 0) {
+                    if (row >= 0) {
                         // Show Contents as the first action
                         JMenuItem showContentsItem = new JMenuItem("Show Contents");
                         // Use the effectively final variable in the lambda

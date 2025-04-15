@@ -66,8 +66,6 @@ public class Context implements Serializable {
     transient final Future<String> action;
     /** Unique transient identifier for this context instance */
     transient final int id;
-    /** The high-level plan for the project. Never null, defaults to PlanFragment.EMPTY */
-    final ContextFragment.PlanFragment plan;
 
     public record ParsedOutput(String output, ContextFragment.VirtualFragment parsedFragment) {
         public ParsedOutput {
@@ -90,7 +88,6 @@ public class Context implements Serializable {
              autoContextFileCount,
              new ArrayList<>(),
              Map.of(),
-             ContextFragment.PlanFragment.EMPTY, // Initialize with empty plan
              getWelcomeOutput(initialOutputText),
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
@@ -115,13 +112,11 @@ public class Context implements Serializable {
                     int autoContextFileCount,
                     List<TaskEntry> taskHistory,
                     Map<ProjectFile, String> originalContents,
-                    ContextFragment.PlanFragment plan,
                     ParsedOutput parsedOutput,
                     Future<String> action)
     {
         assert id > 0;
         assert contextManager != null;
-        assert plan != null; // Ensure plan is never null
         assert editableFiles != null;
         assert readonlyFiles != null;
         assert virtualFragments != null;
@@ -139,7 +134,6 @@ public class Context implements Serializable {
         this.autoContextFileCount = autoContextFileCount;
         this.taskHistory = List.copyOf(taskHistory); // Ensure immutability
         this.originalContents = originalContents;
-        this.plan = plan;
         this.parsedOutput = parsedOutput;
         this.action = action;
     }
@@ -249,7 +243,7 @@ public class Context implements Serializable {
     public Context addSearchFragment(Future<String> query, ParsedOutput parsed) {
         var newFragments = new ArrayList<>(virtualFragments);
         newFragments.add(parsed.parsedFragment);
-        return new Context(newId(), contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, taskHistory, Map.of(), plan, parsed, query).refresh();
+        return new Context(newId(), contextManager, editableFiles, readonlyFiles, newFragments, autoContext, autoContextFileCount, taskHistory, Map.of(), parsed, query).refresh();
     }
 
     public Context removeBadFragment(ContextFragment f) {
@@ -315,7 +309,6 @@ public class Context implements Serializable {
                            fileCount,
                            taskHistory,
                            Map.of(),
-                           plan,
                            null,
                            action).refresh();
     }
@@ -446,7 +439,6 @@ public class Context implements Serializable {
                 autoContextFileCount,
                 taskHistory,
                 Map.of(),
-                plan,
                 null,
                 action
         ).refresh();
@@ -463,7 +455,6 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            List.of(), // task history
                            Map.of(), // original contents
-                           plan,
                            null, // parsed output
                            CompletableFuture.completedFuture(action)).refresh();
     }
@@ -484,7 +475,6 @@ public class Context implements Serializable {
                                      autoContextFileCount,
                                      taskHistory,
                                      originalContents,
-                                     this.plan,
                                      parsedOutput,
                                      action);
         contextManager.submitBackgroundTask("Computing AutoContext", () -> {
@@ -499,7 +489,6 @@ public class Context implements Serializable {
                                           autoContextFileCount,
                                           taskHistory,
                                           originalContents,
-                                          plan,
                                           parsedOutput,
                                           action);
             contextManager.replaceContext(newContext, replacement);
@@ -548,7 +537,6 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            newTaskHistory, // new task history list
                            originalContents,
-                           plan,
                            parsed,
                            action).refresh();
     }
@@ -564,7 +552,6 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            List.of(), // Cleared task history
                            Map.of(),
-                           plan,
                            null,
                            CompletableFuture.completedFuture("Cleared conversation history"));
     }
@@ -581,7 +568,6 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            taskHistory, // Use task history here
                            fileContents,
-                           this.plan,
                            this.parsedOutput,
                            this.action);
     }
@@ -624,11 +610,6 @@ public class Context implements Serializable {
     public List<ContextFragment> getAllFragmentsInDisplayOrder() {
         var result = new ArrayList<ContextFragment>();
 
-        // Add plan first if it's not empty
-        if (plan != null && !(plan == ContextFragment.PlanFragment.EMPTY)) {
-            result.add(plan);
-        }
-
         // Then conversation history
         if (!taskHistory.isEmpty()) {
             result.add(new ConversationFragment(taskHistory));
@@ -657,7 +638,6 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            taskHistory,
                            originalContents,
-                           plan,
                            parsedOutput,
                            action).refresh();
     }
@@ -679,41 +659,13 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            newHistory, // Use the new history
                            Map.of(), // original contents
-                           plan, // Keep plan when compressing history
+                           // Keep plan when compressing history
                            null,     // parsed output
                            CompletableFuture.completedFuture("Compressed History")).refresh(); // Call refresh to potentially update autoContext
     }
 
     public ParsedOutput getParsedOutput() {
         return parsedOutput;
-    }
-
-    /**
-     * Get the current plan.
-     * @return The PlanFragment, never null
-     */
-    public ContextFragment.PlanFragment getPlan() {
-        return plan;
-    }
-
-    /**
-     * Returns a new Context with the specified plan.
-     * @param newPlan The new PlanFragment to set.
-     * @return A new Context instance with the updated plan.
-     */
-    public Context withPlan(ContextFragment.PlanFragment newPlan) {
-        return new Context(newId(),
-                           contextManager,
-                           editableFiles,
-                           readonlyFiles,
-                           virtualFragments,
-                           autoContext,
-                           autoContextFileCount,
-                           taskHistory,
-                           originalContents,
-                           newPlan,
-                           parsedOutput,
-                           action).refresh();
     }
 
     /**
@@ -793,7 +745,6 @@ public class Context implements Serializable {
                 autoContextFileCount,
                 taskHistory,
                 originalContents,
-                plan,
                 parsedOutput,
                 action
         );
@@ -821,7 +772,6 @@ public class Context implements Serializable {
                            sourceContext.autoContextFileCount,
                            currentContext.taskHistory,
                            Map.of(),
-                           currentContext.plan,
                            null,
                            CompletableFuture.completedFuture("Reset context to historical state")).refresh();
     }

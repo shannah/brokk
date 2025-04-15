@@ -135,8 +135,6 @@ public class ArchitectAgent {
      */
     public void execute() {
         contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(goal));
-        var currentPlan = contextManager.selectedContext().getPlan();
-        logger.debug("BrokkAgent starting project with plan: {}", currentPlan);
 
         while (true) {
             // 3) Build the prompt messages, including history
@@ -187,12 +185,10 @@ public class ArchitectAgent {
             // execute tool calls in the following order:
             // 1. projectFinished
             // 2. abortProject
-            // 3. updatePlan
             // 4. (everything else)
             // 5. searchAgent
             // 6. codeAgent
             ToolExecutionRequest answerReq = null, abortReq = null;
-            var updatePlanReqs = new ArrayList<ToolExecutionRequest>();
             var searchAgentReqs = new ArrayList<ToolExecutionRequest>();
             var codeAgentReqs = new ArrayList<ToolExecutionRequest>();
             var otherReqs = new ArrayList<ToolExecutionRequest>();
@@ -201,8 +197,6 @@ public class ArchitectAgent {
                     answerReq = req;
                 } else if (req.name().equals("abortProject")) {
                     abortReq = req;
-                } else if (req.name().equals("updatePlan")) {
-                    updatePlanReqs.add(req);
                 } else if (req.name().equals("callSearchAgent")) {
                     searchAgentReqs.add(req);
                 } else if (req.name().equals("callCodeAgent")) {
@@ -227,13 +221,6 @@ public class ArchitectAgent {
             }
 
             // 7) Execute remaining tool calls in the desired order:
-            // First updatePlan, then any other tools, then callSearchAgent, then callCodeAgent.
-            // First updatePlan, then any other tools, then callSearchAgent, then callCodeAgent.
-            for (var req : updatePlanReqs) {
-                var toolResult = toolRegistry.executeTool(this, req);
-                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
-                logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
-            }
             for (var req : otherReqs) {
                 var toolResult = toolRegistry.executeTool(req);
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
@@ -275,10 +262,6 @@ public class ArchitectAgent {
         </related_classes>
         """;
 
-        // plan
-        var currentPlan = contextManager.selectedContext().getPlan();
-        var planText = currentPlan != null ? currentPlan.text() : "(none)";
-
         var userMsg = """
         %s
 
@@ -286,14 +269,9 @@ public class ArchitectAgent {
         %s
         </goal>
 
-        <plan>
-        %s
-        </plan>
-
         Please decide the next tool action(s) to make progress towards resolving the goal.
         
         You are encouraged to call multiple tools simultaneously, especially
-        - when using updatePlan, call the next tools to start working on the new plan at the same time
         - when searching for relevant code, you can invoke callSearchAgent multiple times at once
         - when manipulating context, make all needed manipulations at once
 
@@ -302,27 +280,10 @@ public class ArchitectAgent {
         - projectFinished or abortProject, since they terminate execution
 
         When you are done, call projectFinished or abortProject.
-        """.stripIndent().formatted(topClassesText, goal, planText);
+        """.stripIndent().formatted(topClassesText, goal);
 
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
                               Stream.of(new UserMessage(userMsg))).toList();
-    }
-
-    /**
-     * A tool that updates the complete plan with a new complete plan string.
-     * The new plan will be visible to the CodeAgent and other tools.
-     * You are encouraged to call other tools in conjunction with updatePlan.
-     */
-    @Tool("Update the complete plan. Provide the full updated plan string. This will be visible to Code Agent and Search Agent as well as your future decision-making. You should almost always update the plan after invoking other agents.")
-    public String updatePlan(
-            @P("The new complete plan text") String newPlan
-    ) {
-        var currentContext = contextManager.selectedContext();
-        var newPlanFragment = new ContextFragment.PlanFragment(newPlan);
-        var updatedContext = currentContext.withPlan(newPlanFragment);
-        contextManager.setSelectedContext(updatedContext);
-        logger.debug("Updated plan to: {}", newPlan);
-        return "Plan updated.";
     }
 }

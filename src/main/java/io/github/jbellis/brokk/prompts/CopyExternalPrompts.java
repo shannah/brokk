@@ -23,7 +23,6 @@ public abstract class CopyExternalPrompts extends DefaultPrompts {
         var messages = new ArrayList<ChatMessage>();
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(cm.getWorkspaceContentsMessages());
-        messages.addAll(cm.getPlanMessages());
         return messages;
     }
 

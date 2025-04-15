@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
-import io.github.jbellis.brokk.gui.dialogs.PlanDialog;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
@@ -161,19 +160,6 @@ public class MenuBar {
 
         // Context menu
         var contextMenu = new JMenu("Context");
-
-        var editPlanItem = new JMenuItem("Edit Plan");
-        editPlanItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
-        editPlanItem.addActionListener(e -> {
-             assert chrome.getContextManager() != null;
-             // Open the Plan Dialog
-             var currentPlan = chrome.getContextManager().selectedContext().getPlan();
-             var dialog = new PlanDialog(chrome, chrome.getContextManager(), currentPlan);
-             dialog.setVisible(true);
-        });
-        editPlanItem.setEnabled(hasProject);
-        contextMenu.add(editPlanItem);
-        contextMenu.addSeparator(); // Separator after Edit Plan
 
         var editFilesItem = new JMenuItem("Edit Files");
         editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));

@@ -335,10 +335,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     // Core context manipulation logic called by ContextPanel / Chrome
     // ------------------------------------------------------------------
 
-    public void setPlan(ContextFragment.PlanFragment plan) {
-        pushContext(ctx -> ctx.withPlan(plan));
-    }
-
     /** Add the given files to editable. */
     @Override
     public void editFiles(Collection<ProjectFile> files)
@@ -960,32 +956,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
           return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the workspace contents."));
       }
-
-      /**
-     * Gets the current plan as ChatMessages for the LLM, if a plan exists.
-     * Includes an acknowledgement message from the AI.
-     * @return List containing UserMessage with plan and AiMessage ack, or empty list.
-     */
-    public List<ChatMessage> getPlanMessages() {
-        var currentPlan = selectedContext().getPlan();
-        if (currentPlan == null) {
-            return List.of();
-        }
-        try {
-            // PlanFragment.format() already includes <plan> tags and fragmentid
-            var planContent = currentPlan.format();
-            var userMsg = """
-                  Here is the high-level plan to follow:
-                  %s
-                  """.stripIndent().formatted(planContent);
-            return List.of(new UserMessage(userMsg), new AiMessage("Ok, I will follow this plan."));
-        } catch (IOException e) {
-            // This shouldn't happen for PlanFragment unless there's a deeper issue
-            logger.error("IOException formatting PlanFragment (should not happen)", e);
-            removeBadFragment(currentPlan, e); // Attempt recovery
-            return List.of();
-        }
-    }
 
     public String getReadOnlySummary()
     {
