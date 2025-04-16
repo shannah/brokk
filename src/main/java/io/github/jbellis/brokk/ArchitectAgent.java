@@ -158,6 +158,7 @@ public class ArchitectAgent {
 
             // 4) Figure out which tools are allowed in this step
             var genericToolNames = List.of(
+                    "addClassesToWorkspace",
                     "addFilesToWorkspace",
                     "addUrlContentsToWorkspace",
                     "addTextToWorkspace",
@@ -337,8 +338,9 @@ public class ArchitectAgent {
         }
         var topClassesText = topClassesRaw.isBlank() ? "" : """
         <related_classes>
-        With every prompt I will suggest related classes that you may wish to add to the context. Code Agent will not
-        see them unless you explicitly add them. If they are not relevant, just ignore them:
+        Here are some potentially related classes that you may wish to add to the context. Code Agent will not
+        see them unless you explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace.
+        If they are not relevant, just ignore them:
         
         %s
         </related_classes>

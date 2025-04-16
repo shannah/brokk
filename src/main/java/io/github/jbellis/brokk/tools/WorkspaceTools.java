@@ -75,6 +75,51 @@ public class WorkspaceTools {
         return result;
     }
 
+    @Tool("Add classes to the Workspace by their fully qualified names. This maps class names to their containing files and adds those files for editing.")
+    public String addClassesToWorkspace(
+            @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util'])")
+            List<String> classNames
+    ) {
+        if (classNames == null || classNames.isEmpty()) {
+            throw new IllegalArgumentException("Class names list cannot be empty.");
+        }
+
+        List<ProjectFile> filesToAdd = new ArrayList<>();
+        List<String> classesNotFound = new ArrayList<>();
+        var analyzer = getAnalyzer();
+
+        for (String className : classNames) {
+            if (className == null || className.isBlank()) {
+                classesNotFound.add("<blank or null>"); // Indicate a bad entry in the input list
+                continue;
+            }
+            var fileOpt = analyzer.getFileFor(className);
+            if (fileOpt.isDefined()) {
+                filesToAdd.add(fileOpt.get());
+            } else {
+                classesNotFound.add(className);
+                logger.warn("Could not find file for class: {}", className);
+            }
+        }
+
+        if (filesToAdd.isEmpty()) {
+            throw new IllegalArgumentException("Could not find files for any of the provided class names: " + classNames);
+        }
+
+        // Remove duplicates before adding
+        var distinctFiles = filesToAdd.stream().distinct().toList();
+        contextManager.editFiles(distinctFiles);
+
+        String addedFileNames = distinctFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
+        String resultMessage = "Added %s containing requested classes to the workspace".formatted(addedFileNames);
+
+        if (!classesNotFound.isEmpty()) {
+            resultMessage += ". Could not find files for the following classes: [%s]".formatted(String.join(", ", classesNotFound));
+        }
+
+        return resultMessage;
+    }
+
     @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it to the Workspace as a read-only text fragment. HTML content will be converted to Markdown.")
     public String addUrlContentsToWorkspace(
             @P("The full URL to fetch content from (e.g., 'https://example.com/docs/page').")
