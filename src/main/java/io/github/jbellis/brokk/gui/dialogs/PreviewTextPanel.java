@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.CodeAgent;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
@@ -12,6 +13,9 @@ import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.github.difflib.DiffUtils;
+import com.github.difflib.UnifiedDiffUtils;
+import com.github.difflib.patch.Patch;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
@@ -27,26 +31,22 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
- * A panel that displays text (typically code) in an RSyntaxTextArea.
- * <p>
- * Key features:
- * <ul>
- *   <li>Case-insensitive, as-you-type search with Next/Previous navigation.</li>
- *   <li>Ctrl+F focuses the search field for quick searching.</li>
- *   <li>Context menu with Copy and Quick Edit options for code manipulation.</li>
- *   <li>Quick Edit dialog for AI-assisted editing of selected code.</li>
- *   <li>Quick Results dialog providing real-time feedback during code modifications.</li>
- * </ul>
+ * Displays text (typically code) using an {@link org.fife.ui.rsyntaxtextarea.RSyntaxTextArea}
+ * with syntax highlighting, search, and AI-assisted editing via "Quick Edit".
+ *
+ * <p>Supports editing {@link io.github.jbellis.brokk.analyzer.ProjectFile} content and capturing revisions.</p>
  */
-public class PreviewTextPanel extends JPanel
-{
+public class PreviewTextPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(PreviewTextPanel.class);
     private final PreviewTextArea textArea;
     private final JTextField searchField;
@@ -54,6 +54,8 @@ public class PreviewTextPanel extends JPanel
     private final JButton previousButton;
     private JButton editButton;
     private JButton captureButton;
+    // Save button reference needed for enabling/disabling and triggering save action
+    private JButton saveButton;
     private final ContextManager contextManager;
 
     // Theme manager reference
@@ -62,14 +64,14 @@ public class PreviewTextPanel extends JPanel
     // Nullable
     private final ProjectFile file;
     private final ContextFragment fragment;
+    private List<ChatMessage> quickEditMessages = new ArrayList<>();
 
     public PreviewTextPanel(ContextManager contextManager,
                             ProjectFile file,
                             String content,
                             String syntaxStyle,
                             GuiTheme guiTheme,
-                            ContextFragment fragment)
-    {
+                            ContextFragment fragment) {
         super(new BorderLayout());
         assert contextManager != null;
         assert guiTheme != null;
@@ -102,22 +104,16 @@ public class PreviewTextPanel extends JPanel
         JPanel actionButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0)); // Use FlowLayout, add some spacing
 
         // Save button (conditionally added for ProjectFile)
-        JButton saveButton = null;
+        // Initialize the field saveButton
+        saveButton = null;
         if (file != null) {
-            final JButton finalSaveButton = new JButton("Save");
-            finalSaveButton.setEnabled(false); // Initially disabled
-            finalSaveButton.addActionListener(e -> {
-                try {
-                    file.write(textArea.getText());
-                    finalSaveButton.setEnabled(false); // Disable after saving
-                    logger.info("File saved: " + file);
-                } catch (IOException ex) {
-                    logger.info("Error saving file: " + ex.getMessage());
-                    logger.error("Error saving file {}", file, ex);
-                }
+            // Use the field saveButton directly
+            saveButton = new JButton("Save");
+            saveButton.setEnabled(false); // Initially disabled
+            saveButton.addActionListener(e -> {
+                performSave(saveButton); // Call the extracted save method, passing the button itself
             });
-            actionButtonPanel.add(finalSaveButton);
-            saveButton = finalSaveButton;
+            actionButtonPanel.add(saveButton);
         }
 
         // Capture button (conditionally added for GitHistoryFragment)
@@ -262,6 +258,8 @@ public class PreviewTextPanel extends JPanel
 
         // Register ESC key to close the dialog
         registerEscapeKey();
+        // Register Ctrl/Cmd+S to save
+        registerSaveKey();
     }
 
     /**
@@ -302,6 +300,7 @@ public class PreviewTextPanel extends JPanel
             public void componentMoved(java.awt.event.ComponentEvent e) {
                 project.savePreviewWindowBounds(frame); // Save JFrame bounds
             }
+
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
                 project.savePreviewWindowBounds(frame); // Save JFrame bounds
@@ -329,17 +328,17 @@ public class PreviewTextPanel extends JPanel
      * @param guiTheme    The theme manager to use for styling the text area
      */
     /**
-         * Custom RSyntaxTextArea implementation for preview panels with custom popup menu
-         */
-        public class PreviewTextArea extends RSyntaxTextArea {
-            public PreviewTextArea(String content, String syntaxStyle, boolean isEditable) {
-                setSyntaxEditingStyle(syntaxStyle != null ? syntaxStyle : SyntaxConstants.SYNTAX_STYLE_NONE);
-                setCodeFoldingEnabled(true);
-                setAntiAliasingEnabled(true);
-                setHighlightCurrentLine(false);
-                setEditable(isEditable);
-                setText(content);
-            }
+     * Custom RSyntaxTextArea implementation for preview panels with custom popup menu
+     */
+    public class PreviewTextArea extends RSyntaxTextArea {
+        public PreviewTextArea(String content, String syntaxStyle, boolean isEditable) {
+            setSyntaxEditingStyle(syntaxStyle != null ? syntaxStyle : SyntaxConstants.SYNTAX_STYLE_NONE);
+            setCodeFoldingEnabled(true);
+            setAntiAliasingEnabled(true);
+            setHighlightCurrentLine(false);
+            setEditable(isEditable);
+            setText(content);
+        }
 
         @Override
         protected JPopupMenu createPopupMenu() {
@@ -370,10 +369,14 @@ public class PreviewTextPanel extends JPanel
                 public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
                     quickEditAction.setEnabled(getSelectedText() != null && file != null);
                 }
+
                 @Override
-                public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
+                public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
+                }
+
                 @Override
-                public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+                public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
+                }
             });
 
             return menu;
@@ -389,6 +392,20 @@ public class PreviewTextPanel extends JPanel
         if (selectedText == null || selectedText.isEmpty()) {
             return;
         }
+
+        // Check if the selected text is unique before opening the dialog
+        var currentContent = textArea.getText();
+        int firstIndex = currentContent.indexOf(selectedText);
+        int lastIndex = currentContent.lastIndexOf(selectedText);
+        if (firstIndex != lastIndex) {
+            JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(textArea),
+                                          "Text selected for Quick Edit must be unique in the file -- expand your selection.",
+                                          "Selection Not Unique",
+                                          JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        textArea.setEditable(false);
 
         // Create quick edit dialog
         Window ancestor = SwingUtilities.getWindowAncestor(this);
@@ -495,7 +512,10 @@ public class PreviewTextPanel extends JPanel
         JButton codeButton = new JButton("Code");
         JButton cancelButton = new JButton("Cancel");
 
-        cancelButton.addActionListener(e -> quickEditDialog.dispose());
+        cancelButton.addActionListener(e -> {
+            quickEditDialog.dispose();
+            textArea.setEditable(true);
+        });
         buttonPanel.add(codeButton);
         buttonPanel.add(cancelButton);
 
@@ -541,6 +561,7 @@ public class PreviewTextPanel extends JPanel
                                               "No instructions provided. Quick edit cancelled.",
                                               "Quick Edit", JOptionPane.INFORMATION_MESSAGE);
                 quickEditDialog.dispose();
+                textArea.setEditable(true);
                 return;
             }
             quickEditDialog.dispose();
@@ -583,12 +604,7 @@ public class PreviewTextPanel extends JPanel
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        systemArea.setText("Request sent.");
-
-        // Set the same width as the quick edit dialog
-        systemScrollPane.setPreferredSize(new Dimension(400, 200));
-
-        // Set the same width as the quick edit dialog
+        systemArea.setText("Request sent");
         systemScrollPane.setPreferredSize(new Dimension(400, 200));
 
         // Bottom panel with Okay and Stop buttons
@@ -634,26 +650,26 @@ public class PreviewTextPanel extends JPanel
 
             @Override
             public void showOutputSpinner(String message) {
-                // do nothing
+                // no-op
             }
 
             @Override
             public void hideOutputSpinner() {
-                // do nothing
+                // no-op
             }
         }
         var resultsIo = new QuickResultsIo();
-    
-            // Submit the quick edit task. It now returns a SessionResult.
-            var future = contextManager.submitUserTask("Quick Edit", () -> {
-                return CodeAgent.runQuickSession(contextManager,
-                                                 resultsIo, // IO is still used by runQuickSession for initial errors
-                                                 file,
-                                                 selectedText,
-                                                 instructions);
-            });
-    
-            // Stop button cancels the task and closes the dialog.
+
+        // Submit the quick-edit session to a background future
+        var future = contextManager.submitUserTask("Quick Edit", () -> {
+            return CodeAgent.runQuickSession(contextManager,
+                                             resultsIo,
+                                             file,
+                                             selectedText,
+                                             instructions);
+        });
+
+        // Stop button cancels the task and closes the dialog.
         stopButton.addActionListener(e -> {
             future.cancel(true);
             resultsDialog.dispose();
@@ -662,122 +678,127 @@ public class PreviewTextPanel extends JPanel
         // Okay button simply closes the dialog.
         okayButton.addActionListener(e -> resultsDialog.dispose());
 
-        // Wait for the task to complete in a background thread.
+        // Fire up a background thread to retrieve results and apply snippet.
         new Thread(() -> {
-            SessionResult sessionResult = null;
-            String newSnippet = null;
-            boolean applySuccess = false;
-            SessionResult.StopDetails finalStopDetails = null;
-            String finalActionDescription = "Quick Edit: " + instructions; // Default description
-
+            QuickEditResult quickEditResult = null;
             try {
-                // Wait for the task to complete and get the SessionResult
-                sessionResult = future.get(); // Now returns SessionResult
-                finalStopDetails = sessionResult.stopDetails(); // Initial stop details from LLM call
-
-                // Check if LLM call itself failed or was cancelled
-                if (finalStopDetails.reason() != SessionResult.StopReason.SUCCESS) {
-                    // Error already logged by runQuickSession via resultsIo
-                    // History will be added in the finally block
-                } else {
-                    // LLM call succeeded, now try to parse and apply
-                    // Get string representation of the output object, which contains the LLM response text
-                    var responseText = sessionResult.output().toString();
-                    newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
-
-                    if (newSnippet.isEmpty()) {
-                        resultsIo.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
-                        finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.PARSE_ERROR);
-                        finalActionDescription += " [PARSE_ERROR]";
-                    } else {
-                        // Snippet extracted, try to apply
-                        try {
-                            EditBlock.replaceInFile(file, selectedText.stripLeading(), newSnippet.stripLeading());
-                            resultsIo.actionOutput("Edit applied successfully.");
-                            applySuccess = true;
-                            // StopDetails remains SUCCESS
-                        } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
-                            resultsIo.toolErrorRaw("Failed to replace text: " + e.getMessage());
-                            finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, e.getMessage());
-                            finalActionDescription += " [APPLY_ERROR]";
-                        } catch (IOException e) {
-                            resultsIo.toolErrorRaw("Failed writing updated file: " + e.getMessage());
-                            finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, "File write error: " + e.getMessage());
-                            finalActionDescription += " [APPLY_ERROR]";
-                        }
-                    }
-                }
-            } catch (InterruptedException e) {
+                // Centralized logic for session + snippet extraction + file replace
+                quickEditResult = performQuickEdit(future, selectedText);
+            } catch (InterruptedException ex) {
+                // If the thread itself is interrupted
                 Thread.currentThread().interrupt();
-                resultsIo.toolErrorRaw("Quick edit interrupted.");
-                finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
-                finalActionDescription += " [INTERRUPTED]";
-            } catch (Exception ex) {
-                // Catch other exceptions during future.get() or processing
-                logger.error("Unexpected error during quick edit processing", ex);
-                resultsIo.toolErrorRaw("Unexpected error during quick edit: " + ex.getMessage());
-                // Use a generic error status if stopDetails wasn't already set
-                if (finalStopDetails == null || finalStopDetails.reason() == SessionResult.StopReason.SUCCESS) {
-                    finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, "Unexpected error: " + ex.getMessage());
-                    finalActionDescription += " [ERROR]";
-                }
+                quickEditResult = new QuickEditResult(null, "Quick edit interrupted.");
+            } catch (ExecutionException e) {
+                logger.debug("Internal error executing Quick Edit", e);
+                quickEditResult = new QuickEditResult(null, "Internal error executing Quick Edit");
             } finally {
-                // Ensure buttons are updated on EDT regardless of outcome
+                // Ensure we update the UI state on the EDT
                 SwingUtilities.invokeLater(() -> {
                     stopButton.setEnabled(false);
                     okayButton.setEnabled(true);
                 });
 
-                // Add to history using the final state, even if sessionResult is null (e.g., future.get() exception)
-                if (finalStopDetails != null) { // Should always be non-null unless exception before assignment
-                    var finalResultForHistory = (sessionResult != null)
-                            ? new SessionResult(finalActionDescription,
-                                                sessionResult.messages(),
-                                                sessionResult.originalContents(),
-                                                sessionResult.output(),
-                                                finalStopDetails)
-                            : new SessionResult(finalActionDescription, // Use potentially updated description
-                                                List.of(), // No messages if initial result failed
-                                                Map.of(), // No original contents known
-                                                "", // No output
-                                                finalStopDetails); // Use the determined stop details
-                    contextManager.addToHistory(finalResultForHistory, false);
-                } else {
-                    // Should not happen, but log if it does
-                    logger.error("finalStopDetails was null in quick edit finally block");
-                }
+                // Log the outcome
+                logger.debug(quickEditResult);
             }
 
-            // If applied successfully, update the UI on EDT
-            if (applySuccess && newSnippet != null) {
-                try {
-                    var newContent = file.read(); // Reload content after successful write
-                    final String finalNewSnippet = newSnippet; // Effectively final for lambda
-                    SwingUtilities.invokeLater(() -> {
-                        textArea.setText(newContent);
-                        int startOffset = newContent.indexOf(finalNewSnippet);
-                        if (startOffset >= 0) {
-                            textArea.setCaretPosition(startOffset);
-                            textArea.moveCaretPosition(startOffset + finalNewSnippet.length());
-                        } else {
-                            textArea.setCaretPosition(0); // Fallback if snippet not found
-                        }
-                        textArea.grabFocus();
+            // If the quick edit was successful (snippet not null), select the new text
+            if (quickEditResult.snippet() != null) {
+                var newSnippet = quickEditResult.snippet();
+                SwingUtilities.invokeLater(() -> {
+                    // Re-enable the text area if we're going to modify it
+                    textArea.setEditable(true);
 
-                        // Close the dialog automatically on success
-                        if (!resultsIo.hasError.get()) {
-                            resultsDialog.dispose();
-                        }
-                    });
-                } catch (IOException readEx) {
-                    // Log error reading file back
-                    logger.error("Error reading file {} after quick edit apply", file, readEx);
-                    SwingUtilities.invokeLater(() -> resultsIo.toolErrorRaw("Error reloading file after edit: " + readEx.getMessage()));
-                }
+                    int startOffset = textArea.getText().indexOf(newSnippet);
+                    if (startOffset >= 0) {
+                        textArea.setCaretPosition(startOffset);
+                        textArea.moveCaretPosition(startOffset + newSnippet.length());
+                    } else {
+                        textArea.setCaretPosition(0); // fallback if not found
+                    }
+                    textArea.grabFocus();
+
+                    // Close the dialog automatically if there were no errors
+                    if (!resultsIo.hasError.get()) {
+                        resultsDialog.dispose();
+                    }
+                });
+            } else {
+                // Display an error dialog with the failure message
+                var errorMessage = quickEditResult.error();
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(textArea),
+                                                  errorMessage,
+                                                  "Quick Edit Failed",
+                                                  JOptionPane.ERROR_MESSAGE);
+                    textArea.setEditable(true);
+                });
             }
         }).start();
 
         resultsDialog.setVisible(true);
+    }
+
+    /**
+     * A small holder for quick edit outcome, containing either the generated snippet
+     * or an error message detailing the failure. Exactly one field will be non-null.
+     */
+    private record QuickEditResult(String snippet, String error) {
+        public QuickEditResult {
+            assert (snippet == null) != (error == null) : "Exactly one of snippet or error must be non-null";
+        }
+    }
+
+    /**
+     * Centralizes retrieval of the SessionResult, extraction of the snippet,
+     * and applying the snippet to the file. Returns a QuickEditResult with the final
+     * success status, snippet text, and stop details.
+     *
+     * @throws InterruptedException If future.get() is interrupted.
+     */
+    private QuickEditResult performQuickEdit(Future<SessionResult> future,
+                                             String selectedText) throws ExecutionException, InterruptedException {
+        var sessionResult = future.get(); // might throw InterruptedException or ExecutionException
+        var stopDetails = sessionResult.stopDetails();
+        quickEditMessages = sessionResult.messages(); // Capture messages regardless of outcome
+
+        // If the LLM itself was not successful, return the error
+        if (stopDetails.reason() != SessionResult.StopReason.SUCCESS) {
+            var explanation = stopDetails.explanation() != null ? stopDetails.explanation() : "LLM task failed with " + stopDetails.reason();
+            logger.debug("Quick Edit LLM task failed: {}", explanation);
+            return new QuickEditResult(null, explanation);
+        }
+
+        // LLM call succeeded; try to parse a snippet
+        var responseText = sessionResult.output().toString();
+        var snippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
+        if (snippet.isEmpty()) {
+            logger.debug("Could not parse a fenced code snippet from LLM response {}", responseText);
+            return new QuickEditResult(null, "No code block found in LLM response");
+        }
+
+        // Apply the edit (replacing the unique occurrence)
+        SwingUtilities.invokeLater(() -> {
+            try {
+                // Find position of the selected text
+                String currentText = textArea.getText();
+                int startPos = currentText.indexOf(selectedText.stripLeading());
+
+                // Use beginAtomicEdit and endAtomicEdit to group operations as a single undo unit
+                textArea.beginAtomicEdit();
+                try {
+                    textArea.getDocument().remove(startPos, selectedText.stripLeading().length());
+                    textArea.getDocument().insertString(startPos, snippet.stripLeading(), null);
+                } finally {
+                    textArea.endAtomicEdit();
+                }
+            } catch (javax.swing.text.BadLocationException ex) {
+                logger.error("Error applying quick edit change", ex);
+                // Fallback to direct text replacement
+                textArea.setText(textArea.getText().replace(selectedText.stripLeading(), snippet.stripLeading()));
+            }
+        });
+        return new QuickEditResult(snippet, null);
     }
 
     /**
@@ -820,12 +841,28 @@ public class PreviewTextPanel extends JPanel
     }
 
     /**
+     * Registers the Ctrl+S (or Cmd+S on Mac) keyboard shortcut to trigger the save action.
+     */
+    private void registerSaveKey() {
+        KeyStroke saveKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_S, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(saveKeyStroke, "saveFile");
+        getActionMap().put("saveFile", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Only perform save if the file exists and the save button is enabled (changes exist)
+                if (file != null && saveButton != null && saveButton.isEnabled()) {
+                    performSave(saveButton);
+                }
+            }
+        });
+    }
+
+    /**
      * Called whenever the user types in the search field, to highlight all matches (case-insensitive).
      *
      * @param jumpToFirst If true, jump to the first occurrence; if false, maintain current position
      */
-    private void updateSearchHighlights(boolean jumpToFirst)
-    {
+    private void updateSearchHighlights(boolean jumpToFirst) {
         String query = searchField.getText();
         if (query == null || query.trim().isEmpty()) {
             // Clear all highlights if query is empty
@@ -871,7 +908,7 @@ public class PreviewTextPanel extends JPanel
             if (viewport != null && matchRect != null) {
                 // Calculate the target Y position (1/3 from the top)
                 int viewportHeight = viewport.getHeight();
-                int targetY = Math.max(0, (int)(matchRect.y - viewportHeight * 0.33));
+                int targetY = Math.max(0, (int) (matchRect.y - viewportHeight * 0.33));
 
                 // Create a new point for scrolling
                 Rectangle viewRect = viewport.getViewRect();
@@ -884,11 +921,60 @@ public class PreviewTextPanel extends JPanel
     }
 
     /**
+     * Performs the file save operation, updating history and disabling the save button.
+     *
+     * @param buttonToDisable The save button instance to disable after a successful save.
+     */
+    private void performSave(JButton buttonToDisable) {
+        if (file == null) {
+            logger.warn("Attempted to save but no ProjectFile is associated with this panel.");
+            return;
+        }
+        try {
+            // Read the content *from disk* before saving to capture the original state for history
+            String contentBeforeSave = file.exists() ? file.read() : "";
+            // Write the new content to the file
+            String newContent = textArea.getText();
+            file.write(newContent);
+            buttonToDisable.setEnabled(false); // Disable after saving
+            logger.debug("File saved: " + file);
+
+            // Generate a unified diff
+            List<String> originalLines = contentBeforeSave.lines().collect(Collectors.toList());
+            List<String> newLines = newContent.lines().collect(Collectors.toList());
+            Patch<String> patch = DiffUtils.diff(originalLines, newLines);
+            List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(file.toString(),
+                                                                            file.toString(),
+                                                                            originalLines,
+                                                                            patch,
+                                                                            3);
+            String diffOutput = String.join("\n", unifiedDiff);
+
+            // Add a history entry on Save
+            var saveResult = new SessionResult(
+                    diffOutput,                      // Action description -- will be summarized by LLM
+                    quickEditMessages,               // Use collected messages
+                    Map.of(file, contentBeforeSave), // Content before this save
+                    "```\n" + diffOutput + "\n```",  // llmoutput
+                    new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS)
+            );
+            contextManager.addToHistory(saveResult, false); // Add to history, don't compress
+            quickEditMessages.clear(); // Clear messages after successful save and history add
+        } catch (IOException ex) {
+            logger.error("Error saving file {}", file, ex);
+            // Optionally show an error message to the user
+            JOptionPane.showMessageDialog(this,
+                                          "Error saving file: " + ex.getMessage(),
+                                          "Save Error",
+                                          JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
      * Finds the next or previous match relative to the current caret position.
      * @param forward true = next match; false = previous match
      */
-    private void findNext(boolean forward)
-    {
+    private void findNext(boolean forward) {
         String query = searchField.getText();
         if (query == null || query.trim().isEmpty()) {
             return;
