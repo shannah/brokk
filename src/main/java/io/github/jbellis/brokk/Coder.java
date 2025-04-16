@@ -89,15 +89,13 @@ public class Coder {
      * Actually performs one streaming call to the LLM, returning once the response
      * is done or there's an error. If 'echo' is true, partial tokens go to console.
      */
-    private StreamingResult doSingleStreamingCall(ChatRequest request,
-                                                  boolean echo) {
+    private StreamingResult doSingleStreamingCall(ChatRequest request, boolean echo) {
         var result = doSingleStreamingCallInternal(request, echo);
         logRequest(model, request, result);
         return result;
     }
 
-    private StreamingResult doSingleStreamingCallInternal(ChatRequest request,
-                                                          boolean echo) {
+    private StreamingResult doSingleStreamingCallInternal(ChatRequest request, boolean echo) {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         var canceled = new AtomicBoolean(false);
@@ -914,13 +912,7 @@ public class Coder {
         try {
             var timestamp = LocalDateTime.now(); // timestamp finished, not started
 
-            // write the request and response in a single go
-            String lastUserMessageText = request.messages().stream()
-                    .filter(m -> m instanceof UserMessage)
-                    .reduce((first, second) -> second) // Get last UserMessage
-                    .map(Models::getText)
-                    .orElse("no-user-message");
-            String shortDesc = getShortDescription(lastUserMessageText);
+            String shortDesc = getShortDescription(getResultDescription(result));
             var formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
                                                                               contextManager.getModels().nameOf(model),
                                                                               TaskEntry.formatMessages(request.messages()));
@@ -934,6 +926,33 @@ public class Coder {
         } catch (IOException e) {
             logger.error("Failed to write LLM history file", e);
         }
+    }
+
+    /**
+     * Generates a short description of the result for logging purposes.
+     *
+     * @param result The streaming result to describe.
+     * @return A short description string.
+     */
+    private String getResultDescription(StreamingResult result) {
+        if (result.error != null) {
+            return result.error.getMessage();
+        }
+        if (result.cancelled) {
+            return "Cancelled";
+        }
+        assert result.chatResponse != null;
+        var aiMessage = result.chatResponse.aiMessage();
+        if (aiMessage.hasToolExecutionRequests()) {
+            return aiMessage.toolExecutionRequests().stream()
+                    .map(ToolExecutionRequest::name)
+                    .collect(Collectors.joining(", "));
+        }
+        var text = aiMessage.text();
+        if (text != null && !text.isBlank()) {
+            return text;
+        }
+        return "empty response";
     }
 
     /**
