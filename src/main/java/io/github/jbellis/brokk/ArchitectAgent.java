@@ -158,16 +158,16 @@ public class ArchitectAgent {
 
             // 4) Figure out which tools are allowed in this step
             var genericToolNames = List.of(
-                    "addEditableFiles",
-                    "addReadOnlyFiles",
-                    "addUrlContents",
-                    "addTextFragment",
-                    "addUsagesFragment",
-                    "addClassSkeletonsFragment",
-                    "addMethodSourcesFragment",
-                    "addCallGraphToFragment",
-                    "addCallGraphFromFragment",
-                    "dropFragments"
+                    "addEditableFilesToWorkspace",
+                    "addReadOnlyFilesToWorkspace",
+                    "addUrlContentsToWorkspace",
+                    "addTextToWorkspace",
+                    "addUsagesToWorkspace",
+                    "addClassSummariesToWorkspace",
+                    "addMethodSourcesToWorkspace",
+                    "addCallGraphInToWorkspace",
+                    "addCallGraphOutToWorkspace",
+                    "dropWorkspaceFragments"
             );
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(genericToolNames));
             // Add the BrokkAgent-specific tools
@@ -318,7 +318,7 @@ public class ArchitectAgent {
     private int getPriorityRank(String toolName) {
         if (toolName.equals("dropFragments")) return 1;
         if (toolName.equals("addReadOnlyFiles")) return 2;
-        if (toolName.equals("addEditableFiles")) return 3;
+        if (toolName.equals("addEditableFilesToWorkspace")) return 3;
         return 4; // all other tools have lowest priority
     }
 

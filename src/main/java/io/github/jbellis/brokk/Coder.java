@@ -104,7 +104,7 @@ public class Coder {
     private StreamingResult doSingleStreamingCall(ChatRequest request,
                                                   boolean echo) {
         var result = doSingleStreamingCallInternal(request, echo);
-        writeToHistory(model, request, result);
+        logRequest(model, request, result);
         return result;
     }
 
@@ -881,11 +881,11 @@ public class Coder {
         Include all the tool calls necessary to satisfy the request in a single object!
         """.stripIndent().formatted(tools.size(), toolsDescription, retryInstructionsProvider.apply(null));
     }
-    
+
     /**
      * Ensures the "think" tool is present in the tools list for emulation.
      * This provides a consistent way for the model to reason through complex problems.
-     * 
+     *
      * @param originalTools The original list of tool specifications
      * @return A new list containing all original tools plus the think tool if not already present
      */
@@ -896,7 +896,7 @@ public class Coder {
         if (hasThinkTool) {
             return originalTools;
         }
-        
+
         // Add the think tool
         var enhancedTools = new ArrayList<>(originalTools);
         enhancedTools.addAll(contextManager.getToolRegistry().getRegisteredTools(List.of("think")));
@@ -906,7 +906,7 @@ public class Coder {
     /**
      * Writes history information to session-specific files.
      */
-    private void writeToHistory(StreamingChatLanguageModel model, ChatRequest request, StreamingResult result) {
+    private void logRequest(StreamingChatLanguageModel model, ChatRequest request, StreamingResult result) {
         if (sessionHistoryDir == null) {
             // History directory creation failed in constructor, do nothing.
             return;

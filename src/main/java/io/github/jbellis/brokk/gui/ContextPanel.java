@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.CopyExternalPrompts;
+import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
@@ -1043,7 +1044,7 @@ public class ContextPanel extends JPanel {
                 try {
                     chrome.systemOutput("Fetching " + clipboardText); // Qualify chrome
                     // Use the static method from ContextTools
-                    content = io.github.jbellis.brokk.tools.ContextTools.fetchUrlContent(new URI(clipboardText));
+                    content = WorkspaceTools.fetchUrlContent(new URI(clipboardText));
                     // Use the standard HTML converter
                     content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                     wasUrl = true;

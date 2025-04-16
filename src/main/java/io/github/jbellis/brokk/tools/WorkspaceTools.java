@@ -34,19 +34,19 @@ import java.util.stream.Collectors;
  * Provides tools for manipulating the context (adding/removing files and fragments)
  * and adding analysis results (usages, skeletons, sources, call graphs) as context fragments.
  */
-public class ContextTools {
-    private static final Logger logger = LogManager.getLogger(ContextTools.class);
+public class WorkspaceTools {
+    private static final Logger logger = LogManager.getLogger(WorkspaceTools.class);
 
     // Changed field type to concrete ContextManager
     private final ContextManager contextManager;
 
     // Changed constructor parameter type to concrete ContextManager
-    public ContextTools(ContextManager contextManager) {
+    public WorkspaceTools(ContextManager contextManager) {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
     @Tool("Edit project files in the Workspace. Use this when you intend to make changes to these files.")
-    public String addEditableFiles(
+    public String addEditableFilesToWorkspace(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> relativePaths
     ) {
@@ -79,7 +79,7 @@ public class ContextTools {
     }
 
     @Tool("Add read-only files to the Workspace. Use this for files you need to reference the full source of, but not modify.")
-    public String addReadOnlyFiles(
+    public String addReadOnlyFilesToWorkspace(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> paths
     ) {
@@ -123,7 +123,7 @@ public class ContextTools {
     }
 
     @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it to the Workspace as a read-only text fragment. HTML content will be converted to Markdown.")
-    public String addUrlContents(
+    public String addUrlContentsToWorkspace(
             @P("The full URL to fetch content from (e.g., 'https://example.com/docs/page').")
             String urlString
     ) {
@@ -165,7 +165,7 @@ public class ContextTools {
     }
 
     @Tool("Add an arbitrary block of text (e.g., notes that are independent of the Plan, a configuration snippet, or something learned from another Agent) to the Workspace as a read-only fragment")
-    public String addText(
+    public String addTextToWorkspace(
             @P("The text content to add to the Workspace")
             String content,
             @P("A short, descriptive label for this text fragment (e.g., 'User Requirements', 'API Key Snippet')")
@@ -186,7 +186,7 @@ public class ContextTools {
     }
 
     @Tool("Remove specified fragments (files, text snippets, task history, analysis results) from the Workspace using their unique integer IDs")
-    public String dropFragments(
+    public String dropWorkspaceFragments(
             @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove")
             List<Integer> fragmentIds
     ) {
@@ -245,7 +245,7 @@ public class ContextTools {
     @Tool(value = """
     Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace.
     """)
-    public String addUsages(
+    public String addSymbolUsagesToWorkspace(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
             String symbol
     ) {
@@ -270,7 +270,7 @@ public class ContextTools {
     Retrieves summaries (fields and method signatures) for specified classes and adds them to the Workspace.
     Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
     """)
-    public String addClassSummaries(
+    public String addClassSummariesToWorkspace(
             @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get summaries for.")
             List<String> classNames
     ) {
@@ -388,7 +388,7 @@ public class ContextTools {
     Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it to the Workspace.
     The single line of the call sites (but not full method sources) are included
     """)
-    public String addCallGraphToFragment(
+    public String addCallGraphInToWorkspace(
             @P("Fully qualified target method name (e.g., 'com.example.MyClass.targetMethod') to find callers for.")
             String methodName,
             @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
@@ -432,7 +432,7 @@ public class ContextTools {
     Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it to the workspace
     The single line of the call sites (but not full method sources) are included
     """)
-    public String addCallGraphFromFragment(
+    public String addCallGraphOutToWorkspace(
             @P("Fully qualified source method name (e.g., 'com.example.MyClass.sourceMethod') to find callees for.")
             String methodName,
             @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")

@@ -18,7 +18,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
-import io.github.jbellis.brokk.tools.ContextTools;
+import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.ImageUtil;
@@ -185,7 +185,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.toolRegistry = new ToolRegistry();
          // Register standard tools
          this.toolRegistry.register(new SearchTools(this));
-         this.toolRegistry.register(new ContextTools(this));
+         this.toolRegistry.register(new WorkspaceTools(this));
 
          // Load saved context or create a new one
          var welcomeMessage = buildWelcomeMessage();
