@@ -38,7 +38,7 @@ public class EditBlock {
      * and starts capturing from the next line.
      * Returns an empty string if no valid block is found.
      */
-    static String extractCodeFromTripleBackticks(String text) {
+    public static String extractCodeFromTripleBackticks(String text) {
         // Pattern: ``` followed by optional non-newline chars, then newline, then capture until ```
         var matcher = Pattern.compile(
                 "```[^\\n]*\\n(.*?)```", // Skip first line, capture starting from the second

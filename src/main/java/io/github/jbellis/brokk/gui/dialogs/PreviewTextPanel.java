@@ -3,7 +3,9 @@ package io.github.jbellis.brokk.gui.dialogs;
 import io.github.jbellis.brokk.CodeAgent;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.EditBlock;
 import io.github.jbellis.brokk.IConsoleIO;
+import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.GuiTheme;
@@ -25,8 +27,10 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future; // Import Future
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -639,17 +643,17 @@ public class PreviewTextPanel extends JPanel
             }
         }
         var resultsIo = new QuickResultsIo();
-
-        // Submit the quick edit task.
-        var future = contextManager.submitUserTask("Quick Edit", () -> {
-            return CodeAgent.runQuickSession(contextManager,
-                                             resultsIo,
-                                             file,
-                                             selectedText,
-                                             instructions);
-        });
-
-        // Stop button cancels the task and closes the dialog.
+    
+            // Submit the quick edit task. It now returns a SessionResult.
+            var future = contextManager.submitUserTask("Quick Edit", () -> {
+                return CodeAgent.runQuickSession(contextManager,
+                                                 resultsIo, // IO is still used by runQuickSession for initial errors
+                                                 file,
+                                                 selectedText,
+                                                 instructions);
+            });
+    
+            // Stop button cancels the task and closes the dialog.
         stopButton.addActionListener(e -> {
             future.cancel(true);
             resultsDialog.dispose();
@@ -660,33 +664,116 @@ public class PreviewTextPanel extends JPanel
 
         // Wait for the task to complete in a background thread.
         new Thread(() -> {
-            try {
-                // Wait for the task to complete
-                var newSnippet = future.get();
-                stopButton.setEnabled(false);
-                okayButton.setEnabled(true);
+            SessionResult sessionResult = null;
+            String newSnippet = null;
+            boolean applySuccess = false;
+            SessionResult.StopDetails finalStopDetails = null;
+            String finalActionDescription = "Quick Edit: " + instructions; // Default description
 
-                // Reload the preview panel's contents from the repofile.
-                var newContent = file.read();
-                // Update UI on the EDT
-                SwingUtilities.invokeLater(() -> {
-                    // Update the text area with new content
-                    textArea.setText(newContent);
-    
-                    // Find the start offset of the new snippet in the content.
-                    int startOffset = newContent.indexOf(newSnippet);
-                    assert startOffset >= 0;
-                    textArea.setCaretPosition(startOffset);
-                    textArea.moveCaretPosition(startOffset + newSnippet.length());
-                    textArea.grabFocus();
-                    
-                    // Close the dialog automatically on success
-                    if (!resultsIo.hasError.get()) {
-                        resultsDialog.dispose();
+            try {
+                // Wait for the task to complete and get the SessionResult
+                sessionResult = future.get(); // Now returns SessionResult
+                finalStopDetails = sessionResult.stopDetails(); // Initial stop details from LLM call
+
+                // Check if LLM call itself failed or was cancelled
+                if (finalStopDetails.reason() != SessionResult.StopReason.SUCCESS) {
+                    // Error already logged by runQuickSession via resultsIo
+                    // History will be added in the finally block
+                } else {
+                    // LLM call succeeded, now try to parse and apply
+                    // Get string representation of the output object, which contains the LLM response text
+                    var responseText = sessionResult.output().toString();
+                    newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
+
+                    if (newSnippet.isEmpty()) {
+                        resultsIo.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
+                        finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.PARSE_ERROR);
+                        finalActionDescription += " [PARSE_ERROR]";
+                    } else {
+                        // Snippet extracted, try to apply
+                        try {
+                            EditBlock.replaceInFile(file, selectedText.stripLeading(), newSnippet.stripLeading());
+                            resultsIo.actionOutput("Edit applied successfully.");
+                            applySuccess = true;
+                            // StopDetails remains SUCCESS
+                        } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
+                            resultsIo.toolErrorRaw("Failed to replace text: " + e.getMessage());
+                            finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, e.getMessage());
+                            finalActionDescription += " [APPLY_ERROR]";
+                        } catch (IOException e) {
+                            resultsIo.toolErrorRaw("Failed writing updated file: " + e.getMessage());
+                            finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, "File write error: " + e.getMessage());
+                            finalActionDescription += " [APPLY_ERROR]";
+                        }
                     }
-                });
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                resultsIo.toolErrorRaw("Quick edit interrupted.");
+                finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
+                finalActionDescription += " [INTERRUPTED]";
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> resultsIo.toolErrorRaw("Error during quick edit: " + ex.getMessage()));
+                // Catch other exceptions during future.get() or processing
+                logger.error("Unexpected error during quick edit processing", ex);
+                resultsIo.toolErrorRaw("Unexpected error during quick edit: " + ex.getMessage());
+                // Use a generic error status if stopDetails wasn't already set
+                if (finalStopDetails == null || finalStopDetails.reason() == SessionResult.StopReason.SUCCESS) {
+                    finalStopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, "Unexpected error: " + ex.getMessage());
+                    finalActionDescription += " [ERROR]";
+                }
+            } finally {
+                // Ensure buttons are updated on EDT regardless of outcome
+                SwingUtilities.invokeLater(() -> {
+                    stopButton.setEnabled(false);
+                    okayButton.setEnabled(true);
+                });
+
+                // Add to history using the final state, even if sessionResult is null (e.g., future.get() exception)
+                if (finalStopDetails != null) { // Should always be non-null unless exception before assignment
+                    var finalResultForHistory = (sessionResult != null)
+                            ? new SessionResult(finalActionDescription,
+                                                sessionResult.messages(),
+                                                sessionResult.originalContents(),
+                                                sessionResult.output(),
+                                                finalStopDetails)
+                            : new SessionResult(finalActionDescription, // Use potentially updated description
+                                                List.of(), // No messages if initial result failed
+                                                Map.of(), // No original contents known
+                                                "", // No output
+                                                finalStopDetails); // Use the determined stop details
+                    contextManager.addToHistory(finalResultForHistory, false);
+                } else {
+                    // Should not happen, but log if it does
+                    logger.error("finalStopDetails was null in quick edit finally block");
+                }
+            }
+
+            // If applied successfully, update the UI on EDT
+            if (applySuccess && newSnippet != null) {
+                try {
+                    var newContent = file.read(); // Reload content after successful write
+                    final String finalNewSnippet = newSnippet; // Effectively final for lambda
+                    SwingUtilities.invokeLater(() -> {
+                        textArea.setText(newContent);
+                        int startOffset = newContent.indexOf(finalNewSnippet);
+                        if (startOffset >= 0) {
+                            textArea.setCaretPosition(startOffset);
+                            textArea.moveCaretPosition(startOffset + finalNewSnippet.length());
+                        } else {
+                            textArea.setCaretPosition(0); // Fallback if snippet not found
+                        }
+                        textArea.grabFocus();
+
+                        // Close the dialog automatically on success
+                        if (!resultsIo.hasError.get()) {
+                            resultsDialog.dispose();
+                        }
+                    });
+                } catch (IOException readEx) {
+                    // Log error reading file back
+                    logger.error("Error reading file {} after quick edit apply", file, readEx);
+                    SwingUtilities.invokeLater(() -> resultsIo.toolErrorRaw("Error reloading file after edit: " + readEx.getMessage()));
+                }
             }
         }).start();
 

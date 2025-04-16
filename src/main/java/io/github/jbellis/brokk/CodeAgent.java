@@ -447,14 +447,13 @@ public class CodeAgent {
      * 2) Use QuickEditPrompts to ask for a single fenced code snippet
      * 3) Replace the old text with the new snippet in the file
      *
-     * @return The new text snippet that was applied, or the original file content if failed.
-     */
-    public static String runQuickSession(ContextManager cm,
-                                         IConsoleIO io,
-                                         ProjectFile file,
-                                         String oldText,
-                                         String instructions)
-    {
+     * @return A SessionResult containing the conversation and original content.
+         */
+    public static SessionResult runQuickSession(ContextManager cm,
+                                                IConsoleIO io,
+                                                ProjectFile file,
+                                                String oldText,
+                                                String instructions) {
         var coder = cm.getCoder(cm.getModels().quickModel(), "QuickEdit: " + instructions);
         var analyzer = cm.getAnalyzer();
 
@@ -489,49 +488,31 @@ public class CodeAgent {
         // No echo for Quick Edit, use instance quickModel
         var result = coder.sendStreaming(messages, false);
 
-        if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
-            io.toolErrorRaw("Quick edit failed or was cancelled.");
-            // Add to history even if canceled, so we can potentially undo any partial changes
-            cm.addToHistory(new SessionResult("Quick Edit (canceled): " + file.getFileName(), pendingHistory, originalContents, "", new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED)), false);
-            return fileContents; // Return original content
-        }
-        var responseText = result.chatResponse().aiMessage().text();
-        if (responseText == null || responseText.isBlank()) {
+        // Determine stop reason based on LLM response
+        SessionResult.StopDetails stopDetails;
+        String responseText = "";
+        if (result.cancelled()) {
+            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
+            io.toolErrorRaw("Quick edit was cancelled.");
+        } else if (result.error() != null) {
+            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, result.error().getMessage());
+            io.toolErrorRaw("Quick edit failed: " + result.error().getMessage());
+        } else if (result.chatResponse() == null || result.chatResponse().aiMessage() == null || result.chatResponse().aiMessage().text() == null || result.chatResponse().aiMessage().text().isBlank()) {
+            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE);
             io.toolErrorRaw("LLM returned empty response for quick edit.");
-            // Add to history even if it failed
-            cm.addToHistory(new SessionResult("Quick Edit (failed): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE)), false);
-            return fileContents; // Return original content
+        } else {
+            // Success from LLM perspective
+            responseText = result.chatResponse().aiMessage().text();
+            pendingHistory.add(new AiMessage(responseText)); // Add successful response to history
+            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS); // SUCCESS here means LLM responded
         }
 
-        // Add the response to pending history
-        pendingHistory.add(new AiMessage(responseText));
-
-        // Extract the new snippet
-        var newSnippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
-        if (newSnippet.isEmpty()) {
-            io.toolErrorRaw("Could not parse a fenced code snippet from LLM response.");
-            // Add to history even if it failed
-            cm.addToHistory(new SessionResult("Quick Edit (failed parse): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.PARSE_ERROR)), false);
-            return fileContents; // Return original content
-        }
-
-        String newStripped = newSnippet.stripLeading();
-        try {
-            EditBlock.replaceInFile(file, oldText.stripLeading(), newStripped);
-            // Save to context history - pendingHistory already contains both the instruction and the response
-            cm.addToHistory(new SessionResult("Quick Edit: " + instructions, pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS)), false);
-            return newStripped; // Return the new snippet that was applied
-        } catch (EditBlock.NoMatchException | EditBlock.AmbiguousMatchException e) {
-            io.toolErrorRaw("Failed to replace text: " + e.getMessage());
-            // Add to history even if it failed, include exception message as details
-            cm.addToHistory(new SessionResult("Quick Edit (failed match): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, e.getMessage())), false);
-            return fileContents; // Return original content on failure
-        } catch (IOException e) {
-            io.toolErrorRaw("Failed writing updated file: " + e.getMessage());
-            // Add to history even if it failed, include exception message as details
-            cm.addToHistory(new SessionResult("Quick Edit (failed write): " + file.getFileName(), pendingHistory, originalContents, responseText, new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, e.getMessage())), false);
-            return fileContents; // Return original content on failure
-        }
+        // Return SessionResult containing conversation, original content, and LLM response string
+        return new SessionResult("Quick Edit: " + file.getFileName(),
+                                 pendingHistory,
+                                 originalContents,
+                                 responseText,
+                                 stopDetails);
     }
 
     /** Formats the history of build errors for the LLM retry prompt. */
