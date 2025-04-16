@@ -6,9 +6,11 @@ import io.github.jbellis.brokk.ArchitectAgent;
 import io.github.jbellis.brokk.CodeAgent;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.SearchAgent;
 import io.github.jbellis.brokk.SessionResult;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
@@ -21,11 +23,14 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -419,7 +424,7 @@ public class InstructionsPanel extends JPanel {
             } else {
                 logger.debug("No last used model saved for this project.");
                 // Select the first item if no previous selection exists
-                 if (modelDropdown.getItemCount() > 0) {
+                if (modelDropdown.getItemCount() > 0) {
                     modelDropdown.setSelectedIndex(0);
                 }
             }
@@ -449,46 +454,46 @@ public class InstructionsPanel extends JPanel {
      * Executes the core logic for the "Ask" command.
      * This runs inside the Runnable passed to contextManager.submitAction.
      */
-  private void executeAskCommand(StreamingChatLanguageModel model, String question) {
-      try {
-          var contextManager = chrome.getContextManager();
-          if (question.isBlank()) {
-              chrome.toolErrorRaw("Please provide a question");
-              return;
-          }
-          // Provide the prompt messages
-          var messages = new LinkedList<>(AskPrompts.instance.collectMessages(contextManager));
-          messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
+    private void executeAskCommand(StreamingChatLanguageModel model, String question) {
+        try {
+            var contextManager = chrome.getContextManager();
+            if (question.isBlank()) {
+                chrome.toolErrorRaw("Please provide a question");
+                return;
+            }
+            // Provide the prompt messages
+            var messages = new LinkedList<>(AskPrompts.instance.collectMessages(contextManager));
+            messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
-          // stream from coder using the provided model
-          var response = contextManager.getCoder(model, question).sendRequest(messages, true);
-          if (response.cancelled()) {
-              chrome.systemOutput("Ask command cancelled!");
-          } else if (response.error() != null) {
-                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
-             } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
-                    var aiResponse = response.chatResponse().aiMessage();
-                    // Check if the response is valid before adding to history
-                    if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
-                        // Construct SessionResult for 'Ask'
-                        var sessionResult = new SessionResult("Ask: " + question,
-                                                              List.of(messages.getLast(), aiResponse),
-                                                              Map.of(), // No undo contents for Ask
-                                                              chrome.getLlmOutputText(),
-                                                              new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
-                        contextManager.addToHistory(sessionResult, false);
-                    } else {
-                        chrome.systemOutput("Ask command completed with an empty response.");
-                    }
+            // stream from coder using the provided model
+            var response = contextManager.getCoder(model, question).sendRequest(messages, true);
+            if (response.cancelled()) {
+                chrome.systemOutput("Ask command cancelled!");
+            } else if (response.error() != null) {
+                chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
+            } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
+                var aiResponse = response.chatResponse().aiMessage();
+                // Check if the response is valid before adding to history
+                if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
+                    // Construct SessionResult for 'Ask'
+                    var sessionResult = new SessionResult("Ask: " + question,
+                                                          List.of(messages.getLast(), aiResponse),
+                                                          Map.of(), // No undo contents for Ask
+                                                          chrome.getLlmOutputText(),
+                                                          new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
+                    contextManager.addToHistory(sessionResult, false);
+                } else {
+                    chrome.systemOutput("Ask command completed with an empty response.");
+                }
             } else {
                 chrome.systemOutput("Ask command completed with no response data.");
             }
         } catch (CancellationException cex) {
-             chrome.systemOutput("Ask command cancelled.");
-         } catch (Exception e) {
-             logger.error("Error during 'Ask' execution", e);
-             chrome.toolErrorRaw("Internal error during ask command: " + e.getMessage());
-         }
+            chrome.systemOutput("Ask command cancelled.");
+        } catch (Exception e) {
+            logger.error("Error during 'Ask' execution", e);
+            chrome.toolErrorRaw("Internal error during ask command: " + e.getMessage());
+        }
     }
 
     /**
@@ -502,10 +507,10 @@ public class InstructionsPanel extends JPanel {
             var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
             agent.execute();
         } catch (CancellationException cex) {
-             chrome.systemOutput("Agent execution cancelled.");
+            chrome.systemOutput("Agent execution cancelled.");
         } catch (Exception e) {
-             logger.error("Error during Agent execution", e);
-             chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
+            logger.error("Error during Agent execution", e);
+            chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
         }
     }
 
@@ -514,24 +519,24 @@ public class InstructionsPanel extends JPanel {
      * This runs inside the Runnable passed to contextManager.submitAction.
      */
     private void executeSearchCommand(StreamingChatLanguageModel model, String query) {
-         if (query.isBlank()) {
-             chrome.toolErrorRaw("Please provide a search query");
-             return;
-         }
-         try {
-             var contextManager = chrome.getContextManager();
-             var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry());
-             var result = agent.execute();
-             assert result != null;
-             // Search does not stream to llmOutput, so set the final answer here
-             chrome.setLlmOutput(result.output().text());
-             contextManager.addToHistory(result, false);
-         } catch (CancellationException cex) {
-             chrome.systemOutput("Search command cancelled.");
-         } catch (Exception e) {
-             logger.error("Error during 'Search' execution", e);
-             chrome.toolErrorRaw("Internal error during search command: " + e.getMessage());
-         }
+        if (query.isBlank()) {
+            chrome.toolErrorRaw("Please provide a search query");
+            return;
+        }
+        try {
+            var contextManager = chrome.getContextManager();
+            var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry());
+            var result = agent.execute();
+            assert result != null;
+            // Search does not stream to llmOutput, so set the final answer here
+            chrome.setLlmOutput(result.output().text());
+            contextManager.addToHistory(result, false);
+        } catch (CancellationException cex) {
+            chrome.systemOutput("Search command cancelled.");
+        } catch (Exception e) {
+            logger.error("Error during 'Search' execution", e);
+            chrome.toolErrorRaw("Internal error during search command: " + e.getMessage());
+        }
     }
 
     /**
@@ -630,10 +635,235 @@ public class InstructionsPanel extends JPanel {
         // Save model before submitting task
         var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
         chrome.getProject().setLastUsedModel(modelName);
-        // Submit the action, calling the private execute method inside the lambda
-        var future = chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(selectedModel, input));
-        chrome.setCurrentUserTask(future);
+
+        // Check if test files are needed before submitting the main task
+        checkAndPromptForTests(input)
+                .thenAcceptAsync(testsHandled -> {
+                    if (testsHandled) {
+                        // Tests were handled (added or not needed), proceed with code command
+                        SwingUtilities.invokeLater(() -> { // Ensure UI updates happen on EDT if needed after background
+                            // Submit the main action
+                            var future = chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(selectedModel, input));
+                            chrome.setCurrentUserTask(future);
+                        });
+                    } else {
+                        // Test prompting failed or was cancelled, re-enable buttons
+                        SwingUtilities.invokeLater(this::enableButtons);
+                        chrome.systemOutput("Code command cancelled during test selection.");
+                    }
+                }, chrome.getContextManager().getBackgroundTasks()); // Execute the continuation on a background thread if needed
     }
+
+    /**
+     * Checks if any test files are already present in the context or if no test files exist at all.
+     * If neither is true, it asks the LLM to suggest relevant tests and shows a modal selection dialog
+     * for the user to pick which tests to add. Returns a CompletableFuture that completes with:
+     *  - true if tests are already in context, no test files exist, or the user confirms (even if no files were selected),
+     *  - false if an error occurs or the user cancels in the dialog.
+     */
+    private CompletableFuture<Boolean> checkAndPromptForTests(String userInput)
+    {
+        var contextManager = chrome.getContextManager();
+
+        // Gather all test files in the project and all files currently in the context
+        var projectTestFiles = contextManager.getTestFiles();
+        var contextFiles = java.util.stream.Stream.concat(
+                contextManager.getEditableFiles().stream(),
+                contextManager.getReadonlyFiles().stream()
+        ).collect(Collectors.toSet());
+
+        // If we already have some tests in the context or if there are no tests in the project, no extra work is needed
+        boolean testsInContext = projectTestFiles.stream().anyMatch(contextFiles::contains);
+        if (testsInContext || projectTestFiles.isEmpty()) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        logger.debug("No test files in context. Asking LLM for suggestions...");
+        chrome.systemOutput("No test files in context. Asking LLM for suggestions...");
+
+        // Bridge the background task to a CompletableFuture
+        var resultFuture = new CompletableFuture<Boolean>();
+
+        // Submit the background task that interacts with the LLM
+        contextManager.submitBackgroundTask("Suggest relevant tests", () -> {
+            try {
+                var quickModel = contextManager.getModels().quickModel();
+                var coder = contextManager.getCoder(quickModel, "Suggest Tests");
+                var prompt = createTestSuggestionPrompt(userInput, projectTestFiles, contextManager);
+                var llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
+
+                if (llmResult.error() != null
+                        || llmResult.chatResponse() == null
+                        || llmResult.chatResponse().aiMessage() == null)
+                {
+                    logger.error("LLM failed to suggest tests: {}",
+                                 llmResult.error() != null ? llmResult.error() : "Empty/Null response");
+                    chrome.toolErrorRaw("LLM failed to suggest relevant tests.");
+                    resultFuture.complete(true);
+                    return null;
+                }
+
+                var suggestedFiles = parseSuggestedFiles(llmResult.chatResponse().aiMessage().text(), contextManager);
+                if (suggestedFiles.isEmpty()) {
+                    logger.debug("No valid tests suggested; proceeding without adding tests.");
+                    chrome.systemOutput("No specific tests suggested. Proceeding without adding tests.");
+                    resultFuture.complete(true);
+                    return null;
+                }
+
+                // Show dialog in the EDT
+                final List<ProjectFile>[] dialogResult = new List[1];
+                SwingUtilities.invokeAndWait(() -> {
+                    dialogResult[0] = showTestSelectionDialog(suggestedFiles); // null if user cancels
+                });
+                var selectedFiles = dialogResult[0];
+
+                // If user canceled
+                if (selectedFiles == null) {
+                    logger.debug("User cancelled the test selection dialog.");
+                    chrome.systemOutput("Test selection cancelled.");
+                    resultFuture.complete(false);
+                    return null;
+                }
+
+                // If user confirmed but selected none
+                if (selectedFiles.isEmpty()) {
+                    chrome.systemOutput("No test files selected. Proceeding without adding tests.");
+                    resultFuture.complete(true);
+                    return null;
+                }
+
+                // Add selected test files to the context
+                logger.debug("User selected {} test file(s) to add.", selectedFiles.size());
+                chrome.systemOutput("Adding %d selected test file(s) to context...".formatted(selectedFiles.size()));
+                contextManager.addReadOnlyFiles(selectedFiles);
+
+                // Success!
+                resultFuture.complete(true);
+            }
+            catch (Exception e) {
+                logger.error("Error while suggesting or selecting tests", e);
+                chrome.toolErrorRaw("Error suggesting relevant tests: " + e.getMessage());
+                resultFuture.complete(false);
+            }
+
+            return null;
+        });
+
+        return resultFuture;
+    }
+
+    /**
+     * Creates the prompt for the LLM to suggest relevant test files.
+     */
+    private String createTestSuggestionPrompt(String userInput, List<ProjectFile> allTestFiles, ContextManager contextManager) {
+        String workspaceSummary = """
+                Editable Files:
+                %s
+                
+                Read-Only Files:
+                %s
+                """.formatted(contextManager.getEditableSummary(), contextManager.getReadOnlySummary(true)).stripIndent();
+
+        String testFilePaths = allTestFiles.stream()
+                .map(ProjectFile::toString)
+                .collect(Collectors.joining("\n"));
+
+        return """
+                Given the user's goal and the current workspace files, which of the following test files seem most relevant?
+                List *only* the file paths of the relevant tests, each on a new line.
+                If none seem particularly relevant, respond with an empty message.
+                
+                User Goal:
+                %s
+                
+                Workspace Files:
+                %s
+                
+                Available Test Files:
+                %s
+                
+                Relevant Test File Paths (one per line):
+                """.formatted(userInput, workspaceSummary, testFilePaths).stripIndent();
+    }
+
+    /**
+     * Parses the LLM response to extract suggested file paths.
+     */
+    private List<ProjectFile> parseSuggestedFiles(String llmResponse, ContextManager contextManager) {
+        return contextManager.getProject().getFiles().stream().parallel()
+                .filter(f -> llmResponse.contains(f.toString()))
+                .toList();
+    }
+
+    /**
+     * Shows a modal dialog allowing the user to select test files to add to context.
+     *
+     * @param suggestedFiles The list of ProjectFiles suggested by the LLM.
+     * @return A list of ProjectFiles selected by the user, or null if the dialog was cancelled.
+     */
+    private List<ProjectFile> showTestSelectionDialog(List<ProjectFile> suggestedFiles) {
+        JDialog dialog = new JDialog(chrome.getFrame(), "Add tests before coding?", true); // Modal dialog
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setMinimumSize(new Dimension(400, 300));
+
+        JLabel instructionLabel = new JLabel("<html>Select test files to add to the context (read-only):</html>");
+        instructionLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
+        dialog.add(instructionLabel, BorderLayout.NORTH);
+
+        // Panel to hold checkboxes
+        JPanel checkboxPanel = new JPanel();
+        checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
+        List<JCheckBox> checkBoxes = new ArrayList<>();
+            for (ProjectFile file : suggestedFiles) {
+                JCheckBox checkBox = new JCheckBox(file.toString());
+                // Default to not selected, let the user explicitly choose
+                checkBox.setSelected(false);
+                checkBoxes.add(checkBox);
+                checkboxPanel.add(checkBox);
+            }
+
+        JScrollPane scrollPane = new JScrollPane(checkboxPanel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        dialog.add(scrollPane, BorderLayout.CENTER);
+    
+            // Buttons for confirmation or cancellation
+            JButton okButton = new JButton("Add Selected and Continue");
+            JButton cancelButton = new JButton("Cancel");
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Result list - effectively final for lambda access
+        final List<ProjectFile>[] result = new List[1];
+        result[0] = null; // Default to null (indicates cancellation)
+
+        okButton.addActionListener(e -> {
+            List<ProjectFile> selected = new ArrayList<>();
+            for (int i = 0; i < checkBoxes.size(); i++) {
+                if (checkBoxes.get(i).isSelected()) {
+                    selected.add(suggestedFiles.get(i));
+                }
+            }
+            result[0] = selected; // Store selected list
+            dialog.dispose();
+        });
+
+        cancelButton.addActionListener(e -> {
+            result[0] = null; // Ensure result is null on cancel
+            dialog.dispose();
+        });
+
+        dialog.pack(); // Adjust size
+        dialog.setLocationRelativeTo(chrome.getFrame()); // Center relative to main window
+        dialog.setVisible(true); // Show modal dialog - blocks until disposed
+
+        // Return the captured result after the dialog is closed
+        return result[0];
+    }
+
 
     public void runAskCommand() {
         var input = commandInputField.getText();
@@ -696,12 +926,12 @@ public class InstructionsPanel extends JPanel {
     }
 
     // Methods to disable and enable buttons.
-     public void disableButtons() {
-         SwingUtilities.invokeLater(() -> {
+    public void disableButtons() {
+        SwingUtilities.invokeLater(() -> {
             agentButton.setEnabled(false); // Disable agent button
-             codeButton.setEnabled(false);
-             askButton.setEnabled(false);
-             searchButton.setEnabled(false);
+            codeButton.setEnabled(false);
+            askButton.setEnabled(false);
+            searchButton.setEnabled(false);
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
             modelDropdown.setEnabled(false);
@@ -713,12 +943,12 @@ public class InstructionsPanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             boolean modelsAvailable = modelDropdown.getItemCount() > 0 &&
                     !String.valueOf(modelDropdown.getSelectedItem()).startsWith("No Model") && // check selected value
-                     !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
-             modelDropdown.setEnabled(modelsAvailable);
+                    !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
+            modelDropdown.setEnabled(modelsAvailable);
             agentButton.setEnabled(modelsAvailable); // Enable agent button based on model availability
-             codeButton.setEnabled(modelsAvailable);
-             askButton.setEnabled(modelsAvailable);
-             searchButton.setEnabled(modelsAvailable);
+            codeButton.setEnabled(modelsAvailable);
+            askButton.setEnabled(modelsAvailable);
+            searchButton.setEnabled(modelsAvailable);
             runButton.setEnabled(true);
             stopButton.setEnabled(false);
             micButton.setEnabled(true); // Enable mic button
