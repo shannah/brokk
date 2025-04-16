@@ -237,7 +237,11 @@ public final class Models {
      * e.g. "deepseek-v3" -> "deepseek/deepseek-chat"
      */
     public Map<String, String> getAvailableModels() {
-        return Map.copyOf(modelLocations);
+        // flash-lite is defined for low-ltency use cases that don't require high intelligence,
+        // it's not suitible for writing code
+        return modelLocations.entrySet().stream()
+                .filter(e -> !e.getKey().equals("gemini-2.0-flash-lite"))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     /**
