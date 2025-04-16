@@ -56,7 +56,7 @@ public class ArchitectAgent {
     /**
      * A tool for finishing the plan with a final answer. Similar to 'answerSearch' in SearchAgent.
      */
-    @Tool("Provide a final answer to the multi-step plan. Use this when you're done or have everything you need.")
+    @Tool("Provide a final answer to the multi-step project. Use this when you're done or have everything you need.")
     public void projectFinished(
             @P("A final explanation or summary addressing all tasks. Format it in Markdown if desired.")
             String finalExplanation
@@ -69,9 +69,9 @@ public class ArchitectAgent {
     /**
      * A tool to abort the plan if you cannot proceed or if it is irrelevant.
      */
-    @Tool("Abort the entire plan. Use this if the tasks are impossible or out of scope.")
+    @Tool("Abort the entire project. Use this if the tasks are impossible or out of scope.")
     public void abortProject(
-            @P("Explain why the plan must be aborted.")
+            @P("Explain why the project must be aborted.")
             String reason
     ) {
         var msg = "Architect Agent project aborted: %s".formatted(reason);
@@ -83,9 +83,9 @@ public class ArchitectAgent {
      * A tool that invokes the CodeAgent to solve the current top task using the given instructions.
      * The instructions can incorporate the stack's current top task or anything else.
      */
-    @Tool("Invoke the CodeAgent to solve or implement the current task. Provide complete instructions. The plan is visible to the CodeAgent and other tools.")
+    @Tool("Invoke the Code Agent to solve or implement the current task. Provide complete instructions. Only the Workspace and your instructions are visible to the Code Agent.")
     public String callCodeAgent(
-            @P("Detailed instructions for the CodeAgent, typically referencing the current plan. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
+            @P("Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
     ) {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
@@ -111,7 +111,7 @@ public class ArchitectAgent {
      * The SearchAgent will decide which specific search/analysis tools to use (e.g., searchSymbols, getFileContents).
      * The results are added as a context fragment.
      */
-    @Tool("Invoke the Search Agent to find information relevant to the given query. Searching is much slower than adding content to the Workspace directly if you know what you are looking for, but the Agent can find things that you don't know the exact name of. ")
+    @Tool("Invoke the Search Agent to find information relevant to the given query. The Workspace is visible to the Search Agent. Searching is much slower than adding content to the Workspace directly if you know what you are looking for, but the Agent can find things that you don't know the exact name of. ")
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent. Query in English (not just keywords)")
             String query
@@ -187,7 +187,7 @@ public class ArchitectAgent {
                 return;
             }
             if (response.chatResponse() == null || response.chatResponse().aiMessage() == null) {
-                var msg = "Empty LLM response. Stopping plan now.";
+                var msg = "Empty LLM response. Stopping project now.";
                 logger.debug(msg);
                 contextManager.getIo().systemOutput(msg);
                 return;
@@ -231,13 +231,13 @@ public class ArchitectAgent {
             if (answerReq != null) {
                 logger.debug("LLM decided to projectFinished. We'll finalize and stop.");
                 var result = toolRegistry.executeTool(this, answerReq);
-                logger.debug("Plan final answer: {}", result.resultText());
+                logger.debug("Project final answer: {}", result.resultText());
                 return;
             }
             if (abortReq != null) {
                 logger.debug("LLM decided to abortProject. We'll finalize and stop.");
                 var result = toolRegistry.executeTool(this, abortReq);
-                logger.debug("Plan aborted: {}", result.resultText());
+                logger.debug("Project aborted: {}", result.resultText());
                 return;
             }
 
@@ -312,23 +312,23 @@ public class ArchitectAgent {
     }
 
     /**
+     * Helper method to get priority rank for tool names.
+     * Lower number means higher priority.
+     */
+    private int getPriorityRank(String toolName) {
+        if (toolName.equals("dropFragments")) return 1;
+        if (toolName.equals("addReadOnlyFiles")) return 2;
+        if (toolName.equals("addEditableFiles")) return 3;
+        return 4; // all other tools have lowest priority
+    }
+
+    /**
      * Build the system/user messages for the LLM:
      *   - System message explaining that this is a multi-step plan agent.
      *   - A user message showing the current stack top, the entire stack,
      *     the top-10 PageRank classes, and any relevant instructions.
      */
-    /**
-         * Helper method to get priority rank for tool names.
-         * Lower number means higher priority.
-         */
-        private int getPriorityRank(String toolName) {
-            if (toolName.equals("dropFragments")) return 1;
-            if (toolName.equals("addReadOnlyFiles")) return 2;
-            if (toolName.equals("addEditableFiles")) return 3;
-            return 4; // all other tools have lowest priority
-        }
-
-        private List<ChatMessage> buildPrompt() {
+    private List<ChatMessage> buildPrompt() {
             // top 10 related classes
         String topClassesRaw = "";
         var analyzer = contextManager.getAnalyzer();

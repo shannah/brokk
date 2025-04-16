@@ -568,8 +568,25 @@ public class Coder {
                 .responseFormat(responseFormat)
                 .build();
 
+        Function<Throwable, String> retryInstructionsProvider = e -> """
+        %s
+        Please ensure you only return a JSON object matching the schema:
+          {
+            "tool_calls": [
+              {
+                "name": "...",
+                "arguments": { ... }
+              },
+              {
+                "name": "...",
+                "arguments": { ... }
+              }
+            ]
+          }
+        """.stripIndent().formatted(e == null ? "" : "Your previous response was invalid or did not contain tool_calls: " + e.getMessage());
+
         // We'll add a user reminder to produce a JSON that matches the schema
-        var instructions = getInstructions(tools);
+        var instructions = getInstructions(tools, retryInstructionsProvider);
         var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
         var initialMessages = new ArrayList<>(messages);
         initialMessages.set(initialMessages.size() - 1, modified);
@@ -581,20 +598,6 @@ public class Coder {
                         .messages(attemptMessages)
                         .parameters(requestParams)
                         .build();
-
-        // Function to generate retry instructions
-        Function<Throwable, String> retryInstructionsProvider = e -> """
-                    Your previous response was invalid or did not contain tool_calls: %s
-                    Please ensure you only return a JSON object matching the schema:
-                      {
-                        "tool_calls": [
-                          {
-                            "name": "...",
-                            "arguments": { ... }
-                          }
-                        ]
-                      }
-                    """.stripIndent().formatted(e.getMessage());
 
         return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
@@ -609,10 +612,39 @@ public class Coder {
         var instructionsPresent = emulatedToolInstructionsPresent(messages);
         logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
 
+        Function<Throwable, String> retryInstructionsProvider = e -> """
+        %s
+        Respond with a single JSON object containing a `tool_calls` array. Each entry in the array represents one invocation of a tool.
+        No additional keys or text are allowed outside of that JSON object.
+        Each tool call must have a `name` that matches one of the available tools, and an `arguments` object containing valid parameters as required by that tool.
+        
+        Here is the format visualized, where $foo indicates that you will make appropriate substitutions for the given tool call
+        {
+          "tool_calls": [
+            {
+              "name": "$tool_name1",
+              "arguments": {
+                "$arg1": "$value1",
+                "$arg2": "$value2",
+                ...
+              }
+            },
+            {
+              "name": "$tool_name2",
+              "arguments": {
+                "$arg3": "$value3",
+                "$arg4": "$value4",
+                ...
+              }
+            }
+          ]
+        }
+        """.stripIndent().formatted(e == null ? "" : "Your previous response was not valid: " + e.getMessage());
+
         List<ChatMessage> initialMessages = new ArrayList<>(messages);
         if (!instructionsPresent) {
             // Inject instructions for the model re how to format function calls
-            var instructions = getInstructions(tools);
+            var instructions = getInstructions(tools, retryInstructionsProvider);
             var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
             initialMessages.set(initialMessages.size() - 1, modified);
             logger.trace("Modified messages are {}", initialMessages);
@@ -629,45 +661,14 @@ public class Coder {
                                             .build())
                         .build();
 
-        // Function to generate retry instructions
-        Function<Throwable, String> retryInstructionsProvider = e -> """
-                Your previous response was not valid: %s
-                You MUST respond ONLY with a valid JSON object containing a 'tool_calls' array. Do not include any other text or explanation.
-                
-                IMPORTANT: Try solving a smaller piece of the problem if you're hitting token limits.
-                
-                REMEMBER that you are to provide a JSON object containing a 'tool_calls' array, NOT top-level array.
-                Here is the format, where $foo indicates that you will make appropriate substitutions for the given tool call
-                {
-                  "tool_calls": [
-                    {
-                      "name": "$tool_name",
-                      "arguments": {
-                        "$arg1": "$value1",
-                        "$arg2": "$value2",
-                        ...
-                      }
-                    }
-                  ]
-                }
-                """.stripIndent().formatted(e.getMessage());
-
         return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
 
     private static boolean emulatedToolInstructionsPresent(List<ChatMessage> messages) {
         return messages.stream().anyMatch(m -> {
             var t = Models.getText(m);
-            return t.contains("tool_calls")
-                    && t.matches("(?s).*\\d+ available tools:.*")
-                    && t.contains("top-level JSON");
-        });
-    }
-
-    private static boolean emulatedEditToolInstructionsPresent(List<ChatMessage> messages) {
-        return emulatedToolInstructionsPresent(messages) && messages.stream().anyMatch(m -> {
-            var t = Models.getText(m);
-            return t.contains("tool_calls") && t.contains("replaceFile") && t.contains("replaceLines");
+            return t.matches("(?s).*\\d+ available tools:.*")
+                    && t.contains("Include all the tool calls");
         });
     }
 
@@ -803,7 +804,7 @@ public class Coder {
         return new StreamingResult(cr, result.originalResponse, result.outputTokenCount, false, null);
     }
 
-    private static String getInstructions(List<ToolSpecification> tools) {
+    private static String getInstructions(List<ToolSpecification> tools, Function<Throwable, String> retryInstructionsProvider) {
         String toolsDescription = tools.stream()
                 .map(tool -> {
                     var parametersInfo = tool.parameters().properties().entrySet().stream()
@@ -871,25 +872,14 @@ public class Coder {
                 }).collect(Collectors.joining("\n"));
 
         // if you change this you probably also need to change emulatedToolInstructionsPresent
-    return """
-            %d available tools:
-            %s
-            
-            ONLY return a top-level JSON object with this structure:
-            {
-              "tool_calls": [
-                {
-                  "name": "tool_name",
-                  "arguments": {
-                    "arg1": "value1",
-                    "arg2": "value2"
-                  }
-                }
-              ]
-            }
-            
-            Include all the tool calls necessary to satisfy the request in a single array!
-            """.stripIndent().formatted(tools.size(), toolsDescription);
+        return """
+        %d available tools:
+        %s
+        
+        %s
+        
+        Include all the tool calls necessary to satisfy the request in a single object!
+        """.stripIndent().formatted(tools.size(), toolsDescription, retryInstructionsProvider.apply(null));
     }
     
     /**
