@@ -62,3 +62,27 @@ model_list:
     model_info:
       free_tier_eligible: true
       is_private: false
+
+  - model_name: grok-3-beta
+    litellm_params:
+      model: xai/grok-3-beta
+      api_key: "os.environ/GROK_API_KEY"
+    model_info:
+      free_tier_eligible: false
+      is_private: true
+
+  - model_name: grok-3-fast-beta
+    litellm_params:
+      model: xai/grok-3-fast-beta
+      api_key: "os.environ/GROK_API_KEY"
+    model_info:
+      free_tier_eligible: false
+      is_private: true
+
+  - model_name: grok-3-mini-beta
+    litellm_params:
+      model: xai/grok-3-mini-beta
+      api_key: "os.environ/GROK_API_KEY"
+    model_info:
+      free_tier_eligible: true
+      is_private: true

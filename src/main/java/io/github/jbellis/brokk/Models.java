@@ -318,8 +318,8 @@ public final class Models {
             return true;
         }
 
-        // gemini and o3-mini support function calling but not parallel calls so force them to emulation mode as well
-        return modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini");
+        // gemini, o3-mini and grok-3 support function calling but not parallel calls so force them to emulation mode as well
+        return modelName.toLowerCase().contains("gemini") || modelName.toLowerCase().contains("o3-mini") || modelName.toLowerCase().contains("grok-3");
     }
 
     /**
