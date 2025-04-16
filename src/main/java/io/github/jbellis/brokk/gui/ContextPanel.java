@@ -47,6 +47,7 @@ import java.util.stream.Collectors;
 
 public class ContextPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(ContextPanel.class);
+    private final String EMPTY_CONTEXT = "Empty Workspace--use Edit or Read or Summarize to add content";
 
     /**
      * Enum representing the different types of context actions that can be performed.
@@ -80,7 +81,7 @@ public class ContextPanel extends JPanel {
 
         setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createEtchedBorder(),
-                "Context",
+                "Workspace",
                 javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
                 javax.swing.border.TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
@@ -88,7 +89,7 @@ public class ContextPanel extends JPanel {
 
         buildContextPanel();
 
-        ((JLabel) locSummaryLabel.getComponent(0)).setText("No context - use Edit or Read or Summarize to add content");
+        ((JLabel) locSummaryLabel.getComponent(0)).setText(EMPTY_CONTEXT);
     }
 
     /**
@@ -554,8 +555,7 @@ public class ContextPanel extends JPanel {
         tableModel.setRowCount(0);
 
         if (ctx == null || ctx.isEmpty()) {
-            ((JLabel) locSummaryLabel.getComponent(0)).setText(
-                    "No context - use Edit or Read or Summarize to add content");
+            ((JLabel) locSummaryLabel.getComponent(0)).setText(EMPTY_CONTEXT);
             revalidate();
             repaint();
             return;
