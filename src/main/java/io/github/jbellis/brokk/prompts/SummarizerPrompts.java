@@ -52,13 +52,13 @@ public class SummarizerPrompts {
 
     private static @NotNull String getRequest(String actionTxt, int wordBudget) {
         return """
-        <goal>
-        Here is my text, please summarize it in %d words or fewer.
-        </goal>
         <text>
         %s
         </text>
-        """.stripIndent().formatted(wordBudget, actionTxt);
+        <goal>
+        Summarize the text in %d words or fewer.
+        </goal>
+        """.stripIndent().formatted(actionTxt, wordBudget);
     }
 
     public String systemIntro() {
