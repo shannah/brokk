@@ -216,6 +216,27 @@ public class CoderTest {
     }
 
     @Test
+    void testThinkToolPresent() {
+        // Create a new ToolRegistry instance
+        var toolRegistry = new io.github.jbellis.brokk.tools.ToolRegistry();
+        
+        // Get all the registered tools
+        var allTools = toolRegistry.getRegisteredTools(List.of("think"));
+        
+        // Verify the think tool is present
+        assertFalse(allTools.isEmpty(), "Think tool should be registered");
+        assertEquals("think", allTools.getFirst().name(), "Tool should be named 'think'");
+        
+        // Verify the think tool's description and parameter
+        var thinkTool = allTools.getFirst();
+        assertTrue(thinkTool.description().contains("Thinking step by step"), 
+                  "Think tool should have the correct description");
+        assertEquals(1, thinkTool.parameters().properties().size(), 
+                    "Think tool should have exactly one parameter");
+        assertTrue(thinkTool.parameters().properties().containsKey("reasoning"), 
+                  "Think tool should have a 'reasoning' parameter");
+    }
+    
     void testEmulateToolExecutionResults() {
         var user1 = new UserMessage("Initial request");
         var term1 = ToolExecutionResultMessage.toolExecutionResultMessage("t1", "toolA", "Result A");

@@ -250,7 +250,8 @@ public class Coder {
                                                  List<ToolSpecification> tools,
                                                  ToolChoice toolChoice,
                                                  boolean echo,
-                                                 int maxAttempts) {
+                                                 int maxAttempts)
+    {
         Throwable lastError = null;
         int attempt = 0;
         // Get model name once using instance field
@@ -371,11 +372,13 @@ public class Coder {
                                          List<ChatMessage> messages,
                                          List<ToolSpecification> tools,
                                          ToolChoice toolChoice,
-                                         boolean echo) {
+                                         boolean echo)
+    {
+        var enhancedTools = ensureThinkToolPresent(tools);
         if (contextManager.getModels().supportsJsonSchema(model)) {
-            return emulateToolsUsingJsonSchema(messages, tools, toolChoice, echo);
+            return emulateToolsUsingJsonSchema(messages, enhancedTools, toolChoice, echo);
         } else {
-            return emulateToolsUsingJsonObject(messages, tools, toolChoice, echo);
+            return emulateToolsUsingJsonObject(messages, enhancedTools, toolChoice, echo);
         }
     }
 
@@ -581,17 +584,17 @@ public class Coder {
 
         // Function to generate retry instructions
         Function<Throwable, String> retryInstructionsProvider = e -> """
-                Your previous response was invalid or did not contain tool_calls: %s
-                Please ensure you only return a JSON object matching the schema:
-                  {
-                    "tool_calls": [
+                    Your previous response was invalid or did not contain tool_calls: %s
+                    Please ensure you only return a JSON object matching the schema:
                       {
-                        "name": "...",
-                        "arguments": { ... }
+                        "tool_calls": [
+                          {
+                            "name": "...",
+                            "arguments": { ... }
+                          }
+                        ]
                       }
-                    ]
-                  }
-                """.stripIndent().formatted(e.getMessage());
+                    """.stripIndent().formatted(e.getMessage());
 
         return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
@@ -868,25 +871,46 @@ public class Coder {
                 }).collect(Collectors.joining("\n"));
 
         // if you change this you probably also need to change emulatedToolInstructionsPresent
-        return """
-                %d available tools:
-                %s
-                
-                ONLY return a top-level JSON object with this structure:
+    return """
+            %d available tools:
+            %s
+            
+            ONLY return a top-level JSON object with this structure:
+            {
+              "tool_calls": [
                 {
-                  "tool_calls": [
-                    {
-                      "name": "tool_name",
-                      "arguments": {
-                        "arg1": "value1",
-                        "arg2": "value2"
-                      }
-                    }
-                  ]
+                  "name": "tool_name",
+                  "arguments": {
+                    "arg1": "value1",
+                    "arg2": "value2"
+                  }
                 }
-                
-                Include all the tool calls necessary to satisfy the request in a single array!
-                """.stripIndent().formatted(tools.size(), toolsDescription);
+              ]
+            }
+            
+            Include all the tool calls necessary to satisfy the request in a single array!
+            """.stripIndent().formatted(tools.size(), toolsDescription);
+    }
+    
+    /**
+     * Ensures the "think" tool is present in the tools list for emulation.
+     * This provides a consistent way for the model to reason through complex problems.
+     * 
+     * @param originalTools The original list of tool specifications
+     * @return A new list containing all original tools plus the think tool if not already present
+     */
+    private List<ToolSpecification> ensureThinkToolPresent(List<ToolSpecification> originalTools) {
+        // Check if the think tool is already in the list
+        boolean hasThinkTool = originalTools.stream()
+                .anyMatch(tool -> "think".equals(tool.name()));
+        if (hasThinkTool) {
+            return originalTools;
+        }
+        
+        // Add the think tool
+        var enhancedTools = new ArrayList<>(originalTools);
+        enhancedTools.addAll(contextManager.getToolRegistry().getRegisteredTools(List.of("think")));
+        return enhancedTools;
     }
 
     /**

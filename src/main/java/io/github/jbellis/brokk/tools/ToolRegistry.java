@@ -2,6 +2,8 @@ package io.github.jbellis.brokk.tools;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
@@ -36,9 +38,23 @@ public class ToolRegistry {
     private record ToolInvocationTarget(Method method, Object instance) {}
 
     /**
-     * Creates a new ToolRegistry.
+     * Creates a new ToolRegistry and self-registers internal tools.
      */
     public ToolRegistry() {
+        // Self-register internal tools
+        register(this);
+    }
+
+    /**
+     * A tool for thinking through complex problems step by step.
+     * This allows the model to break down its reasoning process explicitly.
+     */
+    @Tool(value = """
+    Think carefully step by step about a complex problem. Use this tool to reason through difficult questions 
+    or break problems into smaller pieces. Call it concurrently with other tools.
+    """)
+    public String think(@P("The step-by-step reasoning to work through") String reasoning) {
+        return "I've thought through this problem: " + reasoning;
     }
 
     /**
