@@ -700,7 +700,7 @@ public class InstructionsPanel extends JPanel {
                                  llmResult.error() != null ? llmResult.error() : "Empty/Null response");
                     chrome.toolErrorRaw("LLM failed to suggest relevant tests.");
                     resultFuture.complete(true);
-                    return null;
+                    return;
                 }
 
                 var suggestedFiles = parseSuggestedFiles(llmResult.chatResponse().aiMessage().text(), contextManager);
@@ -708,7 +708,7 @@ public class InstructionsPanel extends JPanel {
                     logger.debug("No valid tests suggested; proceeding without adding tests.");
                     chrome.systemOutput("No specific tests suggested. Proceeding without adding tests.");
                     resultFuture.complete(true);
-                    return null;
+                    return;
                 }
 
                 // Show dialog in the EDT
@@ -723,14 +723,14 @@ public class InstructionsPanel extends JPanel {
                     logger.debug("User cancelled the test selection dialog.");
                     chrome.systemOutput("Test selection cancelled.");
                     resultFuture.complete(false);
-                    return null;
+                    return;
                 }
 
                 // If user confirmed but selected none
                 if (selectedFiles.isEmpty()) {
                     chrome.systemOutput("No test files selected. Proceeding without adding tests.");
                     resultFuture.complete(true);
-                    return null;
+                    return;
                 }
 
                 // Add selected test files to the context
@@ -746,8 +746,6 @@ public class InstructionsPanel extends JPanel {
                 chrome.toolErrorRaw("Error suggesting relevant tests: " + e.getMessage());
                 resultFuture.complete(false);
             }
-
-            return null;
         });
 
         return resultFuture;
