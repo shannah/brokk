@@ -4,6 +4,7 @@ import com.google.common.collect.Streams;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -157,20 +158,21 @@ public class ArchitectAgent {
             var messages = buildPrompt();
 
             // 4) Figure out which tools are allowed in this step
-            var genericToolNames = List.of(
-                    "addClassesToWorkspace",
-                    "addFilesToWorkspace",
-                    "addUrlContentsToWorkspace",
-                    "addTextToWorkspace",
-                    "addUsagesToWorkspace",
-                    "addClassSummariesToWorkspace",
-                    "addMethodSourcesToWorkspace",
-                    "addCallGraphInToWorkspace",
-                    "addCallGraphOutToWorkspace",
-                    "dropWorkspaceFragments"
-            );
-            var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(genericToolNames));
-            // Add the BrokkAgent-specific tools
+            var toolSpecs = new ArrayList<ToolSpecification>();
+            var analyzerTools = List.of("addClassesToWorkspace",
+                                        "addUsagesToWorkspace",
+                                        "addClassSummariesToWorkspace",
+                                        "addMethodSourcesToWorkspace",
+                                        "addCallGraphInToWorkspace",
+                                        "addCallGraphOutToWorkspace");
+            if (!contextManager.getAnalyzer().isEmpty()) {
+                toolSpecs.addAll(toolRegistry.getRegisteredTools(analyzerTools));
+            }
+            var genericTools = List.of("addFilesToWorkspace",
+                                       "addUrlContentsToWorkspace",
+                                       "addTextToWorkspace",
+                                       "dropWorkspaceFragments");
+            toolSpecs.addAll(toolRegistry.getRegisteredTools(genericTools));
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
