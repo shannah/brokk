@@ -99,7 +99,7 @@ public class HistoryOutputPanel extends JPanel {
         // Create history panel
         var panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
-                                                         "Context History",
+                                                         "Activity",
                                                          TitledBorder.DEFAULT_JUSTIFICATION,
                                                          TitledBorder.DEFAULT_POSITION,
                                                          new Font(Font.DIALOG, Font.BOLD, 12)));
