@@ -242,8 +242,11 @@ public class ArchitectAgent {
             }
 
             // 7) Execute remaining tool calls in the desired order:
-
-            // "Other" (mostly context manipulations) should all be fast, parallel execution is not needed
+            otherReqs.sort((req1, req2) -> {
+                int rank1 = getPriorityRank(req1.name());
+                int rank2 = getPriorityRank(req2.name());
+                return Integer.compare(rank1, rank2);
+            });
             for (var req : otherReqs) {
                 var toolResult = toolRegistry.executeTool(req);
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
@@ -314,8 +317,19 @@ public class ArchitectAgent {
      *   - A user message showing the current stack top, the entire stack,
      *     the top-10 PageRank classes, and any relevant instructions.
      */
-    private List<ChatMessage> buildPrompt() {
-        // top 10 related classes
+    /**
+         * Helper method to get priority rank for tool names.
+         * Lower number means higher priority.
+         */
+        private int getPriorityRank(String toolName) {
+            if (toolName.equals("dropFragments")) return 1;
+            if (toolName.equals("addReadOnlyFiles")) return 2;
+            if (toolName.equals("addEditableFiles")) return 3;
+            return 4; // all other tools have lowest priority
+        }
+
+        private List<ChatMessage> buildPrompt() {
+            // top 10 related classes
         String topClassesRaw = "";
         var analyzer = contextManager.getAnalyzer();
         if (!analyzer.isEmpty()) {
