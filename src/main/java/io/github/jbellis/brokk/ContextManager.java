@@ -52,6 +52,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -73,6 +74,36 @@ public class ContextManager implements IContextManager, AutoCloseable {
     // Only one of these can run at a time
     private final ExecutorService userActionExecutor = createLoggingExecutorService(Executors.newSingleThreadExecutor());
     private final AtomicReference<Thread> userActionThread = new AtomicReference<>();
+
+    // Regex to identify test files. Looks for "test" or "tests" surrounded by separators or camelCase boundaries.
+    private static final Pattern TEST_FILE_PATTERN = Pattern.compile(
+            "(?i).*(?:[/\\\\.]|\\b|_|(?<=[a-z])(?=[A-Z]))tests?(?:[/\\\\.]|\\b|_|(?=[A-Z][a-z])|$).*"
+    );
+
+    /**
+     * Identifies test files within the project based on file path matching a regex pattern.
+     * This method runs synchronously.
+     *
+     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found.
+     */
+    @Override
+    public List<ProjectFile> getTestFiles() {
+        // Assuming cm.getProject().getFiles() returns Set<ProjectFile> based on other CM APIs.
+        // If it returns Set<BrokkFile>, a conversion/cast might be needed depending on their relationship.
+        Set<ProjectFile> allProjectFiles = getProject().getFiles();
+        if (allProjectFiles.isEmpty()) {
+            logger.debug("No files found in project to identify test files.");
+            return List.of();
+        }
+
+        // Filter files based on the regex pattern matching their path string
+        var testFiles = allProjectFiles.stream()
+                .filter(file -> TEST_FILE_PATTERN.matcher(file.toString()).matches())
+                .toList();
+
+        logger.debug("Identified {} test files via regex.", testFiles.size());
+        return testFiles;
+    }
 
     @NotNull
     private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {

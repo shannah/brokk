@@ -25,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -33,11 +32,6 @@ import java.util.stream.Stream;
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
-
-    // Regex to identify test files. Looks for "test" or "tests" surrounded by separators or camelCase boundaries.
-    private static final Pattern TEST_FILE_PATTERN = Pattern.compile(
-            "(?i).*(?:[/\\\\.]|\\b|_|(?<=[a-z])(?=[A-Z]))tests?(?:[/\\\\.]|\\b|_|(?=[A-Z][a-z])|$).*"
-    );
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
@@ -274,31 +268,6 @@ public class CodeAgent {
         return null;
     }
 
-    /**
-     * Identifies test files within the project based on file path matching a regex pattern.
-     * This method runs synchronously.
-     *
-     * @param cm The ContextManager instance.
-     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found.
-     */
-    private static List<ProjectFile> getTestFiles(ContextManager cm) {
-        // Assuming cm.getProject().getFiles() returns Set<ProjectFile> based on other CM APIs.
-        // If it returns Set<BrokkFile>, a conversion/cast might be needed depending on their relationship.
-        Set<ProjectFile> allProjectFiles = cm.getProject().getFiles();
-        if (allProjectFiles.isEmpty()) {
-            logger.debug("No files found in project to identify test files.");
-            return List.of();
-        }
-
-        // Filter files based on the regex pattern matching their path string
-        var testFiles = allProjectFiles.stream()
-                .filter(file -> TEST_FILE_PATTERN.matcher(file.toString()).matches())
-                .toList();
-
-        logger.debug("Identified {} test files via regex.", testFiles.size());
-        return testFiles;
-    }
-
 
     /**
      * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
@@ -386,7 +355,7 @@ public class CodeAgent {
             }
 
             // Identify all files considered test files within the entire project using the regex pattern
-            var projectTestFiles = getTestFiles(cm);
+            var projectTestFiles = cm.getTestFiles();
 
             // Get the set of files currently loaded in the workspace (both editable and read-only ProjectFiles)
             var workspaceFiles = Stream.concat(cm.getEditableFiles().stream(), cm.getReadonlyFiles().stream())

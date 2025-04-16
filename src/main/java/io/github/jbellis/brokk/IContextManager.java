@@ -41,6 +41,10 @@ public interface IContextManager {
         }
     }
 
+    default List<ProjectFile> getTestFiles() {
+        throw new UnsupportedOperationException();
+    }
+
     default void replaceContext(Context newContext, Context replacement) {
         // no-op
     }
