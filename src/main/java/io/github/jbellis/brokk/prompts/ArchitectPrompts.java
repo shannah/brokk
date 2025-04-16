@@ -19,6 +19,24 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
     }
 
     @Override
+    protected String formatIntro(ContextManager cm, String reminder) {
+        var workspaceSummary = formatWorkspaceSummary(cm, false);
+        var styleGuide = cm.getProject().getStyleGuide();
+
+        return """
+          <instructions>
+          %s
+          </instructions>
+          <workspace-summary>
+          %s
+          </workspace-summary>
+          <style_guide>
+          %s
+          </style_guide>
+          """.stripIndent().formatted(systemIntro(reminder), workspaceSummary, styleGuide).trim();
+    }
+
+    @Override
     public String systemIntro(String reminder) {
         return """
         You are the Architect Agent. You solve problems by breaking them down into manageable pieces
@@ -92,8 +110,8 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
 
         # Working with other agents
 
-        The Workspace of files and code fragments is visible to all agents, but
-        other agents ARE NOT ABLE to see our conversation, including the results of other agent calls! 
+        The Workspace of files and code fragments is visible to all agents as well as you, but
+        other agents ARE NOT ABLE to see our conversation, including the results of other agent calls!
         Your instructions must therefore be self-contained and complete;
         besides the Workspace itself that is the only information they will have.
 

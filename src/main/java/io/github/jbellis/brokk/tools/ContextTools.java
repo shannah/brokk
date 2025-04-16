@@ -45,7 +45,7 @@ public class ContextTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Add project files to the editable workspace. Use this when you intend to modify these files")
+    @Tool("Edit project files in the Workspace. Use this when you intend to make changes to these files.")
     public String addEditableFiles(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> relativePaths
@@ -78,9 +78,7 @@ public class ContextTools {
         return "Editing %d file(s) in the workspace: [%s]".formatted(projectFiles.size(), fileNames);
     }
 
-    // Removed addReadOnlyProjectFiles and addReadOnlyExternalFiles
-
-    @Tool("Add read-only files to the workspace. Use this for files you need to reference the full source of, but not modify")
+    @Tool("Add read-only files to the Workspace. Use this for files you need to reference the full source of, but not modify.")
     public String addReadOnlyFiles(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> paths
@@ -124,7 +122,7 @@ public class ContextTools {
         return "Added %d file(s) as read-only in the workspace: [%s]".formatted(filesToAdd.size(), fileNames);
     }
 
-    @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it to the workspace as a read-only text fragment. HTML content will be converted to Markdown")
+    @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it to the Workspace as a read-only text fragment. HTML content will be converted to Markdown.")
     public String addUrlContents(
             @P("The full URL to fetch content from (e.g., 'https://example.com/docs/page').")
             String urlString
@@ -166,7 +164,7 @@ public class ContextTools {
         return "Added content from URL [%s] as a read-only text fragment.".formatted(urlString);
     }
 
-    @Tool("Add an arbitrary block of text (e.g., notes that are independent of the Plan, a configuration snippet, or something learned from another Agent) to the workspace as a read-only fragment")
+    @Tool("Add an arbitrary block of text (e.g., notes that are independent of the Plan, a configuration snippet, or something learned from another Agent) to the Workspace as a read-only fragment")
     public String addTextFragment(
             @P("The text content to add as a fragment")
             String content,
@@ -187,7 +185,7 @@ public class ContextTools {
         return "Added text fragment '%s'.".formatted(description);
     }
 
-    @Tool("Remove specified fragments (files, text snippets, analysis results) from the workspace using their unique integer IDs")
+    @Tool("Remove specified fragments (files, text snippets, analysis results) from the Workspace using their unique integer IDs")
     public String dropFragments(
             @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove")
             List<Integer> fragmentIds
@@ -251,7 +249,7 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the workspace
+    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace.
     """)
     public String addUsagesFragment(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
@@ -281,7 +279,7 @@ public class ContextTools {
     }
 
     @Tool(value = """
-    Retrieves summaries (fields and method signatures) for specified classes and adds them to the workspace.
+    Retrieves summaries (fields and method signatures) for specified classes and adds them to the Workspace.
     Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
     """)
     public String addClassSkeletonsFragment(
@@ -331,8 +329,8 @@ public class ContextTools {
 
 
     @Tool(value = """
-    Retrieves the full source code of specific methods and adds each as a separate read-only text fragment.
-    Faster and more efficient than including entire files or classes when you only need a few methods
+    Retrieves the full source code of specific methods and adds to the Workspace each as a separate read-only text fragment.
+    Faster and more efficient than including entire files or classes when you only need a few methods.
     """)
     public String addMethodSourcesFragment(
             @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for")
@@ -399,7 +397,7 @@ public class ContextTools {
 //    }
 
     @Tool(value = """
-    Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it to the workspace
+    Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it to the Workspace.
     The single line of the call sites (but not full method sources) are included
     """)
     public String addCallGraphToFragment(

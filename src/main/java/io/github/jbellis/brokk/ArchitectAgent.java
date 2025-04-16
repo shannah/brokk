@@ -111,7 +111,7 @@ public class ArchitectAgent {
      * The SearchAgent will decide which specific search/analysis tools to use (e.g., searchSymbols, getFileContents).
      * The results are added as a context fragment.
      */
-    @Tool("Invoke the SearchAgent to find information relevant to the given query. It will add its findings to the context automatically.")
+    @Tool("Invoke the Search Agent to find information relevant to the given query. Searching is much slower than adding content to the Workspace directly if you know what you are looking for, but the Agent can find things that you don't know the exact name of. ")
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent. Query in English (not just keywords)")
             String query
@@ -329,7 +329,7 @@ public class ArchitectAgent {
         
         %s
         </related_classes>
-        """;
+        """.stripIndent().formatted(topClassesRaw);
 
         var userMsg = """
         %s
@@ -341,8 +341,8 @@ public class ArchitectAgent {
         Please decide the next tool action(s) to make progress towards resolving the goal.
         
         You are encouraged to call multiple tools simultaneously, especially
-        - when searching for relevant code, you can invoke callSearchAgent multiple times at once
-        - when manipulating context, make all needed manipulations at once
+        - when searching for relevant code: you can invoke callSearchAgent multiple times at once
+        - when manipulating Workspace context: make all desired manipulations at once
 
         Conversely, it does not make sense to call multiple tools with
         - callCodeAgent, since you want to see what changes get made before proceeding

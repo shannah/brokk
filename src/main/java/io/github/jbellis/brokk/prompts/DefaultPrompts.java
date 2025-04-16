@@ -60,9 +60,9 @@ public abstract class DefaultPrompts {
      * @param cm The ContextManager.
      * @return A string summarizing editable files, read-only snippets, etc.
      */
-    public static String formatWorkspaceSummary(ContextManager cm) {
+    public static String formatWorkspaceSummary(ContextManager cm, boolean includeAutocontext) {
         var editableContents = cm.getEditableSummary();
-        var readOnlyContents = cm.getReadOnlySummary();
+        var readOnlyContents = cm.getReadOnlySummary(includeAutocontext);
         var workspaceBuilder = new StringBuilder();
         if (!editableContents.isBlank()) {
             workspaceBuilder.append("\n- Editable files: ").append(editableContents);
@@ -74,7 +74,7 @@ public abstract class DefaultPrompts {
     }
 
     protected String formatIntro(ContextManager cm, String reminder) {
-        var workspaceSummary = formatWorkspaceSummary(cm);
+        var workspaceSummary = formatWorkspaceSummary(cm, true);
         var styleGuide = cm.getProject().getStyleGuide();
 
         return """

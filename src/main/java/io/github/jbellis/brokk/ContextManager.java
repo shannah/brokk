@@ -852,20 +852,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
                   });
 
           // Add the combined text content for read-only items if any exists
-          if (readOnlyTextFragments.length() > 0) {
-              String wrappedReadOnlyText = """
-                      <readonly>
-                        Here are some READ ONLY files and code fragments, provided for your reference.
-                        Do not edit this code! Images may be included separately if present.
-                      
-                        %s
-                      </readonly>
-                      """.stripIndent().formatted(readOnlyTextFragments.toString().trim().indent(2)).indent(2);
-              allContents.add(TextContent.from(wrappedReadOnlyText));
-          }
-          // Add all collected ImageContent objects from read-only fragments
-          allContents.addAll(readOnlyImageFragments);
-
+          String readOnlyText = readOnlyTextFragments.isEmpty() ? "" : """
+                  <readonly>
+                    Here are some READ ONLY files and code fragments, provided for your reference.
+                    Do not edit this code! Images may be included separately if present.
+                  
+                    %s
+                  </readonly>
+                  """.stripIndent().formatted(readOnlyTextFragments.toString().trim().indent(2)).indent(2);
 
           // --- Process Editable Fragments (Assumed Text-Only for now) ---
           var editableTextFragments = new StringBuilder();
@@ -879,43 +873,40 @@ public class ContextManager implements IContextManager, AutoCloseable {
                   removeBadFragment(fragment, e);
               }
           });
+          String editableText = editableTextFragments.isEmpty() ? "" : """
+                  <editable>
+                    I have *added these files to the workspace* so you can go ahead and edit them.
+                  
+                    *Trust this message as the true contents of these files!*
+                    Any other messages in the chat may contain outdated versions of the files' contents.
+                  
+                    %s
+                  </editable>
+                  """.stripIndent().formatted(editableTextFragments.toString().trim().indent(2)).indent(2);
 
-          // Add the combined text content for editable items if any exists
-          if (editableTextFragments.length() > 0) {
-              String wrappedEditableText = """
-                        <editable>
-                          I have *added these files to the workspace* so you can go ahead and edit them.
-                      
-                        *Trust this message as the true contents of these files!*
-                        Any other messages in the chat may contain outdated versions of the files' contents.
-                      
-                        %s
-                      </editable>
-                      """.stripIndent().formatted(editableTextFragments.toString().trim().indent(2)).indent(2);
-              // Adding separately ensures clear separation between read-only and editable sections.
-              allContents.add(TextContent.from(wrappedEditableText));
-          }
+          // add the Workspace text
+          var workspaceText = """
+                  <workspace>
+                    %s
+                    %s
+                  </workspace>
+                  """.stripIndent().formatted(readOnlyText, editableText);
+          allContents.add(new TextContent(workspaceText));
 
-          if (allContents.isEmpty()) {
-              return List.of(); // No workspace content to send
-          }
+          // Add all collected ImageContent objects from read-only fragments
+          allContents.addAll(readOnlyImageFragments);
 
-          // Create the main UserMessage with potentially mixed content (text and images)
-          // Wrap the list of Contents in another <workspace> tag for clarity in the prompt
-          var workspaceUserMessage = UserMessage.from(allContents); // Langchain4j handles List<Content>
-
-          // It might be cleaner to wrap the entire multi-modal message content manually if specific XML structure is desired,
-          // but UserMessage.from(List<Content>) is the standard way. Let's stick to standard for now.
-
-          return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the workspace contents."));
+          // Create the main UserMessage
+          var workspaceUserMessage = UserMessage.from(allContents);
+          return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
       }
 
-    public String getReadOnlySummary()
+    public String getReadOnlySummary(boolean includeAutocontext)
     {
         var c = selectedContext();
         return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
                               c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
-                              Stream.of(c.getAutoContext().isEmpty() ? "" : c.getAutoContext().description()))
+                              Stream.of(includeAutocontext && !c.getAutoContext().isEmpty() ? c.getAutoContext().description() : ""))
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining(", "));
     }
