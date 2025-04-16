@@ -1,7 +1,7 @@
 model_list:
-  - model_name: o3-mini
+  - model_name: o4-mini
     litellm_params:
-      model: openai/o3-mini
+      model: openai/o4-mini
       api_key: "os.environ/OPENAI_API_KEY"
     model_info:
       free_tier_eligible: false
