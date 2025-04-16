@@ -90,8 +90,31 @@ public class PreviewTextPanel extends JPanel
 
         topPanel.add(searchControlsPanel, BorderLayout.CENTER); // Search controls on the left/center
 
+        // === Text area with syntax highlighting ===
+        // Initialize textArea *before* action buttons that might reference it
+        textArea = new PreviewTextArea(content, syntaxStyle, file != null);
+
         // Button panel for actions on the right
         JPanel actionButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0)); // Use FlowLayout, add some spacing
+
+        // Save button (conditionally added for ProjectFile)
+        JButton saveButton = null;
+        if (file != null) {
+            final JButton finalSaveButton = new JButton("Save");
+            finalSaveButton.setEnabled(false); // Initially disabled
+            finalSaveButton.addActionListener(e -> {
+                try {
+                    file.write(textArea.getText());
+                    finalSaveButton.setEnabled(false); // Disable after saving
+                    logger.info("File saved: " + file);
+                } catch (IOException ex) {
+                    logger.info("Error saving file: " + ex.getMessage());
+                    logger.error("Error saving file {}", file, ex);
+                }
+            });
+            actionButtonPanel.add(finalSaveButton);
+            saveButton = finalSaveButton;
+        }
 
         // Capture button (conditionally added for GitHistoryFragment)
         captureButton = null;
@@ -103,7 +126,7 @@ public class PreviewTextPanel extends JPanel
                 captureButton.setEnabled(false); // Disable after capture
                 captureButton.setToolTipText("Revision captured");
             });
-            actionButtonPanel.add(captureButton); // Add capture button first
+            actionButtonPanel.add(captureButton); // Add capture button
         }
 
         // Edit button (conditionally added for ProjectFile)
@@ -129,8 +152,27 @@ public class PreviewTextPanel extends JPanel
             topPanel.add(actionButtonPanel, BorderLayout.EAST);
         }
 
-        // === Text area with syntax highlighting ===
-        textArea = new PreviewTextArea(content, syntaxStyle);
+        // Add document listener to enable/disable save button based on changes
+        if (saveButton != null) {
+            // Use the final reference created for the ActionListener
+            final JButton finalSaveButtonRef = saveButton;
+            textArea.getDocument().addDocumentListener(new DocumentListener() {
+                @Override
+                public void insertUpdate(DocumentEvent e) {
+                    finalSaveButtonRef.setEnabled(true);
+                }
+
+                @Override
+                public void removeUpdate(DocumentEvent e) {
+                    finalSaveButtonRef.setEnabled(true);
+                }
+
+                @Override
+                public void changedUpdate(DocumentEvent e) {
+                    finalSaveButtonRef.setEnabled(true);
+                }
+            });
+        }
 
         // Put the text area in a scroll pane
         RTextScrollPane scrollPane = new RTextScrollPane(textArea);
@@ -283,17 +325,17 @@ public class PreviewTextPanel extends JPanel
      * @param guiTheme    The theme manager to use for styling the text area
      */
     /**
-     * Custom RSyntaxTextArea implementation for preview panels with custom popup menu
-     */
-    public class PreviewTextArea extends RSyntaxTextArea {
-        public PreviewTextArea(String content, String syntaxStyle) {
-            setSyntaxEditingStyle(syntaxStyle != null ? syntaxStyle : SyntaxConstants.SYNTAX_STYLE_NONE);
-            setCodeFoldingEnabled(true);
-            setAntiAliasingEnabled(true);
-            setHighlightCurrentLine(false);
-            setEditable(false);
-            setText(content);
-        }
+         * Custom RSyntaxTextArea implementation for preview panels with custom popup menu
+         */
+        public class PreviewTextArea extends RSyntaxTextArea {
+            public PreviewTextArea(String content, String syntaxStyle, boolean isEditable) {
+                setSyntaxEditingStyle(syntaxStyle != null ? syntaxStyle : SyntaxConstants.SYNTAX_STYLE_NONE);
+                setCodeFoldingEnabled(true);
+                setAntiAliasingEnabled(true);
+                setHighlightCurrentLine(false);
+                setEditable(isEditable);
+                setText(content);
+            }
 
         @Override
         protected JPopupMenu createPopupMenu() {
@@ -630,14 +672,14 @@ public class PreviewTextPanel extends JPanel
                 SwingUtilities.invokeLater(() -> {
                     // Update the text area with new content
                     textArea.setText(newContent);
-
+    
                     // Find the start offset of the new snippet in the content.
                     int startOffset = newContent.indexOf(newSnippet);
                     assert startOffset >= 0;
                     textArea.setCaretPosition(startOffset);
                     textArea.moveCaretPosition(startOffset + newSnippet.length());
                     textArea.grabFocus();
-
+                    
                     // Close the dialog automatically on success
                     if (!resultsIo.hasError.get()) {
                         resultsDialog.dispose();
