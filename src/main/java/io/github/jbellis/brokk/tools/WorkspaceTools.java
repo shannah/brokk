@@ -5,7 +5,6 @@ import dev.langchain4j.agent.tool.Tool;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -19,8 +18,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -45,8 +42,8 @@ public class WorkspaceTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Edit project files in the Workspace. Use this when you intend to make changes to these files.")
-    public String addEditableFilesToWorkspace(
+    @Tool("Edit project files to the Workspace. Use this when you intend to make changes to these files, or if you need to read the full source.")
+    public String addFilesToWorkspace(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
             List<String> relativePaths
     ) {
@@ -63,63 +60,19 @@ public class WorkspaceTools {
             }
             var file = contextManager.toFile(path);
             if (!file.exists()) {
-                errors.add("File at `%s` does not exist.".formatted(path));
+                errors.add("File at `%s` does not exist".formatted(path));
                 continue;
             }
             projectFiles.add(file);
         }
 
-        if (!errors.isEmpty()) {
-            throw new IllegalArgumentException("Errors encountered processing paths: " + String.join("; ", errors));
-        }
-
         contextManager.editFiles(projectFiles);
         String fileNames = projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
-        return "Editing %d file(s) in the workspace: [%s]".formatted(projectFiles.size(), fileNames);
-    }
-
-    @Tool("Add read-only files to the Workspace. Use this for files you need to reference the full source of, but not modify.")
-    public String addReadOnlyFilesToWorkspace(
-            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
-            List<String> paths
-    ) {
-        if (paths == null || paths.isEmpty()) {
-            throw new IllegalArgumentException("File paths list cannot be empty.");
-        }
-
-        List<BrokkFile> filesToAdd = new ArrayList<>();
-        List<String> errors = new ArrayList<>();
-
-        for (String pathStr : paths) {
-            if (pathStr == null || pathStr.isBlank()) {
-                errors.add("Null or blank path provided.");
-                continue;
-            }
-
-            try {
-                ProjectFile pf = contextManager.toFile(pathStr);
-                if (!Files.exists(pf.absPath())) {
-                     errors.add("Project file does not exist: " + pathStr);
-                } else if (!Files.isRegularFile(pf.absPath())) {
-                    errors.add("Project path is not a regular file: " + pathStr);
-                } else {
-                    filesToAdd.add(pf);
-                }
-            } catch (InvalidPathException e) {
-                errors.add("Invalid path format: " + pathStr + " (" + e.getMessage() + ")");
-            } catch (Exception e) {
-                errors.add("Error processing path '" + pathStr + "': " + e.getMessage());
-                logger.error("Error processing path for read-only: {}", pathStr, e);
-            }
-        }
-
+        var result = "Added %s to the workspace".formatted(fileNames);
         if (!errors.isEmpty()) {
-            throw new IllegalArgumentException("Errors encountered processing paths: " + String.join("; ", errors));
+            result += ". Other files were not added; errors were [%s]".formatted(String.join(", ", errors));
         }
-
-        contextManager.addReadOnlyFiles(filesToAdd);
-        String fileNames = filesToAdd.stream().map(BrokkFile::toString).collect(Collectors.joining(", "));
-        return "Added %d file(s) as read-only in the workspace: [%s]".formatted(filesToAdd.size(), fileNames);
+        return result;
     }
 
     @Tool("Fetch content from a URL (e.g., documentation, issue tracker) and add it to the Workspace as a read-only text fragment. HTML content will be converted to Markdown.")

@@ -158,8 +158,7 @@ public class ArchitectAgent {
 
             // 4) Figure out which tools are allowed in this step
             var genericToolNames = List.of(
-                    "addEditableFilesToWorkspace",
-                    "addReadOnlyFilesToWorkspace",
+                    "addFilesToWorkspace",
                     "addUrlContentsToWorkspace",
                     "addTextToWorkspace",
                     "addUsagesToWorkspace",
