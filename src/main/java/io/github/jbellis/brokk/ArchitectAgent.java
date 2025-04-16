@@ -88,12 +88,23 @@ public class ArchitectAgent {
     public String callCodeAgent(
             @P("Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
-    ) {
-        logger.debug("callCodeAgent invoked with instructions: {}", instructions);
-        var result = CodeAgent.runSession(contextManager, model, instructions, false);
-        var entry = contextManager.addToHistory(result, true);
-        var stopDetails = result.stopDetails();
-        String summary = """
+        ) {
+            logger.debug("callCodeAgent invoked with instructions: {}", instructions);
+
+            logger.debug("Invoking TestAgent to find relevant tests...");
+            var testAgent = new ValidationAgent(contextManager, contextManager.getModels().quickModel());
+            var relevantTests = testAgent.execute(instructions);
+            if (!relevantTests.isEmpty()) {
+                logger.debug("Adding relevant test files found by TestAgent to workspace: {}", relevantTests);
+                contextManager.editFiles(relevantTests); // Add tests to workspace
+            } else {
+                logger.debug("TestAgent found no relevant test files to add.");
+            }
+
+            var result = CodeAgent.runSession(contextManager, model, instructions, false);
+            var entry = contextManager.addToHistory(result, true);
+            var stopDetails = result.stopDetails();
+            String summary = """
         CodeAgent concluded.
         <summary>
         %s
