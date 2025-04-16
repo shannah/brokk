@@ -806,10 +806,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() {
             return """
-              <history>
+              <taskhistory fragmentid="%d">
               %s
-              </history>
-              """.stripIndent().formatted(text());
+              </taskhistory>
+              """.stripIndent().formatted(id(), text());
         }
 
         @Override

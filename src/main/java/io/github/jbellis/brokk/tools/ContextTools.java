@@ -185,7 +185,7 @@ public class ContextTools {
         return "Added text fragment '%s'.".formatted(description);
     }
 
-    @Tool("Remove specified fragments (files, text snippets, analysis results) from the Workspace using their unique integer IDs")
+    @Tool("Remove specified fragments (files, text snippets, task history, analysis results) from the Workspace using their unique integer IDs")
     public String dropFragments(
             @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove")
             List<Integer> fragmentIds
@@ -240,12 +240,6 @@ public class ContextTools {
         }
 
         return "Dropped %d fragment(s) with IDs: [%s]".formatted(droppedCount, foundIds.stream().map(String::valueOf).collect(Collectors.joining(", ")));
-    }
-
-    @Tool("Clear the entire workspace conversation history, including intermediate steps and summaries. Don't use this unless you've extracted all the information you need from the history to text snippets or the Plan!")
-    public String clearHistory() {
-        contextManager.clearHistory();
-        return "Cleared conversation history.";
     }
 
     @Tool(value = """
