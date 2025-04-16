@@ -795,7 +795,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            return "Conversation History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
+            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
         }
 
         @Override

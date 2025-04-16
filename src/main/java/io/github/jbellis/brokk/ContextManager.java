@@ -1393,7 +1393,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
                 // Create a new context with the compressed history
                 pushContext(ctx -> ctx.withCompressedHistory(List.copyOf(compressedHistory)));
-                io.systemOutput("Conversation history compressed successfully.");
+                io.systemOutput("Task history compressed successfully.");
             } finally {
                  // Re-enable history navigation *after* pushContext updates the UI
                  SwingUtilities.invokeLater(io::enableHistoryPanel);

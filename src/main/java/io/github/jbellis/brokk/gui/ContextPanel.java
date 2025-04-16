@@ -1107,8 +1107,8 @@ public class ContextPanel extends JPanel {
             }
 
             if (clearHistory) {
-                contextManager.clearHistory(); // Qualify contextManager
-                chrome.systemOutput("Cleared conversation history"); // Qualify chrome
+                contextManager.clearHistory();
+                chrome.systemOutput("Cleared task history");
             }
 
             contextManager.drop(pathFragsToRemove, virtualToRemove); // Qualify contextManager

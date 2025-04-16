@@ -547,7 +547,7 @@ public class Context implements Serializable {
                            List.of(), // Cleared task history
                            Map.of(),
                            null,
-                           CompletableFuture.completedFuture("Cleared conversation history"));
+                           CompletableFuture.completedFuture("Cleared task history"));
     }
 
     public Context withOriginalContents(Map<ProjectFile, String> fileContents) {
