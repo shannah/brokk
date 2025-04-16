@@ -174,7 +174,7 @@ public class ArchitectAgent {
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
-            var response = coder.sendMessage(messages, toolSpecs, ToolChoice.REQUIRED, false);
+            var response = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (response.cancelled()) {
                 var msg = "Project canceled by user. Stopping now.";
                 logger.debug(msg);

@@ -108,7 +108,7 @@ public class CoderTest {
 
                 // Use the non-streaming sendMessage variant for simplicity in testing basic connectivity
                 // Note: This uses the internal retry logic of Coder.sendMessage
-                var result = coder.sendMessage(messages);
+                var result = coder.sendRequest(messages);
 
                 assertNotNull(result, "Result should not be null for model: " + modelName);
                 assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
@@ -165,7 +165,7 @@ public class CoderTest {
 
                 var messages = new ArrayList<ChatMessage>();
                 messages.add(new UserMessage("What is the weather like in London?"));
-                var result = coder.sendMessage(messages, toolSpecifications, ToolChoice.REQUIRED, false);
+                var result = coder.sendRequest(messages, toolSpecifications, ToolChoice.REQUIRED, false);
 
                 assertNotNull(result, "Result should not be null for model: " + modelName);
                 assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
@@ -189,7 +189,7 @@ public class CoderTest {
                 var term = new ToolExecutionResultMessage(tr.id(), tr.name(), new WeatherTool().getWeather("London"));
                 messages.add(term);
                 messages.add(new UserMessage("Given what you know about London, is this unusual?"));
-                result = coder.sendMessage(messages);
+                result = coder.sendRequest(messages);
                 assertNotNull(result, "Result should not be null for model: " + modelName);
                 assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
                 if (result.error() != null) {

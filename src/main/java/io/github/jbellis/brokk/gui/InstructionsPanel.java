@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -462,7 +461,7 @@ public class InstructionsPanel extends JPanel {
           messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
 
           // stream from coder using the provided model
-          var response = contextManager.getCoder(model, question).sendStreaming(messages, true);
+          var response = contextManager.getCoder(model, question).sendRequest(messages, true);
           if (response.cancelled()) {
               chrome.systemOutput("Ask command cancelled!");
           } else if (response.error() != null) {

@@ -181,7 +181,7 @@ public class SearchAgent {
             )));
 
             // TODO can we use a different model for summarization?
-            var result = coder.sendMessage(messages);
+            var result = coder.sendRequest(messages);
             if (result.error() != null) {
                  logger.warn("Summarization failed or was cancelled.");
                  return step.execResult.resultText(); // Return raw result on failure
@@ -224,7 +224,7 @@ public class SearchAgent {
             Make sure to include the fully qualified source (class, method, etc) as well as the code.
             """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var result = coder.sendMessage(messages);
+            var result = coder.sendRequest(messages);
             if (result.cancelled()) {
                 io.systemOutput("Cancelled context evaluation; stopping search");
                 return null; // Propagate cancellation
@@ -384,7 +384,7 @@ public class SearchAgent {
             </information>
             """.stripIndent().formatted(query, initialContextResult)));
 
-            var response = coder.sendMessage(messages).chatResponse();
+            var response = coder.sendRequest(messages).chatResponse();
             return response.aiMessage().text();
         });
     }
@@ -647,7 +647,7 @@ public class SearchAgent {
              // Pass an instance of the tools class, correct typo, add missing parenthesis
              tools.addAll(toolRegistry.getTools(this, List.of("answerSearch", "abortSearch")));
          }
-         var result = coder.sendMessage(messages, tools, ToolChoice.REQUIRED, false);
+         var result = coder.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
 
          if (result.cancelled()) {
              Thread.currentThread().interrupt();

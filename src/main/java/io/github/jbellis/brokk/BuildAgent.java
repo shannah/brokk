@@ -1,7 +1,5 @@
 package io.github.jbellis.brokk;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -20,7 +18,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * An agent that iteratively explores a codebase using specific tools
@@ -83,7 +80,7 @@ public class BuildAgent {
             }
 
             // Call the Coder to get the LLM's response, including potential tool calls
-            var result = coder.sendMessage(messages, tools, ToolChoice.REQUIRED, false);
+            var result = coder.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
 
             if (result.cancelled()) {
                 logger.error("Unexpected request cancellation in build agent");

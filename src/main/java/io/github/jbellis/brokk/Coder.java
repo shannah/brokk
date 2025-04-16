@@ -86,18 +86,6 @@ public class Coder {
     }
 
     /**
-     * Sends a user query to the LLM with streaming. Tools are not used.
-     * Writes to conversation history. Optionally echoes partial tokens to the console.
-     *
-     * @param messages The messages to send
-     * @param echo Whether to echo LLM responses to the console as they stream
-     * @return The final response from the LLM as a record containing ChatResponse, errors, etc.
-     */
-    public StreamingResult sendStreaming(List<ChatMessage> messages, boolean echo) {
-        return sendMessageWithRetry(messages, List.of(), ToolChoice.AUTO, echo, MAX_ATTEMPTS);
-    }
-
-    /**
      * Actually performs one streaming call to the LLM, returning once the response
      * is done or there's an error. If 'echo' is true, partial tokens go to console.
      */
@@ -205,16 +193,28 @@ public class Coder {
     }
 
     /**
+     * Sends a user query to the LLM with streaming. Tools are not used.
+     * Writes to conversation history. Optionally echoes partial tokens to the console.
+     *
+     * @param messages The messages to send
+     * @param echo Whether to echo LLM responses to the console as they stream
+     * @return The final response from the LLM as a record containing ChatResponse, errors, etc.
+     */
+    public StreamingResult sendRequest(List<ChatMessage> messages, boolean echo) {
+        return sendMessageWithRetry(messages, List.of(), ToolChoice.AUTO, echo, MAX_ATTEMPTS);
+    }
+
+    /**
      * Sends messages to a given model, no tools, no streaming echo.
      */
-    public StreamingResult sendMessage(List<ChatMessage> messages) {
-        return sendMessage(messages, List.of(), ToolChoice.AUTO, false);
+    public StreamingResult sendRequest(List<ChatMessage> messages) {
+        return sendRequest(messages, false);
     }
 
     /**
      * Sends messages to a model with possible tools and a chosen tool usage policy.
      */
-    public StreamingResult sendMessage(List<ChatMessage> messages,
+    public StreamingResult sendRequest(List<ChatMessage> messages,
                                        List<ToolSpecification> tools,
                                        ToolChoice toolChoice,
                                        boolean echo) {

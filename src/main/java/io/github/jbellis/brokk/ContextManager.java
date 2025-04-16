@@ -1008,7 +1008,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
               protected String doInBackground() {
                   var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                   // Use quickModel for summarization
-                  var result = getCoder(models.quickestModel(), "Summarize paste").sendMessage(msgs); // Use instance field
+                  var result = getCoder(models.quickestModel(), "Summarize paste").sendRequest(msgs); // Use instance field
                    if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                       logger.warn("Summarization failed or was cancelled.");
                       return "Summarization failed.";
@@ -1033,7 +1033,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
               protected String doInBackground() {
                   var msgs =  SummarizerPrompts.instance.collectMessages(input, 5);
                    // Use quickModel for summarization
-                  var result = getCoder(models.quickestModel(), input).sendMessage(msgs); // Use instance field
+                  var result = getCoder(models.quickestModel(), input).sendRequest(msgs); // Use instance field
                    if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                        logger.warn("Summarization failed or was cancelled.");
                        return "Summarization failed.";
@@ -1071,7 +1071,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                       var textContent = TextContent.from("Briefly describe this image in a few words (e.g., 'screenshot of code', 'diagram of system').");
                         var userMessage = UserMessage.from(textContent, imageContent);
                         List<ChatMessage> messages = List.of(userMessage);
-                        var result = getCoder(models.quickModel(), "Summarize pasted image").sendMessage(messages);
+                        var result = getCoder(models.quickModel(), "Summarize pasted image").sendRequest(messages);
                         if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                             logger.warn("Image summarization failed or was cancelled.");
                             return "(Image summarization failed)";
@@ -1253,7 +1253,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                  var result = getCoder(models.quickestModel(), "Generate style guide").sendMessage(messages); // Use instance field
+                  var result = getCoder(models.quickestModel(), "Generate style guide").sendRequest(messages); // Use instance field
                    if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
                        io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                        project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
@@ -1289,7 +1289,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Compress
           var historyString = entry.toString();
           var msgs = SummarizerPrompts.instance.compressHistory(historyString);
-          var result = getCoder(models.quickModel(), "Compress history entry").sendMessage(msgs);
+          var result = getCoder(models.quickModel(), "Compress history entry").sendRequest(msgs);
 
           if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
               logger.warn("History compression failed for entry '{}': {}", entry.description(),

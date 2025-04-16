@@ -15,7 +15,6 @@ import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -87,7 +86,7 @@ public class CodeAgent {
                                                                       DefaultPrompts.reminderForModel(contextManager.getModels(), model));
             allMessages.add(nextRequest);
 
-            var streamingResult = coder.sendStreaming(allMessages, true);
+            var streamingResult = coder.sendRequest(allMessages, true);
             stopDetails = checkLlmErrorOrEmpty(streamingResult, io);
             if (stopDetails != null) break;
 
@@ -425,7 +424,7 @@ public class CodeAgent {
                                       details.instructions(),
                                       workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
             // Ask the LLM
-            var llmResult = coder.sendMessage(List.of(new UserMessage(prompt)));
+            var llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
             var suggestedCommand = llmResult.chatResponse() != null && llmResult.chatResponse().aiMessage() != null
                     ? llmResult.chatResponse().aiMessage().text().trim()
                     : null; // Handle potential nulls from LLM response
@@ -486,7 +485,7 @@ public class CodeAgent {
         pendingHistory.add(new UserMessage(instructionsMsg));
 
         // No echo for Quick Edit, use instance quickModel
-        var result = coder.sendStreaming(messages, false);
+        var result = coder.sendRequest(messages, false);
 
         // Determine stop reason based on LLM response
         SessionResult.StopDetails stopDetails;
@@ -622,14 +621,14 @@ public class CodeAgent {
         }
 
         var messages = BuildPrompts.instance.collectBuildProgressingMessages(buildResults);
-        var response = coder.sendMessage(messages).chatResponse().aiMessage().text().trim();
+        var response = coder.sendRequest(messages).chatResponse().aiMessage().text().trim();
 
         // Keep trying until we get one of our expected tokens
         while (!response.contains("BROKK_PROGRESSING") && !response.contains("BROKK_FLOUNDERING")) {
             messages = new ArrayList<>(messages);
             messages.add(new AiMessage(response));
             messages.add(new UserMessage("Please indicate either BROKK_PROGRESSING or BROKK_FLOUNDERING."));
-            response = coder.sendMessage(messages).chatResponse().aiMessage().text().trim();
+            response = coder.sendRequest(messages).chatResponse().aiMessage().text().trim();
         }
 
         return response.contains("BROKK_PROGRESSING");
