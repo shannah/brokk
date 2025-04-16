@@ -165,8 +165,8 @@ public class ContextTools {
     }
 
     @Tool("Add an arbitrary block of text (e.g., notes that are independent of the Plan, a configuration snippet, or something learned from another Agent) to the Workspace as a read-only fragment")
-    public String addTextFragment(
-            @P("The text content to add as a fragment")
+    public String addText(
+            @P("The text content to add to the Workspace")
             String content,
             @P("A short, descriptive label for this text fragment (e.g., 'User Requirements', 'API Key Snippet')")
             String description
@@ -182,7 +182,7 @@ public class ContextTools {
         var fragment = new ContextFragment.StringFragment(content, description, SyntaxConstants.SYNTAX_STYLE_NONE);
         contextManager.pushContext(ctx -> ctx.addVirtualFragment(fragment));
 
-        return "Added text fragment '%s'.".formatted(description);
+        return "Added text '%s'.".formatted(description);
     }
 
     @Tool("Remove specified fragments (files, text snippets, task history, analysis results) from the Workspace using their unique integer IDs")
@@ -245,49 +245,43 @@ public class ContextTools {
     @Tool(value = """
     Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace.
     """)
-    public String addUsagesFragment(
+    public String addUsages(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
             String symbol
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add usages fragment: Code analyzer is not available.";
+        assert !getAnalyzer().isEmpty() : "Cannot add usages: Code analyzer is not available.";
         if (symbol == null || symbol.isBlank()) {
-            throw new IllegalArgumentException("Cannot add usages fragment: symbol cannot be empty");
+            throw new IllegalArgumentException("Cannot add usages: symbol cannot be empty");
         }
-        // Removed reasoning check
 
         List<CodeUnit> uses = getAnalyzer().getUses(symbol);
-        if (uses.isEmpty()) {
-            throw new IllegalStateException("No usages found for symbol: " + symbol);
-        }
-
         var result = AnalyzerUtil.processUsages(getAnalyzer(), uses);
         if (result.code().isEmpty()) {
-            // This might happen if processUsages filters out everything found by getUsagesData
-            throw new IllegalStateException("No relevant usage code found for symbol: " + symbol);
+            return "No relevant usages found for symbol: " + symbol;
         }
 
         var fragment = new ContextFragment.UsageFragment("Uses", symbol, result.sources(), result.code());
         contextManager.addVirtualFragment(fragment);
 
-        return "Added usages fragment for symbol '%s'.".formatted(symbol);
+        return "Added usages for symbol '%s'.".formatted(symbol);
     }
 
     @Tool(value = """
     Retrieves summaries (fields and method signatures) for specified classes and adds them to the Workspace.
     Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
     """)
-    public String addClassSkeletonsFragment(
-            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get skeletons for.")
+    public String addClassSummaries(
+            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get summaries for.")
             List<String> classNames
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add skeletons fragment: Code analyzer is not available.";
+        assert !getAnalyzer().isEmpty() : "Cannot add summary: Code analyzer is not available.";
         if (classNames == null || classNames.isEmpty()) {
-            throw new IllegalArgumentException("Cannot add skeletons fragment: class names list is empty");
+            throw new IllegalArgumentException("Cannot add summary: class names list is empty");
         }
 
         var skeletonsData = AnalyzerUtil.getClassSkeletonsData(getAnalyzer(), classNames);
         if (skeletonsData.isEmpty()) {
-            throw new IllegalStateException("No skeletons found for classes: " + String.join(", ", classNames));
+            throw new IllegalStateException("No summaries found for classes: " + String.join(", ", classNames));
         }
 
         // We need to filter CodeUnits potentially added by the Util method if they are inner classes whose parent is also present
@@ -311,14 +305,14 @@ public class ContextTools {
 
         if (coalescedSkeletons.isEmpty()) {
              // This could happen if only inner classes were requested and their parents were also found
-             throw new IllegalStateException("No primary skeletons found after coalescing for classes: " + String.join(", ", classNames));
+             throw new IllegalStateException("No primary summaries found after coalescing for classes: " + String.join(", ", classNames));
         }
 
         var fragment = new ContextFragment.SkeletonFragment(coalescedSkeletons);
         contextManager.addVirtualFragment(fragment);
 
         String addedClasses = coalescedSkeletons.keySet().stream().map(CodeUnit::fqName).sorted().collect(Collectors.joining(", "));
-        return "Added skeleton fragment for %d class(es): [%s]".formatted(coalescedSkeletons.size(), addedClasses);
+        return "Added summaries for %d class(es): [%s]".formatted(coalescedSkeletons.size(), addedClasses);
     }
 
 
@@ -326,7 +320,7 @@ public class ContextTools {
     Retrieves the full source code of specific methods and adds to the Workspace each as a separate read-only text fragment.
     Faster and more efficient than including entire files or classes when you only need a few methods.
     """)
-    public String addMethodSourcesFragment(
+    public String addMethodSources(
             @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for")
             List<String> methodNames
     ) {
@@ -337,7 +331,7 @@ public class ContextTools {
 
         var sourcesData = AnalyzerUtil.getMethodSourcesData(getAnalyzer(), methodNames);
         if (sourcesData.isEmpty()) {
-            throw new IllegalStateException("No sources found for methods: " + String.join(", ", methodNames));
+            return "No sources found for methods: " + String.join(", ", methodNames);
         }
 
         // Add each method source as a separate StringFragment
@@ -352,7 +346,7 @@ public class ContextTools {
             count++;
         }
 
-        return "Added %d method source fragment(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
+        return "Added %d method source(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
     }
 
     // disabled until we can do this efficiently in Joern
