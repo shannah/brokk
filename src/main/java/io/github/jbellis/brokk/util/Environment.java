@@ -17,7 +17,7 @@ public class Environment {
      * Runs a shell command using the appropriate shell for the current OS, returning {stdout, stderr}.
      * The command is executed in the directory specified by `root`.
      */
-    public ProcessResultInternal runShellCommand(String command, Path root) throws IOException {
+    public ProcessResultInternal runShellCommand(String command, Path root) throws IOException, InterruptedException {
         Process process;
         if (isWindows()) {
             process = createProcessBuilder(root, "cmd.exe", "/c", command).start();
@@ -38,17 +38,11 @@ public class Environment {
             }
         }
 
-        try {
-            if (process.waitFor(120, TimeUnit.SECONDS)) {
-                return new ProcessResultInternal(process.exitValue(), out.toString(), err.toString());
-            }
-            // TODO need a better way to signal timed out
-            return new ProcessResultInternal(-1, "", "");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroy();
-            return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
+        if (process.waitFor(120, TimeUnit.SECONDS)) {
+            return new ProcessResultInternal(process.exitValue(), out.toString(), err.toString());
         }
+        // TODO need a better way to signal timed out
+        return new ProcessResultInternal(-1, "", "");
     }
 
     private static ProcessBuilder createProcessBuilder(Path root, String... command) {
@@ -70,11 +64,11 @@ public class Environment {
     /**
      * Run a shell command in the given root directory, returning stdout or stderr in an OperationResult.
      */
-    public ProcessResult captureShellCommand(String command, Path root) {
+    public ProcessResult captureShellCommand(String command, Path root) throws InterruptedException {
         ProcessResultInternal result;
         try {
             result = runShellCommand(command, root);
-        } catch (Exception e) {
+        } catch (IOException e) {
             return new ProcessResult(e.getMessage(), "");
         }
 

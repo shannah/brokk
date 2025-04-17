@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Future;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
@@ -56,9 +55,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     // Command input panel is now encapsulated in InstructionsPanel.
     private InstructionsPanel instructionsPanel;
-
-    // Track the currently running user-driven future (Code/Ask/Search/Run)
-    volatile Future<?> currentUserTask;
 
     /**
      * Default constructor sets up the UI.
@@ -109,13 +105,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public Project getProject() {
         return contextManager == null ? null : contextManager.getProject();
-    }
-
-    /**
-     * Allows InstructionsPanel to update the current user task.
-     */
-    public void setCurrentUserTask(Future<?> task) {
-        this.currentUserTask = task;
     }
 
     public void onComplete() {
@@ -392,24 +381,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         instructionsPanel.enableButtons();
     }
 
-    /**
-     * Cancels the currently‑running user task and (re)‑interrupts the
-     * worker thread that executes user‑action tasks.
-     * Calling this method multiple times therefore keeps poking the thread
-     * even after the first {@code Future.cancel(true)} has put the Future
-     * in the *CANCELLED* state.
-     */
-    void stopCurrentUserTask()
-    {
-        // 1: always try Future.cancel; a second call is harmless
-        if (currentUserTask != null)
-            currentUserTask.cancel(true);
-
-        // 2: regardless of the Future’s state, explicitly (re)‑interrupt the underlying worker thread
-        contextManager.interruptUserActionThread();
-    }
-
-
     public void updateCommitPanel() {
         if (gitPanel != null) {
             gitPanel.updateCommitPanel();
@@ -432,7 +403,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             @Override
             public void actionPerformed(ActionEvent e) {
                 instructionsPanel.disableButtons();
-                currentUserTask = contextManager.undoContextAsync();
+                contextManager.undoContextAsync();
             }
         });
 
@@ -444,7 +415,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             @Override
             public void actionPerformed(ActionEvent e) {
                 instructionsPanel.disableButtons();
-                currentUserTask = contextManager.redoContextAsync();
+                contextManager.redoContextAsync();
             }
         });
 
@@ -454,7 +425,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         rootPane.getActionMap().put("globalPaste", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                currentUserTask = contextPanel.performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
+                contextPanel.performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
             }
         });
     }
@@ -766,14 +737,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public void focusInput() {
         SwingUtilities.invokeLater(() -> instructionsPanel.requestCommandInputFocus());
-    }
-
-    public void setCommitMessageText(String message) {
-        SwingUtilities.invokeLater(() -> {
-            if (gitPanel != null) {
-                gitPanel.setCommitMessageText(message);
-            }
-        });
     }
 
     public void toggleGitPanel() {

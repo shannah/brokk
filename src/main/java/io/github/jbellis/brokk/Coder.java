@@ -102,7 +102,7 @@ public class Coder {
 
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
-        var canceled = new AtomicBoolean(false);
+        var cancelled = new AtomicBoolean(false);
         var lock = new ReentrantLock();
         var errorRef = new AtomicReference<Throwable>(null);
         var outputTokenCountRef = new AtomicReference<>(-1);
@@ -111,7 +111,7 @@ public class Coder {
         Consumer<Runnable> ifNotCancelled = (r) -> {
             lock.lock();
             try {
-                if (!canceled.get()) {
+                if (!cancelled.get()) {
                     r.run();
                 }
             } finally {
@@ -166,7 +166,14 @@ public class Coder {
             }
         });
 
-        latch.await();
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            lock.lock();
+            cancelled.set(true);
+            lock.unlock();
+            throw e;
+        }
 
         var streamingError = errorRef.get();
         var outputTokenCount = outputTokenCountRef.get();

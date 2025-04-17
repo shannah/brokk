@@ -321,12 +321,11 @@ public class CodeAgent {
      * Runs the build verification command (once available) and appends any build error text to buildErrors list.
      * Returns true if the build/verification was successful or skipped, false otherwise.
      */
-    private static boolean attemptBuildVerification(
-            CompletableFuture<String> verificationCommandFuture,
-            ContextManager contextManager,
-            IConsoleIO io,
-            List<String> buildErrors
-    ) {
+    private static boolean attemptBuildVerification(CompletableFuture<String> verificationCommandFuture,
+                                                    ContextManager contextManager,
+                                                    IConsoleIO io,
+                                                    List<String> buildErrors) throws InterruptedException
+    {
         String verificationCommand;
         try {
             verificationCommand = verificationCommandFuture.get(5, TimeUnit.SECONDS);
@@ -559,7 +558,7 @@ public class CodeAgent {
      * Executes the verification command and updates build error history.
      * @return true if the build was successful or skipped, false otherwise.
      */
-    private static boolean checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io, List<String> buildErrors) {
+    private static boolean checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io, List<String> buildErrors) throws InterruptedException {
         if (verificationCommand == null) {
             io.systemOutput("No verification command specified, skipping build check.");
             buildErrors.clear(); // Clear errors if skipping

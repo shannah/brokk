@@ -145,7 +145,7 @@ public class ArchitectAgent {
         logger.debug("callSearchAgent invoked with query: {}", query);
 
         // Instantiate and run SearchAgent
-        var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry);
+        var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry, false);
         var result = searchAgent.execute();
         if (result.stopDetails().reason() == SessionResult.StopReason.LLM_ERROR) {
             throw new FatalLlmException(result.stopDetails().explanation());
@@ -310,12 +310,9 @@ public class ArchitectAgent {
                     var toolResult = future.get(); // Wait for completion
                     architectMessages.add(ToolExecutionResultMessage.from(toolResult.request(), toolResult.resultText()));
                     logger.debug("Collected result for tool '{}' => result: {}", toolResult.request().name(), toolResult.resultText());
-                } catch (CancellationException e) {
-                    logger.warn("SearchAgent task for request '{}' was cancelled.", request.name());
-                    interrupted = true;
                 } catch (InterruptedException e) {
-                    logger.warn("Interrupted while waiting for SearchAgent task '{}'.", request.name());
-                    Thread.currentThread().interrupt(); // Restore interrupt status
+                    logger.warn("SearchAgent task for request '{}' was cancelled.", request.name());
+                    future.cancel(true);
                     interrupted = true;
                 } catch (ExecutionException e) {
                     logger.warn("Error executing SearchAgent task '{}'", request.name(), e.getCause());

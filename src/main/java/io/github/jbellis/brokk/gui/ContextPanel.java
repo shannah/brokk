@@ -284,7 +284,7 @@ public class ContextPanel extends JPanel {
                                 JMenuItem compressHistoryItem = new JMenuItem("Compress History");
                                 compressHistoryItem.addActionListener(e1 -> {
                                     // Call ContextManager to compress history
-                                    chrome.setCurrentUserTask(contextManager.compressHistoryAsync());
+                                    contextManager.compressHistoryAsync();
                                 });
                                 contextMenu.add(compressHistoryItem);
                                 // Only enable if uncompressed entries exist
@@ -317,19 +317,19 @@ public class ContextPanel extends JPanel {
                             JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
                             editAllRefsItem.addActionListener(e1 -> {
                                 var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, selectedFragments);
+                                performContextActionAsync(ContextAction.EDIT, selectedFragments);
                             });
 
                             JMenuItem readAllRefsItem = new JMenuItem("Read All References");
                             readAllRefsItem.addActionListener(e1 -> {
                                 var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = performContextActionAsync(ContextAction.READ, selectedFragments);
+                                performContextActionAsync(ContextAction.READ, selectedFragments);
                             });
 
                             JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
                             summarizeAllRefsItem.addActionListener(e1 -> {
                                 var selectedFragments = getSelectedFragments();
-                                chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
+                                performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
                             });
 
                             contextMenu.add(editAllRefsItem);
@@ -342,14 +342,14 @@ public class ContextPanel extends JPanel {
                         JMenuItem copySelectionItem = new JMenuItem("Copy");
                         copySelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, selectedFragments);
+                            performContextActionAsync(ContextAction.COPY, selectedFragments);
                         });
                         contextMenu.add(copySelectionItem);
 
                         JMenuItem dropSelectionItem = new JMenuItem("Drop");
                         dropSelectionItem.addActionListener(ev -> {
                             var selectedFragments = getSelectedFragments();
-                            chrome.currentUserTask = performContextActionAsync(ContextAction.DROP, selectedFragments);
+                            performContextActionAsync(ContextAction.DROP, selectedFragments);
                         });
                         contextMenu.add(dropSelectionItem);
 
@@ -378,7 +378,7 @@ public class ContextPanel extends JPanel {
 
         // Add Ctrl+V shortcut for paste in the table
         contextTable.registerKeyboardAction(
-                e -> chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of()),
+                e -> performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of()),
                 KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
                 JComponent.WHEN_FOCUSED
         );
@@ -391,7 +391,7 @@ public class ContextPanel extends JPanel {
 
         JMenuItem editMenuItem = new JMenuItem("Edit Files");
         editMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = performContextActionAsync(ContextAction.EDIT, List.<ContextFragment>of());
+            performContextActionAsync(ContextAction.EDIT, List.<ContextFragment>of());
         });
         // Only add Edit Files when git is present
         if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
@@ -400,31 +400,31 @@ public class ContextPanel extends JPanel {
 
         JMenuItem readMenuItem = new JMenuItem("Read Files");
         readMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = performContextActionAsync(ContextAction.READ, List.<ContextFragment>of());
+            performContextActionAsync(ContextAction.READ, List.<ContextFragment>of());
         });
         addMenu.add(readMenuItem);
 
         JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
         summarizeMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = performContextActionAsync(ContextAction.SUMMARIZE, List.<ContextFragment>of());
+            performContextActionAsync(ContextAction.SUMMARIZE, List.<ContextFragment>of());
         });
         addMenu.add(summarizeMenuItem);
 
         JMenuItem symbolMenuItem = new JMenuItem("Symbol Usage");
         symbolMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = findSymbolUsageAsync();
+            findSymbolUsageAsync();
         });
         addMenu.add(symbolMenuItem);
 
         JMenuItem callersMenuItem = new JMenuItem("Callers");
         callersMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = findMethodCallersAsync();
+            findMethodCallersAsync();
         });
         addMenu.add(callersMenuItem);
 
         JMenuItem calleesMenuItem = new JMenuItem("Callees");
         calleesMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = findMethodCalleesAsync();
+            findMethodCalleesAsync();
         });
         addMenu.add(calleesMenuItem);
 
@@ -434,19 +434,19 @@ public class ContextPanel extends JPanel {
         JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
         dropAllMenuItem.addActionListener(e -> {
 
-            chrome.currentUserTask = performContextActionAsync(ContextAction.DROP, List.<ContextFragment>of());
+            performContextActionAsync(ContextAction.DROP, List.<ContextFragment>of());
         });
         tablePopupMenu.add(dropAllMenuItem);
 
         JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
         copyAllMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = performContextActionAsync(ContextAction.COPY, List.<ContextFragment>of());
+            performContextActionAsync(ContextAction.COPY, List.<ContextFragment>of());
         });
         tablePopupMenu.add(copyAllMenuItem);
 
         JMenuItem pasteMenuItem = new JMenuItem("Paste");
         pasteMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of());
+            performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of());
         });
         tablePopupMenu.add(pasteMenuItem);
 
@@ -684,7 +684,7 @@ public class ContextPanel extends JPanel {
         JMenuItem editItem = new JMenuItem("Edit " + fileRef.getFullPath());
         editItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
-                chrome.currentUserTask = performContextActionAsync(
+                performContextActionAsync(
                         ContextAction.EDIT,
                         List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
@@ -707,7 +707,7 @@ public class ContextPanel extends JPanel {
         JMenuItem readItem = new JMenuItem("Read " + fileRef.getFullPath());
         readItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
-                chrome.currentUserTask = performContextActionAsync(
+                performContextActionAsync(
                         ContextAction.READ,
                         List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );
@@ -732,7 +732,7 @@ public class ContextPanel extends JPanel {
         JMenuItem summarizeItem = new JMenuItem("Summarize " + fileRef.getFullPath());
         summarizeItem.addActionListener(e -> {
             if (fileRef.getRepoFile() != null) {
-                chrome.currentUserTask = performContextActionAsync(
+                performContextActionAsync(
                         ContextAction.SUMMARIZE,
                         List.of(new ContextFragment.ProjectPathFragment(fileRef.getRepoFile()))
                 );

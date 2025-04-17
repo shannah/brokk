@@ -27,9 +27,9 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -106,7 +106,7 @@ public class InstructionsPanel extends JPanel {
 
         stopButton = new JButton("Stop");
         stopButton.setToolTipText("Cancel the current operation");
-        stopButton.addActionListener(e -> chrome.stopCurrentUserTask());
+        stopButton.addActionListener(e -> chrome.getContextManager().interruptUserActionThread());
 
         // Top Bar (History, Model, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
@@ -443,9 +443,7 @@ public class InstructionsPanel extends JPanel {
 
             // stream from coder using the provided model
             var response = contextManager.getCoder(model, question).sendRequest(messages, true);
-            if (false) {
-                chrome.systemOutput("Ask command cancelled!");
-            } else if (response.error() != null) {
+            if (response.error() != null) {
                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
             } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
                 var aiResponse = response.chatResponse().aiMessage();
@@ -464,8 +462,8 @@ public class InstructionsPanel extends JPanel {
             } else {
                 chrome.systemOutput("Ask command completed with no response data.");
             }
-        } catch (CancellationException cex) {
-            chrome.systemOutput("Ask command cancelled.");
+        } catch (InterruptedException e) {
+            chrome.systemOutput("Ask command cancelled!");
         } catch (Exception e) {
             logger.error("Error during 'Ask' execution", e);
             chrome.toolErrorRaw("Internal error during ask command: " + e.getMessage());
@@ -483,8 +481,8 @@ public class InstructionsPanel extends JPanel {
         try {
             var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
             agent.execute();
-        } catch (CancellationException cex) {
-            chrome.systemOutput("Agent execution cancelled.");
+        } catch (InterruptedException e) {
+            chrome.systemOutput("Agent execution cancelled!");
         } catch (Exception e) {
             logger.error("Error during Agent execution", e);
             chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
@@ -502,17 +500,14 @@ public class InstructionsPanel extends JPanel {
         }
         try {
             var contextManager = chrome.getContextManager();
-            var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry());
+            var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry(), true);
             var result = agent.execute();
             assert result != null;
             // Search does not stream to llmOutput, so set the final answer here
             chrome.setLlmOutput(result.output().text());
             contextManager.addToHistory(result, false);
-        } catch (CancellationException cex) {
-            chrome.systemOutput("Search agent cancelled!");
-        } catch (Exception e) {
-            logger.error("Error during 'Search' execution", e);
-            chrome.toolErrorRaw("Internal error during search command: " + e.getMessage());
+        } catch (InterruptedException e) {
+            chrome.toolErrorRaw("Search agent interrupted without answering");
         }
     }
 
@@ -522,17 +517,18 @@ public class InstructionsPanel extends JPanel {
      */
     private void executeRunCommand(String input) {
         var contextManager = chrome.getContextManager();
-        var result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
+        Environment.ProcessResult result;
+        try {
+            result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
+        } catch (InterruptedException e) {
+            chrome.systemOutput("Cancelled!");
+            return;
+        }
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
         chrome.llmOutput("\n```\n" + output + "\n```");
 
-        var llmOutputText = chrome.getLlmOutputText();
-        if (llmOutputText == null) {
-            chrome.systemOutput("Interrupted!");
-            return;
-        }
-
         // Add to context history with the output text
+        var llmOutputText = chrome.getLlmOutputText();
         contextManager.pushContext(ctx -> {
             var runFrag = new ContextFragment.StringFragment(output, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
             var parsed = new ParsedOutput(llmOutputText, runFrag);
@@ -555,34 +551,23 @@ public class InstructionsPanel extends JPanel {
         var editModel = contextManager.getEditModel();
         var searchModel = contextManager.getSearchModel();
 
-        // --- Vision Check ---
         if (contextHasImages()) {
-            List<String> nonVisionModels = new ArrayList<>();
-            if (!models.supportsVision(architectModel)) {
-                nonVisionModels.add(models.nameOf(architectModel) + " (Architect)");
-            }
-            if (!models.supportsVision(editModel)) {
-                // Code/Ask model is implicitly checked if Edit/Search are used by Architect
-                nonVisionModels.add(models.nameOf(editModel) + " (Edit)");
-            }
-            if (!models.supportsVision(searchModel)) {
-                nonVisionModels.add(models.nameOf(searchModel) + " (Search)");
-            }
-
+            var nonVisionModels = Stream.of(architectModel,editModel, searchModel)
+                    .filter(m -> !models.supportsVision(m))
+                    .map(models::nameOf)
+                    .toList();
             if (!nonVisionModels.isEmpty()) {
                 showVisionSupportErrorDialog(String.join(", ", nonVisionModels));
                 return; // Abort if any required model lacks vision and context has images
             }
         }
-        // --- End Vision Check ---
 
         disableButtons();
         chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
         // Submit the action, calling the private execute method inside the lambda, passing the goal
-        var future = contextManager.submitAction("Agent", "Executing project...", () -> executeAgentCommand(architectModel, goal));
-        chrome.setCurrentUserTask(future);
+        contextManager.submitAction("Agent", "Executing project...", () -> executeAgentCommand(architectModel, goal));
     }
 
     // Methods for running commands. These prepare the input and model, then delegate
@@ -600,12 +585,10 @@ public class InstructionsPanel extends JPanel {
         var models = contextManager.getModels();
         var codeModel = contextManager.getCodeModel();
 
-        // --- Vision Check ---
         if (contextHasImages() && !models.supportsVision(codeModel)) {
             showVisionSupportErrorDialog(models.nameOf(codeModel) + " (Code/Ask)");
             return; // Abort if model doesn't support vision and context has images
         }
-        // --- End Vision Check ---
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
@@ -618,8 +601,7 @@ public class InstructionsPanel extends JPanel {
                         // Tests were handled (added or not needed), proceed with code command
                         SwingUtilities.invokeLater(() -> { // Ensure UI updates happen on EDT if needed after background
                             // Submit the main action
-                            var future = chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(codeModel, input));
-                            chrome.setCurrentUserTask(future);
+                            chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(codeModel, input));
                         });
                     } else {
                         // Test prompting failed or was cancelled, re-enable buttons
@@ -863,8 +845,7 @@ public class InstructionsPanel extends JPanel {
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        var future = chrome.getContextManager().submitAction("Ask", input, () -> executeAskCommand(askModel, input));
-        chrome.setCurrentUserTask(future);
+        chrome.getContextManager().submitAction("Ask", input, () -> executeAskCommand(askModel, input));
     }
 
     public void runSearchCommand() {
@@ -889,8 +870,7 @@ public class InstructionsPanel extends JPanel {
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        var future = chrome.getContextManager().submitAction("Search", input, () -> executeSearchCommand(searchModel, input));
-        chrome.setCurrentUserTask(future);
+        chrome.getContextManager().submitAction("Search", input, () -> executeSearchCommand(searchModel, input));
     }
 
     public void runRunCommand() {
@@ -903,8 +883,7 @@ public class InstructionsPanel extends JPanel {
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        var future = chrome.getContextManager().submitAction("Run", input, () -> executeRunCommand(input));
-        chrome.setCurrentUserTask(future);
+        chrome.getContextManager().submitAction("Run", input, () -> executeRunCommand(input));
     }
 
     // Methods to disable and enable buttons.

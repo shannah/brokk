@@ -55,6 +55,7 @@ public class SearchAgent {
     private static final int SUMMARIZE_THRESHOLD = 1000;
 
     private final IAnalyzer analyzer;
+    private final boolean interactive;
     private final ContextManager contextManager;
     private final Coder coder;
     private final IConsoleIO io;
@@ -82,11 +83,13 @@ public class SearchAgent {
     public SearchAgent(String query,
                        ContextManager contextManager,
                        StreamingChatLanguageModel model,
-                       ToolRegistry toolRegistry) throws InterruptedException
+                       ToolRegistry toolRegistry,
+                       boolean interactive) throws InterruptedException
     {
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
+        this.interactive = interactive;
         this.coder = contextManager.getCoder(model, "Search: " + query);
         this.io = contextManager.getIo();
         this.toolRegistry = toolRegistry;
@@ -250,10 +253,9 @@ public class SearchAgent {
         while (true) {
             // If thread interrupted, trigger Beast Mode for a final attempt
             if (Thread.interrupted()) {
-                if (beastMode) {
-                    var msg = "Search Agent interrupted again, stopping immediately";
-                    logger.debug(msg);
-                    io.systemOutput(msg);
+                if (beastMode || !interactive) {
+                    logger.debug("Search Agent interrupted effective immediately");
+                    // caller will display to user
                     throw new InterruptedException();
                 }
                 var msg = "Search Agent interrupted, attempting to answer with already-gathered information";
@@ -282,7 +284,7 @@ public class SearchAgent {
             try {
                 toolRequests = determineNextActions();
             } catch (InterruptedException e) {
-                logger.debug("SA caught IE in dna", e);
+                logger.debug("Caught InterruptedException in determineNextActions", e);
                 // let interrupted() check in next loop handle it
                 Thread.currentThread().interrupt();
                 continue;
@@ -312,7 +314,7 @@ public class SearchAgent {
             try {
                 results = executeToolCalls(toolRequests);
             } catch (InterruptedException e) {
-                logger.debug("SA caught IE in tr", e);
+                logger.debug("Caught InterruptedException in executeToolCalls", e);
                 Thread.currentThread().interrupt();
                 continue;
             }

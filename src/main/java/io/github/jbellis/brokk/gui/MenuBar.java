@@ -122,7 +122,7 @@ public class MenuBar {
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         undoItem.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.currentUserTask = chrome.contextManager.undoContextAsync();
+            chrome.contextManager.undoContextAsync();
         });
         undoItem.setEnabled(hasProject);
         editMenu.add(undoItem);
@@ -132,7 +132,7 @@ public class MenuBar {
                                                        Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
         redoItem.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.currentUserTask = chrome.contextManager.redoContextAsync();
+            chrome.contextManager.redoContextAsync();
         });
         redoItem.setEnabled(hasProject);
         editMenu.add(redoItem);
@@ -143,7 +143,7 @@ public class MenuBar {
         copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         copyMenuItem.addActionListener(e -> {
             var selectedFragments = chrome.getSelectedFragments();
-            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.COPY, selectedFragments);
+            chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.COPY, selectedFragments);
         });
         copyMenuItem.setEnabled(hasProject);
         editMenu.add(copyMenuItem);
@@ -151,7 +151,7 @@ public class MenuBar {
         var pasteMenuItem = new JMenuItem("Paste");
         pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         pasteMenuItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
+            chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
         });
         pasteMenuItem.setEnabled(hasProject);
         editMenu.add(pasteMenuItem);
@@ -164,7 +164,7 @@ public class MenuBar {
         var editFilesItem = new JMenuItem("Edit Files");
         editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editFilesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+            chrome.getContextPanel().performContextActionAsync(
                     ContextPanel.ContextAction.EDIT, List.of());
         });
         editFilesItem.setEnabled(hasProject && chrome.getProject().hasGit());
@@ -173,7 +173,7 @@ public class MenuBar {
         var readFilesItem = new JMenuItem("Read Files");
         readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         readFilesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+            chrome.getContextPanel().performContextActionAsync(
                     ContextPanel.ContextAction.READ, List.of());
         });
         readFilesItem.setEnabled(hasProject);
@@ -182,7 +182,7 @@ public class MenuBar {
         var summarizeFilesItem = new JMenuItem("Summarize Files");
         summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         summarizeFilesItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+            chrome.getContextPanel().performContextActionAsync(
                     ContextPanel.ContextAction.SUMMARIZE, List.of());
         });
         summarizeFilesItem.setEnabled(hasProject);
@@ -238,7 +238,7 @@ public class MenuBar {
         var symbolUsageItem = new JMenuItem("Symbol Usage");
             symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
             symbolUsageItem.addActionListener(e -> {
-                chrome.currentUserTask = chrome.getContextPanel().findSymbolUsageAsync(); // Call via ContextPanel
+                chrome.getContextPanel().findSymbolUsageAsync(); // Call via ContextPanel
             });
             symbolUsageItem.setEnabled(hasProject);
             contextMenu.add(symbolUsageItem);
@@ -246,7 +246,7 @@ public class MenuBar {
         var callersItem = new JMenuItem("Call graph to function");
             callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
             callersItem.addActionListener(e -> {
-                chrome.currentUserTask = chrome.getContextPanel().findMethodCallersAsync(); // Call via ContextPanel
+                chrome.getContextPanel().findMethodCallersAsync(); // Call via ContextPanel
             });
             callersItem.setEnabled(hasProject);
             contextMenu.add(callersItem);
@@ -254,7 +254,7 @@ public class MenuBar {
         var calleesItem = new JMenuItem("Call graph from function");
             calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
             calleesItem.addActionListener(e -> {
-                chrome.currentUserTask = chrome.getContextPanel().findMethodCalleesAsync(); // Call via ContextPanel
+                chrome.getContextPanel().findMethodCalleesAsync(); // Call via ContextPanel
             });
             calleesItem.setEnabled(hasProject);
             contextMenu.add(calleesItem);
@@ -262,7 +262,7 @@ public class MenuBar {
         var dropAllItem = new JMenuItem("Drop All");
         dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         dropAllItem.addActionListener(e -> {
-            chrome.currentUserTask = chrome.getContextPanel().performContextActionAsync(
+            chrome.getContextPanel().performContextActionAsync(
                     ContextPanel.ContextAction.DROP, List.of());
         });
         dropAllItem.setEnabled(hasProject);

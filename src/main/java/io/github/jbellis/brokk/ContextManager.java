@@ -107,9 +107,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     @NotNull
     private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {
+        return createLoggingExecutorService(toWrap, Set.of());
+    }
+
+    @NotNull
+    private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap, Set<Class<? extends Throwable>> ignoredExceptions) {
         return new LoggingExecutorService(toWrap, th -> {
             var thread = Thread.currentThread();
-            logger.error("Uncaught exception in thread {}", thread.getName(), th);
+            if (ignoredExceptions.stream().anyMatch(cls -> cls.isInstance(th))) {
+                logger.debug("Uncaught exception (ignorable) in executor", th);
+                return;
+            }
+
+            logger.error("Uncaught exception in executor", th);
             if (io != null) {
                 io.systemOutput("Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
                                         .formatted(thread.getName(), getStackTraceAsString(th)));
@@ -132,12 +142,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
             new ThreadPoolExecutor(3, 12,
                                    60L, TimeUnit.SECONDS,
                                    new LinkedBlockingQueue<>(), // Unbounded queue to prevent rejection
-                                   Executors.defaultThreadFactory()));
+                                   Executors.defaultThreadFactory()),
+            Set.of(InterruptedException.class));
 
-    private Project project; // Initialized in resolveCircularReferences
     private final Path root;
+    private final Models models;
+    private Project project; // Initialized in resolveCircularReferences
     private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
-    private Models models; // Instance of Models
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;

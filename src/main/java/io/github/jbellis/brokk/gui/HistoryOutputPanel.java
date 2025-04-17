@@ -211,7 +211,7 @@ public class HistoryOutputPanel extends JPanel {
         undoButton.setMaximumSize(undoSize);
         undoButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.setCurrentUserTask(contextManager.undoContextAsync());
+            contextManager.undoContextAsync();
         });
 
         redoButton = new JButton("Redo");
@@ -223,7 +223,7 @@ public class HistoryOutputPanel extends JPanel {
         redoButton.setMaximumSize(redoSize);
         redoButton.addActionListener(e -> {
             chrome.disableUserActionButtons();
-            chrome.setCurrentUserTask(contextManager.redoContextAsync());
+            contextManager.redoContextAsync();
         });
 
         buttonPanel.add(undoButton);
@@ -284,7 +284,7 @@ public class HistoryOutputPanel extends JPanel {
      */
     private void undoHistoryUntil(Context targetContext) {
         chrome.disableUserActionButtons();
-        chrome.setCurrentUserTask(contextManager.undoContextUntilAsync(targetContext));
+        contextManager.undoContextUntilAsync(targetContext);
     }
 
     /**
@@ -293,7 +293,7 @@ public class HistoryOutputPanel extends JPanel {
      */
     private void resetContextTo(Context targetContext) {
         chrome.disableUserActionButtons();
-        chrome.setCurrentUserTask(contextManager.resetContextToAsync(targetContext));
+        contextManager.resetContextToAsync(targetContext);
     }
 
     /**
