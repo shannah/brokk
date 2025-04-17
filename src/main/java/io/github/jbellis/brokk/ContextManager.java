@@ -286,8 +286,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getArchitectModel() {
         var modelName = project.getArchitectModelName();
-        var model = models.get(modelName);
-        return model == null ? models.systemModel() : model;
+        return modelName == null ? models.systemModel() : models.get(modelName);
     }
 
     /**
@@ -295,8 +294,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getCodeModel() {
         var modelName = project.getCodeModelName();
-        var model = models.get(modelName);
-        return model == null ? models.systemModel() : model;
+        return modelName == null ? models.systemModel() : models.get(modelName);
     }
 
     /**
@@ -304,8 +302,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getEditModel() {
         var modelName = project.getEditModelName();
-        var model = models.get(modelName);
-        return model == null ? models.systemModel() : model;
+        return modelName == null ? models.systemModel() : models.get(modelName);
     }
 
     /**
@@ -313,13 +310,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getSearchModel() {
         var modelName = project.getSearchModelName();
-        var model = models.get(modelName);
-        return model == null ? models.systemModel() : model;
+        return modelName == null ? models.systemModel() : models.get(modelName);
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {
         io.setLlmOutput("# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response"));
-        return submitBackgroundTask(action, task);
+        return submitUserTask(action, task);
     }
 
     public Future<?> submitUserTask(String description, Runnable task) {
