@@ -41,7 +41,10 @@ public record SessionResult(String actionDescription,
         this(actionDescription,
              messages,
              originalContents,
-             new Context.ParsedOutput(outputString, new ContextFragment.StringFragment(outputString, "AI Response", SyntaxConstants.SYNTAX_STYLE_MARKDOWN)),
+             new Context.ParsedOutput(outputString,
+                                      new ContextFragment.SessionFragment(
+                                              List.of(new TaskEntry(0, actionDescription, messages, null)),
+                                              actionDescription)),
              stopDetails);
     }
 
@@ -52,31 +55,53 @@ public record SessionResult(String actionDescription,
     public static String getShortDescription(String description, int words) {
         var cleaned = description.trim().replaceAll("[^a-zA-Z0-9\\s]", "");
         return cleaned.split("\\s+").length <= words
-                ? cleaned
-                : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, words));
+               ? cleaned
+               : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, words));
     }
 
-    /** Enum representing the reason a CodeAgent session concluded. */
+    /**
+     * Enum representing the reason a CodeAgent session concluded.
+     */
     public enum StopReason {
-        /** The agent successfully completed the goal. */
+        /**
+         * The agent successfully completed the goal.
+         */
         SUCCESS,
-        /** The user interrupted the session. */
+        /**
+         * The user interrupted the session.
+         */
         INTERRUPTED,
-        /** The LLM returned an error after retries. */
+        /**
+         * The LLM returned an error after retries.
+         */
         LLM_ERROR,
-        /** The LLM returned an empty or blank response after retries. */
+        /**
+         * The LLM returned an empty or blank response after retries.
+         */
         EMPTY_RESPONSE,
-        /** The LLM response could not be parsed after retries. */
+        /**
+         * The LLM response could not be parsed after retries.
+         */
         PARSE_ERROR,
-        /** Applying edits failed after retries. */
+        /**
+         * Applying edits failed after retries.
+         */
         APPLY_ERROR,
-        /** Build errors occurred and were not improving after retries. */
+        /**
+         * Build errors occurred and were not improving after retries.
+         */
         BUILD_ERROR,
-        /** The LLM attempted to edit a read-only file. */
+        /**
+         * The LLM attempted to edit a read-only file.
+         */
         READ_ONLY_EDIT,
-        /** the LLM called answer() but did not provide a result */
+        /**
+         * the LLM called answer() but did not provide a result
+         */
         SEARCH_INVALID_ANSWER,
-        /** the LLM determined that it was not possible to answer the query */
+        /**
+         * the LLM determined that it was not possible to answer the query
+         */
         SEARCH_IMPOSSIBLE;
     }
 

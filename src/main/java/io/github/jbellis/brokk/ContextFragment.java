@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import jnr.ffi.annotations.Out;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
@@ -77,7 +78,7 @@ public interface ContextFragment extends Serializable {
                 .collect(Collectors.toSet());
     }
 
-    sealed interface OutputFragment permits ConversationFragment, StringFragment, PasteTextFragment, SearchFragment {
+    sealed interface OutputFragment permits ConversationFragment, SessionFragment, StringFragment, PasteTextFragment, SearchFragment {
         List<TaskEntry> getMessages();
     }
 
@@ -787,18 +788,17 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    /** represents the entire Task History */
-    final class ConversationFragment extends VirtualFragment implements OutputFragment {
+    /** Base class for fragments that represent task history */
+    abstract class TaskHistoryFragment extends VirtualFragment {
         private static final long serialVersionUID = 3L;
-        private final List<TaskEntry> history;
+        protected final List<TaskEntry> history;
 
-        public ConversationFragment(List<TaskEntry> history) {
+        public TaskHistoryFragment(List<TaskEntry> history) {
             super();
             assert history != null;
             this.history = List.copyOf(history);
         }
 
-        @Override
         public List<TaskEntry> getMessages() {
             return history;
         }
@@ -821,11 +821,6 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public String description() {
-            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
-        }
-
-        @Override
         public boolean isEligibleForAutoContext() {
             return false;
         }
@@ -840,13 +835,48 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public String toString() {
-            return "ConversationFragment(" + history.size() + " tasks)";
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
+        }
+    }
+
+    /** represents the entire Task History */
+    final class ConversationFragment extends TaskHistoryFragment implements OutputFragment {
+        private static final long serialVersionUID = 3L;
+
+        public ConversationFragment(List<TaskEntry> history) {
+            super(history);
         }
 
         @Override
-        public String syntaxStyle() {
-            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
+        public String description() {
+            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
+        }
+
+        @Override
+        public String toString() {
+            return "ConversationFragment(" + history.size() + " tasks)";
+        }
+    }
+
+    /** represents a single session's Task History */
+    final class SessionFragment extends TaskHistoryFragment implements OutputFragment {
+        private static final long serialVersionUID = 3L;
+        private final String sessionName;
+
+        public SessionFragment(List<TaskEntry> history, String sessionName) {
+            super(history);
+            this.sessionName = sessionName;
+        }
+
+        @Override
+        public String description() {
+            return "AI response: " + sessionName;
+        }
+
+        @Override
+        public String toString() {
+            return "SessionFragment(" + sessionName + ")";
         }
     }
 
