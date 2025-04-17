@@ -133,6 +133,9 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
                 
                 Please decide the next tool action(s) to make progress towards resolving the goal.
                 
+                You MUST think carefully before each function call, and reflect extensively on the outcomes of the previous function calls.
+                DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
+                
                 You are encouraged to call multiple tools simultaneously, especially
                 - when searching for relevant code: you can invoke callSearchAgent multiple times at once
                 - when manipulating Workspace context: make all desired manipulations at once
