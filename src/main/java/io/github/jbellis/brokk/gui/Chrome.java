@@ -2,12 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
-import io.github.jbellis.brokk.Brokk;
-import io.github.jbellis.brokk.Context;
-import io.github.jbellis.brokk.ContextFragment;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
@@ -345,7 +340,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         SwingUtilities.invokeLater(() -> {
             contextPanel.populateContextTable(ctx);
             if (resetOutput) {
-                historyOutputPanel.resetLlmOutput(ctx.getParsedOutput() == null ? "" : ctx.getParsedOutput().text());
+                if (ctx.getParsedOutput() != null && ctx.getParsedOutput().parsedFragment() instanceof ContextFragment.OutputFragment) {
+                    historyOutputPanel.resetLlmOutput(((ContextFragment.OutputFragment) ctx.getParsedOutput().parsedFragment()).getMessages().getFirst());    
+                } else {
+                    historyOutputPanel.clearLlmOutput();
+                }
+                
             }
             updateCaptureButtons();
         });
@@ -515,128 +515,137 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
     }
 
-        /**
-         * Creates and shows a standard preview JFrame for a given component.
-         * Handles title, default close operation, loading/saving bounds using the "preview" key,
-         * and visibility.
-         *
-         * @param contextManager The context manager for accessing project settings.
-         * @param title The title for the JFrame.
-         * @param contentComponent The JComponent to display within the frame.
-         */
-        private void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
-            JFrame previewFrame = new JFrame(title);
-            previewFrame.setContentPane(contentComponent);
-            previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+    /**
+     * Creates and shows a standard preview JFrame for a given component.
+     * Handles title, default close operation, loading/saving bounds using the "preview" key,
+     * and visibility.
+     *
+     * @param contextManager   The context manager for accessing project settings.
+     * @param title            The title for the JFrame.
+     * @param contentComponent The JComponent to display within the frame.
+     */
+    private void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
+        JFrame previewFrame = new JFrame(title);
+        previewFrame.setContentPane(contentComponent);
+        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
 
-            var project = contextManager.getProject();
-            assert project != null;
-            var storedBounds = project.getPreviewWindowBounds(); // Use preview bounds
-            if (storedBounds != null && storedBounds.width > 0 && storedBounds.height > 0) {
-                previewFrame.setBounds(storedBounds);
-                 if (!isPositionOnScreen(storedBounds.x, storedBounds.y)) {
-                    previewFrame.setLocationRelativeTo(frame); // Center if off-screen
-                }
-            } else {
-                 previewFrame.setSize(800, 600); // Default size if no bounds saved
-                 previewFrame.setLocationRelativeTo(frame); // Center relative to main window
+        var project = contextManager.getProject();
+        assert project != null;
+        var storedBounds = project.getPreviewWindowBounds(); // Use preview bounds
+        if (storedBounds != null && storedBounds.width > 0 && storedBounds.height > 0) {
+            previewFrame.setBounds(storedBounds);
+            if (!isPositionOnScreen(storedBounds.x, storedBounds.y)) {
+                previewFrame.setLocationRelativeTo(frame); // Center if off-screen
             }
-
-
-            // Add listener to save bounds using the "preview" key
-            previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
-                @Override
-                public void componentMoved(java.awt.event.ComponentEvent e) {
-                    project.savePreviewWindowBounds(previewFrame); // Save JFrame bounds
-                }
-                @Override
-                public void componentResized(java.awt.event.ComponentEvent e) {
-                    project.savePreviewWindowBounds(previewFrame); // Save JFrame bounds
-                }
-            });
-
-            // Add ESC key binding to close the window
-            var rootPane = previewFrame.getRootPane();
-            var actionMap = rootPane.getActionMap();
-            var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-            inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeWindow");
-            actionMap.put("closeWindow", new AbstractAction() {
-                @Override
-                public void actionPerformed(java.awt.event.ActionEvent e) {
-                    previewFrame.dispose();
-                }
-            });
-
-            previewFrame.setVisible(true);
+        } else {
+            previewFrame.setSize(800, 600); // Default size if no bounds saved
+            previewFrame.setLocationRelativeTo(frame); // Center relative to main window
         }
 
-        /**
-         * Opens a preview window for a context fragment.
-         * Uses PreviewTextPanel for text fragments and PreviewImagePanel for image fragments.
-         * Uses MarkdownOutputPanel for Markdown and Diff fragments.
-         *
-         * @param fragment The fragment to preview.
-         */
-        public void openFragmentPreview(ContextFragment fragment) {
-            try {
-                String title = "Preview: " + fragment.description();
 
-                if (!fragment.isText()) {
-                    // Handle image fragments
-                    if (fragment instanceof ContextFragment.PasteImageFragment pif) {
-                        var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
-                        imagePanel.setImage(pif.image());
-                        showPreviewFrame(contextManager, title, imagePanel); // Use helper
-                    } else if (fragment instanceof ContextFragment.ImageFileFragment iff) {
-                         // PreviewImagePanel has its own static showInFrame that uses showPreviewFrame
-                        PreviewImagePanel.showInFrame(frame, contextManager, iff.file(), themeManager);
-                    }
-                    return;
+        // Add listener to save bounds using the "preview" key
+        previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e) {
+                project.savePreviewWindowBounds(previewFrame); // Save JFrame bounds
+            }
+
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                project.savePreviewWindowBounds(previewFrame); // Save JFrame bounds
+            }
+        });
+
+        // Add ESC key binding to close the window
+        var rootPane = previewFrame.getRootPane();
+        var actionMap = rootPane.getActionMap();
+        var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeWindow");
+        actionMap.put("closeWindow", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                previewFrame.dispose();
+            }
+        });
+
+        previewFrame.setVisible(true);
+    }
+
+    /**
+     * Opens a preview window for a context fragment.
+     * Uses PreviewTextPanel for text fragments and PreviewImagePanel for image fragments.
+     * Uses MarkdownOutputPanel for Markdown and Diff fragments.
+     *
+     * @param fragment The fragment to preview.
+     */
+    public void openFragmentPreview(ContextFragment fragment) {
+        try {
+            String title = "Preview: " + fragment.description();
+
+            if (!fragment.isText()) {
+                // Handle image fragments
+                if (fragment instanceof ContextFragment.PasteImageFragment pif) {
+                    var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
+                    imagePanel.setImage(pif.image());
+                    showPreviewFrame(contextManager, title, imagePanel); // Use helper
+                } else if (fragment instanceof ContextFragment.ImageFileFragment iff) {
+                    // PreviewImagePanel has its own static showInFrame that uses showPreviewFrame
+                    PreviewImagePanel.showInFrame(frame, contextManager, iff.file(), themeManager);
                 }
+                return;
+            }
 
-                // Handle text fragments
-                String content = fragment.text();
-                if (fragment instanceof ContextFragment.GitFileFragment ghf) {
-                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, fragment.syntaxStyle(), themeManager, ghf);
-                    showPreviewFrame(contextManager, title, previewPanel); // Use helper
-                } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
-                    PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
-                     showPreviewFrame(contextManager, title, previewPanel); // Use helper
-                } else {
-                    // Handle Markdown, Diff, or plain text virtual fragments
-                    if (fragment.syntaxStyle().equals(SyntaxConstants.SYNTAX_STYLE_MARKDOWN)
-                        || fragment.syntaxStyle().equals(ContextFragment.SYNTAX_STYLE_DIFF))
-                    {
-                        // Use MarkdownOutputPanel for Markdown and Diff
+            // Handle text fragments
+            String content = fragment.text();
+            if (fragment instanceof ContextFragment.GitFileFragment ghf) {
+                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, fragment.syntaxStyle(), themeManager, ghf);
+                showPreviewFrame(contextManager, title, previewPanel); // Use helper
+            } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
+                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
+                showPreviewFrame(contextManager, title, previewPanel); // Use helper
+            } else {
+                // Handle fragments that implement OutputFragment
+                if (fragment instanceof ContextFragment.OutputFragment outputFragment && fragment.syntaxStyle() == SyntaxConstants.SYNTAX_STYLE_MARKDOWN) {
+                    // Create a panel to hold all message panels
+                    JPanel messagesContainer = new JPanel();
+                    messagesContainer.setLayout(new BoxLayout(messagesContainer, BoxLayout.Y_AXIS));
+                    messagesContainer.setBackground(themeManager != null && themeManager.isDarkTheme() ?
+                                                    UIManager.getColor("Panel.background") : Color.WHITE);
+
+                    // Get all messages and create a MarkdownOutputPanel for each
+                    List<TaskEntry> taskEntries = outputFragment.getMessages();
+                    for (TaskEntry entry : taskEntries) {
                         var markdownPanel = new MarkdownOutputPanel();
                         markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
-
-                        // TODO: how to do this?
-                        // markdownPanel.setText(content);
-
-                        // Wrap in a scroll pane
-                        var scrollPane = new JScrollPane(markdownPanel);
-                        scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-                        showPreviewFrame(contextManager, title, scrollPane); // Use helper
-                    } else {
-                        // Use PreviewTextPanel for other virtual/plain text fragments
-                        var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);
-                        showPreviewFrame(contextManager, title, previewPanel); // Use helper
+                        markdownPanel.setText(entry.log());
+                        markdownPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.GRAY));
+                        messagesContainer.add(markdownPanel);
                     }
-                }
-            } catch (IOException ex) {
-                toolErrorRaw("Error reading fragment content: " + ex.getMessage());
-            } catch (Exception ex) {
-                logger.debug("Error opening preview", ex);
-                toolErrorRaw("Error opening preview: " + ex.getMessage());
-            }
-        }
 
-        private void loadWindowSizeAndPosition() {
-            var project = getProject();
-            if (project == null) {
+                    // Wrap in a scroll pane
+                    var scrollPane = new JScrollPane(messagesContainer);
+                    scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+                    scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+
+                    showPreviewFrame(contextManager, title, scrollPane); // Use helper
+                } else {
+                    // Use PreviewTextPanel for other virtual/plain text fragments
+                    var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);
+                    showPreviewFrame(contextManager, title, previewPanel); // Use helper
+                }
+            }
+        } catch (IOException ex) {
+            toolErrorRaw("Error reading fragment content: " + ex.getMessage());
+        } catch (Exception ex) {
+            logger.debug("Error opening preview", ex);
+            toolErrorRaw("Error opening preview: " + ex.getMessage());
+        }
+    }
+
+    private void loadWindowSizeAndPosition() {
+        var project = getProject();
+        if (project == null) {
             frame.setLocationRelativeTo(null);
             return;
         }

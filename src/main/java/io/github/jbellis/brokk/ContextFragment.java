@@ -1,5 +1,8 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.CustomMessage;
+import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
@@ -19,7 +22,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public interface ContextFragment extends Serializable {
-    String SYNTAX_STYLE_DIFF = "DIFF";
 
     // Static counter for all fragments
     AtomicInteger NEXT_ID = new AtomicInteger(1);
@@ -73,6 +75,10 @@ public interface ContextFragment extends Serializable {
         return project.getFiles().stream().parallel()
                 .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
+    }
+
+    sealed interface OutputFragment permits ConversationFragment, StringFragment, PasteTextFragment, SearchFragment {
+        List<TaskEntry> getMessages();
     }
 
     sealed interface PathFragment extends ContextFragment
@@ -368,7 +374,7 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class StringFragment extends VirtualFragment {
+    final class StringFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 2L;
         private final String text;
         private final String description;
@@ -402,9 +408,14 @@ public interface ContextFragment extends Serializable {
         public String toString() {
             return "StringFragment('%s')".formatted(description);
         }
+
+        @Override
+        public List<TaskEntry> getMessages() {
+            return List.of(new TaskEntry(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
+        }
     }
 
-    class SearchFragment extends VirtualFragment {
+    final class SearchFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 2L;
         private final String query;
         private final String explanation;
@@ -448,6 +459,15 @@ public interface ContextFragment extends Serializable {
         @Override
         public String toString() {
             return "SearchFragment('%s')".formatted(query);
+        }
+
+        @Override
+        public List<TaskEntry> getMessages() {
+            var messages = List.of(
+                    new UserMessage("# Query\n\n%s".formatted(query)),
+                    new AiMessage("# Answer\n\n%s".formatted(explanation))
+            );
+            return List.of(new TaskEntry(0, "Search", messages, null));
         }
     }
 
@@ -500,7 +520,7 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class PasteTextFragment extends PasteFragment {
+    final class PasteTextFragment extends PasteFragment implements OutputFragment {
         private static final long serialVersionUID = 3L;
         private final String text;
 
@@ -520,6 +540,12 @@ public interface ContextFragment extends Serializable {
         @Override
         public String text() {
             return text;
+        }
+
+        @Override
+        public List<TaskEntry> getMessages() {
+            var description = descriptionFuture.isDone() ? description() : "Paste";
+            return List.of(new TaskEntry(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 
@@ -762,7 +788,7 @@ public interface ContextFragment extends Serializable {
     }
 
     /** represents the entire Task History */
-    class ConversationFragment extends VirtualFragment {
+    final class ConversationFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 3L;
         private final List<TaskEntry> history;
 
@@ -772,7 +798,8 @@ public interface ContextFragment extends Serializable {
             this.history = List.copyOf(history);
         }
 
-        public List<TaskEntry> getHistory() {
+        @Override
+        public List<TaskEntry> getMessages() {
             return history;
         }
 
@@ -819,7 +846,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String syntaxStyle() {
-            return SYNTAX_STYLE_DIFF;
+            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
         }
     }
 

@@ -291,7 +291,7 @@ public class ContextPanel extends JPanel {
                                 });
                                 contextMenu.add(compressHistoryItem);
                                 // Only enable if uncompressed entries exist
-                                var uncompressedExists = cf.getHistory().stream().anyMatch(entry -> !entry.isCompressed());
+                                var uncompressedExists = cf.getMessages().stream().anyMatch(entry -> !entry.isCompressed());
                                 compressHistoryItem.setEnabled(uncompressedExists);
                             }
                         }

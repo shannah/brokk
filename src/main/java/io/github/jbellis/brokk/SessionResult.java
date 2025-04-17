@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.util.Arrays;
 import java.util.List;
@@ -40,7 +41,7 @@ public record SessionResult(String actionDescription,
         this(actionDescription,
              messages,
              originalContents,
-             new Context.ParsedOutput(outputString, new ContextFragment.StringFragment(outputString, "AI Response", ContextFragment.SYNTAX_STYLE_DIFF)),
+             new Context.ParsedOutput(outputString, new ContextFragment.StringFragment(outputString, "AI Response", SyntaxConstants.SYNTAX_STYLE_MARKDOWN)),
              stopDetails);
     }
 

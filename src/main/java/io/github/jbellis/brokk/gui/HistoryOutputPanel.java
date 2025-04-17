@@ -2,10 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
-import io.github.jbellis.brokk.Context;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.Project;
-import io.github.jbellis.brokk.TaskEntry;
+import io.github.jbellis.brokk.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -19,6 +16,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * A component that combines the context history panel with the output panel using BorderLayout.
@@ -458,15 +456,17 @@ public class HistoryOutputPanel extends JPanel {
     /**
      * Sets the text in the LLM output area
      */
-    public void resetLlmOutput(String text) {
+    public void resetLlmOutput(TaskEntry taskEntry) {
         // this is called by the context selection listener, but when we just finished streaming a response
         // we don't want scroll-to-top behavior
-        if (llmStreamArea.getText().equals(text)) {
+        var newText = taskEntry.log().stream()
+                .map(Models::getRepr)
+                .collect(Collectors.joining("\n\n"));
+        if (llmStreamArea.getText().equals(newText)) {
             return;
         }
 
-        // TODO: show text or fragment (ConversationFragment)
-        // setLlmOutput(text);
+        setLlmOutput(taskEntry);
         // Scroll to the top
         SwingUtilities.invokeLater(() -> {
             llmScrollPane.getVerticalScrollBar().setValue(0);
@@ -519,9 +519,9 @@ public class HistoryOutputPanel extends JPanel {
         return llmScrollPane;
     }
 
-    // setCommandResultText removed
-
-    // clearCommandResultText removed
+    public void clearLlmOutput() {
+        llmStreamArea.clear();
+    }
 
     /**
      * Inner class representing a detached window for viewing output text
