@@ -181,11 +181,11 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         for (var block : parseResult.blocks()) {
             if (block.block() != null) {
                 // Edit block
-                logger.debug("Rendering edit block for {}", block.block().filename());
+                logger.trace("Rendering edit block for {}", block.block().filename());
                 add(renderEditBlockComponent(block.block()));
             } else {
                 // Plain text/markdown
-                logger.debug("Rendering plain/markdown text block");
+                logger.trace("Rendering plain/markdown text block");
                 if (parseResult.parseError() != null) {
                     // Show parse errors literally
                     add(createPlainTextPane(block.text()));
