@@ -7,6 +7,8 @@ import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.internal.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -14,12 +16,7 @@ import org.jetbrains.annotations.NotNull;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
-import java.util.Arrays; // Added import
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -218,5 +215,29 @@ public class ToolRegistry {
             logger.error("Error executing tool {}", request.name(), e);
             return ToolExecutionResult.failure(request, e.getMessage());
         }
+    }
+
+    /**
+     * Removes duplicate ToolExecutionRequests from an AiMessage.
+     * Duplicates are identified by having the same tool name and arguments.
+     * The order of the remaining requests is preserved from the first occurrence.
+     *
+     * @param message The input AiMessage.
+     * @return A new AiMessage with duplicate tool requests removed, or the original message if no requests were present or no duplicates found.
+     */
+    public static AiMessage removeDuplicateToolRequests(AiMessage message) {
+        if (!message.hasToolExecutionRequests()) {
+            return message;
+        }
+
+        var deduplicated = List.copyOf(new LinkedHashSet<>(message.toolExecutionRequests()));
+
+        // If no duplicates were found, return the original message
+        if (deduplicated.size() == message.toolExecutionRequests().size()) {
+            return message;
+        }
+
+        // Create a new AiMessage with the unique requests
+        return AiMessage.from(message.text(), deduplicated);
     }
 }

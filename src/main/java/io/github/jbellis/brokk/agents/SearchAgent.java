@@ -668,8 +668,7 @@ public class SearchAgent {
          totalUsage = TokenUsage.sum(totalUsage, response.tokenUsage());
 
          // Parse response into potentially multiple actions
-         // This returns ToolExecutionRequest objects now
-         return parseResponseToRequests(response.aiMessage());
+         return parseResponseToRequests(ToolRegistry.removeDuplicateToolRequests(response.aiMessage()));
      }
 
      /**

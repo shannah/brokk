@@ -19,9 +19,7 @@ import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -33,7 +31,8 @@ public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
 
     // Helper record to associate a SearchAgent task Future with its request
-    private record SearchTask(ToolExecutionRequest request, Future<ToolExecutionResult> future) {}
+    private record SearchTask(ToolExecutionRequest request, Future<ToolExecutionResult> future) {
+    }
 
     private final ContextManager contextManager;
     private final StreamingChatLanguageModel model;
@@ -42,10 +41,11 @@ public class ArchitectAgent {
     // History of this agent's interactions
     private final List<ChatMessage> architectMessages = new ArrayList<>();
 
-    private TokenUsage totalUsage = new TokenUsage(0,0);
+    private TokenUsage totalUsage = new TokenUsage(0, 0);
 
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
+     *
      * @param goal The initial user instruction or goal for the agent.
      */
     public ArchitectAgent(ContextManager contextManager, StreamingChatLanguageModel model, ToolRegistry toolRegistry, String goal) {
@@ -62,7 +62,8 @@ public class ArchitectAgent {
     public void projectFinished(
             @P("A final explanation or summary addressing all tasks. Format it in Markdown if desired.")
             String finalExplanation
-    ) {
+    )
+    {
         var msg = "Architect Agent project complete: %s".formatted(finalExplanation);
         logger.debug(msg);
         contextManager.getIo().systemOutput(msg);
@@ -75,7 +76,8 @@ public class ArchitectAgent {
     public void abortProject(
             @P("Explain why the project must be aborted.")
             String reason
-    ) {
+    )
+    {
         var msg = "Architect Agent project aborted: %s".formatted(reason);
         logger.debug(msg);
         contextManager.getIo().systemOutput(msg);
@@ -89,32 +91,33 @@ public class ArchitectAgent {
     public String callCodeAgent(
             @P("Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
-        ) {
-            logger.debug("callCodeAgent invoked with instructions: {}", instructions);
+    )
+    {
+        logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
-            logger.debug("Invoking TestAgent to find relevant tests...");
-            var testAgent = new ValidationAgent(contextManager, contextManager.getModels().quickModel());
-            var relevantTests = testAgent.execute(instructions);
-            if (!relevantTests.isEmpty()) {
-                logger.debug("Adding relevant test files found by TestAgent to workspace: {}", relevantTests);
-                contextManager.editFiles(relevantTests); // Add tests to workspace
-            } else {
-                logger.debug("TestAgent found no relevant test files to add.");
-            }
+        logger.debug("Invoking TestAgent to find relevant tests...");
+        var testAgent = new ValidationAgent(contextManager, contextManager.getModels().quickModel());
+        var relevantTests = testAgent.execute(instructions);
+        if (!relevantTests.isEmpty()) {
+            logger.debug("Adding relevant test files found by TestAgent to workspace: {}", relevantTests);
+            contextManager.editFiles(relevantTests); // Add tests to workspace
+        } else {
+            logger.debug("TestAgent found no relevant test files to add.");
+        }
 
-            var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, false);
-            var entry = contextManager.addToHistory(result, true);
-            var stopDetails = result.stopDetails();
-            String summary = """
-        CodeAgent concluded.
-        <summary>
-        %s
-        </summary>
-        
-        <stop-details>
-        %s
-        </stop-details>
-        """.stripIndent().formatted(entry.summary(), stopDetails);
+        var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, false);
+        var entry = contextManager.addToHistory(result, true);
+        var stopDetails = result.stopDetails();
+        String summary = """
+                CodeAgent concluded.
+                <summary>
+                %s
+                </summary>
+                
+                <stop-details>
+                %s
+                </stop-details>
+                """.stripIndent().formatted(entry.summary(), stopDetails);
         logger.debug("Summary for callCodeAgent: {}", summary);
         return summary;
     }
@@ -128,7 +131,8 @@ public class ArchitectAgent {
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent. Query in English (not just keywords)")
             String query
-    ) {
+    )
+    {
         logger.debug("callSearchAgent invoked with query: {}", query);
 
         // Instantiate and run SearchAgent
@@ -147,11 +151,11 @@ public class ArchitectAgent {
                 .map(CodeUnit::fqName)
                 .collect(Collectors.joining(","));
         var stringResult = """
-            %s
-
-            Full list of potentially relevant classes:
-            %s
-            """.stripIndent().formatted(searchResult.output().text(), relevantClasses);
+                %s
+                
+                Full list of potentially relevant classes:
+                %s
+                """.stripIndent().formatted(searchResult.output().text(), relevantClasses);
 
         logger.debug(stringResult);
         return stringResult;
@@ -206,16 +210,15 @@ public class ArchitectAgent {
                 contextManager.getIo().systemOutput(msg);
                 return;
             }
-            logger.debug("LLM response: {}", response);
 
             totalUsage = TokenUsage.sum(totalUsage, response.chatResponse().tokenUsage());
             // Add the request and response to message history
-            var aiMessage = response.chatResponse().aiMessage();
+            var aiMessage = ToolRegistry.removeDuplicateToolRequests(response.chatResponse().aiMessage());
             architectMessages.add(messages.getLast());
             architectMessages.add(aiMessage);
 
-            var toolRequests = aiMessage.toolExecutionRequests();
-            logger.debug("Tool requests are {}", toolRequests);
+            var deduplicatedRequests = new LinkedHashSet<>(aiMessage.toolExecutionRequests());
+            logger.debug("Unique tool requests are {}", deduplicatedRequests);
 
             // execute tool calls in the following order:
             // 1. projectFinished
@@ -227,7 +230,7 @@ public class ArchitectAgent {
             var searchAgentReqs = new ArrayList<ToolExecutionRequest>();
             var codeAgentReqs = new ArrayList<ToolExecutionRequest>();
             var otherReqs = new ArrayList<ToolExecutionRequest>();
-            for (var req : toolRequests) {
+            for (var req : deduplicatedRequests) {
                 if (req.name().equals("projectFinished")) {
                     answerReq = req;
                 } else if (req.name().equals("abortProject")) {
@@ -338,12 +341,12 @@ public class ArchitectAgent {
 
     /**
      * Build the system/user messages for the LLM:
-     *   - System message explaining that this is a multi-step plan agent.
-     *   - A user message showing the current stack top, the entire stack,
-     *     the top-10 PageRank classes, and any relevant instructions.
+     * - System message explaining that this is a multi-step plan agent.
+     * - A user message showing the current stack top, the entire stack,
+     * the top-10 PageRank classes, and any relevant instructions.
      */
     private List<ChatMessage> buildPrompt() {
-            // top 10 related classes
+        // top 10 related classes
         String topClassesRaw = "";
         var analyzer = contextManager.getAnalyzer();
         if (!analyzer.isEmpty()) {
@@ -351,34 +354,34 @@ public class ArchitectAgent {
             topClassesRaw = ac.text();
         }
         var topClassesText = topClassesRaw.isBlank() ? "" : """
-        <related_classes>
-        Here are some potentially related classes that you may wish to add to the context. Code Agent will not
-        see them unless you explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace.
-        If they are not relevant, just ignore them:
-        
-        %s
-        </related_classes>
-        """.stripIndent().formatted(topClassesRaw);
+                <related_classes>
+                Here are some classes that may be related to what is in your Workspace. Code Agent will not
+                see them unless you explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace.
+                If they are not relevant, just ignore them:
+                
+                %s
+                </related_classes>
+                """.stripIndent().formatted(topClassesRaw);
 
         var userMsg = """
-        %s
-
-        <goal>
-        %s
-        </goal>
-
-        Please decide the next tool action(s) to make progress towards resolving the goal.
-        
-        You are encouraged to call multiple tools simultaneously, especially
-        - when searching for relevant code: you can invoke callSearchAgent multiple times at once
-        - when manipulating Workspace context: make all desired manipulations at once
-
-        Conversely, it does not make sense to call multiple tools with
-        - callCodeAgent, since you want to see what changes get made before proceeding
-        - projectFinished or abortProject, since they terminate execution
-
-        When you are done, call projectFinished or abortProject.
-        """.stripIndent().formatted(topClassesText, goal);
+                %s
+                
+                <goal>
+                %s
+                </goal>
+                
+                Please decide the next tool action(s) to make progress towards resolving the goal.
+                
+                You are encouraged to call multiple tools simultaneously, especially
+                - when searching for relevant code: you can invoke callSearchAgent multiple times at once
+                - when manipulating Workspace context: make all desired manipulations at once
+                
+                Conversely, it does not make sense to call multiple tools with
+                - callCodeAgent, since you want to see what changes get made before proceeding
+                - projectFinished or abortProject, since they terminate execution
+                
+                When you are done, call projectFinished or abortProject.
+                """.stripIndent().formatted(topClassesText, goal);
 
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),

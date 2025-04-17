@@ -101,11 +101,11 @@ public class BuildAgent {
                 return null;
             }
 
-            AiMessage aiMessage = response.aiMessage();
+            var aiMessage = ToolRegistry.removeDuplicateToolRequests(response.aiMessage());
             chatHistory.add(aiMessage); // Add AI request message to history
 
             // 5. Process Tool Execution Requests
-            List<ToolExecutionRequest> requests = aiMessage.toolExecutionRequests();
+            var requests = aiMessage.toolExecutionRequests();
             logger.debug("LLM requested {} tools", requests.size());
 
             // Prioritize terminal actions (report or abort)
