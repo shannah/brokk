@@ -33,17 +33,24 @@ import java.util.stream.Stream;
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
+    private final ContextManager contextManager;
+    private final StreamingChatLanguageModel model;
+    private final IConsoleIO io;
+
+    public CodeAgent(ContextManager contextManager, StreamingChatLanguageModel model) {
+        this.contextManager = contextManager;
+        this.model = model;
+        this.io = contextManager.getIo();
+    }
 
     /**
      * Implementation of the LLM session that runs in a separate thread.
      * Uses the provided model for the initial request and potentially switches for fixes.
      *
-     * @param contextManager The ContextManager instance, providing access to Coder, IO, Project, etc.
-     * @param model The model selected by the user for the main task.
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public static SessionResult runSession(ContextManager contextManager, StreamingChatLanguageModel model, String userInput, boolean rejectReadonlyEdits)
+    public SessionResult runSession(String userInput, boolean rejectReadonlyEdits)
     {
         var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
@@ -73,7 +80,7 @@ public class CodeAgent {
         SessionResult.StopDetails stopDetails;
 
         while (true) {
-            stopDetails = checkInterruption(io);
+            stopDetails = checkInterruption();
             if (stopDetails != null) break;
 
             // Prepare and send request to LLM
@@ -140,7 +147,7 @@ public class CodeAgent {
             }
 
             // Check for interruption again before applying
-            stopDetails = checkInterruption(io);
+            stopDetails = checkInterruption();
             if (stopDetails != null) break;
 
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
@@ -235,7 +242,7 @@ public class CodeAgent {
      * Checks if the current thread is interrupted. Returns StopDetails(StopReason.INTERRUPTED) if so,
      * or null if everything is fine.
      */
-    private static SessionResult.StopDetails checkInterruption(IConsoleIO io) {
+    private SessionResult.StopDetails checkInterruption() {
         if (Thread.currentThread().isInterrupted()) {
             io.systemOutput("Session interrupted");
             return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
@@ -354,14 +361,12 @@ public class CodeAgent {
                 return null;
             }
 
-            // Identify all files considered test files within the entire project using the regex pattern
-            var projectTestFiles = cm.getTestFiles();
-
             // Get the set of files currently loaded in the workspace (both editable and read-only ProjectFiles)
             var workspaceFiles = Stream.concat(cm.getEditableFiles().stream(), cm.getReadonlyFiles().stream())
                     .collect(Collectors.toSet());
 
             // Check if any of the identified project test files are present in the current workspace set
+            var projectTestFiles = cm.getTestFiles();
             var workspaceTestFiles = projectTestFiles.stream().filter(workspaceFiles::contains).toList();
 
             // Decide which command to use
@@ -417,13 +422,12 @@ public class CodeAgent {
      *
      * @return A SessionResult containing the conversation and original content.
          */
-    public static SessionResult runQuickSession(ContextManager cm,
-                                                IConsoleIO io,
-                                                ProjectFile file,
-                                                String oldText,
-                                                String instructions) {
-        var coder = cm.getCoder(cm.getModels().quickModel(), "QuickEdit: " + instructions);
-        var analyzer = cm.getAnalyzer();
+    public SessionResult runQuickSession(ProjectFile file,
+                                         String oldText,
+                                         String instructions)
+    {
+        var coder = contextManager.getCoder(model, "QuickEdit: " + instructions);
+        var analyzer = contextManager.getAnalyzer();
 
         // Use up to 5 related classes as context
         var seeds = analyzer.getClassesInFile(file).stream()
@@ -437,7 +441,7 @@ public class CodeAgent {
             throw new java.io.UncheckedIOException(e);
         }
 
-        var styleGuide = cm.getProject().getStyleGuide();
+        var styleGuide = contextManager.getProject().getStyleGuide();
 
         // Build the prompt messages
         var messages = QuickEditPrompts.instance.collectMessages(fileContents, relatedCode, styleGuide);
