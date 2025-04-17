@@ -119,9 +119,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
-        // Initialize model dropdown via InstructionsPanel
-        instructionsPanel.initializeModels();
-
         if (contextManager == null) {
             frame.setTitle("Brokk (no project)");
             instructionsPanel.disableButtons(); // Ensure buttons disabled if no project/context

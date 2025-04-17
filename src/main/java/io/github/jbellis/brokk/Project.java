@@ -44,6 +44,10 @@ public class Project implements IProject, AutoCloseable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
     private static final String BUILD_DETAILS_KEY = "buildDetailsJson";
+    private static final String ARCHITECT_MODEL_KEY = "architectModel";
+    private static final String CODE_MODEL_KEY = "codeModel";
+    private static final String EDIT_MODEL_KEY = "editModel";
+    private static final String SEARCH_MODEL_KEY = "searchModel";
 
     // --- Static paths ---
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
@@ -157,9 +161,10 @@ public class Project implements IProject, AutoCloseable {
         allFiles.addAll(dependencyFiles);
         return allFiles;
     }
-    
+
     /**
      * Loads all files from the .brokk/dependencies directory
+     *
      * @return Set of RepoFile objects for all dependency files
      */
     private Set<ProjectFile> loadDependencyFiles() {
@@ -167,15 +172,15 @@ public class Project implements IProject, AutoCloseable {
         if (!Files.exists(dependenciesPath) || !Files.isDirectory(dependenciesPath)) {
             return Set.of();
         }
-        
+
         try (var pathStream = Files.walk(dependenciesPath)) {
             return pathStream
-                .filter(Files::isRegularFile)
-                .map(path -> {
-                    var relPath = root.relativize(path);
-                    return new ProjectFile(root, relPath);
-                })
-                .collect(Collectors.toSet());
+                    .filter(Files::isRegularFile)
+                    .map(path -> {
+                        var relPath = root.relativize(path);
+                        return new ProjectFile(root, relPath);
+                    })
+                    .collect(Collectors.toSet());
         } catch (IOException e) {
             logger.error("Error loading dependency files", e);
             return Set.of();
@@ -221,6 +226,69 @@ public class Project implements IProject, AutoCloseable {
         saveProjectProperties();
     }
 
+    /**
+     * Gets the configured model name for architect/agent tasks.
+     * Falls back to a default if not set.
+     */
+    public String getArchitectModelName() {
+        return workspaceProps.getProperty(ARCHITECT_MODEL_KEY);
+    }
+
+    /**
+     * Sets the model name for architect/agent tasks.
+     */
+    public void setArchitectModelName(String modelName) {
+        workspaceProps.setProperty(ARCHITECT_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the configured model name for code generation tasks.
+     * Falls back to a default if not set.
+     */
+    public String getCodeModelName() {
+        return workspaceProps.getProperty(CODE_MODEL_KEY);
+    }
+
+    /**
+     * Sets the model name for code generation tasks.
+     */
+    public void setCodeModelName(String modelName) {
+        workspaceProps.setProperty(CODE_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the configured model name for edit tasks.
+     * Falls back to a default if not set.
+     */
+    public String getEditModelName() {
+        return workspaceProps.getProperty(EDIT_MODEL_KEY);
+    }
+
+    /**
+     * Sets the model name for edit tasks.
+     */
+    public void setEditModelName(String modelName) {
+        workspaceProps.setProperty(EDIT_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the configured model name for search/RAG tasks.
+     * Falls back to a default if not set.
+     */
+    public String getSearchModelName() {
+        return workspaceProps.getProperty(SEARCH_MODEL_KEY);
+    }
+
+    /**
+     * Sets the model name for search/RAG tasks.
+     */
+    public void setSearchModelName(String modelName) {
+        workspaceProps.setProperty(SEARCH_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
 
     public Language getAnalyzerLanguage() {
         String lang = projectProps.getProperty("code_intelligence_language");
@@ -236,6 +304,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the name of the last used LLM model for this project.
+     *
      * @return Model name, or null if not set.
      */
     public String getLastUsedModel() {
@@ -244,6 +313,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Sets the name of the last used LLM model for this project.
+     *
      * @param modelName The name of the model.
      */
     public void setLastUsedModel(String modelName) {
@@ -295,6 +365,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Compares two Properties objects to see if they have the same key-value pairs
+     *
      * @return true if properties are equal
      */
     private static boolean propsEqual(Properties p1, Properties p2) {
@@ -338,6 +409,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Check if .brokk entries exist in .gitignore
+     *
      * @return true if .gitignore contains entries for .brokk
      */
     public boolean isGitIgnoreSet() {
@@ -407,6 +479,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Loads a serialized Context object from the workspace properties
+     *
      * @return The loaded Context, or null if none exists
      */
     public Context loadContext(IContextManager contextManager, String welcomeMessage) {
@@ -431,8 +504,9 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Saves a list of text history items to workspace properties
+     *
      * @param historyItems The list of text history items to save (newest first)
-     * @param maxItems Maximum number of items to store (older items are trimmed)
+     * @param maxItems     Maximum number of items to store (older items are trimmed)
      */
     public void saveTextHistory(List<String> historyItems, int maxItems) {
         try {
@@ -452,6 +526,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Loads the saved text history items
+     *
      * @return List of text history items (newest first), or empty list if none found
      */
     public List<String> loadTextHistory() {
@@ -472,11 +547,12 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Adds a new item to the text history, maintaining the maximum size
-     * @param item New item to add to history
+     *
+     * @param item     New item to add to history
      * @param maxItems Maximum history size
      * @return The updated history list
      */
-    public List<String> addToTextHistory(String item, int maxItems) {
+    public List<String> addToInstructionsHistory(String item, int maxItems) {
         if (item == null || item.trim().isEmpty()) {
             return loadTextHistory(); // Don't add empty items
         }
@@ -501,7 +577,8 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Save a window's position and size
-     * @param key identifier for the window
+     *
+     * @param key    identifier for the window
      * @param window the window to save position for
      */
     public void saveWindowBounds(String key, JFrame window) {
@@ -526,8 +603,9 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Get the saved window bounds as a Rectangle
-     * @param key identifier for the window
-     * @param defaultWidth default width if not found
+     *
+     * @param key           identifier for the window
+     * @param defaultWidth  default width if not found
      * @param defaultHeight default height if not found
      * @return Rectangle with the window bounds
      */
@@ -696,6 +774,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the current global UI theme (dark or light)
+     *
      * @return "dark" or "light" (defaults to "light" if not set)
      */
     public static String getTheme() {
@@ -705,6 +784,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the saved Brokk API key from global settings.
+     *
      * @return The saved key, or an empty string if not set.
      */
     public static String getBrokkKey() {
@@ -714,6 +794,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Sets the global Brokk API key.
+     *
      * @param key The API key to save.
      */
     public static void setBrokkKey(String key) {
@@ -728,6 +809,7 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Sets the global UI theme
+     *
      * @param theme "dark" or "light"
      */
     public static void setTheme(String theme) {
@@ -939,6 +1021,7 @@ public class Project implements IProject, AutoCloseable {
     /**
      * Gets the list of currently open projects from the 'openProjectsList' property
      * in projects.properties. Performs validation and cleanup of invalid entries.
+     *
      * @return List of validated paths to currently open projects
      */
     public static List<Path> getOpenProjects() {

@@ -102,7 +102,7 @@ public class ArchitectAgent {
                 logger.debug("TestAgent found no relevant test files to add.");
             }
 
-            var result = new CodeAgent(contextManager, model).runSession(instructions, false);
+            var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, false);
             var entry = contextManager.addToHistory(result, true);
             var stopDetails = result.stopDetails();
             String summary = """

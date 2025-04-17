@@ -2,14 +2,13 @@ package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.agents.ArchitectAgent;
-import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.SessionResult;
+import io.github.jbellis.brokk.agents.ArchitectAgent;
+import io.github.jbellis.brokk.agents.CodeAgent;
+import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -45,7 +44,6 @@ public class InstructionsPanel extends JPanel {
 
     private final Chrome chrome;
     private final RSyntaxTextArea commandInputField;
-    private final JComboBox<String> modelDropdown;
     private final VoiceInputButton micButton;
     private final JButton agentButton;
     private final JButton codeButton;
@@ -69,7 +67,6 @@ public class InstructionsPanel extends JPanel {
 
         // Initialize components
         commandInputField = buildCommandInputField();
-        modelDropdown = new JComboBox<>();
         micButton = new VoiceInputButton(
                 commandInputField,
                 chrome.getContextManager(),
@@ -84,7 +81,7 @@ public class InstructionsPanel extends JPanel {
         agentButton = new JButton("Agent"); // Initialize the agent button
         agentButton.setMnemonic(KeyEvent.VK_G); // Mnemonic for Agent
         agentButton.setToolTipText("Run the multi-step agent to execute the current plan");
-        agentButton.addActionListener(e -> runAgentCommand());
+        agentButton.addActionListener(e -> runArchitectCommand());
 
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
@@ -176,13 +173,6 @@ public class InstructionsPanel extends JPanel {
 
         topBarPanel.add(leftPanel, BorderLayout.WEST);
 
-        // Model Dropdown (Center)
-        modelDropdown.setToolTipText("Select the AI model to use");
-        topBarPanel.add(modelDropdown, BorderLayout.CENTER);
-
-        // Stop Button (East)
-        topBarPanel.add(stopButton, BorderLayout.EAST);
-
         return topBarPanel;
     }
 
@@ -216,7 +206,13 @@ public class InstructionsPanel extends JPanel {
         JPanel actionButtonBar = buildActionBar();
         actionButtonBar.setAlignmentY(Component.CENTER_ALIGNMENT);
         bottomPanel.add(actionButtonBar);
-        bottomPanel.add(Box.createHorizontalGlue()); // Pushes buttons to the left if needed
+
+        // Add flexible space between action buttons and stop button
+        bottomPanel.add(Box.createHorizontalGlue());
+
+        // Add Stop button to the right side
+        stopButton.setAlignmentY(Component.CENTER_ALIGNMENT);
+        bottomPanel.add(stopButton);
 
         return bottomPanel;
     }
@@ -292,8 +288,8 @@ public class InstructionsPanel extends JPanel {
                     String item = historyItems.get(i);
                     String itemWithoutNewlines = item.replace('\n', ' ');
                     String displayText = itemWithoutNewlines.length() > TRUNCATION_LENGTH
-                            ? itemWithoutNewlines.substring(0, TRUNCATION_LENGTH) + "..."
-                            : itemWithoutNewlines;
+                                         ? itemWithoutNewlines.substring(0, TRUNCATION_LENGTH) + "..."
+                                         : itemWithoutNewlines;
                     String escapedItem = item.replace("&", "&amp;")
                             .replace("<", "&lt;")
                             .replace(">", "&gt;")
@@ -365,71 +361,8 @@ public class InstructionsPanel extends JPanel {
         systemArea.append(timestamp + ": " + message);
         // Scroll to bottom
         SwingUtilities.invokeLater(() -> systemArea.setCaretPosition(systemArea.getDocument().getLength()));
-    }
+    } // Added missing closing brace
 
-    // Initialization of model dropdown is now encapsulated here.
-    public void initializeModels() {
-        if (chrome.getContextManager() == null) {
-            logger.warn("Cannot initialize models: ContextManager is null");
-            modelDropdown.addItem("Error: No Context");
-            modelDropdown.setEnabled(false);
-            disableButtons();
-            return;
-        }
-
-        // Use the Models instance from ContextManager
-        var models = chrome.getContextManager().getModels();
-        // This method is already called via invokeLater, so we can update UI directly.
-        // Fetch the available models (reads an in-memory map, safe for EDT)
-        var modelLocationMap = models.getAvailableModels();
-
-        // Update the dropdown UI
-        modelDropdown.removeAllItems();
-        modelLocationMap.forEach((k, v) -> logger.debug("Available modelName={} => location={}", k, v));
-        if (modelLocationMap.isEmpty() || modelLocationMap.containsKey(Models.UNAVAILABLE)) {
-            logger.error("No models discovered from LiteLLM or LiteLLM is unavailable.");
-            modelDropdown.addItem("No Models Available");
-            modelDropdown.setEnabled(false);
-            disableButtons();
-        } else {
-            logger.debug("Populating dropdown with {} models.", modelLocationMap.size());
-            // Populate dropdown with available models (excluding "-lite" ones)
-            modelLocationMap.keySet().stream()
-                    .filter(k -> !k.contains("-lite"))
-                    .sorted()
-                    .forEach(modelDropdown::addItem);
-            modelDropdown.setEnabled(true);
-
-            // Restore the last used model if possible
-            var lastUsedModel = chrome.getProject().getLastUsedModel();
-            if (lastUsedModel != null) {
-                boolean found = false;
-                for (int i = 0; i < modelDropdown.getItemCount(); i++) {
-                    if (modelDropdown.getItemAt(i).equals(lastUsedModel)) {
-                        modelDropdown.setSelectedItem(lastUsedModel);
-                        found = true;
-                        logger.debug("Restored last used model: {}", lastUsedModel);
-                        break;
-                    }
-                }
-                if (!found) {
-                    logger.warn("Last used model '{}' not found in available models (possibly due to policy change).", lastUsedModel);
-                    // If the last used model isn't available (e.g., policy changed),
-                    // select the first available item instead of leaving it blank.
-                    if (modelDropdown.getItemCount() > 0) {
-                        modelDropdown.setSelectedIndex(0);
-                    }
-                }
-            } else {
-                logger.debug("No last used model saved for this project.");
-                // Select the first item if no previous selection exists
-                if (modelDropdown.getItemCount() > 0) {
-                    modelDropdown.setSelectedIndex(0);
-                }
-            }
-            enableButtons(); // Ensure buttons are enabled since models are available
-        }
-    }
 
     // --- Private Execution Logic ---
 
@@ -498,6 +431,7 @@ public class InstructionsPanel extends JPanel {
     /**
      * Executes the core logic for the "Agent" command.
      * This runs inside the Runnable passed to contextManager.submitAction.
+     *
      * @param goal The initial user instruction passed to the agent.
      */
     private void executeAgentCommand(StreamingChatLanguageModel model, String goal) {
@@ -564,53 +498,23 @@ public class InstructionsPanel extends JPanel {
 
     // --- Action Handlers ---
 
-    public void runAgentCommand() {
-        var selectedModel = getSelectedModel();
-        if (selectedModel == null) {
-            chrome.toolError("Please select a valid model from the dropdown.");
-            return;
-        }
-        var contextManager = chrome.getContextManager();
-
-        disableButtons();
-        // Save model before submitting task
-        var modelName = contextManager.getModels().nameOf(selectedModel);
-        chrome.getProject().setLastUsedModel(modelName);
-        // Get the goal from the input field
+    public void runArchitectCommand() {
         var goal = commandInputField.getText();
         if (goal.isBlank()) {
             chrome.toolErrorRaw("Please provide an initial goal or instruction for the Agent.");
-            enableButtons(); // Re-enable buttons since we are not proceeding
             return;
         }
-        chrome.getProject().addToTextHistory(goal, 20);
+
+        var contextManager = chrome.getContextManager();
+        var architectModel = contextManager.getArchitectModel();
+
+        disableButtons();
+        chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
         // Submit the action, calling the private execute method inside the lambda, passing the goal
-        var future = contextManager.submitAction("Agent", "Executing project...", () -> executeAgentCommand(selectedModel, goal));
+        var future = contextManager.submitAction("Agent", "Executing project...", () -> executeAgentCommand(architectModel, goal));
         chrome.setCurrentUserTask(future);
-    }
-
-    // Private helper to get the selected model.
-    private StreamingChatLanguageModel getSelectedModel() {
-        var selectedName = (String) modelDropdown.getSelectedItem();
-        logger.debug("User selected model name from dropdown: {}", selectedName);
-        if (selectedName == null || selectedName.startsWith("No Models") || selectedName.startsWith("Error")) {
-            logger.warn("No valid model selected in dropdown.");
-            return null;
-        }
-        var models = chrome.getContextManager().getModels();
-        try {
-            var model = models.get(selectedName); // Use instance method
-            // Save the successfully selected model name
-            if (chrome.getProject() != null && model != null) { // Check model is not null
-                chrome.getProject().setLastUsedModel(selectedName); // Use the correct setter
-            }
-            return model;
-        } catch (Exception e) {
-            logger.error("Failed to get model instance for {}", selectedName, e);
-            return null;
-        }
     }
 
     // Methods for running commands. These prepare the input and model, then delegate
@@ -623,17 +527,12 @@ public class InstructionsPanel extends JPanel {
             chrome.toolErrorRaw("Please enter a command or text");
             return;
         }
-        var selectedModel = getSelectedModel();
-        if (selectedModel == null) {
-            chrome.toolError("Please select a valid model from the dropdown.");
-            return;
-        }
-        chrome.getProject().addToTextHistory(input, 20);
+
+        var contextManager = chrome.getContextManager();
+        var codeModel = contextManager.getCodeModel();
+        chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        // Save model before submitting task
-        var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
-        chrome.getProject().setLastUsedModel(modelName);
 
         // Check if test files are needed before submitting the main task
         checkAndPromptForTests(input)
@@ -642,7 +541,7 @@ public class InstructionsPanel extends JPanel {
                         // Tests were handled (added or not needed), proceed with code command
                         SwingUtilities.invokeLater(() -> { // Ensure UI updates happen on EDT if needed after background
                             // Submit the main action
-                            var future = chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(selectedModel, input));
+                            var future = chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(codeModel, input));
                             chrome.setCurrentUserTask(future);
                         });
                     } else {
@@ -657,8 +556,8 @@ public class InstructionsPanel extends JPanel {
      * Checks if any test files are already present in the context or if no test files exist at all.
      * If neither is true, it asks the LLM to suggest relevant tests and shows a modal selection dialog
      * for the user to pick which tests to add. Returns a CompletableFuture that completes with:
-     *  - true if tests are already in context, no test files exist, or the user confirms (even if no files were selected),
-     *  - false if an error occurs or the user cancels in the dialog.
+     * - true if tests are already in context, no test files exist, or the user confirms (even if no files were selected),
+     * - false if an error occurs or the user cancels in the dialog.
      */
     private CompletableFuture<Boolean> checkAndPromptForTests(String userInput)
     {
@@ -693,8 +592,7 @@ public class InstructionsPanel extends JPanel {
 
                 if (llmResult.error() != null
                         || llmResult.chatResponse() == null
-                        || llmResult.chatResponse().aiMessage() == null)
-                {
+                        || llmResult.chatResponse().aiMessage() == null) {
                     logger.error("LLM failed to suggest tests: {}",
                                  llmResult.error() != null ? llmResult.error() : "Empty/Null response");
                     chrome.toolErrorRaw("LLM failed to suggest relevant tests.");
@@ -727,7 +625,7 @@ public class InstructionsPanel extends JPanel {
 
                 // If user confirmed but selected none
                 if (selectedFiles.isEmpty()) {
-                    chrome.systemOutput("No test files selected. Proceeding without adding tests.");
+                    logger.debug("No test files selected. Proceeding without adding tests.");
                     resultFuture.complete(true);
                     return;
                 }
@@ -739,8 +637,7 @@ public class InstructionsPanel extends JPanel {
 
                 // Success!
                 resultFuture.complete(true);
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 logger.error("Error while suggesting or selecting tests", e);
                 chrome.toolErrorRaw("Error suggesting relevant tests: " + e.getMessage());
                 resultFuture.complete(false);
@@ -813,23 +710,23 @@ public class InstructionsPanel extends JPanel {
         JPanel checkboxPanel = new JPanel();
         checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
         List<JCheckBox> checkBoxes = new ArrayList<>();
-            for (ProjectFile file : suggestedFiles) {
-                JCheckBox checkBox = new JCheckBox(file.toString());
-                // Default to not selected, let the user explicitly choose
-                checkBox.setSelected(false);
-                checkBoxes.add(checkBox);
-                checkboxPanel.add(checkBox);
-            }
+        for (ProjectFile file : suggestedFiles) {
+            JCheckBox checkBox = new JCheckBox(file.toString());
+            // Default to not selected, let the user explicitly choose
+            checkBox.setSelected(false);
+            checkBoxes.add(checkBox);
+            checkboxPanel.add(checkBox);
+        }
 
         JScrollPane scrollPane = new JScrollPane(checkboxPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         dialog.add(scrollPane, BorderLayout.CENTER);
-    
-            // Buttons for confirmation or cancellation
-            JButton okButton = new JButton("Add Selected and Continue");
-            JButton cancelButton = new JButton("Cancel");
-            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            buttonPanel.add(okButton);
+
+        // Buttons for confirmation or cancellation
+        JButton okButton = new JButton("Add Selected and Continue");
+        JButton cancelButton = new JButton("Cancel");
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.add(okButton);
         buttonPanel.add(cancelButton);
         dialog.add(buttonPanel, BorderLayout.SOUTH);
 
@@ -868,19 +765,14 @@ public class InstructionsPanel extends JPanel {
             chrome.toolErrorRaw("Please enter a question");
             return;
         }
-        var selectedModel = getSelectedModel();
-        if (selectedModel == null) {
-            chrome.toolError("Please select a valid model from the dropdown.");
-            return;
-        }
-        chrome.getProject().addToTextHistory(input, 20);
+
+        var contextManager = chrome.getContextManager();
+        var askModel = contextManager.getCodeModel(); // Ask uses the Code model
+        chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        // Save model before submitting task
-        var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
-        chrome.getProject().setLastUsedModel(modelName);
         // Submit the action, calling the private execute method inside the lambda
-        var future = chrome.getContextManager().submitAction("Ask", input, () -> executeAskCommand(selectedModel, input));
+        var future = chrome.getContextManager().submitAction("Ask", input, () -> executeAskCommand(askModel, input));
         chrome.setCurrentUserTask(future);
     }
 
@@ -890,21 +782,16 @@ public class InstructionsPanel extends JPanel {
             chrome.toolErrorRaw("Please provide a search query");
             return;
         }
-        var selectedModel = getSelectedModel();
-        if (selectedModel == null) {
-            chrome.toolError("Please select a valid model from the dropdown.");
-            return;
-        }
-        chrome.getProject().addToTextHistory(input, 20);
+
+        var contextManager = chrome.getContextManager();
+        var searchModel = contextManager.getSearchModel();
+        chrome.getProject().addToInstructionsHistory(input, 20);
         // Update the LLM output panel directly via Chrome
         chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
         clearCommandInput();
         disableButtons();
-        // Save model before submitting task
-        var modelName = chrome.getContextManager().getModels().nameOf(selectedModel);
-        chrome.getProject().setLastUsedModel(modelName);
         // Submit the action, calling the private execute method inside the lambda
-        var future = chrome.getContextManager().submitAction("Search", input, () -> executeSearchCommand(selectedModel, input));
+        var future = chrome.getContextManager().submitAction("Search", input, () -> executeSearchCommand(searchModel, input));
         chrome.setCurrentUserTask(future);
     }
 
@@ -914,7 +801,7 @@ public class InstructionsPanel extends JPanel {
             chrome.toolError("Please enter a command to run");
             return;
         }
-        chrome.getProject().addToTextHistory(input, 20);
+        chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
@@ -925,30 +812,27 @@ public class InstructionsPanel extends JPanel {
     // Methods to disable and enable buttons.
     public void disableButtons() {
         SwingUtilities.invokeLater(() -> {
-            agentButton.setEnabled(false); // Disable agent button
+            agentButton.setEnabled(false);
             codeButton.setEnabled(false);
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
-            modelDropdown.setEnabled(false);
-            micButton.setEnabled(false); // Also disable mic button
+            micButton.setEnabled(false);
         });
     }
 
     public void enableButtons() {
         SwingUtilities.invokeLater(() -> {
-            boolean modelsAvailable = modelDropdown.getItemCount() > 0 &&
-                    !String.valueOf(modelDropdown.getSelectedItem()).startsWith("No Model") && // check selected value
-                    !String.valueOf(modelDropdown.getSelectedItem()).startsWith("Error");
-            modelDropdown.setEnabled(modelsAvailable);
-            agentButton.setEnabled(modelsAvailable); // Enable agent button based on model availability
-            codeButton.setEnabled(modelsAvailable);
-            askButton.setEnabled(modelsAvailable);
-            searchButton.setEnabled(modelsAvailable);
-            runButton.setEnabled(true);
+            // Buttons are enabled if a project is loaded; specific model availability is checked in action handlers.
+            boolean projectLoaded = chrome.getProject() != null;
+            agentButton.setEnabled(projectLoaded);
+            codeButton.setEnabled(projectLoaded);
+            askButton.setEnabled(projectLoaded);
+            searchButton.setEnabled(projectLoaded);
+            runButton.setEnabled(true); // Run in shell is always available
             stopButton.setEnabled(false);
-            micButton.setEnabled(true); // Enable mic button
+            micButton.setEnabled(true);
         });
     }
 }

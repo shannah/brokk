@@ -26,13 +26,18 @@ public class SettingsDialog extends JDialog {
     private JTextField allTestsCommandField;
     private JTextArea buildInstructionsArea;
     private DataRetentionPanel dataRetentionPanel; // Reference to the new panel
+    // Model selection combo boxes (initialized in createModelsPanel)
+    private JComboBox<String> architectModelComboBox;
+    private JComboBox<String> codeModelComboBox;
+    private JComboBox<String> editModelComboBox;
+    private JComboBox<String> searchModelComboBox;
 
     public SettingsDialog(Frame owner, Chrome chrome) {
         super(owner, "Settings", true); // Modal dialog
         this.chrome = chrome;
-        setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        setSize(500, 400);
-        setLocationRelativeTo(owner);
+            setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+            setSize(600, 400); // Increased width
+            setLocationRelativeTo(owner);
 
         tabbedPane = new JTabbedPane(JTabbedPane.LEFT); // Tabs on the left
 
@@ -57,14 +62,24 @@ public class SettingsDialog extends JDialog {
         var cancelButton = new JButton("Cancel");
         var applyButton = new JButton("Apply"); // Added Apply button
 
-        okButton.addActionListener(e -> {
-            applySettings();
-            dispose();
-        });
-        cancelButton.addActionListener(e -> dispose());
-        applyButton.addActionListener(e -> applySettings());
+            okButton.addActionListener(e -> {
+                applySettings();
+                dispose();
+            });
+            cancelButton.addActionListener(e -> dispose());
+            applyButton.addActionListener(e -> applySettings());
 
-        buttonPanel.add(okButton);
+            // Add Escape key binding to close the dialog (like Cancel)
+            getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                    .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel");
+            getRootPane().getActionMap().put("cancel", new AbstractAction() {
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    dispose();
+                }
+            });
+
+            buttonPanel.add(okButton);
         buttonPanel.add(cancelButton);
         buttonPanel.add(applyButton);
 
@@ -149,10 +164,10 @@ public class SettingsDialog extends JDialog {
             outerPanel.add(new JLabel("No project is open."), BorderLayout.CENTER);
             return outerPanel;
         }
-        
+
         // Create a sub-tabbed pane for Project settings: Build and Other
         var subTabbedPane = new JTabbedPane(JTabbedPane.TOP);
-        
+
         // ----- Build Tab -----
         var buildPanel = new JPanel(new GridBagLayout());
         buildPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -171,7 +186,7 @@ public class SettingsDialog extends JDialog {
         var instructionsScrollPane = new JScrollPane(buildInstructionsArea);
         instructionsScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         instructionsScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        
+
         var details = project.getBuildDetails();
         logger.debug("Initial Build Details: {}", details);
         // Build/Lint Command
@@ -224,18 +239,15 @@ public class SettingsDialog extends JDialog {
         gbc.insets = new Insets(2, 2, 2, 2);
         gbc.fill = GridBagConstraints.HORIZONTAL;
         row = 0;
-        
+
         // Code Intelligence Refresh
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0.0;
         otherPanel.add(new JLabel("Code Intelligence Refresh:"), gbc);
-        cpgRefreshComboBox = new JComboBox<>(new Project.CpgRefresh[]{
-            Project.CpgRefresh.AUTO, Project.CpgRefresh.MANUAL
-        });
+        cpgRefreshComboBox = new JComboBox<>(new Project.CpgRefresh[]{Project.CpgRefresh.AUTO, Project.CpgRefresh.MANUAL});
         var currentRefresh = project.getCpgRefresh();
-        cpgRefreshComboBox.setSelectedItem(currentRefresh == Project.CpgRefresh.UNSET ?
-            Project.CpgRefresh.AUTO : currentRefresh);
+        cpgRefreshComboBox.setSelectedItem(currentRefresh == Project.CpgRefresh.UNSET ? Project.CpgRefresh.AUTO : currentRefresh);
         gbc.gridx = 1;
         gbc.gridy = row++; // Increment row after adding combo box
         gbc.weightx = 1.0;
@@ -261,6 +273,10 @@ public class SettingsDialog extends JDialog {
         // ----- Data Retention Tab -----
         dataRetentionPanel = new DataRetentionPanel(project); // Create the panel instance
         subTabbedPane.addTab("Data Retention", dataRetentionPanel); // Add the new tab
+
+        // ----- Models Tab -----
+        var modelsPanel = createModelsPanel(project);
+        subTabbedPane.addTab("Models", modelsPanel);
 
         var outerPanelContainer = new JPanel(new BorderLayout());
         outerPanelContainer.add(subTabbedPane, BorderLayout.CENTER);
@@ -300,8 +316,7 @@ public class SettingsDialog extends JDialog {
             add(improveRadio, gbc);
 
             // --- Improve Brokk Description Label ---
-            var improveDescLabel = new JLabel("<html>Allow Brokk and/or its partners to use requests from this project " +
-                                              "to train models and improve the Brokk service.</html>");
+            var improveDescLabel = new JLabel("<html>Allow Brokk and/or its partners to use requests from this project " + "to train models and improve the Brokk service.</html>");
             improveDescLabel.setFont(improveDescLabel.getFont().deriveFont(Font.ITALIC, improveDescLabel.getFont().getSize() * 0.9f));
             gbc.gridx = 0;
             gbc.gridy = y++;
@@ -318,8 +333,7 @@ public class SettingsDialog extends JDialog {
             add(minimalRadio, gbc);
 
             // --- Minimal Description Label ---
-            var minimalDescLabel = new JLabel("<html>Brokk will not share data from this project with anyone and " +
-                                             "will restrict its use to the minimum necessary to provide the Brokk service.</html>");
+            var minimalDescLabel = new JLabel("<html>Brokk will not share data from this project with anyone and " + "will restrict its use to the minimum necessary to provide the Brokk service.</html>");
             minimalDescLabel.setFont(minimalDescLabel.getFont().deriveFont(Font.ITALIC, minimalDescLabel.getFont().getSize() * 0.9f));
             gbc.gridx = 0;
             gbc.gridy = y++;
@@ -345,7 +359,9 @@ public class SettingsDialog extends JDialog {
             loadPolicy();
         }
 
-        /** Loads the current policy from the project and selects the corresponding radio button. */
+        /**
+         * Loads the current policy from the project and selects the corresponding radio button.
+         */
         public void loadPolicy() {
             var currentPolicy = project.getDataRetentionPolicy();
             if (currentPolicy == DataRetentionPolicy.IMPROVE_BROKK) {
@@ -357,7 +373,9 @@ public class SettingsDialog extends JDialog {
             }
         }
 
-        /** Returns the currently selected policy, or UNSET if none is selected. */
+        /**
+         * Returns the currently selected policy, or UNSET if none is selected.
+         */
         public DataRetentionPolicy getSelectedPolicy() {
             if (improveRadio.isSelected()) {
                 return DataRetentionPolicy.IMPROVE_BROKK;
@@ -368,7 +386,9 @@ public class SettingsDialog extends JDialog {
             }
         }
 
-        /** Saves the currently selected policy back to the project if it has changed. */
+        /**
+         * Saves the currently selected policy back to the project if it has changed.
+         */
         public void applyPolicy() {
             var selectedPolicy = getSelectedPolicy();
             // Only save if a valid policy is selected and it's different from the current one
@@ -378,6 +398,112 @@ public class SettingsDialog extends JDialog {
         }
     }
 
+    /**
+     * Creates the panel containing the model selection dropdowns.
+     */
+    private JPanel createModelsPanel(Project project) {
+        var modelsPanel = new JPanel(new GridBagLayout());
+        modelsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        var gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 2, 2, 2);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        int row = 0;
+
+        // Available models (get these from ContextManager or Project - assuming Models accessible via project for now)
+        var models = chrome.getContextManager().getModels(); // Get Models instance
+        var availableModels = models.getAvailableModels().keySet().stream().sorted().toList();
+
+        // --- Architect Model ---
+            gbc.gridx = 0;
+            gbc.gridy = row;
+            gbc.weightx = 0.0;
+            modelsPanel.add(new JLabel("Architect Model:"), gbc);
+            architectModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+            architectModelComboBox.setSelectedItem(project.getArchitectModelName());
+            JLabel architectTooltip = new JLabel("Plans and executes multi-step projects, calling other agents as needed");
+            architectTooltip.setFont(architectTooltip.getFont().deriveFont(Font.ITALIC, architectTooltip.getFont().getSize() * 0.9f));
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+                gbc.weightx = 0.0; // Don't stretch combo box horizontally
+                gbc.fill = GridBagConstraints.NONE; // Use preferred size
+                modelsPanel.add(architectModelComboBox, gbc);
+                gbc.gridx = 1; // Ensure tooltip stays in the second column
+                gbc.gridy = row++;
+                gbc.weightx = 1.0; // Let tooltip potentially fill space if needed
+                gbc.fill = GridBagConstraints.HORIZONTAL; // Restore fill for tooltip
+                modelsPanel.add(architectTooltip, gbc);
+
+                // --- Code Model ---
+            gbc.gridx = 0;
+            gbc.gridy = row;
+            gbc.weightx = 0.0;
+            modelsPanel.add(new JLabel("Code/Ask Model:"), gbc);
+            codeModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+            codeModelComboBox.setSelectedItem(project.getCodeModelName());
+            JLabel codeTooltip = new JLabel("Used when invoking Code Agent manually");
+            codeTooltip.setFont(codeTooltip.getFont().deriveFont(Font.ITALIC, codeTooltip.getFont().getSize() * 0.9f));
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+                gbc.weightx = 0.0; // Don't stretch combo box horizontally
+                gbc.fill = GridBagConstraints.NONE; // Use preferred size
+                modelsPanel.add(codeModelComboBox, gbc);
+                gbc.gridx = 1;
+                gbc.gridy = row++;
+                gbc.weightx = 1.0;
+                gbc.fill = GridBagConstraints.HORIZONTAL;
+                modelsPanel.add(codeTooltip, gbc);
+
+                // --- Edit Model ---
+            gbc.gridx = 0;
+            gbc.gridy = row;
+            gbc.weightx = 0.0;
+            modelsPanel.add(new JLabel("Edit Model:"), gbc);
+            editModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+            editModelComboBox.setSelectedItem(project.getEditModelName());
+            JLabel editTooltip = new JLabel("Used when invoking Code Agent from the Architect");
+            editTooltip.setFont(editTooltip.getFont().deriveFont(Font.ITALIC, editTooltip.getFont().getSize() * 0.9f));
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+                gbc.weightx = 0.0; // Don't stretch combo box horizontally
+                gbc.fill = GridBagConstraints.NONE; // Use preferred size
+                modelsPanel.add(editModelComboBox, gbc);
+                gbc.gridx = 1;
+                gbc.gridy = row++;
+                gbc.weightx = 1.0;
+                gbc.fill = GridBagConstraints.HORIZONTAL;
+                modelsPanel.add(editTooltip, gbc);
+
+                // --- Search Model ---
+            gbc.gridx = 0;
+            gbc.gridy = row;
+            gbc.weightx = 0.0;
+            modelsPanel.add(new JLabel("Search Model:"), gbc);
+            searchModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+            searchModelComboBox.setSelectedItem(project.getSearchModelName());
+            JLabel searchTooltip = new JLabel("Searches the project for information described in natural language");
+            searchTooltip.setFont(searchTooltip.getFont().deriveFont(Font.ITALIC, searchTooltip.getFont().getSize() * 0.9f));
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+                gbc.weightx = 0.0; // Don't stretch combo box horizontally
+                gbc.fill = GridBagConstraints.NONE; // Use preferred size
+                modelsPanel.add(searchModelComboBox, gbc);
+                gbc.gridx = 1;
+                gbc.gridy = row++;
+                gbc.weightx = 1.0;
+                gbc.fill = GridBagConstraints.HORIZONTAL;
+                modelsPanel.add(searchTooltip, gbc);
+
+            // Add vertical glue
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.gridwidth = 2;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.VERTICAL;
+        modelsPanel.add(Box.createVerticalGlue(), gbc);
+
+        return modelsPanel;
+    }
 
     private void applySettings() {
         // Apply Global Settings
@@ -396,8 +522,8 @@ public class SettingsDialog extends JDialog {
         for (Component comp : globalPanel.getComponents()) {
             var constraints = ((GridBagLayout) globalPanel.getLayout()).getConstraints(comp);
             if (constraints.gridx == 1 && constraints.gridy == 1 && comp instanceof JPanel) { // Find the panel holding radio buttons
-                 themeComponent = comp;
-                 break;
+                themeComponent = comp;
+                break;
             }
         }
 
@@ -414,7 +540,7 @@ public class SettingsDialog extends JDialog {
             }
         } else {
             // Log error or handle case where theme panel wasn't found as expected
-             System.err.println("Could not find theme radio button panel in SettingsDialog.");
+            System.err.println("Could not find theme radio button panel in SettingsDialog.");
         }
 
 
@@ -433,13 +559,7 @@ public class SettingsDialog extends JDialog {
             var newInstructions = buildInstructionsArea.getText();
 
             // Create a new BuildDetails record with updated fields
-            var newDetails = new BuildAgent.BuildDetails(
-                    currentDetails.buildfiles().isEmpty() ? java.util.List.of() : currentDetails.buildfiles(),
-                    currentDetails.dependencies(),
-                    newBuildLint,
-                    newTestAll,
-                    newInstructions
-            );
+            var newDetails = new BuildAgent.BuildDetails(currentDetails.buildfiles().isEmpty() ? java.util.List.of() : currentDetails.buildfiles(), currentDetails.dependencies(), newBuildLint, newTestAll, newInstructions);
 
             logger.debug("Applying Build Details: {}", newDetails);
 
@@ -464,12 +584,36 @@ public class SettingsDialog extends JDialog {
                     // Submit as background task so it doesn't block the settings dialog closing
                     chrome.getContextManager().submitBackgroundTask("Refreshing models due to policy change", () -> {
                         // Pass the new policy to reinit
-                        chrome.getContextManager().getModels().reinit(newPolicy); // Re-initialize models with the new policy
-                        SwingUtilities.invokeLater(chrome.getInstructionsPanel()::initializeModels); // Refresh dropdown UI using getter
-                        return null;
+                        chrome.getContextManager().getModels().reinit(newPolicy);
                     });
                 }
             }
+
+            // Apply Model Selections (ensure combo boxes were initialized)
+            if (architectModelComboBox != null) {
+                String selectedArchitectModel = (String) architectModelComboBox.getSelectedItem();
+                if (selectedArchitectModel != null && !selectedArchitectModel.equals(project.getArchitectModelName())) {
+                    project.setArchitectModelName(selectedArchitectModel);
+                }
+            }
+            if (codeModelComboBox != null) {
+                    String selectedCodeModel = (String) codeModelComboBox.getSelectedItem();
+                    if (selectedCodeModel != null && !selectedCodeModel.equals(project.getCodeModelName())) {
+                        project.setCodeModelName(selectedCodeModel);
+                    }
+                }
+                if (editModelComboBox != null) {
+                    String selectedEditModel = (String) editModelComboBox.getSelectedItem();
+                    if (selectedEditModel != null && !selectedEditModel.equals(project.getEditModelName())) {
+                        project.setEditModelName(selectedEditModel);
+                    }
+                }
+                if (searchModelComboBox != null) {
+                    String selectedSearchModel = (String) searchModelComboBox.getSelectedItem();
+                    if (selectedSearchModel != null && !selectedSearchModel.equals(project.getSearchModelName())) {
+                        project.setSearchModelName(selectedSearchModel);
+                    }
+                }
         }
     }
 
@@ -508,10 +652,7 @@ public class SettingsDialog extends JDialog {
             var selectedPolicy = retentionPanel.getSelectedPolicy();
             if (selectedPolicy == DataRetentionPolicy.UNSET) {
                 // If no policy is selected, show a warning and *do not* close the dialog.
-                JOptionPane.showMessageDialog(dialog,
-                                              "Please select a data retention policy to continue.",
-                                              "Selection Required",
-                                              JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(dialog, "Please select a data retention policy to continue.", "Selection Required", JOptionPane.WARNING_MESSAGE);
             } else {
                 // Only apply and close if a valid policy is selected.
                 retentionPanel.applyPolicy();
@@ -533,5 +674,31 @@ public class SettingsDialog extends JDialog {
         // Request focus on the OK button to avoid initial focus on a radio button
         okButton.requestFocusInWindow();
         dialog.setVisible(true); // Show the modal dialog and block until closed
+    }
+
+    /**
+     * Creates and shows the Settings dialog, optionally selecting a specific tab within the Project settings.
+     *
+     * @param chrome        The application's Chrome instance.
+     * @param targetTabName The name of the tab to select within the Project settings (e.g., "Models", "Build"), or null to select the default.
+     */
+    public static void showSettingsDialog(Chrome chrome, String targetTabName) {
+        var dialog = new SettingsDialog(chrome.getFrame(), chrome);
+
+        // If a target tab is specified and the project panel exists
+        if (targetTabName != null && dialog.projectPanel.getComponentCount() > 0 && dialog.projectPanel.getComponent(0) instanceof JPanel outerPanelContainer) {
+            // Project panel contains an outerPanelContainer (BorderLayout) holding the subTabbedPane
+            if (outerPanelContainer.getComponentCount() > 0 && outerPanelContainer.getComponent(0) instanceof JTabbedPane subTabbedPane) {
+                for (int i = 0; i < subTabbedPane.getTabCount(); i++) {
+                    if (targetTabName.equals(subTabbedPane.getTitleAt(i))) {
+                        dialog.tabbedPane.setSelectedComponent(dialog.projectPanel); // Ensure Project tab is selected first
+                        subTabbedPane.setSelectedIndex(i); // Then select the inner tab
+                        break;
+                    }
+                }
+            }
+        }
+
+        dialog.setVisible(true);
     }
 }
