@@ -131,7 +131,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<CodeUnit> sources(IProject project) {
-            return project.getAnalyzer().getClassesInFile(file);
+            return project.getAnalyzerUninterrupted().getClassesInFile(file);
         }
 
         @Override
@@ -340,7 +340,7 @@ public interface ContextFragment extends Serializable {
         @Override
         public Set<CodeUnit> sources(IProject project) {
             return files(project).stream()
-                    .flatMap(f -> project.getAnalyzer().getClassesInFile(f).stream())
+                    .flatMap(f -> project.getAnalyzerUninterrupted().getClassesInFile(f).stream())
                     .collect(java.util.stream.Collectors.toSet());
         }
 

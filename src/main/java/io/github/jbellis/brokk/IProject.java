@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.Set;
 
 public interface IProject {
-    default IAnalyzer getAnalyzer() {
+    default IAnalyzer getAnalyzer() throws InterruptedException {
         return new DisabledAnalyzer();
     }
 
@@ -32,5 +32,14 @@ public interface IProject {
      */
     default BuildAgent.BuildDetails getBuildDetails() {
         return BuildAgent.BuildDetails.EMPTY; // Default implementation returns empty
+    }
+
+    /** for when you're confident the thread should never be interrupted */
+    default IAnalyzer getAnalyzerUninterrupted() {
+        try {
+            return getAnalyzer();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

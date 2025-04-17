@@ -7,10 +7,7 @@ import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
-import io.github.jbellis.brokk.analyzer.CodeUnitType;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
@@ -757,7 +754,7 @@ public class ContextPanel extends JPanel {
         // Use contextManager's task submission
         return contextManager.submitContextTask("Find Symbol Usage", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+                var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
                 if (analyzer.isEmpty()) {
                     chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
                     return;
@@ -783,7 +780,7 @@ public class ContextPanel extends JPanel {
         // Use contextManager's task submission
         return contextManager.submitContextTask("Find Method Callers", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+                var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
                 if (analyzer.isEmpty()) {
                     chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
                     return;
@@ -810,7 +807,7 @@ public class ContextPanel extends JPanel {
         // Use contextManager's task submission
         return contextManager.submitContextTask("Find Method Callees", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+                var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
                 if (analyzer.isEmpty()) {
                     chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
                     return;
@@ -834,7 +831,7 @@ public class ContextPanel extends JPanel {
      * Show the symbol selection dialog with a type filter
      */
     private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter) {
-        var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+        var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
         var dialogRef = new AtomicReference<SymbolSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
             var dialog = new SymbolSelectionDialog(chrome.getFrame(), analyzer, title, typeFilter); // Use chrome
@@ -858,7 +855,7 @@ public class ContextPanel extends JPanel {
      * Show the call graph dialog for configuring method and depth
      */
     private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph) {
-        var analyzer = contextManager.getProject().getAnalyzer(); // Use contextManager
+        var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
         var dialogRef = new AtomicReference<CallGraphDialog>();
         SwingUtil.runOnEDT(() -> {
             var dialog = new CallGraphDialog(chrome.getFrame(), analyzer, title, isCallerGraph); // Use chrome
@@ -1116,26 +1113,36 @@ public class ContextPanel extends JPanel {
             contextManager.drop(pathFragsToRemove, virtualToRemove); // Qualify contextManager
 
             if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
-                chrome.systemOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items"); // Qualify chrome
+                chrome.systemOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
             }
         }
     }
 
-    private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
+    private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) {
         var project = contextManager.getProject(); // Qualify contextManager
         var analyzer = project.getAnalyzerWrapper();
-        if (analyzer.getNonBlocking() != null && analyzer.get().isEmpty()) {
-            chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Qualify chrome
-            return;
+        try {
+            if (analyzer.getNonBlocking() != null && analyzer.get().isEmpty()) {
+                chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
+                return;
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
         HashSet<CodeUnit> sources = new HashSet<>();
         if (selectedFragments.isEmpty()) {
             // Show dialog allowing selection of files OR classes for summarization
             // Only allow selecting project files that contain classes for the Files tab
+            IAnalyzer az;
+            try {
+                az = analyzer.get();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             var completableProjectFiles = contextManager.submitBackgroundTask("Gathering symbolx", () -> {
                 return project.getFiles().stream().parallel()
-                        .filter(f -> !analyzer.get().getClassesInFile(f).isEmpty())
+                        .filter(f -> !az.getClassesInFile(f).isEmpty())
                         .collect(Collectors.toSet());
             });
 
@@ -1145,15 +1152,15 @@ public class ContextPanel extends JPanel {
                                                            Set.of(SelectionMode.FILES, SelectionMode.CLASSES)); // Both modes
 
             if (selection == null || selection.isEmpty()) {
-                chrome.systemOutput("No files or classes selected for summarization."); // Qualify chrome
+                chrome.systemOutput("No files or classes selected for summarization.");
                 return;
             }
 
             // Process selected files
             if (selection.files() != null) {
-                var projectFiles = toProjectFilesUnsafe(selection.files()); // Should be safe
+                var projectFiles = toProjectFilesUnsafe(selection.files());
                 for (var file : projectFiles) {
-                    sources.addAll(analyzer.get().getClassesInFile(file));
+                    sources.addAll(az.getClassesInFile(file));
                 }
             }
 

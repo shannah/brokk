@@ -1,18 +1,15 @@
 package io.github.jbellis.brokk.tools;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.agent.tool.ToolSpecifications;
+import dev.langchain4j.agent.tool.*;
 import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.internal.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
@@ -47,7 +44,7 @@ public class ToolRegistry {
      * This allows the model to break down its reasoning process explicitly.
      */
     @Tool(value = """
-    Think carefully step by step about a complex problem. Use this tool to reason through difficult questions 
+    Think carefully step by step about a complex problem. Use this tool to reason through difficult questions
     or break problems into smaller pieces. Call it concurrently with other tools.
     """)
     public String think(@P("The step-by-step reasoning to work through") String reasoning) {
@@ -128,7 +125,7 @@ public class ToolRegistry {
      * @param request The ToolExecutionRequest from the LLM.
      * @return A ToolExecutionResult indicating success or failure.
      */
-    public ToolExecutionResult executeTool(ToolExecutionRequest request) {
+    public ToolExecutionResult executeTool(ToolExecutionRequest request) throws InterruptedException {
         ToolInvocationTarget target = toolMap.get(request.name());
         if (target == null) {
             logger.error("Tool not found: {}", request.name());
@@ -145,7 +142,7 @@ public class ToolRegistry {
      * @param request The ToolExecutionRequest from the LLM.
      * @return A ToolExecutionResult indicating success or failure.
      */
-    public ToolExecutionResult executeTool(Object instance, ToolExecutionRequest request) {
+    public ToolExecutionResult executeTool(Object instance, ToolExecutionRequest request) throws InterruptedException {
         assert instance != null;
         Class<?> cls = instance.getClass();
         String toolName = request.name();
@@ -179,13 +176,14 @@ public class ToolRegistry {
      * @param target The resolved method and instance.
      * @return The execution result.
      */
-    private static @NotNull ToolExecutionResult executeTool(ToolExecutionRequest request, ToolInvocationTarget target) {
+    private static @NotNull ToolExecutionResult executeTool(ToolExecutionRequest request, ToolInvocationTarget target) throws InterruptedException {
         Method method = target.method();
         Object instance = target.instance();
 
         try {
             // 1. Parse JSON arguments from the request
-            Map<String, Object> argumentsMap = OBJECT_MAPPER.readValue(request.arguments(), new TypeReference<HashMap<String, Object>>() {});
+            Map<String, Object> argumentsMap = OBJECT_MAPPER.readValue(request.arguments(), new TypeReference<HashMap<String, Object>>() {
+            });
 
             // 2. Prepare the arguments array for Method.invoke
             Parameter[] parameters = method.getParameters();
@@ -211,9 +209,15 @@ public class ToolRegistry {
             String resultString = resultObject != null ? resultObject.toString() : "";
 
             return ToolExecutionResult.success(request, resultString);
-        } catch (Exception e) {
-            logger.error("Error executing tool {}", request.name(), e);
-            return ToolExecutionResult.failure(request, e.getMessage());
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof InterruptedException) {
+                throw (InterruptedException) e.getCause();
+            }
+            throw new RuntimeException(e);
+        } catch (JsonProcessingException e) {
+            return ToolExecutionResult.failure(request, "Error parsing arguments json: " + e.getMessage());
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

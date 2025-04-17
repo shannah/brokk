@@ -826,7 +826,7 @@ public class Project implements IProject, AutoCloseable {
      * Gets the analyzer, blocking if necessary while it's being built
      */
     @Override
-    public IAnalyzer getAnalyzer() {
+    public IAnalyzer getAnalyzer() throws InterruptedException {
         return analyzerWrapper.get();
     }
 

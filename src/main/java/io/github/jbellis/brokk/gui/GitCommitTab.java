@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.Coder;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
@@ -56,8 +57,15 @@ public class GitCommitTab extends JPanel {
     {
         // Table for uncommitted files
         DefaultTableModel model = new DefaultTableModel(new Object[]{"Filename", "Path"}, 0) {
-            @Override public Class<?> getColumnClass(int columnIndex) { return String.class; }
-            @Override public boolean isCellEditable(int row, int col) { return false; }
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return String.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
         };
         uncommittedFilesTable = new JTable(model);
         uncommittedFilesTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
@@ -101,7 +109,7 @@ public class GitCommitTab extends JPanel {
                     if (row >= 0) {
                         uncommittedFilesTable.setRowSelectionInterval(row, row);
                         String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                        String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
+                        String path = (String) uncommittedFilesTable.getValueAt(row, 1);
                         String filePath = path.isEmpty() ? filename : path + "/" + filename;
                         // Unified call:
                         GitUiUtil.showUncommittedFileDiff(contextManager, chrome, filePath);
@@ -142,8 +150,14 @@ public class GitCommitTab extends JPanel {
                     updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem); // Add viewHistoryItem here
                 });
             }
-            @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
-            @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+
+            @Override
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
+            }
         });
 
         // Context menu actions:
@@ -151,7 +165,7 @@ public class GitCommitTab extends JPanel {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
                 String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
+                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
                 String filePath = path.isEmpty() ? filename : path + "/" + filename;
                 GitUiUtil.showUncommittedFileDiff(contextManager, chrome, filePath);
             }
@@ -167,7 +181,7 @@ public class GitCommitTab extends JPanel {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
                 String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
+                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
                 String filePath = path.isEmpty() ? filename : path + "/" + filename;
                 GitUiUtil.editFile(contextManager, filePath);
             }
@@ -178,7 +192,7 @@ public class GitCommitTab extends JPanel {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
                 String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                String path     = (String) uncommittedFilesTable.getValueAt(row, 1);
+                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
                 String filePath = path.isEmpty() ? filename : path + "/" + filename;
                 // Call the parent GitPanel to show the history
                 var file = contextManager.toFile(filePath);
@@ -347,9 +361,21 @@ public class GitCommitTab extends JPanel {
 
         // Commit message area => enable/disable commit/stash buttons
         commitMessageArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { updateCommitButtonState(); }
-            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { updateCommitButtonState(); }
-            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { updateCommitButtonState(); }
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                updateCommitButtonState();
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                updateCommitButtonState();
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                updateCommitButtonState();
+            }
+
             private void updateCommitButtonState() {
                 // Enablement depends on whether there are changes (indicated by suggest button)
                 boolean hasChanges = suggestMessageButton.isEnabled();
@@ -451,7 +477,7 @@ public class GitCommitTab extends JPanel {
 
                             // Check if this file was previously selected
                             String fullPath = file.getParent().isEmpty() ?
-                                    file.getFileName() : file.getParent() + "/" + file.getFileName();
+                                              file.getFileName() : file.getParent() + "/" + file.getFileName();
                             if (selectedFiles.contains(fullPath)) {
                                 rowsToSelect.add(i);
                             }
@@ -545,15 +571,15 @@ public class GitCommitTab extends JPanel {
             boolean alreadyEditable = contextManager.getEditableFiles().contains(file);
             editFileItem.setEnabled(!alreadyEditable);
             editFileItem.setToolTipText(alreadyEditable ?
-                                                "File is already in editable context" :
-                                                "Edit this file");
+                                        "File is already in editable context" :
+                                        "Edit this file");
 
             // Conditionally enable View History (disable for new files)
             boolean isNew = "new".equals(status);
             viewHistoryItem.setEnabled(!isNew);
             viewHistoryItem.setToolTipText(isNew ?
-                                                   "Cannot view history for a new file" :
-                                                   "View commit history for this file");
+                                           "Cannot view history for a new file" :
+                                           "View commit history for this file");
         } else {
             // More than one file selected
             captureDiffItem.setEnabled(true);
@@ -578,7 +604,7 @@ public class GitCommitTab extends JPanel {
 
         for (var row : selectedRows) {
             var filename = (String) model.getValueAt(row, 0);
-            var path     = (String) model.getValueAt(row, 1);
+            var path = (String) model.getValueAt(row, 1);
             // Combine them to get the relative path
             var combined = path.isEmpty() ? filename : path + "/" + filename;
             files.add(new ProjectFile(contextManager.getRoot(), combined));
@@ -603,8 +629,8 @@ public class GitCommitTab extends JPanel {
                 chrome.systemOutput("All changes stashed successfully: " + stashDescription);
             } else {
                 String fileList = selectedFiles.size() <= 3
-                        ? selectedFiles.stream().map(Object::toString).collect(Collectors.joining(", "))
-                        : selectedFiles.size() + " files";
+                                  ? selectedFiles.stream().map(Object::toString).collect(Collectors.joining(", "))
+                                  : selectedFiles.size() + " files";
                 chrome.systemOutput("Stashed " + fileList + ": " + stashDescription);
             }
             commitMessageArea.setText(""); // Clear message area after stash
@@ -624,8 +650,8 @@ public class GitCommitTab extends JPanel {
         Callable<String> suggestTask = () -> {
             try {
                 String diff = selectedFiles.isEmpty()
-                        ? getRepo().diff()
-                        : getRepo().diffFiles(selectedFiles);
+                              ? getRepo().diff()
+                              : getRepo().diffFiles(selectedFiles);
 
                 if (diff.isEmpty()) {
                     SwingUtilities.invokeLater(() -> chrome.actionOutput("No changes detected"));
@@ -659,11 +685,12 @@ public class GitCommitTab extends JPanel {
             return null;
         }
 
-          // Use quickest model for commit messages via ContextManager
-          var result = contextManager.getCoder(contextManager.getModels().quickestModel(), "Infer commit message").sendRequest(messages);
-          if (result.cancelled()) {
-              SwingUtilities.invokeLater(() -> chrome.systemOutput("Commit message suggestion cancelled."));
-              return null;
+        // Use quickest model for commit messages via ContextManager
+        Coder.StreamingResult result;
+        try {
+            result = contextManager.getCoder(contextManager.getModels().quickestModel(), "Infer commit message").sendRequest(messages);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
         if (result.error() != null) {
             SwingUtilities.invokeLater(() -> chrome.systemOutput("LLM error during commit message suggestion: " + result.error().getMessage()));

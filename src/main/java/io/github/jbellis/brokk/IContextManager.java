@@ -49,7 +49,7 @@ public interface IContextManager {
         // no-op
     }
 
-    default IAnalyzer getAnalyzer() {
+    default IAnalyzer getAnalyzer() throws InterruptedException {
         return getProject().getAnalyzer();
     }
 
@@ -81,5 +81,9 @@ public interface IContextManager {
 
     default Coder getCoder(StreamingChatLanguageModel model, String taskDescription) {
         return new Coder(model, taskDescription, this);
+    }
+
+    default IAnalyzer getAnalyzerUninterrupted() {
+        return getProject().getAnalyzerUninterrupted();
     }
 }

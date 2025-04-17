@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 public class Environment {
     public static final Environment instance = new Environment();
@@ -37,22 +38,17 @@ public class Environment {
             }
         }
 
-        int exitCode;
-        while (true) {
-            try {
-                if (process.waitFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)) {
-                    exitCode = process.exitValue();
-                    break;
-                }
-                if (Thread.interrupted()) {
-                    throw new InterruptedException();
-                }
-            } catch (InterruptedException e) {
-                process.destroy();
-                return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
+        try {
+            if (process.waitFor(120, TimeUnit.SECONDS)) {
+                return new ProcessResultInternal(process.exitValue(), out.toString(), err.toString());
             }
+            // TODO need a better way to signal timed out
+            return new ProcessResultInternal(-1, "", "");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroy();
+            return new ProcessResultInternal(Integer.MIN_VALUE, "", "");
         }
-        return new ProcessResultInternal(exitCode, out.toString(), err.toString());
     }
 
     private static ProcessBuilder createProcessBuilder(Path root, String... command) {

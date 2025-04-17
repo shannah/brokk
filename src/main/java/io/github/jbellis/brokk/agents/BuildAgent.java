@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
@@ -57,7 +56,7 @@ public class BuildAgent {
      *
      * @return The gathered BuildDetails record, or null if the process fails or is interrupted.
      */
-    public BuildDetails execute() {
+    public BuildDetails execute() throws InterruptedException {
         // 1. Initial step: List files in the root directory to give the agent a starting point
         ToolExecutionRequest initialRequest = ToolExecutionRequest.builder()
                                                                   .name("listFiles")
@@ -84,12 +83,15 @@ public class BuildAgent {
             }
 
             // Call the Coder to get the LLM's response, including potential tool calls
-            var result = coder.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
-
-            if (result.cancelled()) {
+            Coder.StreamingResult result;
+            try {
+                result = coder.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 logger.error("Unexpected request cancellation in build agent");
                 return null;
             }
+
             if (result.error() != null) {
                 logger.error("LLM error in BuildInfoAgent: " + result.error().getMessage());
                 return null;

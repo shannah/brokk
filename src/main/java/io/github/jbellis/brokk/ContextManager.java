@@ -14,10 +14,7 @@ import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextHistory.UndoResult;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
-import io.github.jbellis.brokk.analyzer.CallSite;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
@@ -29,6 +26,7 @@ import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
+import scala.Option;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -320,29 +318,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {
-        return userActionExecutor.submit(() -> {
-            io.setLlmOutput("# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response"));
-            io.disableHistoryPanel();
-
-            try {
-                task.run();
-            } catch (CancellationException cex) {
-                io.systemOutput("Canceled!");
-            } catch (Exception e) {
-                logger.error("Error in " + action, e);
-                io.toolErrorRaw("Error in " + action + " processing: " + e.getMessage());
-            } finally {
-                io.hideOutputSpinner(); // in the case of error or stop
-                io.actionComplete();
-                io.enableUserActionButtons();
-                io.enableHistoryPanel();
-            }
-        });
+        io.setLlmOutput("# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response"));
+        return submitBackgroundTask(action, task);
     }
 
-    // TODO split this out from the Action executor?
     public Future<?> submitUserTask(String description, Runnable task) {
         return userActionExecutor.submit(() -> {
+            userActionThread.set(Thread.currentThread());
+
             try {
                 io.actionOutput(description);
                 task.run();
@@ -360,6 +343,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public <T> Future<T> submitUserTask(String description, Callable<T> task) {
         return userActionExecutor.submit(() -> {
+            userActionThread.set(Thread.currentThread());
+
             try {
                 io.actionOutput(description);
                 return task.call();
@@ -390,6 +375,18 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 io.enableUserActionButtons();
             }
         });
+    }
+
+    /**
+     * Attempts to re‑interrupt the thread currently executing a user‑action
+     * task.  Safe to call repeatedly.
+     */
+    public void interruptUserActionThread() {
+        var runner = userActionThread.get();
+        if (runner != null && runner.isAlive()) {
+            logger.debug("Interrupting user action thread " + runner.getName());
+            runner.interrupt();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -647,12 +644,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public void usageForIdentifier(String identifier)
     {
-        var uses = getAnalyzer().getUses(identifier);
+        IAnalyzer analyzer;
+        analyzer = getAnalyzerUninterrupted();
+        var uses = analyzer.getUses(identifier);
         if (uses.isEmpty()) {
             io.systemOutput("No uses found for " + identifier);
             return;
         }
-        var result = AnalyzerUtil.processUsages(getAnalyzer(), uses);
+        var result = AnalyzerUtil.processUsages(analyzer, uses);
         if (result.code().isEmpty()) {
             io.systemOutput("No relevant uses found for " + identifier);
             return;
@@ -681,7 +680,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-        var sourceFile = getAnalyzer().getFileFor(className);
+        Option<ProjectFile> sourceFile;
+        sourceFile = getAnalyzerUninterrupted().getFileFor(className);
         if (sourceFile.isDefined()) {
             sources.add(CodeUnit.cls(sourceFile.get(), className));
         }
@@ -713,7 +713,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-        var sourceFile = getAnalyzer().getFileFor(className);
+        Option<ProjectFile> sourceFile;
+        sourceFile = getAnalyzerUninterrupted().getFileFor(className);
         if (sourceFile.isDefined()) {
             sources.add(CodeUnit.cls(sourceFile.get(), className));
         }
@@ -737,12 +738,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var content = new StringBuilder();
         var sources = new HashSet<CodeUnit>();
 
+        IAnalyzer analyzer;
+        analyzer = getAnalyzerUninterrupted();
+
         for (var element : stacktrace.getFrames()) {
             var methodFullName = element.getClassName() + "." + element.getMethodName();
-            var methodSource = getAnalyzer().getMethodSource(methodFullName);
+            var methodSource = analyzer.getMethodSource(methodFullName);
             if (methodSource.isDefined()) {
                 String className = ContextFragment.toClassname(methodFullName);
-                var sourceFile = getAnalyzer().getFileFor(className);
+                var sourceFile = analyzer.getFileFor(className);
                 if (sourceFile.isDefined()) {
                     sources.add(CodeUnit.cls(sourceFile.get(), className));
                 }
@@ -765,14 +769,16 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Summarize classes => adds skeleton fragments
      */
     public boolean summarizeClasses(Set<CodeUnit> classes) {
-        if (getAnalyzer().isEmpty()) {
+        IAnalyzer analyzer;
+        analyzer = getAnalyzerUninterrupted();
+        if (analyzer.isEmpty()) {
             io.toolErrorRaw("Code Intelligence is empty; nothing to add");
             return false;
         }
 
         var coalescedUnits = coalesceInnerClasses(classes);
         var skeletons = coalescedUnits.stream()
-                .map(cu -> Map.entry(cu, getAnalyzer().getSkeleton(cu.fqName())))
+                .map(cu -> Map.entry(cu, analyzer.getSkeleton(cu.fqName())))
                 .filter(entry -> entry.getValue().isDefined())
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get())); // Rely on type inference
         if (skeletons.isEmpty()) {
@@ -997,7 +1003,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // top 10 related classes
         String topClassesRaw = "";
-        if (!getAnalyzer().isEmpty()) {
+        // this check is mostly equivalent to analyzer.isEmpty() but doesn't block for analyzer creation (or throw InterruptedException)
+        if (project.getAnalyzerLanguage() != Language.None) {
             var ac = selectedContext().setAutoContextFiles(10).buildAutoContext();
             topClassesRaw = ac.text();
             var topClassesText = topClassesRaw.isBlank() ? "" : """
@@ -1128,8 +1135,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                 // Use quickModel for summarization
-                var result = getCoder(models.quickestModel(), "Summarize paste").sendRequest(msgs); // Use instance field
-                if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                Coder.StreamingResult result = null; // Use instance field
+                try {
+                    result = getCoder(models.quickestModel(), "Summarize paste").sendRequest(msgs);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                if (result.error() != null || result.chatResponse() == null) {
                     logger.warn("Summarization failed or was cancelled.");
                     return "Summarization failed.";
                 }
@@ -1153,8 +1165,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(input, 5);
                 // Use quickModel for summarization
-                var result = getCoder(models.quickestModel(), input).sendRequest(msgs); // Use instance field
-                if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                Coder.StreamingResult result = null; // Use instance field
+                try {
+                    result = getCoder(models.quickestModel(), input).sendRequest(msgs);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                if (result.error() != null || result.chatResponse() == null) {
                     logger.warn("Summarization failed or was cancelled.");
                     return "Summarization failed.";
                 }
@@ -1191,8 +1208,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     var textContent = TextContent.from("Briefly describe this image in a few words (e.g., 'screenshot of code', 'diagram of system').");
                     var userMessage = UserMessage.from(textContent, imageContent);
                     List<ChatMessage> messages = List.of(userMessage);
-                    var result = getCoder(models.quickModel(), "Summarize pasted image").sendRequest(messages);
-                    if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+                    Coder.StreamingResult result = null;
+                    try {
+                        result = getCoder(models.quickModel(), "Summarize pasted image").sendRequest(messages);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                         logger.warn("Image summarization failed or was cancelled.");
                         return "(Image summarization failed)";
                     }
@@ -1328,7 +1350,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.systemOutput("Generating project style guide...");
-                var analyzer = project.getAnalyzer();
+                var analyzer = project.getAnalyzerUninterrupted();
                 // Use a reasonable limit for style guide generation context
                 var topClasses = AnalyzerUtil.combinedPagerankFor(analyzer, Map.of()).stream().limit(10).toList();
 
@@ -1387,8 +1409,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                                 """.stripIndent().formatted(codeForLLM))
                 );
 
-                var result = getCoder(models.quickestModel(), "Generate style guide").sendRequest(messages); // Use instance field
-                if (result.cancelled() || result.error() != null || result.chatResponse() == null) {
+                var result = getCoder(models.quickestModel(), "Generate style guide").sendRequest(messages);
+                if (result.error() != null || result.chatResponse() == null) {
                     io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
                     return null;
@@ -1423,9 +1445,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Compress
         var historyString = entry.toString();
         var msgs = SummarizerPrompts.instance.compressHistory(historyString);
-        var result = getCoder(models.quickModel(), "Compress history entry").sendRequest(msgs);
+        Coder.StreamingResult result = null;
+        try {
+            result = getCoder(models.quickModel(), "Compress history entry").sendRequest(msgs);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
-        if (result.cancelled() || result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+        if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("History compression failed for entry '{}': {}", entry.description(),
                         result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
             return entry;

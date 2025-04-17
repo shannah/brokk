@@ -393,13 +393,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     /**
-     * Cancels the currently running user-driven Future (Go/Ask/Search), if any
+     * Cancels the currently‑running user task and (re)‑interrupts the
+     * worker thread that executes user‑action tasks.
+     * Calling this method multiple times therefore keeps poking the thread
+     * even after the first {@code Future.cancel(true)} has put the Future
+     * in the *CANCELLED* state.
      */
-    void stopCurrentUserTask() {
-        if (currentUserTask != null && !currentUserTask.isDone()) {
+    void stopCurrentUserTask()
+    {
+        // 1: always try Future.cancel; a second call is harmless
+        if (currentUserTask != null)
             currentUserTask.cancel(true);
-        }
+
+        // 2: regardless of the Future’s state, explicitly (re)‑interrupt the underlying worker thread
+        contextManager.interruptUserActionThread();
     }
+
 
     public void updateCommitPanel() {
         if (gitPanel != null) {

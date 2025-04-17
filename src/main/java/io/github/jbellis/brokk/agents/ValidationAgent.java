@@ -14,7 +14,9 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +46,7 @@ public class ValidationAgent {
      * @param instructions The instructions for the CodeAgent.
      * @return A list of ProjectFile objects representing the relevant test files.
      */
-    public List<ProjectFile> execute(String instructions) {
+    public List<ProjectFile> execute(String instructions) throws InterruptedException {
         var allTestFiles = contextManager.getTestFiles();
         if (allTestFiles.isEmpty()) {
             logger.debug("No test files found in the project.");
@@ -70,7 +72,7 @@ public class ValidationAgent {
     /**
      * Step 1: Asks the LLM to identify which test files from a list MIGHT be relevant.
      */
-    private List<ProjectFile> getPotentiallyRelevantFiles(List<ProjectFile> allTestFiles, String instructions, Coder coder) {
+    private List<ProjectFile> getPotentiallyRelevantFiles(List<ProjectFile> allTestFiles, String instructions, Coder coder) throws InterruptedException {
         var filesText = allTestFiles.stream()
                 .map(ProjectFile::toString)
                 .collect(Collectors.joining("\n"));
@@ -179,7 +181,14 @@ public class ValidationAgent {
         for (int attempt = 1; attempt <= MAX_RELEVANCE_TRIES; attempt++) {
             logger.debug("Invoking quickModel via Coder for relevance check of file: {} (Attempt {}/{})", file, attempt, MAX_RELEVANCE_TRIES);
             // Use Coder to send the request
-            var result = coder.sendRequest(messages);
+            Coder.StreamingResult result;
+            try {
+                result = coder.sendRequest(messages);
+            } catch (InterruptedException e) {
+                // normally we want to propagate request interruptions, but this is running in the parallel thread pool
+                // so we don't expect to be interrupted
+                throw new RuntimeException(e);
+            }
 
             if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 logger.debug("Error during relevance check call for {} (Attempt {}): {}", file, attempt, result.error() != null ? result.error().getMessage() : "Empty response");

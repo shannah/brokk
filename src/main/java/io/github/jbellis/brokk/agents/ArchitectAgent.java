@@ -11,7 +11,6 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
-import dotty.tools.dotc.Run;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
@@ -98,7 +97,7 @@ public class ArchitectAgent {
     public String callCodeAgent(
             @P("Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
-    ) throws FatalLlmException
+    ) throws FatalLlmException, InterruptedException
     {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
@@ -141,7 +140,7 @@ public class ArchitectAgent {
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent. Query in English (not just keywords)")
             String query
-    ) throws FatalLlmException
+    ) throws FatalLlmException, InterruptedException
     {
         logger.debug("callSearchAgent invoked with query: {}", query);
 
@@ -175,7 +174,7 @@ public class ArchitectAgent {
      * Run the multi-step project until we either produce a final answer, abort, or run out of tasks.
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
-    public void execute() throws ExecutionException {
+    public void execute() throws ExecutionException, InterruptedException {
         contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(goal)));
         var coder = contextManager.getCoder(model, "Architect: " + goal);
 
@@ -202,14 +201,17 @@ public class ArchitectAgent {
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
-            var result = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
-
-            if (result.cancelled()) {
+            Coder.StreamingResult result;
+            try {
+                result = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 var msg = "Project canceled by user. Stopping now.";
                 logger.debug(msg);
                 contextManager.getIo().systemOutput(msg);
                 return;
             }
+
             if (result.error() != null) {
                 logger.debug("Error from LLM while deciding next action: {}", result .error().getMessage());
                 contextManager.getIo().systemOutput("Error from LLM while deciding next action (see debug log for details)");

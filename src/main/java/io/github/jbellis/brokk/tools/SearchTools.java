@@ -37,7 +37,7 @@ public class SearchTools {
     }
     
     private IAnalyzer getAnalyzer() {
-        return contextManager.getAnalyzer();
+        return contextManager.getAnalyzerUninterrupted();
     }
 
     // --- Helper Methods

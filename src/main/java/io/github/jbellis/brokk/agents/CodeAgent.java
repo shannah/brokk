@@ -50,7 +50,7 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
      */
-    public SessionResult runSession(String userInput, boolean rejectReadonlyEdits)
+    public SessionResult runSession(String userInput, boolean rejectReadonlyEdits) throws InterruptedException
     {
         var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
@@ -255,7 +255,7 @@ public class CodeAgent {
      * otherwise returns null to proceed.
      */
     private static SessionResult.StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
-        if (streamingResult.cancelled()) {
+        if (false) {
             io.systemOutput("Session interrupted");
             return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
         }
@@ -398,7 +398,12 @@ public class CodeAgent {
                                       details.instructions(),
                                       workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
             // Ask the LLM
-            var llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
+            StreamingResult llmResult = null;
+            try {
+                llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             var suggestedCommand = llmResult.chatResponse() != null && llmResult.chatResponse().aiMessage() != null
                     ? llmResult.chatResponse().aiMessage().text().trim()
                     : null; // Handle potential nulls from LLM response
@@ -424,7 +429,7 @@ public class CodeAgent {
          */
     public SessionResult runQuickSession(ProjectFile file,
                                          String oldText,
-                                         String instructions)
+                                         String instructions) throws InterruptedException
     {
         var coder = contextManager.getCoder(model, "QuickEdit: " + instructions);
         var analyzer = contextManager.getAnalyzer();
@@ -463,7 +468,7 @@ public class CodeAgent {
         // Determine stop reason based on LLM response
         SessionResult.StopDetails stopDetails;
         String responseText = "";
-        if (result.cancelled()) {
+        if (false) {
             stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
             io.toolErrorRaw("Quick edit was cancelled.");
         } else if (result.error() != null) {
@@ -588,7 +593,7 @@ public class CodeAgent {
     /**
      * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
      */
-    private static boolean isBuildProgressing(Coder coder, List<String> buildResults) {
+    private static boolean isBuildProgressing(Coder coder, List<String> buildResults) throws InterruptedException {
         if (buildResults.size() < 2) {
             return true;
         }

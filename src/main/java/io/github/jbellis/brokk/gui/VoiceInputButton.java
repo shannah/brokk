@@ -238,7 +238,7 @@ public class VoiceInputButton extends JButton {
                                 .flatMap(f -> f.sources(contextManager.getProject()).stream())
                                 .collect(Collectors.toSet());
 
-                        var analyzer = contextManager.getAnalyzer();
+                        var analyzer = contextManager.getAnalyzerUninterrupted();
                         if (analyzer != null) {
                              // Get full symbols first
                             var fullSymbols = analyzer.getSymbols(sources);

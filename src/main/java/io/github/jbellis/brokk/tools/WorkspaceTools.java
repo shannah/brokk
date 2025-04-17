@@ -493,6 +493,6 @@ public class WorkspaceTools {
     }
 
     private IAnalyzer getAnalyzer() {
-        return contextManager.getProject().getAnalyzer();
+        return contextManager.getProject().getAnalyzerUninterrupted();
     }
 }

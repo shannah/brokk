@@ -467,7 +467,7 @@ public class PreviewTextPanel extends JPanel {
         if (file != null) {
             // Submit the task to fetch symbols in the background
             symbolsFuture = contextManager.submitBackgroundTask("Fetch File Symbols", () -> {
-                IAnalyzer analyzer = contextManager.getAnalyzer();
+                IAnalyzer analyzer = contextManager.getAnalyzerUninterrupted();
                 return analyzer.getSymbols(analyzer.getClassesInFile(file));
             });
         }

@@ -69,6 +69,8 @@ public class AnalyzerWrapper implements AutoCloseable {
             // Wait for the initial analyzer to build
             future.get();
         } catch (InterruptedException | ExecutionException e) {
+            // everything expects that get() will work, this is fatal
+            logger.debug("Error building initial analyzer", e);
             throw new RuntimeException(e);
         }
 
@@ -301,7 +303,7 @@ public class AnalyzerWrapper implements AutoCloseable {
     /**
      * Get the analyzer, showing a spinner UI while waiting if requested.
      */
-    private IAnalyzer get(boolean notifyWhenBlocked) {
+    private IAnalyzer get(boolean notifyWhenBlocked) throws InterruptedException {
         if (SwingUtilities.isEventDispatchThread()) {
             throw new UnsupportedOperationException("Never call blocking get() from EDT");
         }
@@ -324,9 +326,6 @@ public class AnalyzerWrapper implements AutoCloseable {
             var built = future.get();
             currentAnalyzer = built;
             return built;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while fetching analyzer", e);
         } catch (ExecutionException e) {
             throw new RuntimeException("Failed to create analyzer", e);
         }
@@ -336,7 +335,7 @@ public class AnalyzerWrapper implements AutoCloseable {
      * Get the analyzer, showing a spinner UI while waiting.
      * For use in user-facing operations.
      */
-    public IAnalyzer get() {
+    public IAnalyzer get() throws InterruptedException {
         return get(true);
     }
 

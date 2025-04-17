@@ -485,7 +485,12 @@ public class MultiFileSelectionDialog extends JDialog {
         logger.debug("Raw class names parsed: {}", classNames);
 
         List<CodeUnit> resolvedClasses = new ArrayList<>();
-        var az = analyzer.get();
+        IAnalyzer az = null;
+        try {
+            az = analyzer.get();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
         if (az == null || az.isEmpty()) {
             logger.warn("Analyzer is not available or empty, cannot resolve class names.");
             return resolvedClasses;
@@ -720,7 +725,12 @@ public class MultiFileSelectionDialog extends JDialog {
             String text = getAlreadyEnteredText(comp);
 
             // Fast‑exit for obviously empty scenarios
-            var az = analyzer.get();
+            IAnalyzer az = null;
+            try {
+                az = analyzer.get();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             if (text.isBlank() || az == null || az.isEmpty()) {
                 return Collections.emptyList();
             }

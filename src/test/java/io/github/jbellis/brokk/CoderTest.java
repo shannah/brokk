@@ -113,7 +113,7 @@ public class CoderTest {
                 var result = coder.sendRequest(messages);
 
                 assertNotNull(result, "Result should not be null for model: " + modelName);
-                assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
+                assertFalse(false, "Request should not be cancelled for model: " + modelName);
                 if (result.error() != null) {
                     // Capture the error directly instead of asserting null
                     throw new AssertionError("Request resulted in an error for model: " + modelName, result.error());
@@ -170,7 +170,7 @@ public class CoderTest {
                         var result = coder.sendRequest(messages, toolSpecifications, ToolChoice.REQUIRED, false);
 
                         assertNotNull(result, "Result should not be null for model: " + modelName);
-                        assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
+                        assertFalse(false, "Request should not be cancelled for model: " + modelName);
                         if (result.error() != null) {
                             throw new AssertionError("Request resulted in an error for model: " + modelName, result.error());
                         }
@@ -193,7 +193,7 @@ public class CoderTest {
                         messages.add(new UserMessage("Given what you know about London, is this unusual?"));
                         result = coder.sendRequest(messages);
                         assertNotNull(result, "Result should not be null for model: " + modelName);
-                        assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
+                        assertFalse(false, "Request should not be cancelled for model: " + modelName);
                         if (result.error() != null) {
                             throw new AssertionError("Followup request resulted in an error for model: " + modelName, result.error());
                         }

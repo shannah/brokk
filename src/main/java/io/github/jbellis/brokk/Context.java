@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk;
 
 import com.google.common.collect.Streams;
-import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.ConversationFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
@@ -16,12 +15,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -319,7 +313,8 @@ public class Context implements Serializable {
             return AutoContext.DISABLED;
         }
 
-        var analyzer = contextManager.getAnalyzer();
+        IAnalyzer analyzer;
+        analyzer = contextManager.getAnalyzerUninterrupted();
 
         // Collect ineligible classnames from fragments not eligible for auto-context
         var project = contextManager.getProject();

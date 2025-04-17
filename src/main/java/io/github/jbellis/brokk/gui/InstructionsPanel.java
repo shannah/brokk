@@ -419,6 +419,8 @@ public class InstructionsPanel extends JPanel {
         try {
             var result = new CodeAgent(contextManager, model).runSession(input, true);
             contextManager.addToHistory(result, false);
+        } catch (InterruptedException e) {
+            chrome.systemOutput("Code agent cancelled!");
         } finally {
             project.resumeAnalyzerRebuilds();
         }
@@ -441,7 +443,7 @@ public class InstructionsPanel extends JPanel {
 
             // stream from coder using the provided model
             var response = contextManager.getCoder(model, question).sendRequest(messages, true);
-            if (response.cancelled()) {
+            if (false) {
                 chrome.systemOutput("Ask command cancelled!");
             } else if (response.error() != null) {
                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
@@ -507,7 +509,7 @@ public class InstructionsPanel extends JPanel {
             chrome.setLlmOutput(result.output().text());
             contextManager.addToHistory(result, false);
         } catch (CancellationException cex) {
-            chrome.systemOutput("Search command cancelled.");
+            chrome.systemOutput("Search agent cancelled!");
         } catch (Exception e) {
             logger.error("Error during 'Search' execution", e);
             chrome.toolErrorRaw("Internal error during search command: " + e.getMessage());
@@ -876,12 +878,10 @@ public class InstructionsPanel extends JPanel {
         var models = contextManager.getModels();
         var searchModel = contextManager.getSearchModel();
 
-        // --- Vision Check ---
         if (contextHasImages() && !models.supportsVision(searchModel)) {
             showVisionSupportErrorDialog(models.nameOf(searchModel) + " (Search)");
             return; // Abort if model doesn't support vision and context has images
         }
-        // --- End Vision Check ---
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         // Update the LLM output panel directly via Chrome

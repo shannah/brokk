@@ -89,13 +89,17 @@ public class Coder {
      * Actually performs one streaming call to the LLM, returning once the response
      * is done or there's an error. If 'echo' is true, partial tokens go to console.
      */
-    private StreamingResult doSingleStreamingCall(ChatRequest request, boolean echo) {
+    private StreamingResult doSingleStreamingCall(ChatRequest request, boolean echo) throws InterruptedException {
         var result = doSingleStreamingCallInternal(request, echo);
         logRequest(model, request, result);
         return result;
     }
 
-    private StreamingResult doSingleStreamingCallInternal(ChatRequest request, boolean echo) {
+    private StreamingResult doSingleStreamingCallInternal(ChatRequest request, boolean echo) throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException();
+        }
+
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         var canceled = new AtomicBoolean(false);
@@ -115,9 +119,6 @@ public class Coder {
             }
         };
 
-        if (Thread.currentThread().isInterrupted()) {
-            return new StreamingResult(null, true, null);
-        }
         model.chat(request, new StreamingChatResponseHandler() {
             @Override
             public void onPartialResponse(String token) {
@@ -165,29 +166,21 @@ public class Coder {
             }
         });
 
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            lock.lock();
-            canceled.set(true);
-            lock.unlock();
-            // We were interrupted while waiting
-            return new StreamingResult(null, true, null);
-        }
+        latch.await();
 
         var streamingError = errorRef.get();
         var outputTokenCount = outputTokenCountRef.get();
         if (streamingError != null) {
             // Return an error result
-            return new StreamingResult(null, outputTokenCount, false, streamingError);
+            return new StreamingResult(null, outputTokenCount, streamingError);
         }
 
         var cr = atomicResponse.get();
         if (cr == null) {
             // also an error
-            return new StreamingResult(null, outputTokenCount, false, new IllegalStateException("No ChatResponse from model"));
+            return new StreamingResult(null, outputTokenCount, new IllegalStateException("No ChatResponse from model"));
         }
-        return new StreamingResult(cr, outputTokenCount, false, null);
+        return new StreamingResult(cr, outputTokenCount, null);
     }
 
     /**
@@ -198,14 +191,14 @@ public class Coder {
      * @param echo     Whether to echo LLM responses to the console as they stream
      * @return The final response from the LLM as a record containing ChatResponse, errors, etc.
      */
-    public StreamingResult sendRequest(List<ChatMessage> messages, boolean echo) {
+    public StreamingResult sendRequest(List<ChatMessage> messages, boolean echo) throws InterruptedException {
         return sendMessageWithRetry(messages, List.of(), ToolChoice.AUTO, echo, MAX_ATTEMPTS);
     }
 
     /**
      * Sends messages to a given model, no tools, no streaming echo.
      */
-    public StreamingResult sendRequest(List<ChatMessage> messages) {
+    public StreamingResult sendRequest(List<ChatMessage> messages) throws InterruptedException {
         return sendRequest(messages, false);
     }
 
@@ -215,15 +208,14 @@ public class Coder {
     public StreamingResult sendRequest(List<ChatMessage> messages,
                                        List<ToolSpecification> tools,
                                        ToolChoice toolChoice,
-                                       boolean echo)
+                                       boolean echo) throws InterruptedException
     {
         var result = sendMessageWithRetry(messages, tools, toolChoice, echo, MAX_ATTEMPTS);
         var cr = result.chatResponse();
 
         // poor man's ToolChoice.REQUIRED (not supported by langchain4j for Anthropic)
         // Also needed for our emulation if it returns a response without a tool call
-        while (!result.cancelled
-                && result.error == null
+        while (result.error == null
                 && !tools.isEmpty()
                 && !cr.aiMessage().hasToolExecutionRequests()
                 && toolChoice == ToolChoice.REQUIRED) {
@@ -249,7 +241,7 @@ public class Coder {
                                                  List<ToolSpecification> tools,
                                                  ToolChoice toolChoice,
                                                  boolean echo,
-                                                 int maxAttempts)
+                                                 int maxAttempts) throws InterruptedException
     {
         Throwable lastError = null;
         int attempt = 0;
@@ -265,9 +257,6 @@ public class Coder {
             }
 
             var response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
-            if (response.cancelled) {
-                return response;
-            }
             if (response.error == null) {
                 // Check if we got a non-empty response
                 var cr = response.chatResponse;
@@ -295,17 +284,12 @@ public class Coder {
 
             // Busywait with countdown
             io.systemOutput(String.format("LLM issue on attempt %d/%d (retrying in %d seconds).", attempt, maxAttempts, backoffSeconds));
-            try {
-                long endTime = System.currentTimeMillis() + backoffSeconds * 1000;
-                while (System.currentTimeMillis() < endTime) {
-                    long remain = endTime - System.currentTimeMillis();
-                    if (remain <= 0) break;
-                    io.actionOutput("Retrying in %.1f seconds...".formatted(remain / 1000.0));
-                    Thread.sleep(Math.min(remain, 100));
-                }
-            } catch (InterruptedException e) {
-                io.systemOutput("Interrupted!");
-                return new StreamingResult(null, true, null);
+            long endTime = System.currentTimeMillis() + backoffSeconds * 1000;
+            while (System.currentTimeMillis() < endTime) {
+                long remain = endTime - System.currentTimeMillis();
+                if (remain <= 0) break;
+                io.actionOutput("Retrying in %.1f seconds...".formatted(remain / 1000.0));
+                Thread.sleep(Math.min(remain, 100));
             }
         }
 
@@ -313,11 +297,11 @@ public class Coder {
         if (lastError == null) {
             // LLM returned empty or null - log error to the current request's file
             var dummy = ChatResponse.builder().aiMessage(new AiMessage("Empty response after max retries")).build();
-            return new StreamingResult(dummy, false, new IllegalStateException("Empty response after max retries"));
+            return new StreamingResult(dummy, new IllegalStateException("Empty response after max retries"));
         }
         // Return last error - log error to the current request's file
         var cr = ChatResponse.builder().aiMessage(new AiMessage("Error: " + lastError.getMessage())).build();
-        return new StreamingResult(cr, false, lastError);
+        return new StreamingResult(cr, lastError);
     }
 
     /**
@@ -329,7 +313,7 @@ public class Coder {
                                                 List<ChatMessage> messages,
                                                 List<ToolSpecification> tools,
                                                 ToolChoice toolChoice,
-                                                boolean echo)
+                                                boolean echo) throws InterruptedException
     {
         // Note: writeRequestToHistory is now called *within* this method,
         // right before doSingleStreamingCall, to ensure it uses the final `messagesToSend`.
@@ -373,7 +357,7 @@ public class Coder {
                                          List<ChatMessage> messages,
                                          List<ToolSpecification> tools,
                                          ToolChoice toolChoice,
-                                         boolean echo)
+                                         boolean echo) throws InterruptedException
     {
         var enhancedTools = ensureThinkToolPresent(tools);
         if (contextManager.getModels().supportsJsonSchema(model)) {
@@ -391,7 +375,7 @@ public class Coder {
                                                ToolChoice toolChoice,
                                                boolean echo,
                                                Function<List<ChatMessage>, ChatRequest> requestBuilder,
-                                               Function<Throwable, String> retryInstructionsProvider)
+                                               Function<Throwable, String> retryInstructionsProvider) throws InterruptedException
     {
         assert !tools.isEmpty();
 
@@ -409,10 +393,6 @@ public class Coder {
         for (int attempt = 1; attempt <= maxTries; attempt++) {
             var request = requestBuilder.apply(attemptMessages);
             var singleCallResult = doSingleStreamingCall(request, echo);
-
-            if (singleCallResult.cancelled) {
-                return singleCallResult; // user interrupt
-            }
 
             lastResponse = singleCallResult.chatResponse;
             lastError = singleCallResult.error;
@@ -466,14 +446,14 @@ public class Coder {
             var failMsg = "No valid response after " + maxTries + " attempts: " + lastError.getMessage();
             logger.warn(failMsg, lastError);
             var dummyResponse = ChatResponse.builder().aiMessage(new AiMessage(failMsg)).build();
-            return new StreamingResult(dummyResponse, outputTokenCount, false, new RuntimeException(failMsg));
+            return new StreamingResult(dummyResponse, outputTokenCount, new RuntimeException(failMsg));
         }
         // Otherwise we have some final ChatResponse with an error
         var fail = ChatResponse.builder()
                 .aiMessage(new AiMessage("Error: " + lastError.getMessage()))
                 .build();
         logger.error("Emulated function calling failed: {}", lastError.getMessage());
-        return new StreamingResult(fail, outputTokenCount, false, lastError);
+        return new StreamingResult(fail, outputTokenCount, lastError);
     }
 
     /**
@@ -558,7 +538,7 @@ public class Coder {
     private StreamingResult emulateToolsUsingJsonSchema(List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
-                                                        boolean echo)
+                                                        boolean echo) throws InterruptedException
     {
         // Build a top-level JSON schema with "tool_calls" as an array of objects
         var toolNames = tools.stream().map(ToolSpecification::name).distinct().toList();
@@ -611,7 +591,7 @@ public class Coder {
     private StreamingResult emulateToolsUsingJsonObject(List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
-                                                        boolean echo)
+                                                        boolean echo) throws InterruptedException
     {
         var instructionsPresent = emulatedToolInstructionsPresent(messages);
         logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
@@ -805,7 +785,7 @@ public class Coder {
         // Create a properly formatted AiMessage with tool execution requests
         var aiMessage = new AiMessage("[json]", toolExecutionRequests);
         var cr = ChatResponse.builder().aiMessage(aiMessage).build();
-        return new StreamingResult(cr, result.originalResponse, result.outputTokenCount, false, null);
+        return new StreamingResult(cr, result.originalResponse, result.outputTokenCount, null);
     }
 
     private static String getInstructions(List<ToolSpecification> tools, Function<Throwable, String> retryInstructionsProvider) {
@@ -951,9 +931,7 @@ public class Coder {
         if (result.error != null) {
             return result.error.getMessage();
         }
-        if (result.cancelled) {
-            return "Cancelled";
-        }
+
         assert result.chatResponse != null;
         var aiMessage = result.chatResponse.aiMessage();
         if (aiMessage.hasToolExecutionRequests()) {
@@ -975,27 +953,23 @@ public class Coder {
     public record StreamingResult(ChatResponse chatResponse,
                                   ChatResponse originalResponse,
                                   int outputTokenCount,
-                                  boolean cancelled,
                                   Throwable error)
     {
-        public StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
-            this(chatResponse, chatResponse, -1, cancelled, error);
+        public StreamingResult(ChatResponse chatResponse, Throwable error) {
+            this(chatResponse, chatResponse, -1, error);
         }
 
-        public StreamingResult(ChatResponse chatResponse, int outputTokenCount, boolean cancelled, Throwable error) {
-            this(chatResponse, chatResponse, outputTokenCount, cancelled, error);
+        public StreamingResult(ChatResponse chatResponse, int outputTokenCount, Throwable error) {
+            this(chatResponse, chatResponse, outputTokenCount, error);
         }
 
         public StreamingResult {
             // Must have either a chatResponse or an error/cancel
-            assert cancelled || error != null || chatResponse != null;
+            assert error != null || chatResponse != null;
             assert (originalResponse == null) == (chatResponse == null);
         }
 
         public String formatted() {
-            if (cancelled) {
-                return "Cancelled";
-            }
             if (error != null) {
                 return "Error: " + error.getMessage();
             }
