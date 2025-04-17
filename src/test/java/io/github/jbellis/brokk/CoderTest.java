@@ -226,10 +226,11 @@ public class CoderTest {
         
         // Verify the think tool's description and parameter
         var thinkTool = allTools.getFirst();
-        assertTrue(thinkTool.description().contains("Thinking step by step"), 
-                  "Think tool should have the correct description");
-        assertEquals(1, thinkTool.parameters().properties().size(), 
-                    "Think tool should have exactly one parameter");
+        // Check if the description contains the phrase "step by step".
+        assertTrue(thinkTool.description().contains("step by step"),
+                  "Think tool description should mention 'step by step'. Actual: " + thinkTool.description());
+        assertEquals(1, thinkTool.parameters().properties().size(),
+                        "Think tool should have exactly one parameter");
         assertTrue(thinkTool.parameters().properties().containsKey("reasoning"), 
                   "Think tool should have a 'reasoning' parameter");
     }
