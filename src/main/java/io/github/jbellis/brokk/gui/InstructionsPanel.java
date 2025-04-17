@@ -545,7 +545,8 @@ public class InstructionsPanel extends JPanel {
         var contextManager = chrome.getContextManager();
         var result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-        chrome.llmOutput("\n```\n" + output + "\n```", ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
+        var wrappedPutput = "\n```\n" + output + "\n```";
+        chrome.llmOutput(wrappedPutput, ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
 
         var llmOutputText = chrome.getLlmOutputText();
         if (llmOutputText == null) {
@@ -555,7 +556,7 @@ public class InstructionsPanel extends JPanel {
 
         // Add to context history with the output text
         contextManager.pushContext(ctx -> {
-            var runFrag = new ContextFragment.StringFragment(output, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
+            var runFrag = new ContextFragment.StringFragment(wrappedPutput, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
             var parsed = new ParsedOutput(llmOutputText, runFrag);
             return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
         });
