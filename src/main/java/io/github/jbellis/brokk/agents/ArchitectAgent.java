@@ -11,6 +11,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
+import dotty.tools.dotc.Run;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
@@ -83,6 +84,12 @@ public class ArchitectAgent {
         contextManager.getIo().systemOutput(msg);
     }
 
+    private class FatalLlmException extends RuntimeException {
+        public FatalLlmException(String message) {
+            super(message);
+        }
+    }
+
     /**
      * A tool that invokes the CodeAgent to solve the current top task using the given instructions.
      * The instructions can incorporate the stack's current top task or anything else.
@@ -91,7 +98,7 @@ public class ArchitectAgent {
     public String callCodeAgent(
             @P("Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
-    )
+    ) throws FatalLlmException
     {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
@@ -106,6 +113,9 @@ public class ArchitectAgent {
         }
 
         var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, false);
+        if (result.stopDetails().reason() == SessionResult.StopReason.LLM_ERROR) {
+            throw new FatalLlmException(result.stopDetails().explanation());
+        }
         var entry = contextManager.addToHistory(result, true);
         var stopDetails = result.stopDetails();
         String summary = """
@@ -131,23 +141,23 @@ public class ArchitectAgent {
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent. Query in English (not just keywords)")
             String query
-    )
+    ) throws FatalLlmException
     {
         logger.debug("callSearchAgent invoked with query: {}", query);
 
         // Instantiate and run SearchAgent
         var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry);
-        var searchResult = searchAgent.execute();
-
-        // TODO add result to Conversation History
-
-        assert searchResult != null;
-        if (searchResult.stopDetails().reason() != SessionResult.StopReason.SUCCESS) {
-            logger.warn("SearchAgent returned null or empty result for query: {}", query);
-            return searchResult.stopDetails().toString();
+        var result = searchAgent.execute();
+        if (result.stopDetails().reason() == SessionResult.StopReason.LLM_ERROR) {
+            throw new FatalLlmException(result.stopDetails().explanation());
         }
 
-        var relevantClasses = searchResult.output().parsedFragment().sources(contextManager.getProject()).stream()
+        if (result.stopDetails().reason() != SessionResult.StopReason.SUCCESS) {
+            logger.debug("SearchAgent returned non-success for query {}: {}", query, result.stopDetails());
+            return result.stopDetails().toString();
+        }
+
+        var relevantClasses = result.output().parsedFragment().sources(contextManager.getProject()).stream()
                 .map(CodeUnit::fqName)
                 .collect(Collectors.joining(","));
         var stringResult = """
@@ -155,7 +165,7 @@ public class ArchitectAgent {
                 
                 Full list of potentially relevant classes:
                 %s
-                """.stripIndent().formatted(searchResult.output().text(), relevantClasses);
+                """.stripIndent().formatted(result.output().text(), relevantClasses);
 
         logger.debug(stringResult);
         return stringResult;
@@ -165,7 +175,7 @@ public class ArchitectAgent {
      * Run the multi-step project until we either produce a final answer, abort, or run out of tasks.
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
-    public void execute() {
+    public void execute() throws ExecutionException {
         contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(goal)));
         var coder = contextManager.getCoder(model, "Architect: " + goal);
 
@@ -192,28 +202,29 @@ public class ArchitectAgent {
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
-            var response = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
-            if (response.cancelled()) {
+            var result = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
+
+            if (result.cancelled()) {
                 var msg = "Project canceled by user. Stopping now.";
                 logger.debug(msg);
                 contextManager.getIo().systemOutput(msg);
                 return;
             }
-            if (response.error() != null) {
-                logger.debug("Error from LLM while deciding next action: {}", response.error().getMessage());
+            if (result.error() != null) {
+                logger.debug("Error from LLM while deciding next action: {}", result .error().getMessage());
                 contextManager.getIo().systemOutput("Error from LLM while deciding next action (see debug log for details)");
                 return;
             }
-            if (response.chatResponse() == null || response.chatResponse().aiMessage() == null) {
+            if (result.chatResponse() == null || result .chatResponse().aiMessage() == null) {
                 var msg = "Empty LLM response. Stopping project now.";
                 logger.debug(msg);
                 contextManager.getIo().systemOutput(msg);
                 return;
             }
 
-            totalUsage = TokenUsage.sum(totalUsage, response.chatResponse().tokenUsage());
+            totalUsage = TokenUsage.sum(totalUsage, result .chatResponse().tokenUsage());
             // Add the request and response to message history
-            var aiMessage = ToolRegistry.removeDuplicateToolRequests(response.chatResponse().aiMessage());
+            var aiMessage = ToolRegistry.removeDuplicateToolRequests(result .chatResponse().aiMessage());
             architectMessages.add(messages.getLast());
             architectMessages.add(aiMessage);
 
@@ -247,14 +258,14 @@ public class ArchitectAgent {
             // 6) If we see "projectFinished" or "abortProject", handle it and then exit
             if (answerReq != null) {
                 logger.debug("LLM decided to projectFinished. We'll finalize and stop.");
-                var result = toolRegistry.executeTool(this, answerReq);
-                logger.debug("Project final answer: {}", result.resultText());
+                var toolResult = toolRegistry.executeTool(this, answerReq);
+                logger.debug("Project final answer: {}", toolResult.resultText());
                 return;
             }
             if (abortReq != null) {
                 logger.debug("LLM decided to abortProject. We'll finalize and stop.");
-                var result = toolRegistry.executeTool(this, abortReq);
-                logger.debug("Project aborted: {}", result.resultText());
+                var toolResult = toolRegistry.executeTool(this, abortReq);
+                logger.debug("Project aborted: {}", toolResult.resultText());
                 return;
             }
 
@@ -274,9 +285,9 @@ public class ArchitectAgent {
             var searchAgentTasks = new ArrayList<SearchTask>();
             for (var req : searchAgentReqs) {
                 Callable<ToolExecutionResult> task = () -> {
-                    var result = toolRegistry.executeTool(this, req);
+                    var toolResult = toolRegistry.executeTool(this, req);
                     logger.debug("Finished SearchAgent task for request: {}", req.name());
-                    return result;
+                    return toolResult;
                 };
                 var taskDescription = "SearchAgent: " + SessionResult.getShortDescription(req.arguments());
                 var future = contextManager.submitBackgroundTask(taskDescription, task);
@@ -306,7 +317,12 @@ public class ArchitectAgent {
                     interrupted = true;
                 } catch (ExecutionException e) {
                     logger.warn("Error executing SearchAgent task '{}'", request.name(), e.getCause());
-                    var errorMessage = "Error executing SearchAgent '%s': %s".formatted(request.name(), e.getCause().getMessage());
+                    if (e.getCause() instanceof FatalLlmException) {
+                        var errorMessage = "Fatal LLM error executing Search Agent: %s".formatted(e.getCause().getMessage());
+                        contextManager.getIo().systemOutput(errorMessage);
+                        break;
+                    }
+                    var errorMessage = "Error executing Search Agent: %s".formatted(e.getCause().getMessage());
                     architectMessages.add(ToolExecutionResultMessage.from(request, errorMessage));
                 }
             }
@@ -321,7 +337,14 @@ public class ArchitectAgent {
 
             // code agent calls are done serially so they don't stomp on each others' feet
             for (var req : codeAgentReqs) {
-                var toolResult = toolRegistry.executeTool(this, req);
+                ToolExecutionResult toolResult;
+                try {
+                    toolResult = toolRegistry.executeTool(this, req);
+                } catch (FatalLlmException e) {
+                    var errorMessage = "Fatal LLM error executing Code Agent: %s".formatted(e.getMessage());
+                    contextManager.getIo().systemOutput(errorMessage);
+                    break;
+                }
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }

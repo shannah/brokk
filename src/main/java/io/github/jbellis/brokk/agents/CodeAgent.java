@@ -259,20 +259,20 @@ public class CodeAgent {
             io.systemOutput("Session interrupted");
             return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
         }
+
         if (streamingResult.error() != null) {
             io.systemOutput("LLM returned an error even after retries. Ending session");
-            return new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR);
+            return new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, streamingResult.error().getMessage());
         }
+
         var llmResponse = streamingResult.chatResponse();
-        if (llmResponse == null) {
-            io.systemOutput("Empty LLM response even after retries. Ending session.");
-            return new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE);
-        }
+        assert llmResponse != null; // enforced by SR
         var text = llmResponse.aiMessage().text();
         if (text.isBlank()) {
             io.systemOutput("Blank LLM response even after retries. Ending session.");
             return new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE);
         }
+
         return null;
     }
 

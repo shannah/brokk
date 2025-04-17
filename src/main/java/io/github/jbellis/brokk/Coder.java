@@ -274,6 +274,7 @@ public class Coder {
                 boolean isEmpty = (cr.aiMessage().text() == null || cr.aiMessage().text().isBlank())
                         && !cr.aiMessage().hasToolExecutionRequests();
                 if (!isEmpty) {
+                    // Success!
                     return response;
                 }
             }
@@ -312,7 +313,7 @@ public class Coder {
         if (lastError == null) {
             // LLM returned empty or null - log error to the current request's file
             var dummy = ChatResponse.builder().aiMessage(new AiMessage("Empty response after max retries")).build();
-            return new StreamingResult(dummy, false, new IllegalStateException("LLM empty or null after max retries"));
+            return new StreamingResult(dummy, false, new IllegalStateException("Empty response after max retries"));
         }
         // Return last error - log error to the current request's file
         var cr = ChatResponse.builder().aiMessage(new AiMessage("Error: " + lastError.getMessage())).build();
