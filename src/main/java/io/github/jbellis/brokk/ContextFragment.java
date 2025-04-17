@@ -376,9 +376,9 @@ public interface ContextFragment extends Serializable {
     }
 
     final class StringFragment extends VirtualFragment implements OutputFragment {
-        private static final long serialVersionUID = 2L;
-        private final String text;
-        private final String description;
+            private static final long serialVersionUID = 3L;
+            private final String text;
+            private final String description;
         private final String syntaxStyle;
 
         public StringFragment(String text, String description, String syntaxStyle) {
@@ -417,9 +417,9 @@ public interface ContextFragment extends Serializable {
     }
 
     final class SearchFragment extends VirtualFragment implements OutputFragment {
-        private static final long serialVersionUID = 2L;
-        private final String query;
-        private final String explanation;
+            private static final long serialVersionUID = 3L;
+            private final String query;
+            private final String explanation;
         private final Set<CodeUnit> sources;
 
         public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
@@ -522,8 +522,8 @@ public interface ContextFragment extends Serializable {
     }
 
     final class PasteTextFragment extends PasteFragment implements OutputFragment {
-        private static final long serialVersionUID = 3L;
-        private final String text;
+            private static final long serialVersionUID = 4L;
+            private final String text;
 
         public PasteTextFragment(String text, Future<String> descriptionFuture) {
             super(descriptionFuture);
@@ -789,9 +789,9 @@ public interface ContextFragment extends Serializable {
     }
 
     /** Base class for fragments that represent task history */
-    abstract class TaskHistoryFragment extends VirtualFragment {
-        private static final long serialVersionUID = 3L;
-        protected final List<TaskEntry> history;
+        abstract class TaskHistoryFragment extends VirtualFragment {
+            private static final long serialVersionUID = 4L;
+            protected final List<TaskEntry> history;
 
         public TaskHistoryFragment(List<TaskEntry> history) {
             super();
@@ -841,10 +841,10 @@ public interface ContextFragment extends Serializable {
     }
 
     /** represents the entire Task History */
-    final class ConversationFragment extends TaskHistoryFragment implements OutputFragment {
-        private static final long serialVersionUID = 3L;
-
-        public ConversationFragment(List<TaskEntry> history) {
+        final class ConversationFragment extends TaskHistoryFragment implements OutputFragment {
+            private static final long serialVersionUID = 4L;
+    
+            public ConversationFragment(List<TaskEntry> history) {
             super(history);
         }
 
@@ -860,9 +860,9 @@ public interface ContextFragment extends Serializable {
     }
 
     /** represents a single session's Task History */
-    final class SessionFragment extends TaskHistoryFragment implements OutputFragment {
-        private static final long serialVersionUID = 3L;
-        private final String sessionName;
+        final class SessionFragment extends TaskHistoryFragment implements OutputFragment {
+            private static final long serialVersionUID = 4L;
+            private final String sessionName;
 
         public SessionFragment(List<TaskEntry> history, String sessionName) {
             super(history);
