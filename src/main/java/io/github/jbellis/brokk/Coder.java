@@ -195,7 +195,7 @@ public class Coder {
      * Writes to conversation history. Optionally echoes partial tokens to the console.
      *
      * @param messages The messages to send
-     * @param echo Whether to echo LLM responses to the console as they stream
+     * @param echo     Whether to echo LLM responses to the console as they stream
      * @return The final response from the LLM as a record containing ChatResponse, errors, etc.
      */
     public StreamingResult sendRequest(List<ChatMessage> messages, boolean echo) {
@@ -215,7 +215,8 @@ public class Coder {
     public StreamingResult sendRequest(List<ChatMessage> messages,
                                        List<ToolSpecification> tools,
                                        ToolChoice toolChoice,
-                                       boolean echo) {
+                                       boolean echo)
+    {
         var result = sendMessageWithRetry(messages, tools, toolChoice, echo, MAX_ATTEMPTS);
         var cr = result.chatResponse();
 
@@ -327,7 +328,8 @@ public class Coder {
                                                 List<ChatMessage> messages,
                                                 List<ToolSpecification> tools,
                                                 ToolChoice toolChoice,
-                                                boolean echo) {
+                                                boolean echo)
+    {
         // Note: writeRequestToHistory is now called *within* this method,
         // right before doSingleStreamingCall, to ensure it uses the final `messagesToSend`.
 
@@ -388,7 +390,8 @@ public class Coder {
                                                ToolChoice toolChoice,
                                                boolean echo,
                                                Function<List<ChatMessage>, ChatRequest> requestBuilder,
-                                               Function<Throwable, String> retryInstructionsProvider) {
+                                               Function<Throwable, String> retryInstructionsProvider)
+    {
         assert !tools.isEmpty();
 
         // Preprocess messages to combine tool results with subsequent user messages for emulation
@@ -484,7 +487,7 @@ public class Coder {
      *
      * @param originalMessages The original list of messages.
      * @return A new list with tool results folded into subsequent UserMessages,
-     *         or the original list if no modifications were needed.
+     * or the original list if no modifications were needed.
      * @throws IllegalArgumentException if ToolExecutionResultMessages are not followed by a UserMessage.
      */
     static List<ChatMessage> emulateToolExecutionResults(List<ChatMessage> originalMessages) {
@@ -554,7 +557,8 @@ public class Coder {
     private StreamingResult emulateToolsUsingJsonSchema(List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
-                                                        boolean echo) {
+                                                        boolean echo)
+    {
         // Build a top-level JSON schema with "tool_calls" as an array of objects
         var toolNames = tools.stream().map(ToolSpecification::name).distinct().toList();
         var schema = buildToolCallsSchema(toolNames);
@@ -567,21 +571,21 @@ public class Coder {
                 .build();
 
         Function<Throwable, String> retryInstructionsProvider = e -> """
-        %s
-        Please ensure you only return a JSON object matching the schema:
-          {
-            "tool_calls": [
-              {
-                "name": "...",
-                "arguments": { ... }
-              },
-              {
-                "name": "...",
-                "arguments": { ... }
-              }
-            ]
-          }
-        """.stripIndent().formatted(e == null ? "" : "Your previous response was invalid or did not contain tool_calls: " + e.getMessage());
+                %s
+                Please ensure you only return a JSON object matching the schema:
+                  {
+                    "tool_calls": [
+                      {
+                        "name": "...",
+                        "arguments": { ... }
+                      },
+                      {
+                        "name": "...",
+                        "arguments": { ... }
+                      }
+                    ]
+                  }
+                """.stripIndent().formatted(e == null ? "" : "Your previous response was invalid or did not contain tool_calls: " + e.getMessage());
 
         // We'll add a user reminder to produce a JSON that matches the schema
         var instructions = getInstructions(tools, retryInstructionsProvider);
@@ -606,38 +610,39 @@ public class Coder {
     private StreamingResult emulateToolsUsingJsonObject(List<ChatMessage> messages,
                                                         List<ToolSpecification> tools,
                                                         ToolChoice toolChoice,
-                                                        boolean echo) {
+                                                        boolean echo)
+    {
         var instructionsPresent = emulatedToolInstructionsPresent(messages);
         logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
 
         Function<Throwable, String> retryInstructionsProvider = e -> """
-        %s
-        Respond with a single JSON object containing a `tool_calls` array. Each entry in the array represents one invocation of a tool.
-        No additional keys or text are allowed outside of that JSON object.
-        Each tool call must have a `name` that matches one of the available tools, and an `arguments` object containing valid parameters as required by that tool.
-        
-        Here is the format visualized, where $foo indicates that you will make appropriate substitutions for the given tool call
-        {
-          "tool_calls": [
-            {
-              "name": "$tool_name1",
-              "arguments": {
-                "$arg1": "$value1",
-                "$arg2": "$value2",
-                ...
-              }
-            },
-            {
-              "name": "$tool_name2",
-              "arguments": {
-                "$arg3": "$value3",
-                "$arg4": "$value4",
-                ...
-              }
-            }
-          ]
-        }
-        """.stripIndent().formatted(e == null ? "" : "Your previous response was not valid: " + e.getMessage());
+                %s
+                Respond with a single JSON object containing a `tool_calls` array. Each entry in the array represents one invocation of a tool.
+                No additional keys or text are allowed outside of that JSON object.
+                Each tool call must have a `name` that matches one of the available tools, and an `arguments` object containing valid parameters as required by that tool.
+                
+                Here is the format visualized, where $foo indicates that you will make appropriate substitutions for the given tool call
+                {
+                  "tool_calls": [
+                    {
+                      "name": "$tool_name1",
+                      "arguments": {
+                        "$arg1": "$value1",
+                        "$arg2": "$value2",
+                        ...
+                      }
+                    },
+                    {
+                      "name": "$tool_name2",
+                      "arguments": {
+                        "$arg3": "$value3",
+                        "$arg4": "$value4",
+                        ...
+                      }
+                    }
+                  ]
+                }
+                """.stripIndent().formatted(e == null ? "" : "Your previous response was not valid: " + e.getMessage());
 
         List<ChatMessage> initialMessages = new ArrayList<>(messages);
         if (!instructionsPresent) {
@@ -673,12 +678,12 @@ public class Coder {
     /**
      * Builds a JSON schema describing exactly:
      * {
-     *   "tool_calls": [
-     *     {
-     *       "name": "oneOfTheTools",
-     *       "arguments": { ... arbitrary object ...}
-     *     }
-     *   ]
+     * "tool_calls": [
+     * {
+     * "name": "oneOfTheTools",
+     * "arguments": { ... arbitrary object ...}
+     * }
+     * ]
      * }
      * We do not attempt fancy anyOf references here (not all providers support them).
      */
@@ -871,21 +876,23 @@ public class Coder {
 
         // if you change this you probably also need to change emulatedToolInstructionsPresent
         return """
-        %d available tools:
-        %s
-        
-        %s
-        
-        Include all the tool calls necessary to satisfy the request in a single object!
-        """.stripIndent().formatted(tools.size(), toolsDescription, retryInstructionsProvider.apply(null));
+                %d available tools:
+                %s
+                
+                %s
+                
+                Include all the tool calls necessary to satisfy the request in a single object!
+                """.stripIndent().formatted(tools.size(), toolsDescription, retryInstructionsProvider.apply(null));
     }
 
     /**
-     * Ensures the "think" tool is present in the tools list for emulation.
-     * This provides a consistent way for the model to reason through complex problems.
+     * Ensures the "think" tool is present in the tools list for emulation, but only for models
+     * that are *not* designated as "reasoning" models (which are expected to think implicitly).
+     * This provides a consistent way for non-reasoning models to reason through complex problems.
      *
-     * @param originalTools The original list of tool specifications
+     * @param originalTools The original list of tool specifications.
      * @return A new list containing all original tools plus the think tool if not already present
+     * and the model is not a designated reasoning model.
      */
     private List<ToolSpecification> ensureThinkToolPresent(List<ToolSpecification> originalTools) {
         // Check if the think tool is already in the list
@@ -895,10 +902,15 @@ public class Coder {
             return originalTools;
         }
 
-        // Add the think tool
-        var enhancedTools = new ArrayList<>(originalTools);
-        enhancedTools.addAll(contextManager.getToolRegistry().getRegisteredTools(List.of("think")));
-        return enhancedTools;
+        // Add the think tool only if the model is not a reasoning model
+        if (!contextManager.getModels().isReasoning(this.model)) {
+            logger.debug("Adding 'think' tool for non-reasoning model {}", contextManager.getModels().nameOf(this.model));
+            var enhancedTools = new ArrayList<>(originalTools);
+            enhancedTools.addAll(contextManager.getToolRegistry().getRegisteredTools(List.of("think")));
+            return enhancedTools;
+        }
+        logger.debug("Skipping 'think' tool for reasoning model {}", contextManager.getModels().nameOf(this.model));
+        return originalTools;
     }
 
     /**
@@ -963,7 +975,8 @@ public class Coder {
                                   ChatResponse originalResponse,
                                   int outputTokenCount,
                                   boolean cancelled,
-                                  Throwable error) {
+                                  Throwable error)
+    {
         public StreamingResult(ChatResponse chatResponse, boolean cancelled, Throwable error) {
             this(chatResponse, chatResponse, -1, cancelled, error);
         }

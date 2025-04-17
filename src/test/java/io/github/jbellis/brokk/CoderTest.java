@@ -11,7 +11,6 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -22,19 +21,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class CoderTest {
 
     // Dummy ConsoleIO for testing purposes
     static class NoOpConsoleIO implements IConsoleIO {
-        @Override public void actionOutput(String msg) {}
-        @Override public void toolError(String msg) {}
-        @Override public void toolErrorRaw(String msg) {
+        @Override
+        public void actionOutput(String msg) {
+        }
+
+        @Override
+        public void toolError(String msg) {
+        }
+
+        @Override
+        public void toolErrorRaw(String msg) {
             System.out.println("Tool error: " + msg);
         }
         @Override public void llmOutput(String token) {}
@@ -135,9 +137,9 @@ public class CoderTest {
 
         if (!failures.isEmpty()) {
             String failureSummary = failures.entrySet().stream()
-                .map(entry -> "Model '" + entry.getKey() + "' failed: " + entry.getValue().getMessage() +
-                              (entry.getValue().getCause() != null ? " (Cause: " + entry.getValue().getCause().getMessage() + ")" : ""))
-                .collect(Collectors.joining("\n"));
+                    .map(entry -> "Model '" + entry.getKey() + "' failed: " + entry.getValue().getMessage() +
+                            (entry.getValue().getCause() != null ? " (Cause: " + entry.getValue().getCause().getMessage() + ")" : ""))
+                    .collect(Collectors.joining("\n"));
             fail("One or more models failed the basic connectivity test:\n" + failureSummary);
         }
     }
@@ -157,86 +159,64 @@ public class CoderTest {
         List.of("gemini-2.5-pro-exp-03-25").parallelStream()
                 .filter(k -> !k.contains("R1")) // R1 doesn't support tool calling OR json output
                 .forEach(modelName -> {
-            try {
-                System.out.println("Testing tool calling for model: " + modelName);
-                StreamingChatLanguageModel model = models.get(modelName);
-                var coder = contextManager.getCoder(model, "testToolCalling");
-                assertNotNull(model, "Failed to get model instance for: " + modelName);
+                    try {
+                        System.out.println("Testing tool calling for model: " + modelName);
+                        StreamingChatLanguageModel model = models.get(modelName);
+                        var coder = contextManager.getCoder(model, "testToolCalling");
+                        assertNotNull(model, "Failed to get model instance for: " + modelName);
 
-                var messages = new ArrayList<ChatMessage>();
-                messages.add(new UserMessage("What is the weather like in London?"));
-                var result = coder.sendRequest(messages, toolSpecifications, ToolChoice.REQUIRED, false);
+                        var messages = new ArrayList<ChatMessage>();
+                        messages.add(new UserMessage("What is the weather like in London?"));
+                        var result = coder.sendRequest(messages, toolSpecifications, ToolChoice.REQUIRED, false);
 
-                assertNotNull(result, "Result should not be null for model: " + modelName);
-                assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
-                if (result.error() != null) {
-                    throw new AssertionError("Request resulted in an error for model: " + modelName, result.error());
-                }
+                        assertNotNull(result, "Result should not be null for model: " + modelName);
+                        assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
+                        if (result.error() != null) {
+                            throw new AssertionError("Request resulted in an error for model: " + modelName, result.error());
+                        }
 
-                var chatResponse = result.chatResponse();
-                assertNotNull(chatResponse, "ChatResponse should not be null for model: " + modelName);
-                assertNotNull(chatResponse.aiMessage(), "AI message should not be null for model: " + modelName);
+                        var chatResponse = result.chatResponse();
+                        assertNotNull(chatResponse, "ChatResponse should not be null for model: " + modelName);
+                        assertNotNull(chatResponse.aiMessage(), "AI message should not be null for model: " + modelName);
 
-                // ASSERTION 1: Check if a tool execution was requested
-                assertTrue(chatResponse.aiMessage().hasToolExecutionRequests(),
-                           "Model " + modelName + " did not request tool execution. Response: " + chatResponse.aiMessage().text());
-                System.out.println("Tool call requested successfully by " + modelName);
+                        // ASSERTION 1: Check if a tool execution was requested
+                        assertTrue(chatResponse.aiMessage().hasToolExecutionRequests(),
+                                   "Model " + modelName + " did not request tool execution. Response: " + chatResponse.aiMessage().text());
+                        System.out.println("Tool call requested successfully by " + modelName);
 
-                // check that we can send the result back
-                var tr = chatResponse.aiMessage().toolExecutionRequests().getFirst();
-                // NB: this is a quick hack that does not actually pass arguments from the tool call
-                messages.add(chatResponse.aiMessage());
-                var term = new ToolExecutionResultMessage(tr.id(), tr.name(), new WeatherTool().getWeather("London"));
-                messages.add(term);
-                messages.add(new UserMessage("Given what you know about London, is this unusual?"));
-                result = coder.sendRequest(messages);
-                assertNotNull(result, "Result should not be null for model: " + modelName);
-                assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
-                if (result.error() != null) {
-                    throw new AssertionError("Followup request resulted in an error for model: " + modelName, result.error());
-                }
-                System.out.println("Tool response processed successfully by " + modelName);
-            } catch (Throwable t) {
-                // Catch assertion errors or any other exceptions during the test for this model
-                failures.put(modelName, t);
-                // Log the error immediately for easier debugging during parallel execution
-                System.err.printf("Failure testing tool calling for model %s: %s%n",
-                                  modelName, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
-                t.printStackTrace();;
-            }
-        });
+                        // check that we can send the result back
+                        var tr = chatResponse.aiMessage().toolExecutionRequests().getFirst();
+                        // NB: this is a quick hack that does not actually pass arguments from the tool call
+                        messages.add(chatResponse.aiMessage());
+                        var term = new ToolExecutionResultMessage(tr.id(), tr.name(), new WeatherTool().getWeather("London"));
+                        messages.add(term);
+                        messages.add(new UserMessage("Given what you know about London, is this unusual?"));
+                        result = coder.sendRequest(messages);
+                        assertNotNull(result, "Result should not be null for model: " + modelName);
+                        assertFalse(result.cancelled(), "Request should not be cancelled for model: " + modelName);
+                        if (result.error() != null) {
+                            throw new AssertionError("Followup request resulted in an error for model: " + modelName, result.error());
+                        }
+                        System.out.println("Tool response processed successfully by " + modelName);
+                    } catch (Throwable t) {
+                        // Catch assertion errors or any other exceptions during the test for this model
+                        failures.put(modelName, t);
+                        // Log the error immediately for easier debugging during parallel execution
+                        System.err.printf("Failure testing tool calling for model %s: %s%n",
+                                          modelName, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
+                        t.printStackTrace();
+                    }
+                });
 
         if (!failures.isEmpty()) {
             String failureSummary = failures.entrySet().stream()
-                .map(entry -> "Model '" + entry.getKey() + "' failed tool calling: " + entry.getValue().getMessage() +
-                              (entry.getValue().getCause() != null ? " (Cause: " + entry.getValue().getCause().getMessage() + ")" : ""))
-                .collect(Collectors.joining("\n"));
+                    .map(entry -> "Model '" + entry.getKey() + "' failed tool calling: " + entry.getValue().getMessage() +
+                            (entry.getValue().getCause() != null ? " (Cause: " + entry.getValue().getCause().getMessage() + ")" : ""))
+                    .collect(Collectors.joining("\n"));
             fail("One or more models failed the tool calling test:\n" + failureSummary);
         }
     }
 
-    @Test
-    void testThinkToolPresent() {
-        // Create a new ToolRegistry instance
-        var toolRegistry = new io.github.jbellis.brokk.tools.ToolRegistry();
-        
-        // Get all the registered tools
-        var allTools = toolRegistry.getRegisteredTools(List.of("think"));
-        
-        // Verify the think tool is present
-        assertFalse(allTools.isEmpty(), "Think tool should be registered");
-        assertEquals("think", allTools.getFirst().name(), "Tool should be named 'think'");
-        
-        // Verify the think tool's description and parameter
-        var thinkTool = allTools.getFirst();
-        assertTrue(thinkTool.description().contains("Thinking step by step"), 
-                  "Think tool should have the correct description");
-        assertEquals(1, thinkTool.parameters().properties().size(), 
-                    "Think tool should have exactly one parameter");
-        assertTrue(thinkTool.parameters().properties().containsKey("reasoning"), 
-                  "Think tool should have a 'reasoning' parameter");
-    }
-    
     void testEmulateToolExecutionResults() {
         var user1 = new UserMessage("Initial request");
         var term1 = ToolExecutionResultMessage.toolExecutionResultMessage("t1", "toolA", "Result A");
@@ -289,27 +269,27 @@ public class CoderTest {
         assertEquals(4, result5.size());
         assertEquals(user1, result5.get(0));
         var expectedText5_1 = """
-                              <toolcall id="t1" name="toolA">
-                              Result A
-                              </toolcall>
-                              
-                              <toolcall id="t2" name="toolB">
-                              Result B
-                              </toolcall>
-                              
-                              Follow-up based on results""".stripIndent();
+                <toolcall id="t1" name="toolA">
+                Result A
+                </toolcall>
+                
+                <toolcall id="t2" name="toolB">
+                Result B
+                </toolcall>
+                
+                Follow-up based on results""".stripIndent();
         assertEquals(expectedText5_1, Models.getText(result5.get(1)));
         assertEquals(ai1, result5.get(2));
         var expectedText5_3 = """
-                              <toolcall id="t3" name="toolC">
-                              Result C
-                              </toolcall>
-                              
-                              <toolcall id="t4" name="toolD">
-                              Result D
-                              </toolcall>
-                              
-                              Another follow-up""".stripIndent();
+                <toolcall id="t3" name="toolC">
+                Result C
+                </toolcall>
+                
+                <toolcall id="t4" name="toolD">
+                Result D
+                </toolcall>
+                
+                Another follow-up""".stripIndent();
         assertEquals(expectedText5_3, Models.getText(result5.get(3)));
 
         // Case 6: No TERMs

@@ -4,6 +4,7 @@ model_list:
       model: openai/o3
       api_key: "os.environ/OPENAI_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: false
       is_private: true
 
@@ -12,6 +13,7 @@ model_list:
       model: openai/o4-mini
       api_key: "os.environ/OPENAI_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: false
       is_private: true
 
@@ -20,6 +22,7 @@ model_list:
       model: openai/gpt-4.1
       api_key: "os.environ/OPENAI_API_KEY"
     model_info:
+      is_reasoning: false
       free_tier_eligible: false
       is_private: true
 
@@ -28,6 +31,7 @@ model_list:
       model: gemini/gemini-2.5-pro-preview-03-25
       api_key: "os.environ/GEMINI_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: false
       is_private: true
 
@@ -36,6 +40,7 @@ model_list:
       model: gemini/gemini-2.0-flash
       api_key: "os.environ/GEMINI_API_KEY"
     model_info:
+      is_reasoning: false
       free_tier_eligible: true
       is_private: true
 
@@ -44,6 +49,7 @@ model_list:
       model: gemini/gemini-2.0-flash-lite
       api_key: "os.environ/GEMINI_API_KEY"
     model_info:
+      is_reasoning: false
       free_tier_eligible: true
       is_private: true
 
@@ -52,6 +58,7 @@ model_list:
       model: anthropic/claude-3-7-sonnet-latest
       api_key: "os.environ/ANTHROPIC_API_KEY"
     model_info:
+      is_reasoning: false
       free_tier_eligible: false
       is_private: true
 
@@ -60,6 +67,7 @@ model_list:
       model: deepseek/deepseek-reasoner
       api_key: "os.environ/DEEPSEEK_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: false
       is_private: false
 
@@ -68,6 +76,7 @@ model_list:
       model: deepseek/deepseek-chat
       api_key: "os.environ/DEEPSEEK_API_KEY"
     model_info:
+      is_reasoning: false
       free_tier_eligible: true
       is_private: false
 
@@ -76,6 +85,7 @@ model_list:
       model: xai/grok-3-beta
       api_key: "os.environ/GROK_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: false
       is_private: true
 
@@ -84,6 +94,7 @@ model_list:
       model: xai/grok-3-fast-beta
       api_key: "os.environ/GROK_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: false
       is_private: true
 
@@ -92,6 +103,7 @@ model_list:
       model: xai/grok-3-mini-beta
       api_key: "os.environ/GROK_API_KEY"
     model_info:
+      is_reasoning: true
       free_tier_eligible: true
       is_private: true
 
