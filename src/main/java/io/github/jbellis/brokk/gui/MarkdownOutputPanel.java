@@ -413,12 +413,12 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
                             blocksPanel.add(textPanel);
                         }
                     }
-                    blocksPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 10));
+                    blocksPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 2));
                     messagePanel.add(blocksPanel);
                 } else {
                     // No edit blocks, render as markdown
                     var contentPanel = renderMarkdownContent(content);
-                    contentPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 10));
+                    contentPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 2));
                     messagePanel.add(contentPanel);
                 }
             }
@@ -428,7 +428,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
                 userPanel.setLayout(new BoxLayout(userPanel, BoxLayout.Y_AXIS));
                 userPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
                 // userPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-                userPanel.setBorder(BorderFactory.createLineBorder(Color.red, 10));
+                userPanel.setBorder(BorderFactory.createLineBorder(Color.red, 2));
                 userPanel.setAlignmentX(LEFT_ALIGNMENT);
                 var textPane = renderMarkdownContent(Models.getRepr(message));
                 textPane.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
@@ -442,7 +442,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
                 customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
                 customPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
                 // customPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-                customPanel.setBorder(BorderFactory.createLineBorder(Color.blue, 10));
+                customPanel.setBorder(BorderFactory.createLineBorder(Color.blue, 2));
                 customPanel.setAlignmentX(LEFT_ALIGNMENT);
                 var textPane = renderMarkdownContent(Models.getRepr(message));
                 textPane.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
