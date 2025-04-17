@@ -41,6 +41,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -909,7 +910,7 @@ public class ContextPanel extends JPanel {
             // Show dialog allowing ONLY file selection (no external)
             var selection = showMultiSourceSelectionDialog("Edit Files",
                                                            false, // No external files for edit
-                                                           project.getRepo().getTrackedFiles(), // Only tracked files
+                                                           CompletableFuture.completedFuture(project.getRepo().getTrackedFiles()), // Only tracked files
                                                            Set.of(SelectionMode.FILES)); // Only FILES mode
 
             if (selection != null && selection.files() != null && !selection.files().isEmpty()) {
@@ -937,7 +938,7 @@ public class ContextPanel extends JPanel {
             // TODO when we can extract a single class from a source file, enable classes as well
             var selection = showMultiSourceSelectionDialog("Add Read-Only Context",
                                                            true, // Allow external files
-                                                           project.getFiles(), // All project files for completion
+                                                           CompletableFuture.completedFuture(project.getFiles()), // All project files for completion
                                                            Set.of(SelectionMode.FILES)); // FILES mode only
 
             if (selection == null || selection.files() == null || selection.files().isEmpty()) {
@@ -1132,9 +1133,11 @@ public class ContextPanel extends JPanel {
         if (selectedFragments.isEmpty()) {
             // Show dialog allowing selection of files OR classes for summarization
             // Only allow selecting project files that contain classes for the Files tab
-            var completableProjectFiles = project.getFiles().stream()
-                    .filter(f -> !analyzer.getClassesInFile(f).isEmpty())
-                    .collect(Collectors.toSet());
+            var completableProjectFiles = contextManager.submitBackgroundTask("Gathering symbolx", () -> {
+                return project.getFiles().stream().parallel()
+                        .filter(f -> !analyzer.getClassesInFile(f).isEmpty())
+                        .collect(Collectors.toSet());
+            });
 
             var selection = showMultiSourceSelectionDialog("Summarize Sources",
                                                            false, // No external files for summarize
@@ -1198,16 +1201,16 @@ public class ContextPanel extends JPanel {
      *
      * @param title              Dialog title.
      * @param allowExternalFiles Allow selection of external files in the Files tab.
-     * @param completions        Set of completable project files.
+     * @param projectCompletionsFuture        Set of completable project files.
      * @param modes              Set of selection modes (FILES, CLASSES) to enable.
      * @return The Selection record containing lists of files and/or classes, or null if cancelled.
      */
-    private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Set<ProjectFile> completions, Set<SelectionMode> modes) {
+    private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Future<Set<ProjectFile>> projectCompletionsFuture, Set<SelectionMode> modes) {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
         var analyzer = contextManager.getProject().getAnalyzer(); // Qualify contextManager
 
         SwingUtil.runOnEDT(() -> {
-            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), analyzer, title, allowExternalFiles, completions, modes); // Qualify chrome and contextManager
+            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), analyzer, title, allowExternalFiles, projectCompletionsFuture, modes); // Qualify chrome and contextManager
             // Use dialog's preferred size after packing, potentially adjust width
             dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));
             dialog.setLocationRelativeTo(chrome.getFrame()); // Qualify chrome

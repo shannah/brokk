@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Completions;
-import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
@@ -15,7 +14,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;
 import org.fife.ui.autocomplete.Completion;
-import org.fife.ui.autocomplete.CompletionProvider;
 import org.fife.ui.autocomplete.DefaultCompletionProvider;
 import org.fife.ui.autocomplete.ShorthandCompletion;
 
@@ -33,16 +31,17 @@ import java.awt.event.WindowEvent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * A selection dialog that presents a tabbed interface for selecting
@@ -76,7 +75,7 @@ public class MultiFileSelectionDialog extends JDialog {
     private final Project project;
     private final IAnalyzer analyzer;
     private final boolean allowExternalFiles;
-    private final Set<ProjectFile> completableFiles;
+    private final Future<Set<ProjectFile>> completableFiles;
     private final Set<SelectionMode> modes;
 
     // UI Components - Files Tab
@@ -99,6 +98,9 @@ public class MultiFileSelectionDialog extends JDialog {
     // Indicates if the user confirmed the selection
     private boolean confirmed = false;
 
+    // Dedicated executor for background tasks within this dialog (e.g., symbol completion loading)
+    private final ExecutorService backgroundExecutor;
+
     /**
      * Constructor for multiple source selection.
      *
@@ -110,9 +112,8 @@ public class MultiFileSelectionDialog extends JDialog {
      * @param completableFiles   Set of project files for file completion.
      * @param modes              Set of allowed selection modes (determines which tabs are shown).
      */
-    public MultiFileSelectionDialog(Frame parent, Project project, IAnalyzer analyzer, String title,
-                                    boolean allowExternalFiles, Set<ProjectFile> completableFiles,
-                                    Set<SelectionMode> modes) {
+    public MultiFileSelectionDialog(Frame parent, Project project, IAnalyzer analyzer, String title, boolean allowExternalFiles, Future<Set<ProjectFile>> completableFiles, Set<SelectionMode> modes)
+    {
         super(parent, title, true); // modal dialog
         assert parent != null;
         assert project != null;
@@ -127,6 +128,13 @@ public class MultiFileSelectionDialog extends JDialog {
         this.allowExternalFiles = allowExternalFiles;
         this.completableFiles = completableFiles;
         this.modes = modes;
+
+        // Create a dedicated executor for this dialog instance
+        this.backgroundExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "MultiFileSelectionDialog-BG");
+            t.setDaemon(true); // Allow JVM exit even if this thread is running
+            return t;
+        });
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -185,6 +193,12 @@ public class MultiFileSelectionDialog extends JDialog {
                     }
                 });
             }
+
+            // Ensure the background executor is shut down when the dialog is closed
+            @Override
+            public void windowClosed(WindowEvent e) {
+                backgroundExecutor.shutdown();
+            }
         });
 
 
@@ -206,7 +220,7 @@ public class MultiFileSelectionDialog extends JDialog {
         fileInput = new JTextArea(3, 30);
         fileInput.setLineWrap(true);
         fileInput.setWrapStyleWord(true);
-        var provider = new FileCompletionProvider(this.completableFiles, List.of());
+        var provider = new FileCompletionProvider(this.completableFiles);
         fileAutoCompletion = new AutoCompletion(provider);
         // Trigger with Ctrl+Space
         fileAutoCompletion.setAutoActivationEnabled(false);
@@ -217,15 +231,18 @@ public class MultiFileSelectionDialog extends JDialog {
 
 
         fileTree = new FileTree(project, allowExternalFiles, f -> true);
+        // Show a loading placeholder while the tree loads in the background
+        fileTree.showLoadingPlaceholder();
+        SwingUtilities.invokeLater(() -> {
+            fileTree.loadTreeInBackground();
+        });
 
         JPanel inputPanel = new JPanel(new BorderLayout());
         inputPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         inputPanel.add(new JScrollPane(fileInput), BorderLayout.CENTER);
 
         JPanel labelsPanel = new JPanel(new GridLayout(2, 1));
-        String hintText = allowExternalFiles ?
-                "Ctrl-space to autocomplete project files. External files may be selected from the tree." :
-                "Ctrl-space to autocomplete project files.";
+        String hintText = allowExternalFiles ? "Ctrl-space to autocomplete project files. External files may be selected from the tree." : "Ctrl-space to autocomplete project files.";
         labelsPanel.add(new JLabel(hintText));
         labelsPanel.add(new JLabel("*/? to glob (project files only); ** to glob recursively"));
         inputPanel.add(labelsPanel, BorderLayout.SOUTH);
@@ -279,14 +296,15 @@ public class MultiFileSelectionDialog extends JDialog {
         classInput.setLineWrap(true);
         classInput.setWrapStyleWord(true);
 
-        // Autocomplete for classes
-        var provider = new SymbolCompletionProvider(analyzer);
+        // Autocomplete for classes with background loading using the dialog's executor
+        var provider = new SymbolCompletionProvider(analyzer, backgroundExecutor);
         classAutoCompletion = new AutoCompletion(provider);
         classAutoCompletion.setAutoActivationEnabled(false);
         classAutoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
         classAutoCompletion.install(classInput);
         AutoCompleteUtil.bindCtrlEnter(classAutoCompletion, classInput); // Bind Ctrl+Enter to OK action
         classInput.setToolTipText("Enter fully qualified class names (space-separated). Ctrl+Space for autocomplete. Enter/Ctrl+Enter to confirm.");
+        // Completion data is loaded in the background by the provider's constructor
 
 
         JPanel inputPanel = new JPanel(new BorderLayout());
@@ -299,7 +317,7 @@ public class MultiFileSelectionDialog extends JDialog {
         classesPanel.add(inputPanel, BorderLayout.NORTH);
 
         // Add some empty space perhaps, or a different component later if needed
-        classesPanel.add(new Box.Filler(new Dimension(0,0), new Dimension(500, 350), new Dimension( Short.MAX_VALUE, Short.MAX_VALUE)), BorderLayout.CENTER);
+        classesPanel.add(new Box.Filler(new Dimension(0, 0), new Dimension(500, 350), new Dimension(Short.MAX_VALUE, Short.MAX_VALUE)), BorderLayout.CENTER);
 
 
         return classesPanel;
@@ -321,8 +339,8 @@ public class MultiFileSelectionDialog extends JDialog {
                 if (i > 1) rel.append("/");
                 rel.append(pathComponents[i].toString());
             }
-             appendFilenameToInput(rel.toString());
-         }
+            appendFilenameToInput(rel.toString());
+        }
     }
 
     /**
@@ -337,11 +355,11 @@ public class MultiFileSelectionDialog extends JDialog {
         int caretPos = fileInput.getCaretPosition();
         // If caret is at the end, or text ends with space, just append
         if (caretPos == currentText.length() || currentText.endsWith(" ")) {
-             fileInput.insert(textToAppend, caretPos);
+            fileInput.insert(textToAppend, caretPos);
         } else {
-             // Insert with a leading space if needed
-             fileInput.insert(" " + textToAppend, caretPos);
-         }
+            // Insert with a leading space if needed
+            fileInput.insert(" " + textToAppend, caretPos);
+        }
 
         fileInput.requestFocusInWindow();
         // Move caret after the inserted text
@@ -358,13 +376,13 @@ public class MultiFileSelectionDialog extends JDialog {
         String textToAppend = fqn + " "; // Always add trailing space
 
         int caretPos = classInput.getCaretPosition();
-         // If caret is at the end, or text ends with space, just append
-         if (caretPos == currentText.length() || currentText.endsWith(" ")) {
-              classInput.insert(textToAppend, caretPos);
-         } else {
-              // Insert with a leading space if needed
-              classInput.insert(" " + textToAppend, caretPos);
-          }
+        // If caret is at the end, or text ends with space, just append
+        if (caretPos == currentText.length() || currentText.endsWith(" ")) {
+            classInput.insert(textToAppend, caretPos);
+        } else {
+            // Insert with a leading space if needed
+            classInput.insert(" " + textToAppend, caretPos);
+        }
 
         classInput.requestFocusInWindow();
         classInput.setCaretPosition(classInput.getDocument().getLength());
@@ -404,22 +422,19 @@ public class MultiFileSelectionDialog extends JDialog {
                 classesResult = parseAndResolveClasses(typedClasses);
             }
         } else {
-             logger.warn("Unknown or unexpected tab selected: {}", componentName);
-             // Default to trying files tab if available, otherwise classes
-             if (modes.contains(SelectionMode.FILES) && fileInput != null) {
-                 String typedFiles = fileInput.getText().trim();
-                 if (!typedFiles.isEmpty()) filesResult = parseAndResolveFiles(typedFiles);
-             } else if (modes.contains(SelectionMode.CLASSES) && classInput != null) {
-                 String typedClasses = classInput.getText().trim();
-                 if (!typedClasses.isEmpty()) classesResult = parseAndResolveClasses(typedClasses);
-             }
+            logger.warn("Unknown or unexpected tab selected: {}", componentName);
+            // Default to trying files tab if available, otherwise classes
+            if (modes.contains(SelectionMode.FILES) && fileInput != null) {
+                String typedFiles = fileInput.getText().trim();
+                if (!typedFiles.isEmpty()) filesResult = parseAndResolveFiles(typedFiles);
+            } else if (modes.contains(SelectionMode.CLASSES) && classInput != null) {
+                String typedClasses = classInput.getText().trim();
+                if (!typedClasses.isEmpty()) classesResult = parseAndResolveClasses(typedClasses);
+            }
         }
 
         // Create the result record
-        selectionResult = new Selection(
-                (filesResult != null && !filesResult.isEmpty()) ? List.copyOf(filesResult) : null,
-                (classesResult != null && !classesResult.isEmpty()) ? List.copyOf(classesResult) : null
-        );
+        selectionResult = new Selection((filesResult != null && !filesResult.isEmpty()) ? List.copyOf(filesResult) : null, (classesResult != null && !classesResult.isEmpty()) ? List.copyOf(classesResult) : null);
 
         // Only confirm if we actually got some selection
         confirmed = !selectionResult.isEmpty();
@@ -463,10 +478,10 @@ public class MultiFileSelectionDialog extends JDialog {
                     for (BrokkFile file : expanded) {
                         // Ensure we store ProjectFiles correctly even if expanded from abs path within project
                         if (file instanceof ExternalFile && file.absPath().startsWith(rootPath)) {
-                             Path relPath = rootPath.relativize(file.absPath());
-                             uniqueFiles.put(file.absPath(), new ProjectFile(rootPath, relPath));
+                            Path relPath = rootPath.relativize(file.absPath());
+                            uniqueFiles.put(file.absPath(), new ProjectFile(rootPath, relPath));
                         } else {
-                             uniqueFiles.put(file.absPath(), file);
+                            uniqueFiles.put(file.absPath(), file);
                         }
                     }
                 } catch (Exception e) {
@@ -493,9 +508,7 @@ public class MultiFileSelectionDialog extends JDialog {
 
         // Get all potential code units using Completions utility and filter for classes
         // This aligns with how SymbolCompletionProvider works and avoids assuming IAnalyzer.getClasses()
-        Map<String, CodeUnit> knownClasses = Completions.completeClassesAndMembers("", analyzer).stream()
-                .filter(cu -> cu.kind() == CodeUnitType.CLASS)
-                .collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
+        Map<String, CodeUnit> knownClasses = Completions.completeClassesAndMembers("", analyzer).stream().filter(cu -> cu.kind() == CodeUnitType.CLASS).collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
 
         for (String className : classNames) {
             if (className.isBlank()) continue;
@@ -504,9 +517,9 @@ public class MultiFileSelectionDialog extends JDialog {
             if (found != null) {
                 resolvedClasses.add(found);
             } else {
-                 // Maybe it's a short name? Try completing and finding exact match.
-                 // This adds complexity; for now, require FQN.
-                 logger.warn("Could not resolve class name: {}", className);
+                // Maybe it's a short name? Try completing and finding exact match.
+                // This adds complexity; for now, require FQN.
+                logger.warn("Could not resolve class name: {}", className);
             }
         }
         logger.debug("Resolved unique classes: {}", resolvedClasses.stream().map(CodeUnit::fqName).toList());
@@ -582,10 +595,10 @@ public class MultiFileSelectionDialog extends JDialog {
         // If the token starts with a quote, and the caret is inside the quotes, advance start
         if (start < caretPos && text.charAt(start) == '"') {
             long quoteCountToCaret = text.substring(start, caretPos).chars().filter(ch -> ch == '"').count();
-             if (quoteCountToCaret % 2 == 0) { // If an even number of quotes between start and caret, caret is effectively inside
-                 // We might need to check if the quote at 'start' is truly the *opening* quote relative to caret
-                 // This logic gets tricky. Let's simplify: if token starts with quote, advance start.
-                 start++;
+            if (quoteCountToCaret % 2 == 0) { // If an even number of quotes between start and caret, caret is effectively inside
+                // We might need to check if the quote at 'start' is truly the *opening* quote relative to caret
+                // This logic gets tricky. Let's simplify: if token starts with quote, advance start.
+                start++;
             }
         }
 
@@ -607,13 +620,12 @@ public class MultiFileSelectionDialog extends JDialog {
      * Overrides getAlreadyEnteredText for multi-file input area.
      */
     public class FileCompletionProvider extends DefaultCompletionProvider {
-        private final Collection<ProjectFile> projectFiles;
+        private final Future<Set<ProjectFile>> projectFilesFuture;
 
-        public FileCompletionProvider(Collection<ProjectFile> projectFiles, Collection<Path> externalCandidatesIgnored) {
+        public FileCompletionProvider(Future<Set<ProjectFile>> projectFilesFuture) {
             super();
-            assert projectFiles != null;
-            this.projectFiles = projectFiles;
-            // External candidates are not directly completed in this version's text area
+            assert projectFilesFuture != null;
+            this.projectFilesFuture = projectFilesFuture;
         }
 
         @Override
@@ -625,8 +637,12 @@ public class MultiFileSelectionDialog extends JDialog {
         @Override
         public List<Completion> getCompletions(JTextComponent tc) {
             var input = getAlreadyEnteredText(tc);
-            if (projectFiles.isEmpty()) {
-                return Collections.emptyList();
+            Set<ProjectFile> projectFiles;
+            try {
+                projectFiles = projectFilesFuture.get();
+            } catch (InterruptedException | ExecutionException e) {
+                logger.debug(e);
+                return List.of();
             }
 
             List<ShorthandCompletion> completions = new ArrayList<>();
@@ -635,19 +651,15 @@ public class MultiFileSelectionDialog extends JDialog {
                 if (input.contains("*") || input.contains("?")) {
                     // Handle globs
                     try {
-                        completions.addAll(Completions.expandPath(project, input).stream()
-                                                   .filter(bf -> bf instanceof ProjectFile) // Only complete project files via text
-                                                   .map(bf -> createRepoCompletion((ProjectFile) bf))
-                                                   .limit(100) // Limit glob results
+                        completions.addAll(Completions.expandPath(project, input).stream().filter(bf -> bf instanceof ProjectFile) // Only complete project files via text
+                                                   .map(bf -> createRepoCompletion((ProjectFile) bf)).limit(100) // Limit glob results
                                                    .toList());
                     } catch (Exception e) {
                         logger.warn("Error during glob completion: {}", e.getMessage());
                     }
                 } else {
                     // Simple prefix matching for repo files otherwise
-                    completions.addAll(Completions.getFileCompletions(input, projectFiles).stream()
-                                               .map(this::createRepoCompletion)
-                                               .limit(100) // Limit prefix results
+                    completions.addAll(Completions.getFileCompletions(input, projectFiles).stream().map(this::createRepoCompletion).limit(100) // Limit prefix results
                                                .toList());
                 }
             }
@@ -657,14 +669,14 @@ public class MultiFileSelectionDialog extends JDialog {
             AutoCompleteUtil.sizePopupWindows(fileAutoCompletion, tc, completions);
 
             // Deduplicate and sort (using replacement text as key)
-             return completions.stream()
-                     .distinct() // ShorthandCompletion should have equals based on replacement
-                     .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text
-                     .map(shc -> (Completion) shc)
-                     .toList();
+            return completions.stream().distinct() // ShorthandCompletion should have equals based on replacement
+                    .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text
+                    .map(shc -> (Completion) shc).toList();
         }
 
-        /** Creates a completion item for a ProjectFile. */
+        /**
+         * Creates a completion item for a ProjectFile.
+         */
         private ShorthandCompletion createRepoCompletion(ProjectFile file) {
             String relativePath = file.toString();
             // Replacement text includes quotes if needed, and a trailing space
@@ -678,56 +690,92 @@ public class MultiFileSelectionDialog extends JDialog {
     /**
      * Custom CompletionProvider for Java classes using the IAnalyzer.
      * Overrides getAlreadyEnteredText for multi-class input area.
+     * Loads class completions in the background using a provided ExecutorService.
      */
     public class SymbolCompletionProvider extends DefaultCompletionProvider {
         private final IAnalyzer analyzer;
+        private final Future<List<CodeUnit>> completionsFuture;
 
-        public SymbolCompletionProvider(IAnalyzer analyzer) {
+        /**
+         * Creates a SymbolCompletionProvider and immediately submits a task
+         * to load class completions in the background.
+         *
+         * @param analyzer           The IAnalyzer instance to use for finding classes.
+         * @param backgroundExecutor The ExecutorService to run the loading task on.
+         */
+        public SymbolCompletionProvider(IAnalyzer analyzer, ExecutorService backgroundExecutor) {
             super();
             assert analyzer != null;
+            assert backgroundExecutor != null;
             this.analyzer = analyzer;
+
+            // Submit the task to load completions in the background
+            this.completionsFuture = backgroundExecutor.submit(() -> {
+                try {
+                    // Filter for classes during the background load
+                    return Completions.completeClassesAndMembers("", analyzer)
+                            .stream()
+                            .filter(c -> c.kind() == CodeUnitType.CLASS)
+                            .toList();
+                } catch (Exception e) {
+                    logger.error("Error loading symbol completions in background", e);
+                    return Collections.emptyList(); // Return empty list on error
+                }
+            });
         }
 
         @Override
         public String getAlreadyEnteredText(JTextComponent comp) {
             // Delegate to the shared token extraction logic
-             return getCurrentTokenText(comp);
+            return getCurrentTokenText(comp);
         }
 
         @Override
-        public List<Completion> getCompletions(JTextComponent comp) {
+        public List<Completion> getCompletions(JTextComponent comp)
+        {
             String text = getAlreadyEnteredText(comp);
 
-            if (text.isEmpty() || analyzer == null || analyzer.isEmpty()) {
+            // Fast‑exit for obviously empty scenarios
+            if (text.isBlank() || analyzer == null || analyzer.isEmpty()) {
                 return Collections.emptyList();
             }
 
-            // Get completions using the brokk Completions utility, limited to classes
-            var completions = Completions.completeClassesAndMembers(text, analyzer).stream()
-                    .filter(c -> c.kind() == CodeUnitType.CLASS) // Filter for classes ONLY
+            // Filter the loaded completions based on the current input text
+            List<CodeUnit> availableCompletions;
+            try {
+                availableCompletions = completionsFuture.get();
+            } catch (InterruptedException | ExecutionException e) {
+                logger.debug(e);
+                return List.of();
+            }
+
+            var matches = availableCompletions.stream()
+                    .filter(c -> c.fqName().contains(text))
                     .map(this::createClassCompletion)
-                    .limit(100) // Limit results
+                    .limit(100)
                     .toList();
 
-            // Dynamically size the popup windows
-            AutoCompleteUtil.sizePopupWindows(classAutoCompletion, comp, completions);
+            // Resize popup dynamically
+            AutoCompleteUtil.sizePopupWindows(classAutoCompletion, comp, matches);
 
-            // Deduplicate and sort
-            return completions.stream()
+            // Deduplicate and sort by short name
+            return matches.stream()
                     .distinct()
-                    .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text (short name)
-                    .map(shc -> (Completion) shc)
+                    .sorted(Comparator.comparing(Completion::getInputText))
+                    .map(c -> (Completion) c)
                     .toList();
         }
 
-        /** Creates a completion item for a CodeUnit (Class). */
+        /**
+         * Creates a completion item for a CodeUnit (Class).
+         */
         private ShorthandCompletion createClassCompletion(CodeUnit codeUnit) {
-             String fqn = codeUnit.fqName();
-             String shortName = codeUnit.shortName();
-             // Replacement text is the FQN plus a trailing space
-             String replacement = fqn + " ";
-             // Display text is the short name, summary is the FQN
-             return new ShorthandCompletion(this, shortName, replacement, fqn);
-         }
+            String fqn = codeUnit.fqName();
+            String shortName = codeUnit.shortName();
+            // Replacement text is the FQN plus a trailing space
+            String replacement = fqn + " ";
+            // Display text is the short name, summary is the FQN
+            return new ShorthandCompletion(this, shortName, replacement, fqn);
+        }
     }
 }
