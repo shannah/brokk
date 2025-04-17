@@ -30,7 +30,7 @@ class AnalyzerTest {
     assert(!analyzer.isClassInProject("java.nio.filename.Path"))
     assert(!analyzer.isClassInProject("org.foo.Bar"))
   }
-  
+
   @Test
   def extractMethodSource(): Unit = {
     val analyzer = getAnalyzer
@@ -74,7 +74,7 @@ class AnalyzerTest {
 
     assertEquals(expected, source)
   }
-  
+
   @Test
   def getClassSourceTest(): Unit = {
     val analyzer = getAnalyzer
@@ -85,17 +85,17 @@ class AnalyzerTest {
     assertTrue(source.contains("public void method1()"))
     assertTrue(source.contains("public String method2(String input)"))
   }
-  
+
   @Test
   def getClassSourceNestedTest(): Unit = {
     val analyzer = getAnalyzer
     val source = analyzer.getClassSource("A$AInner")
-    
+
     // Verify the source contains inner class definition
     assertTrue(source.contains("class AInner {"))
     assertTrue(source.contains("class AInnerInner {"))
   }
-  
+
   @Test
   def getClassSourceNonexistentTest(): Unit = {
     val analyzer = getAnalyzer
@@ -106,19 +106,19 @@ class AnalyzerTest {
   @Test
   def sanitizeTypeTest(): Unit = {
     val analyzer = getAnalyzer
-    
+
     // Simple types
     assertEquals("String", analyzer.sanitizeType("java.lang.String"))
     assertEquals("String[]", analyzer.sanitizeType("java.lang.String[]"))
-    
+
     // Generic types
-    assertEquals("Function<Integer, Integer>", 
+    assertEquals("Function<Integer, Integer>",
       analyzer.sanitizeType("java.util.function.Function<java.lang.Integer, java.lang.Integer>"))
-    
+
     // Nested generic types
     assertEquals("Map<String, List<Integer>>",
       analyzer.sanitizeType("java.util.Map<java.lang.String, java.util.List<java.lang.Integer>>"))
-      
+
     // Method return type with generics
     assertEquals("Function<Integer, Integer>",
       analyzer.sanitizeType("java.util.function.Function<java.lang.Integer, java.lang.Integer>"))
@@ -196,10 +196,10 @@ class AnalyzerTest {
     val analyzer = JavaAnalyzer(Path.of("src/test/resources/testcode"), Language.Python)
     val file = analyzer.toFile("A.py").get
     val classes = analyzer.getClassesInFile(file)
-//    val expected = Set("D", "D$DSub", "D$DSubStatic").map(name => CodeUnit.cls(file, name))
-//    assertEquals(expected, asScala(classes).toSet)
+    //    val expected = Set("D", "D$DSub", "D$DSubStatic").map(name => CodeUnit.cls(file, name))
+    //    assertEquals(expected, asScala(classes).toSet)
   }
-  
+
   @Test
   def getCallgraphToTest(): Unit = {
     val analyzer = getAnalyzer
@@ -210,11 +210,11 @@ class AnalyzerTest {
 
     // Expect A.method1 -> [B.callsIntoA, D.methodD1]
     assertTrue(callsites.contains("A.method1"), "Should contain A.method1 as a key")
-    
+
     val callers = callsites.get("A.method1").map(sites => asScala(sites).map(_.target().fqName).toSet).getOrElse(Set.empty)
     assertEquals(Set("B.callsIntoA", "D.methodD1"), callers)
   }
-  
+
   @Test
   def getCallgraphFromTest(): Unit = {
     val analyzer = getAnalyzer
@@ -225,7 +225,7 @@ class AnalyzerTest {
 
     // Expect B.callsIntoA -> [A.method1, A.method2]
     assertTrue(callsites.contains("B.callsIntoA"), "Should contain B.callsIntoA as a key")
-    
+
     val callees = callsites.get("B.callsIntoA").map(sites => asScala(sites).map(_.target().fqName).toSet).getOrElse(Set.empty)
     assertTrue(callees.contains("A.method1"), "Should call A.method1")
     assertTrue(callees.contains("A.method2"), "Should call A.method2")
@@ -235,17 +235,28 @@ class AnalyzerTest {
   def getPagerankTest(): Unit = {
     val analyzer = getAnalyzer
     import scala.jdk.javaapi.*
-    
+
     val seeds = CollectionConverters.asJava(Map("D" -> (1.0: java.lang.Double)))
     val ranked = analyzer.getPagerank(seeds, 3)
-    
-    // A and B should rank highly as they are both called by D. BaseClass is also included now.
-    assert(ranked.size() == 3, ranked)
-    val classes = asScala(ranked).map(_._1.fqName()).toSet // Extract fqName from CodeUnit
 
-    // The test code base has changed, so update expected results
-    // Now includes BaseClass since we added it to the test code
-    assertEquals(Set("A", "B", "BaseClass"), classes)
+    // D calls A and B
+    assert(ranked.size() == 2, ranked)
+    val classes = asScala(ranked).map(_._1.fqName()).toSet
+    assertEquals(Set("A", "B"), classes)
+  }
+
+  @Test
+  def getPagerankEmptyClassTest(): Unit = {
+    val analyzer = getAnalyzer
+    import scala.jdk.javaapi.*
+
+    // Seed with CamelClass, which has no connections
+    val seeds = CollectionConverters.asJava(Map("CamelClass" -> (1.0: java.lang.Double)))
+    val ranked = analyzer.getPagerank(seeds, 5)
+
+    // Expect an empty list because CamelClass has few connections,
+    // and after filtering itself and zero-scores, nothing should remain.
+    assertTrue(ranked.isEmpty, s"Expected empty pagerank results, but got: $ranked")
   }
 
   @Test
@@ -313,15 +324,15 @@ class AnalyzerTest {
 
     // References to A include both function references and local variable references
     val foundRefs = asScala(usages).map(_.fqName).toSet
-    
+
     // Get the usages of each type
     val functionRefs = asScala(usages).filter(_.isFunction).map(_.fqName).toSet
     val fieldRefs = asScala(usages).filter(cu => !cu.isFunction && !cu.isClass).map(_.fqName).toSet
     val classRefs = asScala(usages).filter(_.isClass).map(_.fqName).toSet
-    
+
     // There should be function usages in these methods
     assertEquals(Set("B.callsIntoA", "D.methodD1", "AnonymousUsage.foo"), functionRefs)
-    
+
     // Ensure we have the correct usage types with our refactored implementation
     assertEquals(foundRefs, functionRefs ++ fieldRefs ++ classRefs)
   }
@@ -377,28 +388,28 @@ class AnalyzerTest {
     val usages = analyzer.getUses(symbol)
 
     val refs = asScala(usages).map(_.fqName).toSet
-    
+
     // Get references by type
     val classRefs = asScala(usages).filter(_.isClass).map(_.fqName).toSet
-    
+
     // Create an error message capturing actual usages
     val errorMsg = s"Expected XExtendsY to be a usage of BaseClass. Actual usages: ${refs.mkString(", ")}"
-    
+
     // XExtendsY should show up in the results because it extends BaseClass
     assertTrue(refs.exists(name => name.contains("XExtendsY")), errorMsg)
-    
+
     // Verify that XExtendsY is specifically a CLASS type reference
     val classErrorMsg = s"Expected XExtendsY to be a CLASS type usage. Class references: ${classRefs.mkString(", ")}"
     assertTrue(classRefs.exists(name => name.contains("XExtendsY")), classErrorMsg)
-    
+
     // New test: Methods returning BaseClass should be included (e.g. MethodReturner.getBase)
     assertTrue(refs.exists(name => name.contains("MethodReturner.getBase")), "Expected MethodReturner.getBase to be included in BaseClass usages")
   }
-  
+
   @Test
   def resolveMethodNameTest(): Unit = {
     val analyzer = getAnalyzer
-    
+
     // Regular Methods
     assertEquals("java.util.List.isEmpty", analyzer.resolveMethodName("java.util.List.isEmpty"))
     assertEquals("java.lang.Math.max", analyzer.resolveMethodName("java.lang.Math.max"))
@@ -412,13 +423,13 @@ class AnalyzerTest {
 
     // Inner Class Methods
     assertEquals("org.apache.cassandra.db.ClusteringPrefix$Kind.ordinal", analyzer.resolveMethodName("org.apache.cassandra.db.ClusteringPrefix$Kind.ordinal"))
-    assertEquals("org.apache.cassandra.io.sstable.format.big.BigTableWriter$IndexWriter.prepareToCommit", 
+    assertEquals("org.apache.cassandra.io.sstable.format.big.BigTableWriter$IndexWriter.prepareToCommit",
       analyzer.resolveMethodName("org.apache.cassandra.io.sstable.format.big.BigTableWriter$IndexWriter.prepareToCommit"))
-    assertEquals("org.apache.cassandra.index.sai.disk.v1.kdtree.BKDReader$IteratorState.getMinLeafBlockFP", 
+    assertEquals("org.apache.cassandra.index.sai.disk.v1.kdtree.BKDReader$IteratorState.getMinLeafBlockFP",
       analyzer.resolveMethodName("org.apache.cassandra.index.sai.disk.v1.kdtree.BKDReader$IteratorState.getMinLeafBlockFP"))
-    assertEquals("org.apache.cassandra.repair.consistent.ConsistentSession$State.transitions", 
+    assertEquals("org.apache.cassandra.repair.consistent.ConsistentSession$State.transitions",
       analyzer.resolveMethodName("org.apache.cassandra.repair.consistent.ConsistentSession$State.transitions"))
-    
+
     // Anonymous Inner Classes used in a method
     assertEquals("org.apache.cassandra.repair.RepairJob.run",
       analyzer.resolveMethodName("org.apache.cassandra.repair.RepairJob.run.FutureCallback$0.set"))
@@ -439,18 +450,18 @@ class AnalyzerTest {
 
     // Enum-related Methods
     assertEquals("org.apache.cassandra.db.ConsistencyLevel.valueOf", analyzer.resolveMethodName("org.apache.cassandra.db.ConsistencyLevel.valueOf"))
-    assertEquals("org.apache.cassandra.repair.consistent.ConsistentSession$State.ordinal", 
+    assertEquals("org.apache.cassandra.repair.consistent.ConsistentSession$State.ordinal",
       analyzer.resolveMethodName("org.apache.cassandra.repair.consistent.ConsistentSession$State.ordinal"))
 
     // Interface Methods
-    assertEquals("org.apache.cassandra.io.IVersionedSerializer.deserialize", 
+    assertEquals("org.apache.cassandra.io.IVersionedSerializer.deserialize",
       analyzer.resolveMethodName("org.apache.cassandra.io.IVersionedSerializer.deserialize"))
-    assertEquals("io.github.jbellis.jvector.graph.GraphIndex.ramBytesUsed", 
+    assertEquals("io.github.jbellis.jvector.graph.GraphIndex.ramBytesUsed",
       analyzer.resolveMethodName("io.github.jbellis.jvector.graph.GraphIndex.ramBytesUsed"))
     assertEquals("java.util.Comparator.comparing", analyzer.resolveMethodName("java.util.Comparator.comparing"))
     assertEquals("org.apache.cassandra.dht.RingPosition.compareTo", analyzer.resolveMethodName("org.apache.cassandra.dht.RingPosition.compareTo"))
     assertEquals("com.google.common.collect.SortedSetMultimap.values", analyzer.resolveMethodName("com.google.common.collect.SortedSetMultimap.values"))
-    
+
     // Operator-related Methods
     assertEquals("<operator>.assignmentDivision", analyzer.resolveMethodName("<operator>.assignmentDivision"))
     assertEquals("<operator>.not", analyzer.resolveMethodName("<operator>.not"))

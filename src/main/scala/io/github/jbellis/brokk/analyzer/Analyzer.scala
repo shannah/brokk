@@ -29,7 +29,7 @@ import scala.util.matching.Regex
  * but delegates language-specific operations (like building a CPG or
  * constructing method signatures) to concrete subclasses.
  */
-abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val cpg: Cpg)
+abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val cpg: Cpg)
   extends IAnalyzer with Closeable {
 
   // Logger instance for this class
@@ -439,28 +439,28 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
 
   override def getUses(symbol: String): java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-    
+
     logger.debug(s"Getting uses for symbol: '$symbol'")
 
     // (1) Method matches?
     // Expand method lookup to include overrides in subclasses.
     val baseMethodMatches = methodsFromName(symbol)
     logger.debug(s"Found ${baseMethodMatches.size} base method matches for '$symbol'")
-    
+
     val expandedMethodMatches =
       if (symbol.contains(".")) {
         val lastDot = symbol.lastIndexOf('.')
         val classPart = symbol.substring(0, lastDot)
         val methodPart = symbol.substring(lastDot + 1)
         logger.debug(s"Symbol contains dot: classPart='$classPart', methodPart='$methodPart'")
-        
+
         val subclasses = allSubclasses(classPart)
         logger.debug(s"Found ${subclasses.size} subclasses of '$classPart'")
-        
+
         // candidate fully-qualified method names: original and each subclass override
         val expandedSymbols = (Set(symbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
         logger.debug(s"Expanded to ${expandedSymbols.size} symbol candidates: ${expandedSymbols.take(5).mkString(", ")}${if (expandedSymbols.size > 5) "..." else ""}")
-        
+
         val expanded = expandedSymbols.flatMap(mn => methodsFromName(mn))
         logger.debug(s"After expanding, found ${expanded.size} method matches")
         expanded
@@ -474,7 +474,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       // Collect all callers from all matched methods
       val calls = expandedMethodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
       logger.debug(s"Call sites: ${calls.take(5).mkString(", ")}${if (calls.size > 5) "..." else ""}")
-      
+
       val result = calls.flatMap { methodName =>
         // Find method to get file
         val methods = cpg.method.fullName(s"$methodName:.*").l
@@ -500,7 +500,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       val classPart = symbol.substring(0, lastDot)
       val fieldPart = symbol.substring(lastDot + 1)
       logger.debug(s"Parsed as potential field: class='$classPart', field='$fieldPart'")
-      
+
       val clsDecls = cpg.typeDecl.fullNameExact(classPart).l
       if clsDecls.nonEmpty then {
         logger.debug(s"Found class declaration for: $classPart")
@@ -509,7 +509,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
           logger.debug(s"Found field declaration: $fieldPart")
           val refs = referencesToField(classPart, fieldPart, excludeSelfRefs = false)
           logger.debug(s"Found ${refs.size} references to field '$fieldPart'")
-          
+
           val result = refs.flatMap { methodName =>
             val methods = cpg.method.fullName(s"$methodName:.*").l
             if methods.nonEmpty then {
@@ -538,31 +538,31 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     }
 
     logger.debug(s"Found ${classDecls.size} class declarations for '$symbol'")
-    
+
     // Include the original class plus all subclasses
     val subclasses = allSubclasses(symbol)
     logger.debug(s"Found ${subclasses.size} subclasses of '$symbol'")
-    
+
     val allClasses = (classDecls.map(_.fullName).toSet ++ subclasses).toList
     logger.debug(s"Processing ${allClasses.size} classes in total")
-    
+
     val methodUses = allClasses.flatMap { cn =>
-      val uses = cpg.typeDecl.fullNameExact(cn).l.flatMap { td => 
-        td.method.l.flatMap(m => callersOfMethodNode(m, true)) 
+      val uses = cpg.typeDecl.fullNameExact(cn).l.flatMap { td =>
+        td.method.l.flatMap(m => callersOfMethodNode(m, true))
       }
       logger.debug(s"Found ${uses.size} method uses for class: $cn")
       uses
     }
     logger.debug(s"Total method uses across all classes: ${methodUses.size}")
-    
+
     val fieldRefUses = classDecls.flatMap { td =>
       val uses = td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
       logger.debug(s"Found ${uses.size} field reference uses for class: ${td.fullName}")
       uses
     }
     logger.debug(s"Total field reference uses: ${fieldRefUses.size}")
-    
-    val typeUses = allClasses.flatMap { cn => 
+
+    val typeUses = allClasses.flatMap { cn =>
       val uses = referencesToClassAsType(cn)
       logger.debug(s"Found ${uses.size} type uses for class: $cn")
       uses
@@ -580,7 +580,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       }
     }
     logger.debug(s"Converted to ${methodUseUnits.size} method use code units")
-    
+
     val fieldUseUnits = fieldRefUses.distinct.flatMap { methodName =>
       val methods = cpg.method.fullName(s"$methodName:.*").l
       if methods.nonEmpty then {
@@ -714,7 +714,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
         typeNameOpt.exists(isClassInProject)
       }
       .flatMap { m =>
-        toFile(m.typeDecl.head).map(file => 
+        toFile(m.typeDecl.head).map(file =>
           CodeUnit.fn(file, resolveMethodName(chopColon(m.fullName)))
         )
       }
@@ -729,7 +729,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       }
       .flatMap { f =>
         val className = f.typeDecl.fullName.headOption.getOrElse("").toString
-        toFile(f.typeDecl).map(file => 
+        toFile(f.typeDecl).map(file =>
           CodeUnit.field(file, s"$className.${f.name}")
         )
       }
@@ -761,8 +761,8 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
     val epsilon = 1e-4
     val maxIter = 50
 
-    val scores = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0)*)
-    val nextScores = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0)*)
+    val scores = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0) *)
+    val nextScores = TrieMap[String, Double](classesForPagerank.toSeq.map(_ -> 0.0) *)
     val totalWeight = seedWeights.values.sum
     validSeeds.foreach { c =>
       scores(c) = seedWeights.getOrElse(c, 0.0) / (if (totalWeight == 0) 1 else totalWeight)
@@ -840,7 +840,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
         }
         // Add new candidates until the limit is reached
         while (results.size < limit && offset < initial.size) {
-          val candidate @ (cu, _) = initial(offset)
+          val candidate@(cu, _) = initial(offset)
           offset += 1
           // Add if not already present (by FQN) and not marked for removal
           if (!results.exists(_._1.fqName() == cu.fqName()) && !fqnsToRemove.contains(cu.fqName())) {
@@ -848,8 +848,8 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
             val isInner = cu.fqName().contains('$')
             val parentFqnOpt = if (isInner) Some(cu.fqName().substring(0, cu.fqName().lastIndexOf('$'))) else None
             if (!isInner || parentFqnOpt.forall(p => !initialFqns.contains(p))) {
-               results += candidate
-               changed = true
+              results += candidate
+              changed = true
             }
           }
         }
@@ -862,9 +862,10 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
       getFileFor(fqcn).map(file => (CodeUnit.cls(file, fqcn), score))
     }
 
-    // Coalesce and convert score to Java Double
+    // Coalesce and convert score to Java Double, filtering out zero scores
     coalesceInnerClasses(sortedCodeUnits, k)
       .map { case (cu, d) => (cu, java.lang.Double.valueOf(d)) }
+      .filter(_._2 > 0.0) // Filter out results with zero score
       .asJava
   }
 
@@ -928,7 +929,7 @@ abstract class AbstractAnalyzer protected (sourcePath: Path, private[brokk] val 
  * A concrete analyzer for Java source code, extending AbstractAnalyzer
  * with Java-specific logic for building the CPG, method signatures, etc.
  */
-class JavaAnalyzer private (sourcePath: Path, cpgInit: Cpg)
+class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
   extends AbstractAnalyzer(sourcePath, cpgInit) {
 
   def this(sourcePath: Path, preloadedPath: Path) =
