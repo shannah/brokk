@@ -326,6 +326,10 @@ public class Project implements IProject, AutoCloseable {
         analyzerWrapper.resume();
     }
 
+    public AnalyzerWrapper getAnalyzerWrapper() {
+        return analyzerWrapper;
+    }
+
     public enum CpgRefresh {
         AUTO,
         MANUAL,

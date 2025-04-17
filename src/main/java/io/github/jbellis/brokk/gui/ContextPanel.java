@@ -1123,8 +1123,8 @@ public class ContextPanel extends JPanel {
 
     private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
         var project = contextManager.getProject(); // Qualify contextManager
-        var analyzer = project.getAnalyzer();
-        if (analyzer.isEmpty()) {
+        var analyzer = project.getAnalyzerWrapper();
+        if (analyzer.getNonBlocking() != null && analyzer.get().isEmpty()) {
             chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Qualify chrome
             return;
         }
@@ -1135,7 +1135,7 @@ public class ContextPanel extends JPanel {
             // Only allow selecting project files that contain classes for the Files tab
             var completableProjectFiles = contextManager.submitBackgroundTask("Gathering symbolx", () -> {
                 return project.getFiles().stream().parallel()
-                        .filter(f -> !analyzer.getClassesInFile(f).isEmpty())
+                        .filter(f -> !analyzer.get().getClassesInFile(f).isEmpty())
                         .collect(Collectors.toSet());
             });
 
@@ -1153,7 +1153,7 @@ public class ContextPanel extends JPanel {
             if (selection.files() != null) {
                 var projectFiles = toProjectFilesUnsafe(selection.files()); // Should be safe
                 for (var file : projectFiles) {
-                    sources.addAll(analyzer.getClassesInFile(file));
+                    sources.addAll(analyzer.get().getClassesInFile(file));
                 }
             }
 
@@ -1207,10 +1207,8 @@ public class ContextPanel extends JPanel {
      */
     private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Future<Set<ProjectFile>> projectCompletionsFuture, Set<SelectionMode> modes) {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
-        var analyzer = contextManager.getProject().getAnalyzer(); // Qualify contextManager
-
         SwingUtil.runOnEDT(() -> {
-            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), analyzer, title, allowExternalFiles, projectCompletionsFuture, modes); // Qualify chrome and contextManager
+            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), title, allowExternalFiles, projectCompletionsFuture, modes); // Qualify chrome and contextManager
             // Use dialog's preferred size after packing, potentially adjust width
             dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));
             dialog.setLocationRelativeTo(chrome.getFrame()); // Qualify chrome

@@ -1,13 +1,9 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.Project;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
-import io.github.jbellis.brokk.analyzer.CodeUnitType;
-import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.gui.AutoCompleteUtil;
 import io.github.jbellis.brokk.gui.FileTree;
 import org.apache.logging.log4j.LogManager;
@@ -22,21 +18,11 @@ import javax.swing.text.JTextComponent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
 import java.awt.*;
-import java.awt.event.InputEvent;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import java.awt.event.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,7 +59,7 @@ public class MultiFileSelectionDialog extends JDialog {
 
     private final Path rootPath;
     private final Project project;
-    private final IAnalyzer analyzer;
+    private final AnalyzerWrapper analyzer;
     private final boolean allowExternalFiles;
     private final Future<Set<ProjectFile>> completableFiles;
     private final Set<SelectionMode> modes;
@@ -106,24 +92,22 @@ public class MultiFileSelectionDialog extends JDialog {
      *
      * @param parent             Parent frame.
      * @param project            The current project.
-     * @param analyzer           The code analyzer for class lookups.
      * @param title              Dialog title.
      * @param allowExternalFiles If true, shows the full file system and allows selecting files outside the project (Files tab only).
      * @param completableFiles   Set of project files for file completion.
      * @param modes              Set of allowed selection modes (determines which tabs are shown).
      */
-    public MultiFileSelectionDialog(Frame parent, Project project, IAnalyzer analyzer, String title, boolean allowExternalFiles, Future<Set<ProjectFile>> completableFiles, Set<SelectionMode> modes)
+    public MultiFileSelectionDialog(Frame parent, Project project, String title, boolean allowExternalFiles, Future<Set<ProjectFile>> completableFiles, Set<SelectionMode> modes)
     {
         super(parent, title, true); // modal dialog
         assert parent != null;
         assert project != null;
-        assert analyzer != null;
         assert title != null;
         assert completableFiles != null;
         assert modes != null && !modes.isEmpty();
 
         this.project = project;
-        this.analyzer = analyzer;
+        this.analyzer = project.getAnalyzerWrapper();
         this.rootPath = project.getRoot();
         this.allowExternalFiles = allowExternalFiles;
         this.completableFiles = completableFiles;
@@ -501,14 +485,15 @@ public class MultiFileSelectionDialog extends JDialog {
         logger.debug("Raw class names parsed: {}", classNames);
 
         List<CodeUnit> resolvedClasses = new ArrayList<>();
-        if (analyzer == null || analyzer.isEmpty()) {
+        var az = analyzer.get();
+        if (az == null || az.isEmpty()) {
             logger.warn("Analyzer is not available or empty, cannot resolve class names.");
             return resolvedClasses;
         }
 
         // Get all potential code units using Completions utility and filter for classes
         // This aligns with how SymbolCompletionProvider works and avoids assuming IAnalyzer.getClasses()
-        Map<String, CodeUnit> knownClasses = Completions.completeClassesAndMembers("", analyzer).stream().filter(cu -> cu.kind() == CodeUnitType.CLASS).collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
+        Map<String, CodeUnit> knownClasses = Completions.completeClassesAndMembers("", az).stream().filter(cu -> cu.kind() == CodeUnitType.CLASS).collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
 
         for (String className : classNames) {
             if (className.isBlank()) continue;
@@ -686,14 +671,13 @@ public class MultiFileSelectionDialog extends JDialog {
         }
     }
 
-
     /**
      * Custom CompletionProvider for Java classes using the IAnalyzer.
      * Overrides getAlreadyEnteredText for multi-class input area.
      * Loads class completions in the background using a provided ExecutorService.
      */
     public class SymbolCompletionProvider extends DefaultCompletionProvider {
-        private final IAnalyzer analyzer;
+        private final AnalyzerWrapper analyzer;
         private final Future<List<CodeUnit>> completionsFuture;
 
         /**
@@ -703,7 +687,7 @@ public class MultiFileSelectionDialog extends JDialog {
          * @param analyzer           The IAnalyzer instance to use for finding classes.
          * @param backgroundExecutor The ExecutorService to run the loading task on.
          */
-        public SymbolCompletionProvider(IAnalyzer analyzer, ExecutorService backgroundExecutor) {
+        public SymbolCompletionProvider(AnalyzerWrapper analyzer, ExecutorService backgroundExecutor) {
             super();
             assert analyzer != null;
             assert backgroundExecutor != null;
@@ -713,7 +697,7 @@ public class MultiFileSelectionDialog extends JDialog {
             this.completionsFuture = backgroundExecutor.submit(() -> {
                 try {
                     // Filter for classes during the background load
-                    return Completions.completeClassesAndMembers("", analyzer)
+                    return Completions.completeClassesAndMembers("", analyzer.get())
                             .stream()
                             .filter(c -> c.kind() == CodeUnitType.CLASS)
                             .toList();
@@ -736,7 +720,8 @@ public class MultiFileSelectionDialog extends JDialog {
             String text = getAlreadyEnteredText(comp);
 
             // Fast‑exit for obviously empty scenarios
-            if (text.isBlank() || analyzer == null || analyzer.isEmpty()) {
+            var az = analyzer.get();
+            if (text.isBlank() || az == null || az.isEmpty()) {
                 return Collections.emptyList();
             }
 
