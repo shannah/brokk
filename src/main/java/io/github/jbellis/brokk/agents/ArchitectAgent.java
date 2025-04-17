@@ -346,45 +346,8 @@ public class ArchitectAgent {
      * the top-10 PageRank classes, and any relevant instructions.
      */
     private List<ChatMessage> buildPrompt() {
-        // top 10 related classes
-        String topClassesRaw = "";
-        var analyzer = contextManager.getAnalyzer();
-        if (!analyzer.isEmpty()) {
-            var ac = contextManager.selectedContext().setAutoContextFiles(10).buildAutoContext();
-            topClassesRaw = ac.text();
-        }
-        var topClassesText = topClassesRaw.isBlank() ? "" : """
-                <related_classes>
-                Here are some classes that may be related to what is in your Workspace. Code Agent will not
-                see them unless you explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace.
-                If they are not relevant, just ignore them:
-                
-                %s
-                </related_classes>
-                """.stripIndent().formatted(topClassesRaw);
-
-        var userMsg = """
-                %s
-                
-                <goal>
-                %s
-                </goal>
-                
-                Please decide the next tool action(s) to make progress towards resolving the goal.
-                
-                You are encouraged to call multiple tools simultaneously, especially
-                - when searching for relevant code: you can invoke callSearchAgent multiple times at once
-                - when manipulating Workspace context: make all desired manipulations at once
-                
-                Conversely, it does not make sense to call multiple tools with
-                - callCodeAgent, since you want to see what changes get made before proceeding
-                - projectFinished or abortProject, since they terminate execution
-                
-                When you are done, call projectFinished or abortProject.
-                """.stripIndent().formatted(topClassesText, goal);
-
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
-                              Stream.of(new UserMessage(userMsg))).toList();
+                              Stream.of(new UserMessage(ArchitectPrompts.instance.getFinalInstructions(goal)))).toList();
     }
 }

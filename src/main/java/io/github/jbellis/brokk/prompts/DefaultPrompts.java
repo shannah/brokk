@@ -48,7 +48,7 @@ public abstract class DefaultPrompts {
         messages.addAll(exampleMessages());
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(sessionMessages);
-        messages.addAll(cm.getWorkspaceContentsMessages());
+        messages.addAll(cm.getWorkspaceContentsMessages(false));
         messages.add(new UserMessage(editReminder(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
 

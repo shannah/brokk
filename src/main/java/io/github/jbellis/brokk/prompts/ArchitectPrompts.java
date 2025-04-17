@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.prompts;
 
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.Content;
 import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextManager;
 
@@ -14,7 +15,7 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
         var messages = new ArrayList<ChatMessage>();
         messages.add(new SystemMessage(formatIntro(cm, DefaultPrompts.ARCHITECT_REMINDER)));
         messages.addAll(sessionMessages);
-        messages.addAll(cm.getWorkspaceContentsMessages());
+        messages.addAll(cm.getWorkspaceContentsMessages(true));
         return messages;
     }
 
@@ -122,5 +123,25 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
         evaluate the workspace contents INDEPENDENTLY at each step and drop irrelevant fragments for
         the next step in your plan!
         """.stripIndent();
+    }
+
+    public String getFinalInstructions(String goal) {
+        return """
+                <goal>
+                %s
+                </goal>
+                
+                Please decide the next tool action(s) to make progress towards resolving the goal.
+                
+                You are encouraged to call multiple tools simultaneously, especially
+                - when searching for relevant code: you can invoke callSearchAgent multiple times at once
+                - when manipulating Workspace context: make all desired manipulations at once
+                
+                Conversely, it does not make sense to call multiple tools with
+                - callCodeAgent, since you want to see what changes get made before proceeding
+                - projectFinished or abortProject, since they terminate execution
+                
+                When you are done, call projectFinished or abortProject.
+                """.stripIndent().formatted(goal);
     }
 }

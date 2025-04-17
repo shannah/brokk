@@ -919,7 +919,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
      */
-    public Collection<ChatMessage> getWorkspaceContentsMessages() {
+    public Collection<ChatMessage> getWorkspaceContentsMessages(boolean addRelatedClasses) {
         var c = selectedContext();
         var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
 
@@ -994,9 +994,26 @@ public class ContextManager implements IContextManager, AutoCloseable {
                   %s
                 </workspace>
                 """.stripIndent().formatted(readOnlyText, editableText);
-        allContents.add(new TextContent(workspaceText));
 
-        // Add all collected ImageContent objects from read-only fragments
+        // top 10 related classes
+        String topClassesRaw = "";
+        if (!getAnalyzer().isEmpty()) {
+            var ac = selectedContext().setAutoContextFiles(10).buildAutoContext();
+            topClassesRaw = ac.text();
+            var topClassesText = topClassesRaw.isBlank() ? "" : """
+                <related_classes>
+                Here are some classes that may be related to what is in your Workspace. If relevant, you
+                should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
+                visible to Code Agent. If they are not relevant, just ignore them:
+                
+                %s
+                </related_classes>
+                """.stripIndent().formatted(topClassesRaw);
+            workspaceText += topClassesText;
+        }
+
+        // text and image content must be distinct
+        allContents.add(new TextContent(workspaceText));
         allContents.addAll(readOnlyImageFragments);
 
         // Create the main UserMessage
