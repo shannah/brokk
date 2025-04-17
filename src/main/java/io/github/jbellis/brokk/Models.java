@@ -350,6 +350,25 @@ public final class Models {
     }
 
     /**
+     * Checks if the model supports vision (image) inputs based on its metadata.
+     *
+     * @param model The model instance to check.
+     * @return True if the model info contains `"supports_vision": true`, false otherwise.
+     */
+    public boolean supportsVision(StreamingChatLanguageModel model) {
+        var modelName = nameOf(model);
+        var info = modelInfoMap.get(modelName);
+        if (info == null) {
+            logger.warn("Model info not found for {}, assuming no vision support.", modelName);
+            return false;
+        }
+
+        var supports = info.get("supports_vision");
+        assert supports instanceof Boolean : supports;
+        return (Boolean) supports;
+    }
+
+    /**
      * Extracts text content from a ChatMessage.
      * This logic is independent of Models state, so can remain static.
      */

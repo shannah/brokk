@@ -677,28 +677,35 @@ public class SettingsDialog extends JDialog {
     }
 
     /**
-     * Creates and shows the Settings dialog, optionally selecting a specific tab within the Project settings.
-     *
-     * @param chrome        The application's Chrome instance.
-     * @param targetTabName The name of the tab to select within the Project settings (e.g., "Models", "Build"), or null to select the default.
+     * Opens the Settings dialog, optionally pre‑selecting an inner tab (e.g. “Models”)
+     * inside the Project settings.  If the requested tab is not found—or no project
+     * is open—the dialog falls back to its default view.
      */
-    public static void showSettingsDialog(Chrome chrome, String targetTabName) {
+    public static void showSettingsDialog(Chrome chrome, String targetTabName)
+    {
         var dialog = new SettingsDialog(chrome.getFrame(), chrome);
 
-        // If a target tab is specified and the project panel exists
-        if (targetTabName != null && dialog.projectPanel.getComponentCount() > 0 && dialog.projectPanel.getComponent(0) instanceof JPanel outerPanelContainer) {
-            // Project panel contains an outerPanelContainer (BorderLayout) holding the subTabbedPane
-            if (outerPanelContainer.getComponentCount() > 0 && outerPanelContainer.getComponent(0) instanceof JTabbedPane subTabbedPane) {
-                for (int i = 0; i < subTabbedPane.getTabCount(); i++) {
-                    if (targetTabName.equals(subTabbedPane.getTitleAt(i))) {
-                        dialog.tabbedPane.setSelectedComponent(dialog.projectPanel); // Ensure Project tab is selected first
-                        subTabbedPane.setSelectedIndex(i); // Then select the inner tab
-                        break;
+        // Only attempt inner‑tab selection when (a) a project is present and
+        // (b) the caller named a tab.
+        if (targetTabName != null && chrome.getProject() != null) {
+            // 1. Select the outer “Project” tab so its inner JTabbedPane is visible.
+            dialog.tabbedPane.setSelectedComponent(dialog.projectPanel);
+
+            // 2. Locate the inner JTabbedPane (added to the CENTER of projectPanel’s BorderLayout).
+            for (var comp : dialog.projectPanel.getComponents()) {
+                if (comp instanceof JTabbedPane subTabbedPane) {
+                    // 3. Find and select the requested inner tab.
+                    for (int i = 0; i < subTabbedPane.getTabCount(); i++) {
+                        if (targetTabName.equals(subTabbedPane.getTitleAt(i))) {
+                            subTabbedPane.setSelectedIndex(i);
+                            break;
+                        }
                     }
+                    break; // we found the inner tabbed‑pane; nothing more to search
                 }
             }
         }
 
-        dialog.setVisible(true);
+        dialog.setVisible(true);   // show the modal dialog
     }
 }

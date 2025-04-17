@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
@@ -314,6 +315,47 @@ public class InstructionsPanel extends JPanel {
         historyMenu.show(invoker, 0, invoker.getHeight());
     }
 
+    /**
+     * Checks if the current context managed by the ContextManager contains any image fragments.
+     *
+     * @return true if the top context exists and contains at least one PasteImageFragment, false otherwise.
+     */
+    private boolean contextHasImages() {
+        var contextManager = chrome.getContextManager();
+        return contextManager.topContext() != null &&
+                contextManager.topContext().allFragments().anyMatch(f -> !f.isText());
+    }
+
+    /**
+     * Shows a modal error dialog informing the user that the required models lack vision support.
+     * Offers to open the Model settings tab.
+     *
+     * @param requiredModelsInfo A string describing the model(s) that lack vision support (e.g., model names).
+     */
+    private void showVisionSupportErrorDialog(String requiredModelsInfo) {
+        String message = """
+                <html>The current operation involves images, but the following selected model(s) do not support vision:<br>
+                <b>%s</b><br><br>
+                Please select vision-capable models in the settings to proceed with image-based tasks.</html>
+                """.formatted(requiredModelsInfo);
+        Object[] options = {"Open Model Settings", "Cancel"};
+        int choice = JOptionPane.showOptionDialog(
+                chrome.getFrame(),
+                message,
+                "Model Vision Support Error",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.ERROR_MESSAGE,
+                null, // icon
+                options,
+                options[0] // Default button (open settings)
+        );
+
+        if (choice == JOptionPane.YES_OPTION) { // Open Settings
+            SwingUtilities.invokeLater(() -> SettingsDialog.showSettingsDialog(chrome, "Models"));
+        }
+        // In either case (Settings opened or Cancel pressed), the original action is aborted by returning from the caller.
+    }
+
     // --- Public API ---
 
     public String getInputText() {
@@ -506,7 +548,31 @@ public class InstructionsPanel extends JPanel {
         }
 
         var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
         var architectModel = contextManager.getArchitectModel();
+        var editModel = contextManager.getEditModel();
+        var searchModel = contextManager.getSearchModel();
+
+        // --- Vision Check ---
+        if (contextHasImages()) {
+            List<String> nonVisionModels = new ArrayList<>();
+            if (!models.supportsVision(architectModel)) {
+                nonVisionModels.add(models.nameOf(architectModel) + " (Architect)");
+            }
+            if (!models.supportsVision(editModel)) {
+                // Code/Ask model is implicitly checked if Edit/Search are used by Architect
+                nonVisionModels.add(models.nameOf(editModel) + " (Edit)");
+            }
+            if (!models.supportsVision(searchModel)) {
+                nonVisionModels.add(models.nameOf(searchModel) + " (Search)");
+            }
+
+            if (!nonVisionModels.isEmpty()) {
+                showVisionSupportErrorDialog(String.join(", ", nonVisionModels));
+                return; // Abort if any required model lacks vision and context has images
+            }
+        }
+        // --- End Vision Check ---
 
         disableButtons();
         chrome.getProject().addToInstructionsHistory(goal, 20);
@@ -529,7 +595,16 @@ public class InstructionsPanel extends JPanel {
         }
 
         var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
         var codeModel = contextManager.getCodeModel();
+
+        // --- Vision Check ---
+        if (contextHasImages() && !models.supportsVision(codeModel)) {
+            showVisionSupportErrorDialog(models.nameOf(codeModel) + " (Code/Ask)");
+            return; // Abort if model doesn't support vision and context has images
+        }
+        // --- End Vision Check ---
+
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
@@ -695,73 +770,73 @@ public class InstructionsPanel extends JPanel {
      *
      * @param suggestedFiles The list of ProjectFiles suggested by the LLM.
      * @return A list of ProjectFiles selected by the user, or null if the dialog was cancelled.
-             */
-            private List<ProjectFile> showTestSelectionDialog(List<ProjectFile> suggestedFiles) {
-                JDialog dialog = new JDialog(chrome.getFrame(), "Add tests before coding?", true); // Modal dialog
-                dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-                dialog.setLayout(new BorderLayout(10, 10));
-                dialog.setMinimumSize(new Dimension(400, 300));
-        
-                JLabel instructionLabel = new JLabel("<html>Select test files to add to the context (read-only):</html>");
-                instructionLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
-                dialog.add(instructionLabel, BorderLayout.NORTH);
-        
-                JButton okButton = new JButton("Continue without Tests"); // Initial text
-                JButton cancelButton = new JButton("Cancel");
-        
-                // Panel to hold checkboxes
-                JPanel checkboxPanel = new JPanel();
-                checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
-                List<JCheckBox> checkBoxes = new ArrayList<>();
-                for (ProjectFile file : suggestedFiles) {
-                    JCheckBox checkBox = new JCheckBox(file.toString());
-                    checkBox.setSelected(false);
-                    // Add listener to update button text when selection changes
-                    checkBox.addItemListener(e -> {
-                        boolean anySelected = checkBoxes.stream().anyMatch(JCheckBox::isSelected);
-                        okButton.setText(anySelected ? "Add Tests and Continue" : "Continue without Tests");
-                    });
-                    checkBoxes.add(checkBox);
-                    checkboxPanel.add(checkBox);
+     */
+    private List<ProjectFile> showTestSelectionDialog(List<ProjectFile> suggestedFiles) {
+        JDialog dialog = new JDialog(chrome.getFrame(), "Add tests before coding?", true); // Modal dialog
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setMinimumSize(new Dimension(400, 300));
+
+        JLabel instructionLabel = new JLabel("<html>Select test files to add to the context (read-only):</html>");
+        instructionLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
+        dialog.add(instructionLabel, BorderLayout.NORTH);
+
+        JButton okButton = new JButton("Continue without Tests"); // Initial text
+        JButton cancelButton = new JButton("Cancel");
+
+        // Panel to hold checkboxes
+        JPanel checkboxPanel = new JPanel();
+        checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
+        List<JCheckBox> checkBoxes = new ArrayList<>();
+        for (ProjectFile file : suggestedFiles) {
+            JCheckBox checkBox = new JCheckBox(file.toString());
+            checkBox.setSelected(false);
+            // Add listener to update button text when selection changes
+            checkBox.addItemListener(e -> {
+                boolean anySelected = checkBoxes.stream().anyMatch(JCheckBox::isSelected);
+                okButton.setText(anySelected ? "Add Tests and Continue" : "Continue without Tests");
+            });
+            checkBoxes.add(checkBox);
+            checkboxPanel.add(checkBox);
+        }
+
+        JScrollPane scrollPane = new JScrollPane(checkboxPanel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        dialog.add(scrollPane, BorderLayout.CENTER);
+
+        // Buttons for confirmation or cancellation
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Result list - effectively final for lambda access
+        final List<ProjectFile>[] result = new List[1];
+        result[0] = null; // Default to null (indicates cancellation)
+
+        okButton.addActionListener(e -> {
+            List<ProjectFile> selected = new ArrayList<>();
+            for (int i = 0; i < checkBoxes.size(); i++) {
+                if (checkBoxes.get(i).isSelected()) {
+                    selected.add(suggestedFiles.get(i));
                 }
-        
-                JScrollPane scrollPane = new JScrollPane(checkboxPanel);
-                scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-                dialog.add(scrollPane, BorderLayout.CENTER);
-        
-                // Buttons for confirmation or cancellation
-                JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-                buttonPanel.add(okButton);
-                buttonPanel.add(cancelButton);
-                dialog.add(buttonPanel, BorderLayout.SOUTH);
-        
-                // Result list - effectively final for lambda access
-                final List<ProjectFile>[] result = new List[1];
-                result[0] = null; // Default to null (indicates cancellation)
-        
-                okButton.addActionListener(e -> {
-                    List<ProjectFile> selected = new ArrayList<>();
-                    for (int i = 0; i < checkBoxes.size(); i++) {
-                        if (checkBoxes.get(i).isSelected()) {
-                            selected.add(suggestedFiles.get(i));
-                        }
-                    }
-                    result[0] = selected; // Store selected list
-                    dialog.dispose();
-                });
-        
-                cancelButton.addActionListener(e -> {
-                    result[0] = null; // Ensure result is null on cancel
-                    dialog.dispose();
-                });
-        
-                dialog.pack(); // Adjust size
-                dialog.setLocationRelativeTo(chrome.getFrame()); // Center relative to main window
-                dialog.setVisible(true); // Show modal dialog - blocks until disposed
-        
-                // Return the captured result after the dialog is closed
-                return result[0];
             }
+            result[0] = selected; // Store selected list
+            dialog.dispose();
+        });
+
+        cancelButton.addActionListener(e -> {
+            result[0] = null; // Ensure result is null on cancel
+            dialog.dispose();
+        });
+
+        dialog.pack(); // Adjust size
+        dialog.setLocationRelativeTo(chrome.getFrame()); // Center relative to main window
+        dialog.setVisible(true); // Show modal dialog - blocks until disposed
+
+        // Return the captured result after the dialog is closed
+        return result[0];
+    }
 
 
     public void runAskCommand() {
@@ -772,7 +847,16 @@ public class InstructionsPanel extends JPanel {
         }
 
         var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
         var askModel = contextManager.getCodeModel(); // Ask uses the Code model
+
+        // --- Vision Check ---
+        if (contextHasImages() && !models.supportsVision(askModel)) {
+            showVisionSupportErrorDialog(models.nameOf(askModel) + " (Code/Ask)");
+            return; // Abort if model doesn't support vision and context has images
+        }
+        // --- End Vision Check ---
+
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
@@ -789,7 +873,16 @@ public class InstructionsPanel extends JPanel {
         }
 
         var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
         var searchModel = contextManager.getSearchModel();
+
+        // --- Vision Check ---
+        if (contextHasImages() && !models.supportsVision(searchModel)) {
+            showVisionSupportErrorDialog(models.nameOf(searchModel) + " (Search)");
+            return; // Abort if model doesn't support vision and context has images
+        }
+        // --- End Vision Check ---
+
         chrome.getProject().addToInstructionsHistory(input, 20);
         // Update the LLM output panel directly via Chrome
         chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
