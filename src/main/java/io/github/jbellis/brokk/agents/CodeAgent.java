@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.agents;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.*;
@@ -545,7 +546,7 @@ public class CodeAgent {
           %s
           """.stripIndent().formatted(count, pluralize, failedText, pluralize, pluralize, successfulText);
 
-        io.llmOutput("\n" + failedApplyMessage); // Show the user what we're telling the LLM
+        io.llmOutput("\n" + failedApplyMessage, ChatMessageType.USER); // Show the user what we're telling the LLM
         return failedApplyMessage; // Return the message to be sent to the LLM
     }
 
@@ -577,7 +578,7 @@ public class CodeAgent {
         ```
         %s
         ```
-        """.stripIndent().formatted(result.error(), result.output()));
+        """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.USER, IConsoleIO.MessageSubType.BuildError);
         io.systemOutput("Verification failed (details above)");
         // Add the combined error and output to the history for the next request
         buildErrors.add(result.error() + "\n\n" + result.output());

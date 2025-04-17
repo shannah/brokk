@@ -5,10 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import dev.langchain4j.exception.HttpException;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -123,7 +120,7 @@ public class Coder {
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
-                        io.llmOutput(token);
+                        io.llmOutput(token, ChatMessageType.AI);
                         io.hideOutputSpinner();
                     }
                 });
@@ -134,7 +131,7 @@ public class Coder {
                 ifNotCancelled.accept(() -> {
                     io.hideOutputSpinner();
                     if (echo) {
-                        io.llmOutput("\n");
+                        io.llmOutput("\n", ChatMessageType.AI);
                     }
                     atomicResponse.set(response);
                     if (response == null) {

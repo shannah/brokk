@@ -1,15 +1,14 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.Context.ParsedOutput;
-import io.github.jbellis.brokk.ContextFragment;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.agents.SearchAgent;
-import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -528,7 +527,7 @@ public class InstructionsPanel extends JPanel {
             var result = agent.execute();
             assert result != null;
             // Search does not stream to llmOutput, so set the final answer here
-            chrome.setLlmOutput(result.output().text());
+            chrome.setLlmOutput(List.of(new AiMessage(result.output().text())));
             contextManager.addToHistory(result, false);
         } catch (CancellationException cex) {
             chrome.systemOutput("Search command cancelled.");
@@ -546,7 +545,7 @@ public class InstructionsPanel extends JPanel {
         var contextManager = chrome.getContextManager();
         var result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-        chrome.llmOutput("\n```\n" + output + "\n```");
+        chrome.llmOutput("\n```\n" + output + "\n```", ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
 
         var llmOutputText = chrome.getLlmOutputText();
         if (llmOutputText == null) {
@@ -897,7 +896,7 @@ public class InstructionsPanel extends JPanel {
         }
         chrome.getProject().addToTextHistory(input, 20);
         // Update the LLM output panel directly via Chrome
-        chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
+        chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.", ChatMessageType.USER);
         clearCommandInput();
         disableButtons();
         // Save model before submitting task

@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
@@ -472,12 +474,18 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     @Override
-    public void llmOutput(String token) {
-        SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token));
+    public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
+        // TODO: use messageSubType later on
+        SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token, type));
     }
 
-    public void setLlmOutput(String text) {
-        SwingUtilities.invokeLater(() -> historyOutputPanel.setLlmOutput(text));
+    @Override
+    public void llmOutput(String token, ChatMessageType type) {
+        llmOutput(token, type, null);
+    }
+
+    public void setLlmOutput(List<ChatMessage> newMessages) {
+        SwingUtilities.invokeLater(() -> historyOutputPanel.setLlmOutput(newMessages));
     }
 
     @Override
@@ -603,7 +611,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                         // Use MarkdownOutputPanel for Markdown and Diff
                         var markdownPanel = new MarkdownOutputPanel();
                         markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
-                        markdownPanel.setText(content);
+
+                        // TODO: how to do this?
+                        // markdownPanel.setText(content);
 
                         // Wrap in a scroll pane
                         var scrollPane = new JScrollPane(markdownPanel);

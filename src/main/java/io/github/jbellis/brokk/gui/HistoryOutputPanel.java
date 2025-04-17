@@ -1,8 +1,11 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.TaskEntry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -15,6 +18,7 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.List;
 
 /**
  * A component that combines the context history panel with the output panel using BorderLayout.
@@ -421,9 +425,9 @@ public class HistoryOutputPanel extends JPanel {
         openWindowButton.setMnemonic(KeyEvent.VK_W);
         openWindowButton.setToolTipText("Open the output in a new window");
         openWindowButton.addActionListener(e -> {
-            String text = llmStreamArea.getText();
-            if (!text.isBlank()) {
-                new OutputWindow(this, text, chrome.themeManager != null && chrome.themeManager.isDarkTheme());
+            var messages = llmStreamArea.getRawMessages();
+            if (messages != null && !messages.isEmpty()) { 
+                new OutputWindow(this, messages, chrome.themeManager != null && chrome.themeManager.isDarkTheme());
             }
         });
         // Set minimum size
@@ -443,13 +447,14 @@ public class HistoryOutputPanel extends JPanel {
         return llmStreamArea.getText();
     }
 
-    /**
-     * Sets the text in the LLM output area
-     */
-    public void setLlmOutput(String text) {
-        llmStreamArea.setText(text);
+    public void setLlmOutput(TaskEntry taskEntry) {
+        llmStreamArea.setText(taskEntry);
     }
 
+    public void setLlmOutput(List<ChatMessage> newMessages) {
+        llmStreamArea.setText(newMessages);
+    }
+    
     /**
      * Sets the text in the LLM output area
      */
@@ -460,7 +465,8 @@ public class HistoryOutputPanel extends JPanel {
             return;
         }
 
-        setLlmOutput(text);
+        // TODO: show text or fragment (ConversationFragment)
+        // setLlmOutput(text);
         // Scroll to the top
         SwingUtilities.invokeLater(() -> {
             llmScrollPane.getVerticalScrollBar().setValue(0);
@@ -470,8 +476,8 @@ public class HistoryOutputPanel extends JPanel {
     /**
      * Appends text to the LLM output area
      */
-    public void appendLlmOutput(String text) {
-        llmStreamArea.append(text);
+    public void appendLlmOutput(String text, ChatMessageType type) {
+        llmStreamArea.append(text, type);
     }
 
     /**
@@ -527,10 +533,10 @@ public class HistoryOutputPanel extends JPanel {
          * Creates a new output window with the given text content
          *
          * @param parentPanel The parent HistoryOutputPanel
-         * @param text The markdown text to display
+         * @param messages The messages (ai, user, ...) to display
          * @param isDark Whether to use dark theme
          */
-        public OutputWindow(HistoryOutputPanel parentPanel, String text, boolean isDark) {
+        public OutputWindow(HistoryOutputPanel parentPanel, List<ChatMessage> messages, boolean isDark) {
             super("Output"); // Call superclass constructor first
             this.parentPanel = parentPanel;
             this.project = parentPanel.contextManager.getProject(); // Get project reference
@@ -539,7 +545,7 @@ public class HistoryOutputPanel extends JPanel {
             // Create markdown panel with the text
             var outputPanel = new MarkdownOutputPanel();
             outputPanel.updateTheme(isDark);
-            outputPanel.setText(text);
+            outputPanel.setText(messages);
 
             // Add to a scroll pane
             var scrollPane = new JScrollPane(outputPanel);

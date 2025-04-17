@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.ChatMessageType;
+
 public interface IConsoleIO {
     void actionOutput(String msg);
 
@@ -12,10 +14,19 @@ public interface IConsoleIO {
 
     void toolErrorRaw(String msg);
 
-    void llmOutput(String token);
+    public enum MessageSubType {
+        BuildError,
+        CommandOutput
+    }
 
+    void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType);
+
+    default void llmOutput(String token, ChatMessageType type) {
+        llmOutput(token, type, null);
+    }
+    
     default void systemOutput(String message) {
-        llmOutput("\n" + message);
+        llmOutput("\n" + message, ChatMessageType.USER);
     }
     
     default void showOutputSpinner(String message) {}

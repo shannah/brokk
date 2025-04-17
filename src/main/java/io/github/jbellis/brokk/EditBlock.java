@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -180,7 +181,7 @@ public class EditBlock {
          } // End of for loop
 
         if (!succeeded.isEmpty()) {
-            io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.");
+            io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.", ChatMessageType.USER);
         }
         changedFiles.keySet().retainAll(succeeded.values());
         return new EditResult(changedFiles, failed);
