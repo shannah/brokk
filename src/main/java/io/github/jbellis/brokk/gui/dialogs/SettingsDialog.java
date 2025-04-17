@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
-import io.github.jbellis.brokk.BuildAgent;
+import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.Project.DataRetentionPolicy;
 import io.github.jbellis.brokk.gui.Chrome;

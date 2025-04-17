@@ -314,7 +314,7 @@ public class Context implements Serializable {
      * 3) Build a multiline skeleton text for the top autoContextFileCount results
      * 4) Return the new AutoContext instance
      */
-    AutoContext buildAutoContext() {
+    public AutoContext buildAutoContext() {
         if (!isAutoContextEnabled()) {
             return AutoContext.DISABLED;
         }

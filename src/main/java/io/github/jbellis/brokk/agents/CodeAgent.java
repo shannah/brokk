@@ -1,10 +1,11 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.agents;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.BuildAgent.BuildDetails;
+import io.github.jbellis.brokk.*;
+import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.Coder.StreamingResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -143,7 +144,7 @@ public class CodeAgent {
             if (stopDetails != null) break;
 
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-            var readOnlyFiles = autoAddReferencedFiles(blocks, coder, io, rejectReadonlyEdits);
+            var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, rejectReadonlyEdits);
             if (!readOnlyFiles.isEmpty()) {
                 var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
                 stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.READ_ONLY_EDIT, filenames);
@@ -279,8 +280,7 @@ public class CodeAgent {
      */
     private static List<ProjectFile> autoAddReferencedFiles(
             List<EditBlock.SearchReplaceBlock> blocks,
-            Coder coder,
-            IConsoleIO io,
+            ContextManager cm,
             boolean rejectReadonlyEdits
     ) {
         // Use the passed coder instance directly
@@ -288,23 +288,23 @@ public class CodeAgent {
                 .map(EditBlock.SearchReplaceBlock::filename)
                 .filter(Objects::nonNull)
                 .distinct()
-                .map(coder.contextManager::toFile) // Use coder.contextManager
-                .filter(file -> !coder.contextManager.getEditableFiles().contains(file))
+                .map(cm::toFile)
+                .filter(file -> !cm.getEditableFiles().contains(file))
                 .toList();
 
         if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
             var readOnlyFiles = filesToAdd.stream()
-                    .filter(f -> coder.contextManager.getReadonlyFiles().contains(f))
+                    .filter(f -> cm.getReadonlyFiles().contains(f))
                     .toList();
             if (!readOnlyFiles.isEmpty()) {
-                io.systemOutput(
+                cm.getIo().systemOutput(
                         "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
                                 .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
                 // Return the list of read-only files that caused the issue
                 return readOnlyFiles;
             }
-            io.systemOutput("Editing additional files " + filesToAdd);
-            coder.contextManager.editFiles(filesToAdd);
+            cm.getIo().systemOutput("Editing additional files " + filesToAdd);
+            cm.editFiles(filesToAdd);
         }
         // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
         return List.of();

@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.DisabledAnalyzer;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;

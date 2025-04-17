@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import dev.langchain4j.data.message.ChatMessage;
-import io.github.jbellis.brokk.CodeAgent;
+import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.EditBlock;

@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.agents;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
@@ -11,6 +11,8 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import io.github.jbellis.brokk.Coder;
+import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
@@ -34,18 +36,20 @@ public class BuildAgent {
 
     // Use standard ChatMessage history
     private final List<ChatMessage> chatHistory = new ArrayList<>();
+    private final ContextManager contextManager;
     // Field to store the result from the reportBuildDetails tool
     private BuildDetails reportedDetails = null;
     // Field to store the reason from the abortBuildDetails tool
     private String abortReason = null;
 
-    public BuildAgent(Coder coder, ToolRegistry toolRegistry) {
+    public BuildAgent(ContextManager contextManager, Coder coder, ToolRegistry toolRegistry) {
+        this.contextManager = contextManager;
         assert coder != null : "coder cannot be null";
         assert toolRegistry != null : "toolRegistry cannot be null";
         this.coder = coder;
         this.toolRegistry = toolRegistry;
         // Get Models instance from coder and call instance method
-        this.model = coder.contextManager.getModels().quickModel();
+        this.model = contextManager.getModels().quickModel();
     }
 
     /**

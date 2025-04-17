@@ -2,13 +2,13 @@ package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.ArchitectAgent;
-import io.github.jbellis.brokk.CodeAgent;
+import io.github.jbellis.brokk.agents.ArchitectAgent;
+import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.SearchAgent;
+import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.AskPrompts;
@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 /**

@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.agents;
 
 import com.google.common.collect.Streams;
 import dev.langchain4j.agent.tool.P;
@@ -11,6 +11,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;

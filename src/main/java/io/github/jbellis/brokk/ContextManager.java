@@ -8,7 +8,8 @@ import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
-import io.github.jbellis.brokk.BuildAgent.BuildDetails;
+import io.github.jbellis.brokk.agents.BuildAgent;
+import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextHistory.UndoResult;
@@ -1192,7 +1193,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
       // No details found, run the BuildAgent asynchronously
       submitBackgroundTask("Inferring build details", () -> {
-          BuildAgent agent = new BuildAgent(getCoder(models.systemModel(), "Infer build details"), toolRegistry);
+          BuildAgent agent = new BuildAgent(this, getCoder(models.systemModel(), "Infer build details"), toolRegistry);
           BuildDetails inferredDetails = null;
           try {
               inferredDetails = agent.execute(); // This runs the agent loop

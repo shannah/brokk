@@ -1,10 +1,12 @@
-package io.github.jbellis.brokk;
+package io.github.jbellis.brokk.agents;
 
 // Added import for Coder
 
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.Coder;
+import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
