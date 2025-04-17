@@ -695,68 +695,73 @@ public class InstructionsPanel extends JPanel {
      *
      * @param suggestedFiles The list of ProjectFiles suggested by the LLM.
      * @return A list of ProjectFiles selected by the user, or null if the dialog was cancelled.
-     */
-    private List<ProjectFile> showTestSelectionDialog(List<ProjectFile> suggestedFiles) {
-        JDialog dialog = new JDialog(chrome.getFrame(), "Add tests before coding?", true); // Modal dialog
-        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        dialog.setLayout(new BorderLayout(10, 10));
-        dialog.setMinimumSize(new Dimension(400, 300));
-
-        JLabel instructionLabel = new JLabel("<html>Select test files to add to the context (read-only):</html>");
-        instructionLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
-        dialog.add(instructionLabel, BorderLayout.NORTH);
-
-        // Panel to hold checkboxes
-        JPanel checkboxPanel = new JPanel();
-        checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
-        List<JCheckBox> checkBoxes = new ArrayList<>();
-        for (ProjectFile file : suggestedFiles) {
-            JCheckBox checkBox = new JCheckBox(file.toString());
-            // Default to not selected, let the user explicitly choose
-            checkBox.setSelected(false);
-            checkBoxes.add(checkBox);
-            checkboxPanel.add(checkBox);
-        }
-
-        JScrollPane scrollPane = new JScrollPane(checkboxPanel);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        dialog.add(scrollPane, BorderLayout.CENTER);
-
-        // Buttons for confirmation or cancellation
-        JButton okButton = new JButton("Add Selected and Continue");
-        JButton cancelButton = new JButton("Cancel");
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.add(okButton);
-        buttonPanel.add(cancelButton);
-        dialog.add(buttonPanel, BorderLayout.SOUTH);
-
-        // Result list - effectively final for lambda access
-        final List<ProjectFile>[] result = new List[1];
-        result[0] = null; // Default to null (indicates cancellation)
-
-        okButton.addActionListener(e -> {
-            List<ProjectFile> selected = new ArrayList<>();
-            for (int i = 0; i < checkBoxes.size(); i++) {
-                if (checkBoxes.get(i).isSelected()) {
-                    selected.add(suggestedFiles.get(i));
+             */
+            private List<ProjectFile> showTestSelectionDialog(List<ProjectFile> suggestedFiles) {
+                JDialog dialog = new JDialog(chrome.getFrame(), "Add tests before coding?", true); // Modal dialog
+                dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+                dialog.setLayout(new BorderLayout(10, 10));
+                dialog.setMinimumSize(new Dimension(400, 300));
+        
+                JLabel instructionLabel = new JLabel("<html>Select test files to add to the context (read-only):</html>");
+                instructionLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
+                dialog.add(instructionLabel, BorderLayout.NORTH);
+        
+                JButton okButton = new JButton("Continue without Tests"); // Initial text
+                JButton cancelButton = new JButton("Cancel");
+        
+                // Panel to hold checkboxes
+                JPanel checkboxPanel = new JPanel();
+                checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
+                List<JCheckBox> checkBoxes = new ArrayList<>();
+                for (ProjectFile file : suggestedFiles) {
+                    JCheckBox checkBox = new JCheckBox(file.toString());
+                    checkBox.setSelected(false);
+                    // Add listener to update button text when selection changes
+                    checkBox.addItemListener(e -> {
+                        boolean anySelected = checkBoxes.stream().anyMatch(JCheckBox::isSelected);
+                        okButton.setText(anySelected ? "Add Tests and Continue" : "Continue without Tests");
+                    });
+                    checkBoxes.add(checkBox);
+                    checkboxPanel.add(checkBox);
                 }
+        
+                JScrollPane scrollPane = new JScrollPane(checkboxPanel);
+                scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+                dialog.add(scrollPane, BorderLayout.CENTER);
+        
+                // Buttons for confirmation or cancellation
+                JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+                buttonPanel.add(okButton);
+                buttonPanel.add(cancelButton);
+                dialog.add(buttonPanel, BorderLayout.SOUTH);
+        
+                // Result list - effectively final for lambda access
+                final List<ProjectFile>[] result = new List[1];
+                result[0] = null; // Default to null (indicates cancellation)
+        
+                okButton.addActionListener(e -> {
+                    List<ProjectFile> selected = new ArrayList<>();
+                    for (int i = 0; i < checkBoxes.size(); i++) {
+                        if (checkBoxes.get(i).isSelected()) {
+                            selected.add(suggestedFiles.get(i));
+                        }
+                    }
+                    result[0] = selected; // Store selected list
+                    dialog.dispose();
+                });
+        
+                cancelButton.addActionListener(e -> {
+                    result[0] = null; // Ensure result is null on cancel
+                    dialog.dispose();
+                });
+        
+                dialog.pack(); // Adjust size
+                dialog.setLocationRelativeTo(chrome.getFrame()); // Center relative to main window
+                dialog.setVisible(true); // Show modal dialog - blocks until disposed
+        
+                // Return the captured result after the dialog is closed
+                return result[0];
             }
-            result[0] = selected; // Store selected list
-            dialog.dispose();
-        });
-
-        cancelButton.addActionListener(e -> {
-            result[0] = null; // Ensure result is null on cancel
-            dialog.dispose();
-        });
-
-        dialog.pack(); // Adjust size
-        dialog.setLocationRelativeTo(chrome.getFrame()); // Center relative to main window
-        dialog.setVisible(true); // Show modal dialog - blocks until disposed
-
-        // Return the captured result after the dialog is closed
-        return result[0];
-    }
 
 
     public void runAskCommand() {
