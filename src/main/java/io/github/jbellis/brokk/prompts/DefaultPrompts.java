@@ -22,7 +22,7 @@ public abstract class DefaultPrompts {
             """.stripIndent();
 
     public static final String OVEREAGER_REMINDER = """
-            Do comment new code, but if existing comments are adequate, do not rewrite them.
+            Avoid changing code or comments that are not directly related to the request.
             Do not comment on your modifications, only on the resulting code in isolation.
             This means that comments like "added X" or "changed Y" or "moved Z" are NOT WELCOME.
             """.stripIndent();
@@ -30,8 +30,8 @@ public abstract class DefaultPrompts {
     public static final String ARCHITECT_REMINDER = """
             Pay careful attention to the scope of the user's request. Attempt to do everything required
             to fulfil the user's direct requests, but avoid surprising him with unexpected actions.
-            For example, if the user asks you a question, you should do your best to answer their question first, 
-            before immediately jump into taking further action.
+            For example, if the user asks you a question, you should do your best to answer his question first,
+            before immediately jumping into taking further action.
             """.stripIndent();
 
     // Now takes a Models instance
