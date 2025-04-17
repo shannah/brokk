@@ -60,7 +60,7 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
         ## 1. Deeply Understand the Problem
         Carefully read the goal and think hard about a plan to solve it before asking Code Agent to make changes.
 
-        ## 2. Codebase Investigation
+        ## 2. Codebase Investigation and the Workspace
         - Use Search Agent to search for key functions, classes, or variables related to the goal.
         - Add relevant files, usage information, and code snippets to the Workspace to examine them
           yourself and to expose them to Code Agent.
@@ -75,6 +75,11 @@ public abstract class ArchitectPrompts extends DefaultPrompts {
         If you are not COMPLETELY SURE what part of the goal refers to, you MUST use Search Agent
         to determine what it means before attempting any code changes!  If the request is still ambiguous or
         unclear after searching, stop and ask for clarification from the user.
+        
+        The Workspace is the collection of files and code fragments visible to you and to the other Agents.
+        Irrelevant information or too much detail will confuse the the other agents, so you always use
+        class summaries or function excerpts instead of full-text files where possible, and should remove irrelevant
+        files entirely.
 
         ## 3. Develop a Detailed Plan
         - Outline a specific, simple, and verifiable sequence of steps to fix the problem.
