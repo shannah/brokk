@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,7 +53,7 @@ class EditBlockTest {
         }
 
         @Override
-        public void llmOutput(String token) {
+        public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
             // not needed for these tests
         }
 

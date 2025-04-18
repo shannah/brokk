@@ -3,10 +3,7 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolSpecifications;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import org.junit.jupiter.api.Assumptions;
@@ -39,7 +36,7 @@ public class CoderTest {
         public void toolErrorRaw(String msg) {
             System.out.println("Tool error: " + msg);
         }
-        @Override public void llmOutput(String token) {}
+        @Override public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {}
         @Override public void systemOutput(String message) {}
         @Override public void showOutputSpinner(String message) {}
         @Override public void hideOutputSpinner() {}

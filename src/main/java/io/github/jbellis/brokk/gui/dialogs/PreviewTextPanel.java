@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
@@ -644,7 +645,7 @@ public class PreviewTextPanel extends JPanel {
             }
 
             @Override
-            public void llmOutput(String token) {
+            public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
                 appendSystemMessage(token);
             }
 

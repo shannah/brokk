@@ -1,9 +1,13 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.CustomMessage;
+import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import jnr.ffi.annotations.Out;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
@@ -19,7 +23,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public interface ContextFragment extends Serializable {
-    String SYNTAX_STYLE_DIFF = "DIFF";
 
     // Static counter for all fragments
     AtomicInteger NEXT_ID = new AtomicInteger(1);
@@ -73,6 +76,10 @@ public interface ContextFragment extends Serializable {
         return project.getFiles().stream().parallel()
                 .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
+    }
+
+    sealed interface OutputFragment permits ConversationFragment, SessionFragment, StringFragment, PasteTextFragment, SearchFragment {
+        List<TaskEntry> getMessages();
     }
 
     sealed interface PathFragment extends ContextFragment
@@ -368,10 +375,10 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class StringFragment extends VirtualFragment {
-        private static final long serialVersionUID = 2L;
-        private final String text;
-        private final String description;
+    final class StringFragment extends VirtualFragment implements OutputFragment {
+            private static final long serialVersionUID = 3L;
+            private final String text;
+            private final String description;
         private final String syntaxStyle;
 
         public StringFragment(String text, String description, String syntaxStyle) {
@@ -402,12 +409,17 @@ public interface ContextFragment extends Serializable {
         public String toString() {
             return "StringFragment('%s')".formatted(description);
         }
+
+        @Override
+        public List<TaskEntry> getMessages() {
+            return List.of(new TaskEntry(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
+        }
     }
 
-    class SearchFragment extends VirtualFragment {
-        private static final long serialVersionUID = 2L;
-        private final String query;
-        private final String explanation;
+    final class SearchFragment extends VirtualFragment implements OutputFragment {
+            private static final long serialVersionUID = 3L;
+            private final String query;
+            private final String explanation;
         private final Set<CodeUnit> sources;
 
         public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
@@ -448,6 +460,15 @@ public interface ContextFragment extends Serializable {
         @Override
         public String toString() {
             return "SearchFragment('%s')".formatted(query);
+        }
+
+        @Override
+        public List<TaskEntry> getMessages() {
+            var messages = List.of(
+                    new UserMessage("# Query\n\n%s".formatted(query)),
+                    new AiMessage("# Answer\n\n%s".formatted(explanation))
+            );
+            return List.of(new TaskEntry(0, "Search", messages, null));
         }
     }
 
@@ -500,9 +521,9 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class PasteTextFragment extends PasteFragment {
-        private static final long serialVersionUID = 3L;
-        private final String text;
+    final class PasteTextFragment extends PasteFragment implements OutputFragment {
+            private static final long serialVersionUID = 4L;
+            private final String text;
 
         public PasteTextFragment(String text, Future<String> descriptionFuture) {
             super(descriptionFuture);
@@ -520,6 +541,12 @@ public interface ContextFragment extends Serializable {
         @Override
         public String text() {
             return text;
+        }
+
+        @Override
+        public List<TaskEntry> getMessages() {
+            var description = descriptionFuture.isDone() ? description() : "Paste";
+            return List.of(new TaskEntry(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 
@@ -761,18 +788,18 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    /** represents the entire Task History */
-    class ConversationFragment extends VirtualFragment {
-        private static final long serialVersionUID = 3L;
-        private final List<TaskEntry> history;
+    /** Base class for fragments that represent task history */
+        abstract class TaskHistoryFragment extends VirtualFragment {
+            private static final long serialVersionUID = 4L;
+            protected final List<TaskEntry> history;
 
-        public ConversationFragment(List<TaskEntry> history) {
+        public TaskHistoryFragment(List<TaskEntry> history) {
             super();
             assert history != null;
             this.history = List.copyOf(history);
         }
 
-        public List<TaskEntry> getHistory() {
+        public List<TaskEntry> getMessages() {
             return history;
         }
 
@@ -794,11 +821,6 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public String description() {
-            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
-        }
-
-        @Override
         public boolean isEligibleForAutoContext() {
             return false;
         }
@@ -813,13 +835,48 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public String toString() {
-            return "ConversationFragment(" + history.size() + " tasks)";
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
+        }
+    }
+
+    /** represents the entire Task History */
+        final class ConversationFragment extends TaskHistoryFragment implements OutputFragment {
+            private static final long serialVersionUID = 4L;
+    
+            public ConversationFragment(List<TaskEntry> history) {
+            super(history);
         }
 
         @Override
-        public String syntaxStyle() {
-            return SYNTAX_STYLE_DIFF;
+        public String description() {
+            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
+        }
+
+        @Override
+        public String toString() {
+            return "ConversationFragment(" + history.size() + " tasks)";
+        }
+    }
+
+    /** represents a single session's Task History */
+        final class SessionFragment extends TaskHistoryFragment implements OutputFragment {
+            private static final long serialVersionUID = 4L;
+            private final String sessionName;
+
+        public SessionFragment(List<TaskEntry> history, String sessionName) {
+            super(history);
+            this.sessionName = sessionName;
+        }
+
+        @Override
+        public String description() {
+            return "AI response: " + sessionName;
+        }
+
+        @Override
+        public String toString() {
+            return "SessionFragment(" + sessionName + ")";
         }
     }
 

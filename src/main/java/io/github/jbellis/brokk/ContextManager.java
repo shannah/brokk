@@ -325,7 +325,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {
-        io.setLlmOutput("# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response"));
+        var text = "# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response");
+        io.setLlmOutput(List.of(new UserMessage(text)));
         return submitUserTask(action, task);
     }
 

@@ -2,6 +2,12 @@ package io.github.jbellis.brokk.gui;
 
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
+import dev.langchain4j.data.message.*;
+import io.github.jbellis.brokk.EditBlock;
+import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.TaskEntry;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rsyntaxtextarea.Theme;
@@ -12,40 +18,38 @@ import javax.swing.text.html.HTMLEditorKit;
 import java.awt.*;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Map;
 import java.util.List;
-
-import io.github.jbellis.brokk.EditBlock;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
+import java.util.stream.Collectors;
 
 /**
- * A Swing JPanel designed to display formatted text content which may include
+ * A Swing JPanel designed to display structured conversations as formatted text content which may include
  * standard Markdown, Markdown code fences (```), and Brokk-specific `SEARCH/REPLACE` edit blocks.
+ * <p>
+ * The panel internally maintains a list of {@link ChatMessage} objects, each representing a
+ * message in the conversation (AI, User, System, etc.). Each message is rendered according to its type:
  *
- * Rendering logic prioritizes Edit Blocks:
- * <ol>
- *   <li>The panel attempts to parse the entire text content using {@link EditBlock#parseEditBlocks(String)}.</li>
- *   <li>If parsing is successful and one or more valid {@link EditBlock.SearchReplaceBlock} instances are found,
- *       the panel renders *only* these edit blocks, each within its own visually distinct section.
- *       Any text outside the recognized blocks is ignored in this mode.</li>
- *   <li>If parsing fails (e.g., malformed block syntax) or if no valid blocks are found, the panel
- *       falls back to rendering the *entire* original text content. In this fallback mode:
- *          - If a parsing error occurred, the content is rendered as plain text to show the user the raw,
- *            potentially malformed input.
- *          - Otherwise (no blocks found, but no parse error), the content is rendered as Markdown,
- *            with standard ``` code fences being displayed as themed, syntax-highlighted code areas.</li>
- * </ol>
- * The display is updated completely whenever {@link #append(String)} or {@link #setText(String)} is called.
+ * <ul>
+ *   <li>AI messages are parsed for edit blocks first, and if found, they are rendered with special formatting.
+ *       Otherwise, they are rendered as Markdown with code syntax highlighting.</li>
+ *   <li>User messages are rendered as plain text or simple Markdown.</li>
+ *   <li>System and other message types are rendered as plain text.</li>
+ * </ul>
+ * <p>
+ * The panel updates incrementally when messages are appended, only re-rendering the affected message
+ * rather than the entire content, which prevents flickering during streaming updates.
  */
 class MarkdownOutputPanel extends JPanel implements Scrollable {
     private static final Logger logger = LogManager.getLogger(MarkdownOutputPanel.class);
 
-    // Holds *all* the raw text (Markdown or Edit Blocks) appended so far.
-    private final StringBuilder contentBuffer = new StringBuilder();
+    // Holds the structured messages that have been added to the panel
+    private final List<ChatMessage> messages = new ArrayList<>();
+
+    // Parallel list of UI components for each message (1:1 mapping with messages)
+    private final List<Component> messageComponents = new ArrayList<>();
 
     // Listeners to notify whenever text changes
     private final List<Runnable> textChangeListeners = new ArrayList<>();
@@ -105,51 +109,263 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
             spinnerPanel.updateBackgroundColor(textBackgroundColor);
         }
 
+        // Re-render all components with new theme
+        setText(new ArrayList<>(messages));
+
         revalidate();
         repaint();
     }
 
     /**
-     * Clears all text and displayed components. The parse state is reset.
+     * Clears all text and displayed components.
      */
     public void clear() {
         logger.debug("Clearing all content from MarkdownOutputPanel");
-        contentBuffer.setLength(0);
-        removeAll();
-        // Spinner state is reset by removeAll(); hideSpinner handles the reference
-        spinnerPanel = null;
+        internalClear();
         revalidate();
         repaint();
         textChangeListeners.forEach(Runnable::run); // Notify listeners about the change
     }
 
     /**
-     * Appends more Markdown text. We parse only the newly appended segment
-     * and update the active text/code block(s) as needed.
+     * Internal helper to clear all state
      */
-    public void append(String text) {
-        assert text != null;
-        if (!text.isEmpty()) {
-            contentBuffer.append(text);
-            rerender(); // Re-parse and render the entire content
-            textChangeListeners.forEach(Runnable::run);
+    private void internalClear() {
+        messages.clear();
+        messageComponents.clear();
+        removeAll();
+        spinnerPanel = null;
+    }
+
+    /**
+     * Appends a new message or content to the last message if type matches.
+     * This is the primary method for adding content during streaming.
+     *
+     * @param text The text content to append
+     * @param type The type of message being appended
+     */
+    public void append(String text, ChatMessageType type) {
+        assert text != null && type != null;
+        if (text.isEmpty()) {
+            return;
         }
+
+        // Check if we're appending to an existing message of the same type
+        if (!messages.isEmpty() && messages.getLast().type() == type) {
+            // Append to existing message
+            updateLastMessage(text);
+        } else {
+            // Create a new message
+            ChatMessage newMessage = createChatMessage(text, type);
+            addNewMessage(newMessage);
+        }
+
+        textChangeListeners.forEach(Runnable::run);
     }
 
     /**
-     * Sets the entire text buffer to the given Markdown, re-parsing from scratch.
+     * Appends a ChatMessage directly.
+     *
+     * @param message The ChatMessage to append
      */
-    public void setText(String text) {
-        assert text != null;
-        clear();
-        append(text);
+//    public void append(ChatMessage message) {
+//        assert message != null;
+//
+//        // Check if we're appending to an existing message of the same type
+//        if (!messages.isEmpty() && messages.getLast().type() == message.type()) {
+//            // Create a combined message
+//            String combinedText = Models.getRepr(messages.getLast()) + Models.getRepr(message);
+//            // Create new message with combined text
+//            ChatMessage combinedMessage = createChatMessage(combinedText, message.type());
+//
+//            // Replace the last message
+//            messages.set(messages.size() - 1, combinedMessage);
+//
+//            // Re-render the last component
+//            Component lastComponent = messageComponents.getLast();
+//            remove(lastComponent);
+//
+//            // If spinner is showing, remove it temporarily
+//            boolean spinnerWasVisible = false;
+//            if (spinnerPanel != null) {
+//                remove(spinnerPanel);
+//                spinnerWasVisible = true;
+//            }
+//
+//            // Create new component and update the lists
+//            Component newComponent = renderMessageComponent(combinedMessage);
+//            messageComponents.set(messageComponents.size() - 1, newComponent);
+//            add(newComponent);
+//
+//            // Re-add spinner if it was visible
+//            if (spinnerWasVisible) {
+//                add(spinnerPanel);
+//            }
+//        } else {
+//            // Add as a new message
+//            addNewMessage(message);
+//        }
+//
+//        textChangeListeners.forEach(Runnable::run);
+//    }
+
+    /**
+     * Updates the last message by appending text to it
+     */
+    private void updateLastMessage(String additionalText) {
+        if (messages.isEmpty()) return;
+
+        var lastMessage = messages.getLast();
+        var newText = Models.getRepr(lastMessage) + additionalText;
+        var type = lastMessage.type();
+
+        // Create a new message with the combined text
+        ChatMessage updatedMessage = createChatMessage(newText, type);
+
+        // Replace the last message
+        messages.set(messages.size() - 1, updatedMessage);
+
+        // Remove the last component
+        Component lastComponent = messageComponents.getLast();
+        remove(lastComponent);
+
+        // If spinner is showing, remove it temporarily
+        boolean spinnerWasVisible = false;
+        if (spinnerPanel != null) {
+            remove(spinnerPanel);
+            spinnerWasVisible = true;
+        }
+
+        // Create new component and update the lists
+        Component newComponent = renderMessageComponent(updatedMessage);
+        messageComponents.set(messageComponents.size() - 1, newComponent);
+        add(newComponent);
+
+        // Re-add spinner if it was visible
+        if (spinnerWasVisible) {
+            add(spinnerPanel);
+        }
+
+        revalidate();
+        repaint();
     }
 
     /**
-     * Returns the entire raw text content buffer.
+     * Adds a new message to the display
+     */
+    private void addNewMessage(ChatMessage message) {
+        // Add to our message list
+        messages.add(message);
+
+        // If spinner is showing, remove it temporarily
+        boolean spinnerWasVisible = false;
+        if (spinnerPanel != null) {
+            remove(spinnerPanel);
+            spinnerWasVisible = true;
+        }
+
+        // Create component for this message
+        Component component = renderMessageComponent(message);
+        messageComponents.add(component);
+        add(component);
+
+        // Re-add spinner if it was visible
+        if (spinnerWasVisible) {
+            add(spinnerPanel);
+        }
+
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Helper method to create a ChatMessage of the specified type
+     */
+    private ChatMessage createChatMessage(String text, ChatMessageType type) {
+        return switch (type) {
+            case USER -> new UserMessage(text);
+            case AI -> new AiMessage(text);
+            case CUSTOM -> new CustomMessage(Map.of("text", text));
+            // Add other cases as needed with appropriate implementations
+            default -> {
+                logger.warn("Unsupported message type: {}, using AiMessage as fallback", type);
+                yield new AiMessage(text);
+            }
+        };
+    }
+
+    /**
+     * Sets the content from a list of ChatMessages
+     */
+    public void setText(List<ChatMessage> newMessages) {
+        internalClear();
+
+        if (newMessages == null || newMessages.isEmpty()) {
+            return;
+        }
+
+        for (var message : newMessages) {
+            Component component = renderMessageComponent(message);
+            messages.add(message);
+            messageComponents.add(component);
+            add(component);
+        }
+
+        revalidate();
+        repaint();
+        textChangeListeners.forEach(Runnable::run);
+    }
+
+    /**
+     * Sets the content from a TaskEntry
+     */
+    public void setText(TaskEntry taskEntry) {
+        if (taskEntry == null) {
+            clear();
+            return;
+        }
+
+        setText(taskEntry.log());
+    }
+
+    /**
+     * Legacy method to set plain text content.
+     * Creates a single message of type AI by default.
+     */
+//    public void setText(String text) {
+//        assert text != null;
+//
+//        // Check if this is a TaskEntry XML format
+//        if (text.trim().startsWith("<task") && text.trim().endsWith("</task>")) {
+//            // This appears to be a TaskEntry XML format, but we can't parse it directly
+//            // Just wrap it as an AI message for now
+//            setText(List.of(new AiMessage(text)));
+//        } else {
+//            clear();
+//            if (!text.isEmpty()) {
+//                append(text, ChatMessageType.AI);
+//            }
+//        }
+//    }
+
+    /**
+     * Returns text representation of all messages.
+     * For backward compatibility with code that expects a String.
      */
     public String getText() {
-        return contentBuffer.toString();
+        return messages.stream()
+                .map(Models::getRepr)
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    /**
+     * Returns the raw ChatMessage objects.
+     * Similar to getMessages() but with a more descriptive name.
+     *
+     * @return An unmodifiable list of the current messages
+     */
+    public List<ChatMessage> getRawMessages() {
+        return Collections.unmodifiableList(messages);
     }
 
     /**
@@ -160,59 +376,104 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     }
 
     /**
-     * Re-parses the entire contentBuffer and updates the displayed components.
-     * Uses EditBlock.parseAllBlocks to handle both edit blocks and plain text/markdown segments.
+     * Renders a single message component based on its type
      */
-    private void rerender() {
-        // Preserve the spinner if it's showing
-        Component potentialSpinner = null;
-        if (getComponentCount() > 0) {
-             var lastComponent = getComponent(getComponentCount() - 1);
-             if (lastComponent == spinnerPanel) {
-                 potentialSpinner = lastComponent;
-             }
-        }
-        // Remove all components except the spinner
-        removeAll();
+    private Component renderMessageComponent(ChatMessage message) {
+        // Create a container panel for this message
+        JPanel messagePanel = new JPanel();
+        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+        messagePanel.setBackground(textBackgroundColor);
+        messagePanel.setAlignmentX(LEFT_ALIGNMENT);
 
-        String content = contentBuffer.toString();
-        var parseResult = EditBlock.parseAllBlocks(content);
+        // Based on message type, add appropriate styles and content
+        switch (message.type()) {
+            case AI -> {
+                String content = Models.getRepr(message);
+                // For AI messages, try to parse edit blocks first
+                var parseResult = EditBlock.parseAllBlocks(content);
 
-        for (var block : parseResult.blocks()) {
-            if (block.block() != null) {
-                // Edit block
-                logger.trace("Rendering edit block for {}", block.block().filename());
-                add(renderEditBlockComponent(block.block()));
-            } else {
-                // Plain text/markdown
-                logger.trace("Rendering plain/markdown text block");
-                if (parseResult.parseError() != null) {
-                    // Show parse errors literally
-                    add(createPlainTextPane(block.text()));
+                // If we have edit blocks, render them
+                boolean hasEditBlocks = parseResult.blocks().stream()
+                        .anyMatch(block -> block.block() != null);
+
+                if (hasEditBlocks) {
+                    // Create a container for edit blocks
+                    JPanel blocksPanel = new JPanel();
+                    blocksPanel.setLayout(new BoxLayout(blocksPanel, BoxLayout.Y_AXIS));
+                    blocksPanel.setBackground(textBackgroundColor);
+                    blocksPanel.setAlignmentX(LEFT_ALIGNMENT);
+
+                    for (var block : parseResult.blocks()) {
+                        if (block.block() != null) {
+                            // Edit block
+                            blocksPanel.add(renderEditBlockComponent(block.block()));
+                        } else if (!block.text().isBlank()) {
+                            // Text between edit blocks - render as markdown
+                            var textPanel = renderMarkdownContent(block.text());
+                            blocksPanel.add(textPanel);
+                        }
+                    }
+                    blocksPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 2));
+                    messagePanel.add(blocksPanel);
                 } else {
-                    // Render as markdown
-                    renderMarkdownContent(block.text());
+                    // No edit blocks, render as markdown
+                    var contentPanel = renderMarkdownContent(content);
+                    contentPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 2));
+                    messagePanel.add(contentPanel);
                 }
+            }
+            case USER -> {
+                // For user messages, render as plain text with styling
+                JPanel userPanel = new JPanel();
+                userPanel.setLayout(new BoxLayout(userPanel, BoxLayout.Y_AXIS));
+                userPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
+                // userPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+                userPanel.setBorder(BorderFactory.createLineBorder(Color.red, 2));
+                userPanel.setAlignmentX(LEFT_ALIGNMENT);
+                var textPane = renderMarkdownContent(Models.getRepr(message));
+                textPane.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
+
+                userPanel.add(textPane);
+                messagePanel.add(userPanel);
+            }
+            case CUSTOM -> {
+                // For custom/common messages, render as plain text with styling
+                JPanel customPanel = new JPanel();
+                customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
+                customPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
+                // customPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+                customPanel.setBorder(BorderFactory.createLineBorder(Color.blue, 2));
+                customPanel.setAlignmentX(LEFT_ALIGNMENT);
+                var textPane = renderMarkdownContent(Models.getRepr(message));
+                textPane.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
+
+                customPanel.add(textPane);
+                messagePanel.add(customPanel);
+            }
+            default -> {
+                // Default case for other message types
+                messagePanel.add(createPlainTextPane(Models.getRepr(message)));
             }
         }
 
-        // Re-add spinner at the end if it was preserved
-        if (potentialSpinner != null) {
-             add(potentialSpinner);
-        }
-
-        revalidate();
-        repaint();
+        // Set maximum width and return
+        messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
+        return messagePanel;
     }
 
     /**
      * Renders a string containing Markdown, handling ``` code fences.
-     * Adds the resulting JEditorPane (for text) and RSyntaxTextArea (for code) components
-     * directly to this panel.
+     * Returns a panel containing the rendered components.
      *
      * @param markdownContent The Markdown content to render.
+     * @return A JPanel containing the rendered content
      */
-    private void renderMarkdownContent(String markdownContent) {
+    private JPanel renderMarkdownContent(String markdownContent) {
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setBackground(textBackgroundColor);
+        contentPanel.setAlignmentX(LEFT_ALIGNMENT);
+
         // Regex to find code blocks ```optional_info \n content ```
         // DOTALL allows . to match newline characters
         // reluctant quantifier *? ensures it finds the *next* ```
@@ -228,14 +489,14 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
                 JEditorPane textPane = createHtmlPane();
                 var html = renderer.render(parser.parse(textSegment));
                 textPane.setText("<html><body>" + html + "</body></html>");
-                add(textPane);
+                contentPanel.add(textPane);
             }
 
             // 2. Render the code block
             String fenceInfo = matcher.group(1).toLowerCase();
             String codeContent = matcher.group(2);
             RSyntaxTextArea codeArea = createConfiguredCodeArea(fenceInfo, codeContent);
-            add(codeAreaInPanel(codeArea));
+            contentPanel.add(codeAreaInPanel(codeArea));
 
             lastMatchEnd = matcher.end();
         }
@@ -247,8 +508,10 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
             // Render potentially trimmed segment as HTML
             var html = renderer.render(parser.parse(remainingText));
             textPane.setText("<html><body>" + html + "</body></html>");
-            add(textPane);
+            contentPanel.add(textPane);
         }
+
+        return contentPanel;
     }
 
     /**
@@ -262,7 +525,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
         blockPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
-                BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY: Color.LIGHT_GRAY, 1) // Border
+                BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
         ));
         blockPanel.setBackground(textBackgroundColor); // Match overall background
         blockPanel.setAlignmentX(LEFT_ALIGNMENT); // Align components to the left
@@ -298,34 +561,36 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         return blockPanel;
     }
 
-    /** Helper to create consistent labels for SEARCH/REPLACE sections */
+    /**
+     * Helper to create consistent labels for SEARCH/REPLACE sections
+     */
     private JLabel createEditBlockSectionLabel(String title) {
-         var label = new JLabel(title);
-         label.setFont(label.getFont().deriveFont(Font.ITALIC));
-         label.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5)); // Padding
-         label.setAlignmentX(LEFT_ALIGNMENT);
-         return label;
+        var label = new JLabel(title);
+        label.setFont(label.getFont().deriveFont(Font.ITALIC));
+        label.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5)); // Padding
+        label.setAlignmentX(LEFT_ALIGNMENT);
+        return label;
     }
 
     /**
      * Creates a JEditorPane configured for plain text display.
      * Ensures background color matches the theme.
      */
-     private JEditorPane createPlainTextPane(String text) {
-         var plainPane = new JEditorPane();
-         DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
-         caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-         plainPane.setContentType("text/plain"); // Set content type to plain text
-         plainPane.setText(text); // Set text directly
-         plainPane.setEditable(false);
-         plainPane.setAlignmentX(LEFT_ALIGNMENT);
-         if (textBackgroundColor != null) {
-             plainPane.setBackground(textBackgroundColor);
-             // Set foreground based on theme for plain text
-             plainPane.setForeground(isDarkTheme ? new Color(230, 230, 230) : Color.BLACK);
-         }
-         return plainPane;
-     }
+    private JEditorPane createPlainTextPane(String text) {
+        var plainPane = new JEditorPane();
+        DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
+        plainPane.setContentType("text/plain"); // Set content type to plain text
+        plainPane.setText(text); // Set text directly
+        plainPane.setEditable(false);
+        plainPane.setAlignmentX(LEFT_ALIGNMENT);
+        if (textBackgroundColor != null) {
+            plainPane.setBackground(textBackgroundColor);
+            // Set foreground based on theme for plain text
+            plainPane.setForeground(isDarkTheme ? new Color(230, 230, 230) : Color.BLACK);
+        }
+        return plainPane;
+    }
 
     /**
      * Creates an RSyntaxTextArea for a code block, setting the syntax style and theme.
@@ -391,7 +656,9 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         return panel;
     }
 
-    /** Wraps an RSyntaxTextArea in a panel with default border thickness (3). */
+    /**
+     * Wraps an RSyntaxTextArea in a panel with default border thickness (3).
+     */
     private JPanel codeAreaInPanel(RSyntaxTextArea textArea) {
         return codeAreaInPanel(textArea, 3);
     }
@@ -475,6 +742,16 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         repaint();
     }
 
+    /**
+     * Get the current messages in the panel.
+     * This is useful for code that needs to access the structured message data.
+     *
+     * @return An unmodifiable list of the current messages
+     */
+    public List<ChatMessage> getMessages() {
+        return Collections.unmodifiableList(messages);
+    }
+
     // --- Scrollable interface methods ---
 
     @Override
@@ -490,7 +767,7 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     @Override
     public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
         return orientation == SwingConstants.VERTICAL
-                ? visibleRect.height : visibleRect.width;
+               ? visibleRect.height : visibleRect.width;
     }
 
     @Override

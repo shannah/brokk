@@ -1,10 +1,13 @@
 package io.github.jbellis.brokk.gui;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.Context.ParsedOutput;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
@@ -504,7 +507,7 @@ public class InstructionsPanel extends JPanel {
             var result = agent.execute();
             assert result != null;
             // Search does not stream to llmOutput, so set the final answer here
-            chrome.setLlmOutput(result.output().text());
+            chrome.setLlmOutput(List.of(new AiMessage(result.output().text())));
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
             chrome.toolErrorRaw("Search agent interrupted without answering");
@@ -525,12 +528,13 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-        chrome.llmOutput("\n```\n" + output + "\n```");
+        var wrappedPutput = "\n```\n" + output + "\n```";
+        chrome.llmOutput(wrappedPutput, ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
 
         // Add to context history with the output text
         var llmOutputText = chrome.getLlmOutputText();
         contextManager.pushContext(ctx -> {
-            var runFrag = new ContextFragment.StringFragment(output, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
+            var runFrag = new ContextFragment.StringFragment(wrappedPutput, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
             var parsed = new ParsedOutput(llmOutputText, runFrag);
             return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
         });
@@ -866,7 +870,7 @@ public class InstructionsPanel extends JPanel {
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         // Update the LLM output panel directly via Chrome
-        chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.");
+        chrome.llmOutput("# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.", ChatMessageType.USER);
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
