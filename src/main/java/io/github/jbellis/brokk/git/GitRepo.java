@@ -1103,31 +1103,55 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * Pop a stash - apply it to the working directory and remove it from the stash list
+     * Pop a stash – apply it, then drop it – even when the index already
+     * contains unrelated staged changes.  Falls back to applying only the
+     * working‑tree part of the stash if the first attempt reports an
+     * index conflict.
      */
-    public void popStash(int stashIndex) throws IOException {
+    public void popStash(int stashIndex) throws IOException
+    {
+        var stashRef = "stash@{" + stashIndex + "}";
+        logger.debug("Popping stash {}", stashRef);
+
+        // apply
         try {
-            String stashRef = "stash@{" + stashIndex + "}";
-            logger.debug("Popping stash: {}", stashRef);
+            applyStash(stashRef, /*applyIndex*/ true);        // normal path
+        }
+        catch (org.eclipse.jgit.api.errors.StashApplyFailureException ex) {
+            logger.info("Stash apply with index failed ({}). Retrying without index …",
+                        ex.getMessage());
 
-            // First apply the stash
-            logger.debug("Applying stash content");
-            git.stashApply()
-                    .setStashRef(stashRef)
-                    .call();
+            try {
+                applyStash(stashRef, /*applyIndex*/ false);   // fallback
+            } catch (GitAPIException ex2) {
+                logger.error("Retry without index also failed: {}", ex2.getMessage());
+                throw new IOException("Failed to pop stash: " + ex2.getMessage(), ex2);
+            }
+        }
+        catch (GitAPIException ex) {
+            logger.error("Stash apply failed: {}", ex.getMessage());
+            throw new IOException("Failed to pop stash: " + ex.getMessage(), ex);
+        }
 
-            // Then drop it
-            logger.debug("Dropping stash from list");
-            git.stashDrop()
-                    .setStashRef(stashIndex)
-                    .call();
-
+        // drop
+        try {
+            git.stashDrop().setStashRef(stashIndex).call();
             logger.debug("Stash pop completed successfully");
             refresh();
-        } catch (GitAPIException e) {
-            logger.error("Stash pop failed: {}", e.getMessage());
-            throw new IOException("Failed to pop stash: " + e.getMessage(), e);
+        } catch (GitAPIException ex) {
+            throw new IOException("Failed to drop stash: " + ex.getMessage(), ex);
         }
+    }
+
+    /** Helper used by {@link #popStash(int)} */
+    private void applyStash(String stashRef, boolean restoreIndex) throws GitAPIException
+    {
+        git.stashApply()
+                .setStashRef(stashRef)
+                .setRestoreIndex(restoreIndex)  // true ⇒ include index, false ⇒ working‑tree only
+                .setRestoreUntracked(true)
+                .ignoreRepositoryState(true)    // allow apply even when repo isn’t “SAFE”
+                .call();
     }
 
     /**

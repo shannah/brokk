@@ -1327,71 +1327,24 @@ public class GitLogTab extends JPanel {
     }
 
     /**
-     * Retrieves stashes as commit info objects for display in the commits table
+     * Represent each stash as a single logical commit, mirroring
+     * `git stash list`.  We intentionally ignore the internal
+     * index/untracked helper commits so the log stays concise.
      */
-    private List<CommitInfo> getStashesAsCommits() throws IOException {
+    private List<CommitInfo> getStashesAsCommits() throws IOException
+    {
         List<GitRepo.StashInfo> stashes = getRepo().listStashes();
-        List<CommitInfo> stashCommits = new ArrayList<>();
+        List<CommitInfo> result = new ArrayList<>();
 
-        for (GitRepo.StashInfo stash : stashes) {
-            String baseName = stash.message();
-            String stashRef = "stash@{" + stash.index() + "}";
-
-            try {
-                // Get additional commits for this stash
-                var additionalCommits = getRepo().listAdditionalStashCommits(stashRef);
-
-                // If we have index or untracked commits, add them with appropriate labels
-                if (!additionalCommits.isEmpty()) {
-                    // Add the main stash first with working tree label
-                    stashCommits.add(new CommitInfo(
-                            stash.id(),
-                            baseName + " (working tree)" + " (stash@{" + stash.index() + "})",
-                            stash.author(),
-                            stash.date()
-                    ));
-
-                    // Add each additional commit with appropriate suffix
-                    for (var entry : additionalCommits.entrySet()) {
-                        var type = entry.getKey();
-                        var commit = entry.getValue();
-                        String suffix = switch (type) {
-                            case "index" -> " (staged changes)";
-                            case "untracked" -> " (untracked files)";
-                            default -> " (unknown)"; // Should not happen
-                        };
-
-                        stashCommits.add(new CommitInfo(
-                                commit.id(),
-                                baseName + suffix + " (stash@{" + stash.index() + "})",
-                                commit.author(),
-                                commit.date()
-                        ));
-                    }
-                } else {
-                    // No additional commits, just add the main stash
-                    stashCommits.add(new CommitInfo(
-                            stash.id(),
-                            baseName + " (stash@{" + stash.index() + "})",
-                            stash.author(),
-                            stash.date()
-                    ));
-                }
-            } catch (Exception e) {
-                logger.warn("Could not fetch additional stash commits for {}: {}",
-                            stashRef, e.getMessage());
-
-                // Fallback: Just add the main stash commit
-                stashCommits.add(new CommitInfo(
-                        stash.id(),
-                        baseName + " (stash@{" + stash.index() + "})",
-                        stash.author(),
-                        stash.date()
-                ));
-            }
+        for (GitRepo.StashInfo s : stashes) {
+            result.add(new CommitInfo(
+                    s.id(),
+                    s.message() + " (stash@{" + s.index() + "})",
+                    s.author(),
+                    s.date()
+            ));
         }
-
-        return stashCommits;
+        return result;
     }
 
     /**
