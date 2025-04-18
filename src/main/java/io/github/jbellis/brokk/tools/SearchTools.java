@@ -156,12 +156,11 @@ public class SearchTools {
                 allDefinitions.addAll(getAnalyzer().getDefinitions(pattern));
             }
         }
+        logger.debug("Raw definitions: {}", allDefinitions);
 
         if (allDefinitions.isEmpty()) {
-            throw new IllegalStateException("No definitions found for patterns: " + String.join(", ", patterns));
+            return "No definitions found for patterns: " + String.join(", ", patterns);
         }
-
-        logger.debug("Raw definitions: {}", allDefinitions);
 
         var references = allDefinitions.stream()
                 .map(CodeUnit::fqName)
@@ -197,7 +196,7 @@ public class SearchTools {
         }
 
         if (allUses.isEmpty()) {
-            throw new IllegalStateException("No usages found for: " + String.join(", ", symbols));
+            return "No usages found for: " + String.join(", ", symbols);
         }
 
         var processedUsages = AnalyzerUtil.processUsages(getAnalyzer(), allUses).code();
@@ -226,7 +225,7 @@ public class SearchTools {
         var pageRankUnits = AnalyzerUtil.combinedPagerankFor(getAnalyzer(), weightedSeeds);
 
         if (pageRankUnits.isEmpty()) {
-            throw new IllegalStateException("No related code found via PageRank for seeds: " + String.join(", ", classNames));
+            return "No related code found via PageRank for seeds: " + String.join(", ", classNames);
         }
 
         var pageRankResults = pageRankUnits.stream().limit(50).map(CodeUnit::fqName).toList();
@@ -264,7 +263,7 @@ public class SearchTools {
                 .collect(Collectors.joining("\n\n"));
 
         if (result.isEmpty()) {
-            throw new IllegalStateException("No skeletons found for classes: " + String.join(", ", classNames));
+            return "No classes found in: " + String.join(", ", classNames);
         }
 
         return result;
@@ -311,7 +310,7 @@ public class SearchTools {
         }
 
         if (result.isEmpty()) {
-            throw new IllegalStateException("No sources found for classes: " + String.join(", ", classNames));
+            return "No sources found for classes: " + String.join(", ", classNames);
         }
 
         return result.toString();
@@ -350,7 +349,7 @@ public class SearchTools {
         }
 
         if (result.isEmpty()) {
-            throw new IllegalStateException("No sources found for methods: " + String.join(", ", methodNames));
+            return "No sources found for methods: " + String.join(", ", methodNames);
         }
 
         return result.toString();
@@ -372,7 +371,7 @@ public class SearchTools {
         var graph = getAnalyzer().getCallgraphTo(methodName, 5);
         String result = AnalyzerUtil.formatCallGraph(graph, methodName, false);
         if (result.isEmpty()) {
-            throw new IllegalStateException("No call graph available for method: " + methodName);
+            return "No callers found of method: " + methodName;
         }
         return result;
     }
@@ -393,7 +392,7 @@ public class SearchTools {
         var graph = getAnalyzer().getCallgraphFrom(methodName, 5); // Use correct analyzer method
         String result = AnalyzerUtil.formatCallGraph(graph, methodName, true);
         if (result.isEmpty()) {
-            throw new IllegalStateException("No call graph available for method: " + methodName);
+            return "No calls out made by method: " + methodName;
         }
         return result;
     }
@@ -419,52 +418,44 @@ public class SearchTools {
 
         logger.debug("Searching file contents for patterns: {}", patterns);
 
-        try {
-            List<Pattern> compiledPatterns = patterns.stream()
-                    .filter(p -> !p.isBlank())
-                    .map(Pattern::compile)
-                    .toList();
+        List<Pattern> compiledPatterns = patterns.stream()
+                .filter(p -> !p.isBlank())
+                .map(Pattern::compile)
+                .toList();
 
-            if (compiledPatterns.isEmpty()) {
-                throw new IllegalArgumentException("No valid patterns provided");
-            }
+        if (compiledPatterns.isEmpty()) {
+            throw new IllegalArgumentException("No valid patterns provided");
+        }
 
-            var matchingFilenames = contextManager.getProject().getFiles().parallelStream().map(file -> {
-                        try {
-                            if (!file.isText()) {
-                                return null;
-                            }
-                            String fileContents = file.read(); // Use ProjectFile.read()
-
-                            for (Pattern compiledPattern : compiledPatterns) {
-                                if (compiledPattern.matcher(fileContents).find()) {
-                                    return file;
-                                }
-                            }
-                            return null;
-                        } catch (Exception e) {
-                            logger.debug("Error processing file {}", file, e);
+        var matchingFilenames = contextManager.getProject().getFiles().parallelStream().map(file -> {
+                    try {
+                        if (!file.isText()) {
                             return null;
                         }
-                    })
-                    .filter(Objects::nonNull)
-                    .map(ProjectFile::toString)
-                    .collect(Collectors.toSet());
+                        String fileContents = file.read(); // Use ProjectFile.read()
 
-            if (matchingFilenames.isEmpty()) {
-                throw new IllegalStateException("No files found with content matching patterns: " + String.join(", ", patterns));
-            }
+                        for (Pattern compiledPattern : compiledPatterns) {
+                            if (compiledPattern.matcher(fileContents).find()) {
+                                return file;
+                            }
+                        }
+                        return null;
+                    } catch (Exception e) {
+                        logger.debug("Error processing file {}", file, e);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .map(ProjectFile::toString)
+                .collect(Collectors.toSet());
 
-            var msg = "Files with content matching patterns: " + String.join(", ", matchingFilenames);
-            logger.debug(msg);
-            return msg;
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            // Let specific argument errors propagate up
-            throw e;
-        } catch (Exception e) {
-            logger.error("Error searching file contents", e);
-            throw new RuntimeException("Error searching file contents: " + e.getMessage(), e);
+        if (matchingFilenames.isEmpty()) {
+            return "No files found with content matching patterns: " + String.join(", ", patterns);
         }
+
+        var msg = "Files with content matching patterns: " + String.join(", ", matchingFilenames);
+        logger.debug(msg);
+        return msg;
     }
 
     @Tool(value = """
@@ -486,40 +477,32 @@ public class SearchTools {
 
         logger.debug("Searching filenames for patterns: {}", patterns);
 
-        try {
-            List<Pattern> compiledPatterns = patterns.stream()
-                    .filter(p -> !p.isBlank())
-                    .map(Pattern::compile)
-                    .toList();
+        List<Pattern> compiledPatterns = patterns.stream()
+                .filter(p -> !p.isBlank())
+                .map(Pattern::compile)
+                .toList();
 
-            if (compiledPatterns.isEmpty()) {
-                throw new IllegalArgumentException("No valid patterns provided");
-            }
-
-            var matchingFiles = contextManager.getProject().getFiles().stream()
-                    .map(ProjectFile::toString) // Use relative path from ProjectFile
-                    .filter(filePath -> {
-                        for (Pattern compiledPattern : compiledPatterns) {
-                            if (compiledPattern.matcher(filePath).find()) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    })
-                    .collect(Collectors.toList());
-
-            if (matchingFiles.isEmpty()) {
-                throw new IllegalStateException("No filenames found matching patterns: " + String.join(", ", patterns));
-            }
-
-            return "Matching filenames: " + String.join(", ", matchingFiles);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            // Let specific argument errors propagate up
-            throw e;
-        } catch (Exception e) {
-            logger.error("Error searching filenames", e);
-            throw new RuntimeException("Error searching filenames: " + e.getMessage(), e);
+        if (compiledPatterns.isEmpty()) {
+            throw new IllegalArgumentException("No valid patterns provided");
         }
+
+        var matchingFiles = contextManager.getProject().getFiles().stream()
+                .map(ProjectFile::toString) // Use relative path from ProjectFile
+                .filter(filePath -> {
+                    for (Pattern compiledPattern : compiledPatterns) {
+                        if (compiledPattern.matcher(filePath).find()) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })
+                .collect(Collectors.toList());
+
+        if (matchingFiles.isEmpty()) {
+            return "No filenames found matching patterns: " + String.join(", ", patterns);
+        }
+
+        return "Matching filenames: " + String.join(", ", matchingFiles);
     }
 
     @Tool(value = """
@@ -562,7 +545,7 @@ public class SearchTools {
         }
         
         if (!anySuccess) {
-            throw new IllegalStateException("None of the requested files could be read: " + String.join(", ", filenames));
+            return "None of the requested files could be read: " + String.join(", ", filenames);
         }
         
         return result.toString();
@@ -587,33 +570,25 @@ public class SearchTools {
 
         logger.debug("Listing files for directory path: '{}' (normalized prefix: '{}')", directoryPath, prefix);
 
-        try {
-            var files = contextManager.getProject().getFiles().stream().parallel()
-                    .map(ProjectFile::toString) // Get relative path string
-                    .filter(path -> {
-                        if (prefix.isEmpty()) { // Root directory case
-                            // Only include files directly in root, not in subdirs
-                            return !path.contains("/");
-                        } else { // Subdirectory case
-                            // Must start with the prefix, but not be the prefix itself (if it's a dir entry somehow)
-                            // and only include files directly within that dir
-                            return path.startsWith(prefix) && path.length() > prefix.length() && !path.substring(prefix.length()).contains("/");
-                        }
-                    })
-                    .sorted()
-                    .collect(Collectors.joining(", "));
+        var files = contextManager.getProject().getFiles().stream().parallel()
+                .map(ProjectFile::toString) // Get relative path string
+                .filter(path -> {
+                    if (prefix.isEmpty()) { // Root directory case
+                        // Only include files directly in root, not in subdirs
+                        return !path.contains("/");
+                    } else { // Subdirectory case
+                        // Must start with the prefix, but not be the prefix itself (if it's a dir entry somehow)
+                        // and only include files directly within that dir
+                        return path.startsWith(prefix) && path.length() > prefix.length() && !path.substring(prefix.length()).contains("/");
+                    }
+                })
+                .sorted()
+                .collect(Collectors.joining(", "));
 
-            if (files.isEmpty()) {
-                throw new IllegalStateException("No files found in directory: " + directoryPath);
-            }
-
-            return "Files in " + directoryPath + ": " + files;
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            // Let specific argument errors propagate up
-            throw e;
-        } catch (Exception e) {
-            logger.error("Error listing files for directory '{}': {}", directoryPath, e.getMessage(), e);
-            throw new RuntimeException("Error listing files: " + e.getMessage(), e);
+        if (files.isEmpty()) {
+            return "No files found in directory: " + directoryPath;
         }
+
+        return "Files in " + directoryPath + ": " + files;
     }
 }
