@@ -19,8 +19,9 @@ public record CodeUnit(ProjectFile source, CodeUnitType kind, String fqName)
 
     /**
      * @return just the last symbol name (a.b.C -> C, a.b.C.foo -> foo)
+     *         NB this is not *exactly* the identifier, since it includes class nesting (a.b.C$D -> C$D)
      */
-    public String name()
+    public String identifier()
     {
         var lastDotIndex = fqName.lastIndexOf('.');
         return lastDotIndex == -1

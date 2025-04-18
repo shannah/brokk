@@ -724,7 +724,7 @@ public class MultiFileSelectionDialog extends JDialog {
 
             var matches = Completions.scoreShortAndLong(pattern,
                                                         availableCompletions,
-                                                        CodeUnit::name,
+                                                        CodeUnit::identifier,
                                                         CodeUnit::fqName,
                                                         this::createClassCompletion);
 

@@ -58,13 +58,13 @@ public class CompletionsTest {
 
             // Find matching classes
             var matchingClasses = allClasses.stream()
-                .filter(cu -> cu.name().matches(regex))
+                .filter(cu -> cu.identifier().matches(regex))
                 .toList();
 
             // Find matching methods
             var matchingMethods = methodsMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream())
-                .filter(cu -> cu.name().matches(regex))
+                .filter(cu -> cu.identifier().matches(regex))
                 .toList();
 
             // Fields not tested
@@ -83,7 +83,7 @@ public class CompletionsTest {
     }
     private static Set<String> toShortValues(List<CodeUnit> candidates) {
         return candidates.stream()
-                .map(CodeUnit::name)
+                .map(CodeUnit::identifier)
                 .collect(Collectors.toSet());
     }
 

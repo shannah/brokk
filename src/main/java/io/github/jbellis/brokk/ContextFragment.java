@@ -7,7 +7,6 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import jnr.ffi.annotations.Out;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
@@ -750,7 +749,7 @@ public interface ContextFragment extends Serializable {
         public String description() {
             assert !isEmpty();
             return "Summary of " + skeletons.keySet().stream()
-                    .map(CodeUnit::name)
+                    .map(CodeUnit::identifier)
                     .sorted()
                     .collect(Collectors.joining(", "));
         }
@@ -926,7 +925,7 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "[Auto] " + fragment.skeletons.keySet().stream()
-                    .map(CodeUnit::name)
+                    .map(CodeUnit::identifier)
                     .collect(Collectors.joining(", "));
         }
 
@@ -936,7 +935,7 @@ public interface ContextFragment extends Serializable {
                 return "Autosummary " + fragment.skeletons.keySet().stream().findFirst().orElseThrow();
             }
             return "Autosummary of " + fragment.skeletons.keySet().stream()
-                    .map(CodeUnit::name)
+                    .map(CodeUnit::identifier)
                     .collect(Collectors.joining(", "));
         }
 

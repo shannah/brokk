@@ -1,11 +1,10 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.analyzer.*;
-    import org.fife.ui.autocomplete.Completion;
-    import org.fife.ui.autocomplete.ShorthandCompletion;
-    
-    import java.io.IOException;
-    import java.nio.file.FileSystems;
+import org.fife.ui.autocomplete.ShorthandCompletion;
+
+import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -29,7 +28,8 @@ public class Completions {
         boolean hierarchicalQuery = pattern.indexOf('.') >= 0 || pattern.indexOf('$') >= 0;
 
         // has a family resemblance to scoreShortAndLong but different enough that it doesn't fit
-        record Scored(CodeUnit cu, int score) {}
+        record Scored(CodeUnit cu, int score) {
+        }
         return allDefs.stream()
                 .map(cu -> {
                     int score;
@@ -38,7 +38,7 @@ public class Completions {
                         score = matcher.score(cu.fqName());
                     } else {
                         // otherwise match ONLY the trailing symbol (class, method, field)
-                        score = matcher.score(cu.name());
+                        score = matcher.score(cu.identifier());
                     }
                     return new Scored(cu, score);
                 })
@@ -100,46 +100,47 @@ public class Completions {
         }
         // we have an absolute path that's part of the project
         return new ProjectFile(root, root.relativize(p));
-        }
-    
-        private record Scored<T>(T source, int score, boolean isShort) {}
-    
-        public static <T> List<ShorthandCompletion> scoreShortAndLong(String pattern,
-                                                                      Collection<T> candidates,
-                                                                      Function<T, String> extractShort,
-                                                                      Function<T, String> extractLong,
-                                                                      Function<T, ShorthandCompletion> toCompletion)
-        {
-            var matcher = new FuzzyMatcher(pattern);
-            var scoredCandidates = candidates.stream()
-                    .map(c -> {
-                        int shortScore = matcher.score(extractShort.apply(c));
-                        int longScore = matcher.score(extractLong.apply(c));
-                        int minScore = Math.min(shortScore, longScore);
-                        boolean isShort = shortScore <= longScore; // Prefer short match if scores are equal
-                        return new Scored<>(c, minScore, isShort);
-                    })
-                    .filter(sc -> sc.score() != Integer.MAX_VALUE)
-                    .sorted(Comparator.<Scored<T>>comparingInt(Scored::score)
-                                    .thenComparing(sc -> extractShort.apply(sc.source)))
-                    .toList();
-    
-            // Find the highest score among the "short" matches
-            int maxShortScore = scoredCandidates.stream()
-                    .filter(Scored::isShort)
-                    .mapToInt(Scored::score)
-                    .max()
-                    .orElse(Integer.MAX_VALUE); // If no short matches, keep all long matches
-    
-            // Filter out long matches that score worse than the best short match
-            return scoredCandidates.stream()
-                    .filter(sc -> sc.score <= maxShortScore)
-                    .limit(100)
-                    .map(sc -> toCompletion.apply(sc.source))
-                    .toList();
-        }
-    
-        public static class FuzzyMatcher {
+    }
+
+    private record Scored<T>(T source, int score, boolean isShort) {
+    }
+
+    public static <T> List<ShorthandCompletion> scoreShortAndLong(String pattern,
+                                                                  Collection<T> candidates,
+                                                                  Function<T, String> extractShort,
+                                                                  Function<T, String> extractLong,
+                                                                  Function<T, ShorthandCompletion> toCompletion)
+    {
+        var matcher = new FuzzyMatcher(pattern);
+        var scoredCandidates = candidates.stream()
+                .map(c -> {
+                    int shortScore = matcher.score(extractShort.apply(c));
+                    int longScore = matcher.score(extractLong.apply(c));
+                    int minScore = Math.min(shortScore, longScore);
+                    boolean isShort = shortScore <= longScore; // Prefer short match if scores are equal
+                    return new Scored<>(c, minScore, isShort);
+                })
+                .filter(sc -> sc.score() != Integer.MAX_VALUE)
+                .sorted(Comparator.<Scored<T>>comparingInt(Scored::score)
+                                .thenComparing(sc -> extractShort.apply(sc.source)))
+                .toList();
+
+        // Find the highest score among the "short" matches
+        int maxShortScore = scoredCandidates.stream()
+                .filter(Scored::isShort)
+                .mapToInt(Scored::score)
+                .max()
+                .orElse(Integer.MAX_VALUE); // If no short matches, keep all long matches
+
+        // Filter out long matches that score worse than the best short match
+        return scoredCandidates.stream()
+                .filter(sc -> sc.score <= maxShortScore)
+                .limit(100)
+                .map(sc -> toCompletion.apply(sc.source))
+                .toList();
+    }
+
+    public static class FuzzyMatcher {
         private final String pattern; // lower‑cased
         private final char[] p;
 

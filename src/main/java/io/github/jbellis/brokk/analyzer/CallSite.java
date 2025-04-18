@@ -9,6 +9,6 @@ package io.github.jbellis.brokk.analyzer;
 public record CallSite(CodeUnit target, String sourceLine) implements Comparable<CallSite> {
     @Override
     public int compareTo(CallSite other) {
-        return target.name().compareTo(other.target.name());
+        return target.identifier().compareTo(other.target.identifier());
     }
 }
