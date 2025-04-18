@@ -673,7 +673,7 @@ public class InstructionsPanel extends JPanel {
 
                 // Show dialog in the EDT
                 final List<ProjectFile>[] dialogResult = new List[1];
-                SwingUtilities.invokeAndWait(() -> {
+                SwingUtil.runOnEDT(() -> {
                     dialogResult[0] = showTestSelectionDialog(suggestedFiles); // null if user cancels
                 });
                 var selectedFiles = dialogResult[0];
