@@ -12,16 +12,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.github.jbellis.brokk.Completions.getShortClassName;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class CompleteUsageTest {
+public class CompletionsTest {
     @VisibleForTesting
     static List<CodeUnit> completeUsage(String input, IAnalyzer analyzer) {
         return Completions.completeClassesAndMembers(input, analyzer);
     }
 
-    // A simple inline "mock" analyzer: no mocking library used.
     private static class MockAnalyzer implements IAnalyzer {
         private final ProjectFile mockFile = new ProjectFile(null, "MockFile.java");
         
@@ -60,22 +58,13 @@ public class CompleteUsageTest {
 
             // Find matching classes
             var matchingClasses = allClasses.stream()
-                .filter(cu -> {
-                    String className = cu.fqName();
-                    String shortName = getShortClassName(className);
-                    return shortName.matches(regex);
-                })
+                .filter(cu -> cu.name().matches(regex))
                 .toList();
 
             // Find matching methods
             var matchingMethods = methodsMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream())
-                .filter(cu -> {
-                    String methodName = cu.fqName();
-                    // Extract just the method name (after last dot)
-                    String simpleName = methodName.substring(methodName.lastIndexOf('.') + 1);
-                    return simpleName.matches(regex);
-                })
+                .filter(cu -> cu.name().matches(regex))
                 .toList();
 
             // Fields not tested
@@ -96,21 +85,6 @@ public class CompleteUsageTest {
         return candidates.stream()
                 .map(CodeUnit::name)
                 .collect(Collectors.toSet());
-    }
-
-    @Test
-    public void testGetShortClassName() {
-        assertEquals("C", getShortClassName("a.b.C"));
-        assertEquals("C", getShortClassName("a.b.C."));
-        assertEquals("C", getShortClassName("C"));
-        assertEquals("C$D", getShortClassName("a.b.C$D"));
-        assertEquals("C$D", getShortClassName("a.b.C$D."));
-
-        // Extra edge cases
-        assertEquals("C$D$E", getShortClassName("a.b.C$D$E"));
-        assertEquals("C", getShortClassName("C."));
-        assertEquals("$D", getShortClassName("$D"));
-        assertEquals("C$D", getShortClassName("C$D"));
     }
 
     @Test
@@ -156,19 +130,6 @@ public class CompleteUsageTest {
         assertEquals(Set.of("test.CamelClass"), values);
     }
 
-    @Test
-    public void testEmptyInput() {
-        var mock = new MockAnalyzer();
-        // Input "" => propose everything
-        var completions = completeUsage("", mock);
-        var values = toValues(completions);
-        
-        assertEquals(
-            Set.of("a.b.Do", "a.b.Do$Re", "a.b.Do$Re$Sub", "x.y.Zz", "w.u.Zz", "test.CamelClass"),
-            values
-        );
-    }
-    
     @Test
     public void testShortNameCompletions() {
         var mock = new MockAnalyzer();

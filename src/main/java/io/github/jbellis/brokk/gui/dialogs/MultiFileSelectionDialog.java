@@ -626,42 +626,25 @@ public class MultiFileSelectionDialog extends JDialog {
 
         @Override
         public List<Completion> getCompletions(JTextComponent tc) {
-            var input = getAlreadyEnteredText(tc);
+            String pattern = getAlreadyEnteredText(tc).trim();
+            if (pattern.isEmpty()) return List.of();
+
             Set<ProjectFile> projectFiles;
-            try {
-                projectFiles = projectFilesFuture.get();
-            } catch (InterruptedException | ExecutionException e) {
-                logger.debug(e);
-                return List.of();
-            }
-
-            List<ShorthandCompletion> completions = new ArrayList<>();
-
-            if (!input.isEmpty()) { // Require some input
-                if (input.contains("*") || input.contains("?")) {
-                    // Handle globs
-                    try {
-                        completions.addAll(Completions.expandPath(project, input).stream().filter(bf -> bf instanceof ProjectFile) // Only complete project files via text
-                                                   .map(bf -> createRepoCompletion((ProjectFile) bf)).limit(100) // Limit glob results
-                                                   .toList());
-                    } catch (Exception e) {
-                        logger.warn("Error during glob completion: {}", e.getMessage());
-                    }
-                } else {
-                    // Simple prefix matching for repo files otherwise
-                    completions.addAll(Completions.getFileCompletions(input, projectFiles).stream().map(this::createRepoCompletion).limit(100) // Limit prefix results
-                                               .toList());
+                try {
+                    projectFiles = projectFilesFuture.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    logger.debug(e);
+                    return List.of();
                 }
-            }
-            // Consider showing top-level files/dirs if input is empty? Maybe too noisy.
-
-            // Dynamically size the popup windows
-            AutoCompleteUtil.sizePopupWindows(fileAutoCompletion, tc, completions);
-
-            // Deduplicate and sort (using replacement text as key)
-            return completions.stream().distinct() // ShorthandCompletion should have equals based on replacement
-                    .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text
-                    .map(shc -> (Completion) shc).toList();
+    
+                var completions = Completions.scoreShortAndLong(pattern,
+                                                                projectFiles,
+                                                                ProjectFile::getFileName,
+                                                                ProjectFile::toString,
+                                                                this::createRepoCompletion);
+    
+                AutoCompleteUtil.sizePopupWindows(fileAutoCompletion, tc, completions);
+                return completions.stream().map(c -> (Completion) c).toList();
         }
 
         /**
@@ -720,22 +703,17 @@ public class MultiFileSelectionDialog extends JDialog {
         }
 
         @Override
-        public List<Completion> getCompletions(JTextComponent comp)
-        {
-            String text = getAlreadyEnteredText(comp);
-
-            // Fast‑exit for obviously empty scenarios
-            IAnalyzer az = null;
+        public List<Completion> getCompletions(JTextComponent comp) {
+            String pattern = getAlreadyEnteredText(comp).trim();
+            IAnalyzer az;
             try {
                 az = analyzer.get();
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            if (text.isBlank() || az == null || az.isEmpty()) {
-                return Collections.emptyList();
-            }
 
-            // Filter the loaded completions based on the current input text
+            if (pattern.isEmpty() || az == null || az.isEmpty()) return List.of();
+
             List<CodeUnit> availableCompletions;
             try {
                 availableCompletions = completionsFuture.get();
@@ -744,21 +722,14 @@ public class MultiFileSelectionDialog extends JDialog {
                 return List.of();
             }
 
-            var matches = availableCompletions.stream()
-                    .filter(c -> c.fqName().contains(text))
-                    .map(this::createClassCompletion)
-                    .limit(100)
-                    .toList();
+            var matches = Completions.scoreShortAndLong(pattern,
+                                                        availableCompletions,
+                                                        CodeUnit::name,
+                                                        CodeUnit::fqName,
+                                                        this::createClassCompletion);
 
-            // Resize popup dynamically
             AutoCompleteUtil.sizePopupWindows(classAutoCompletion, comp, matches);
-
-            // Deduplicate and sort by short name
-            return matches.stream()
-                    .distinct()
-                    .sorted(Comparator.comparing(Completion::getInputText))
-                    .map(c -> (Completion) c)
-                    .toList();
+            return matches.stream().map(c -> (Completion) c).toList();
         }
 
         /**

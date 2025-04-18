@@ -1,81 +1,52 @@
 package io.github.jbellis.brokk;
 
-import io.github.jbellis.brokk.analyzer.BrokkFile;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
-import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
-import org.jetbrains.annotations.NotNull;
-
-import java.io.IOException;
-import java.nio.file.FileSystems;
+import io.github.jbellis.brokk.analyzer.*;
+    import org.fife.ui.autocomplete.Completion;
+    import org.fife.ui.autocomplete.ShorthandCompletion;
+    
+    import java.io.IOException;
+    import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.function.Function;
 
 public class Completions {
     public static List<CodeUnit> completeClassesAndMembers(String input, IAnalyzer analyzer) {
-        String partial = input.trim();
+        String pattern = input.trim();
+        var allDefs = analyzer.getDefinitions(".*").stream().toList();
 
-        // Gather matching classes
-        if (partial.isEmpty()) {
-            return analyzer.getAllClasses().stream().toList();
+        // empty pattern -> alphabetic list
+        if (pattern.isEmpty()) {
+            return allDefs.stream()
+                    .sorted(Comparator.comparing(CodeUnit::fqName))
+                    .toList();
         }
 
-        var matches = new HashSet<>(analyzer.getDefinitions(".*" + input + ".*"));
-        if (partial.toUpperCase().equals(partial)) {
-            // split the characters apart with .* between for camel case matches
-            String camelCasePattern = ".*%s.*".formatted(String.join(".*", partial.split("")));
-            matches.addAll(analyzer.getDefinitions(camelCasePattern));
-        }
+        var matcher = new FuzzyMatcher(pattern);
+        boolean hierarchicalQuery = pattern.indexOf('.') >= 0 || pattern.indexOf('$') >= 0;
 
-        // sort by whether the name starts with the input string (ignoring case), then alphabetically
-        return matches.stream()
-                .sorted(Comparator.<CodeUnit, Boolean>comparing(codeUnit -> 
-                    codeUnit.name().toLowerCase().startsWith(partial.toLowerCase())
-                ).reversed()
-                .thenComparing(CodeUnit::toString))
+        // has a family resemblance to scoreShortAndLong but different enough that it doesn't fit
+        record Scored(CodeUnit cu, int score) {}
+        return allDefs.stream()
+                .map(cu -> {
+                    int score;
+                    if (hierarchicalQuery) {
+                        // query includes hierarchy separators -> match against full FQN
+                        score = matcher.score(cu.fqName());
+                    } else {
+                        // otherwise match ONLY the trailing symbol (class, method, field)
+                        score = matcher.score(cu.name());
+                    }
+                    return new Scored(cu, score);
+                })
+                .filter(sc -> sc.score() != Integer.MAX_VALUE)
+                .sorted(Comparator.<Scored>comparingInt(Scored::score)
+                                .thenComparing(sc -> sc.cu().fqName()))
+                .map(Scored::cu)
                 .toList();
-    }
-    
-    /**
-     * This only does syntactic parsing, if you need to verify whether the parsed element
-     * is actually a class, getUniqueClass() may be what you want
-     */
-    static String getShortClassName(String fqClass) {
-        // a.b.C -> C
-        // a.b.C. -> C
-        // C -> C
-        // a.b.C$D -> C$D
-        // a.b.C$D. -> C$D.
-
-        int lastDot = fqClass.lastIndexOf('.');
-        if (lastDot == -1) {
-            return fqClass;
-        }
-
-        // Handle trailing dot
-        if (lastDot == fqClass.length() - 1) {
-            int nextToLastDot = fqClass.lastIndexOf('.', lastDot - 1);
-            return fqClass.substring(nextToLastDot + 1, lastDot);
-        }
-
-        return fqClass.substring(lastDot + 1);
-    }
-    
-    public static String extractCapitals(String base) {
-        StringBuilder capitals = new StringBuilder();
-        for (char c : base.toCharArray()) {
-            if (Character.isUpperCase(c)) {
-                capitals.append(c);
-            }
-        }
-        return capitals.toString();
     }
 
     /**
@@ -129,51 +100,88 @@ public class Completions {
         }
         // we have an absolute path that's part of the project
         return new ProjectFile(root, root.relativize(p));
-    }
+        }
+    
+        private record Scored<T>(T source, int score, boolean isShort) {}
+    
+        public static <T> List<ShorthandCompletion> scoreShortAndLong(String pattern,
+                                                                      Collection<T> candidates,
+                                                                      Function<T, String> extractShort,
+                                                                      Function<T, String> extractLong,
+                                                                      Function<T, ShorthandCompletion> toCompletion)
+        {
+            var matcher = new FuzzyMatcher(pattern);
+            var scoredCandidates = candidates.stream()
+                    .map(c -> {
+                        int shortScore = matcher.score(extractShort.apply(c));
+                        int longScore = matcher.score(extractLong.apply(c));
+                        int minScore = Math.min(shortScore, longScore);
+                        boolean isShort = shortScore <= longScore; // Prefer short match if scores are equal
+                        return new Scored<>(c, minScore, isShort);
+                    })
+                    .filter(sc -> sc.score() != Integer.MAX_VALUE)
+                    .sorted(Comparator.<Scored<T>>comparingInt(Scored::score)
+                                    .thenComparing(sc -> extractShort.apply(sc.source)))
+                    .toList();
+    
+            // Find the highest score among the "short" matches
+            int maxShortScore = scoredCandidates.stream()
+                    .filter(Scored::isShort)
+                    .mapToInt(Scored::score)
+                    .max()
+                    .orElse(Integer.MAX_VALUE); // If no short matches, keep all long matches
+    
+            // Filter out long matches that score worse than the best short match
+            return scoredCandidates.stream()
+                    .filter(sc -> sc.score <= maxShortScore)
+                    .limit(100)
+                    .map(sc -> toCompletion.apply(sc.source))
+                    .toList();
+        }
+    
+        public static class FuzzyMatcher {
+        private final String pattern; // lower‑cased
+        private final char[] p;
 
-    @NotNull
-    public static List<ProjectFile> getFileCompletions(String input, Collection<ProjectFile> projectFiles) {
-        String partialLower = input.toLowerCase();
-        Map<String, ProjectFile> baseToFullPath = new HashMap<>();
-        var uniqueCompletions = new HashSet<ProjectFile>();
-
-        for (ProjectFile p : projectFiles) {
-            baseToFullPath.put(p.getFileName(), p);
+        public FuzzyMatcher(String raw) {
+            this.pattern = raw.trim();
+            this.p = pattern.toLowerCase().toCharArray();
         }
 
-        // Matching base filenames (priority 1)
-        baseToFullPath.forEach((base, file) -> {
-            if (base.toLowerCase().startsWith(partialLower)) {
-                uniqueCompletions.add(file);
-            }
-        });
-
-        // Camel-case completions (priority 2)
-        baseToFullPath.forEach((base, file) -> {
-            String capitals = extractCapitals(base);
-            if (capitals.toLowerCase().startsWith(partialLower)) {
-                uniqueCompletions.add(file);
-            }
-        });
-
-        // Matching full paths (priority 3)
-        for (ProjectFile file : projectFiles) {
-            if (file.toString().toLowerCase().startsWith(partialLower)) {
-                uniqueCompletions.add(file);
-            }
+        public String getPattern() {
+            return pattern;
         }
 
-        // Sort completions by filename, then by full path
-        return uniqueCompletions.stream()
-                .sorted((f1, f2) -> {
-                    // Compare filenames first
-                    int result = f1.getFileName().compareTo(f2.getFileName());
-                    if (result == 0) {
-                        // If filenames match, compare by full path
-                        return f1.toString().compareTo(f2.toString());
+        public boolean matches(String name) {
+            return score(name) != Integer.MAX_VALUE;
+        }
+
+        public int score(String name) {
+            final String lower = name.toLowerCase();
+            int score = 0;
+            int lastHit = -1;
+
+            for (int i = 0, j; i < p.length; i++) {
+                char pc = p[i];
+                j = lower.indexOf(pc, lastHit + 1);
+                if (j == -1) return Integer.MAX_VALUE;
+
+                int gap = j - lastHit - 1;
+                score += gap; // Add gap penalty regardless
+
+                // Add boundary penalty only if it's not a boundary char AND there was a gap > 0
+                if (j != 0 && !Character.isUpperCase(name.charAt(j)) && "_/-.$".indexOf(name.charAt(j - 1)) < 0) {
+                    // This is NOT a boundary match (not start, not Upper, not after separator)
+                    if (gap > 0) {
+                        score += 2; // Add penalty only if we skipped characters to get here
                     }
-                    return result;
-                })
-                .toList();
+                }
+                // else: it IS a boundary match (start, Upper, or after separator), score only increases by gap amount
+
+                lastHit = j;
+            }
+
+            return score;
+        }
     }
 }

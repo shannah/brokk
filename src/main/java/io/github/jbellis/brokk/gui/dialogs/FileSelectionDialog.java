@@ -29,13 +29,11 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 /**
  * A file selection dialog that presents a tree view and a text input with autocomplete
@@ -329,37 +327,24 @@ public class FileSelectionDialog extends JDialog {
     private class FileCompletionProvider extends DefaultCompletionProvider {
         @Override
         public List<Completion> getCompletions(JTextComponent tc) {
-            var input = getAlreadyEnteredText(tc);
-            if (input.isEmpty()) {
-                return Collections.emptyList();
-            }
-            String lowerInput = input.toLowerCase();
+            String pattern = getAlreadyEnteredText(tc).trim();
+            if (pattern.isEmpty()) return List.of();
 
-            List<ShorthandCompletion> completions;
+            List<Path> all;
             try {
-                completions = autocompletePaths.get().stream()
-                        .filter(path -> path.toAbsolutePath().toString().toLowerCase().contains(lowerInput))
-                        .limit(50)
-                        .map(this::createExternalCompletion)
-                        .toList();
+                all = autocompletePaths.get();
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
 
-            // Dynamically size the popup windows
-            AutoCompleteUtil.sizePopupWindows(autoCompletion, tc, completions);
+            var comps = Completions.scoreShortAndLong(pattern,
+                                                      all,
+                                                      f -> f.getFileName().toString(),
+                                                      Path::toString,
+                                                      this::createExternalCompletion);
 
-            // Deduplicate and sort
-            return completions.stream()
-                    .collect(Collectors.toMap(
-                            Completion::getReplacementText, // Replacement text is the full path
-                            c -> c,
-                            (existing, replacement) -> existing
-                    ))
-                    .values().stream()
-                    .map(shc -> (Completion) shc)
-                    .sorted(Comparator.comparing(Completion::getInputText)) // Sort by display text
-                    .toList();
+            AutoCompleteUtil.sizePopupWindows(autoCompletion, tc, comps);
+            return comps.stream().map(c -> (Completion) c).toList();
         }
 
         /** Creates a completion item for an external Path. */
