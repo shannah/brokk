@@ -529,11 +529,46 @@ class EditBlockTest {
         // Assert that the file content remains unchanged
         String finalContent = Files.readString(existingFile);
         assertEquals(fileContent, finalContent, "File content should remain unchanged after the failed edit");
-    }
+        }
 
-    // ----------------------------------------------------
-    // Helper methods
-    // ----------------------------------------------------
+        @Test
+        void testNoMatchFailureWithDiffLikeSearchText(@TempDir Path tempDir) throws IOException {
+            TestConsoleIO io = new TestConsoleIO();
+            Path existingFile = tempDir.resolve("fileB.txt");
+            String initialContent = "Line 1\nLine 2\nLine 3\n";
+            Files.writeString(existingFile, initialContent);
+
+            // The "beforeText" will not match, and contains diff-like lines
+            String response = """
+                <<<<<<< SEARCH fileB.txt
+                -Line 2
+                +Line Two
+                ======= fileB.txt
+                Replacement Text
+                >>>>>>> REPLACE fileB.txt
+                """;
+
+            TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileB.txt"));
+            var blocks = EditBlock.parseEditBlocks(response).blocks();
+            var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+
+            // Assert exactly one failure with NO_MATCH reason
+            assertEquals(1, result.failedBlocks().size(), "Expected exactly one failed block");
+            var failedBlock = result.failedBlocks().getFirst();
+            assertEquals(EditBlock.EditBlockFailureReason.NO_MATCH, failedBlock.reason(), "Expected failure reason to be NO_MATCH");
+
+            // Assert the specific commentary about diff format is present
+            assertTrue(failedBlock.commentary().contains("not unified diff format"),
+                       "Expected specific commentary about diff-like search text");
+
+            // Assert that the file content remains unchanged
+            String finalContent = Files.readString(existingFile);
+            assertEquals(initialContent, finalContent, "File content should remain unchanged after the failed edit");
+        }
+
+        // ----------------------------------------------------
+        // Helper methods
+        // ----------------------------------------------------
     private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
         var files = validFilenames.stream().map(f -> new ProjectFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
         var blocks = EditBlock.parseEditBlocks(fullResponse).blocks();

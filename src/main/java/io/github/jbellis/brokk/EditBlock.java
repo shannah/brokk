@@ -153,13 +153,22 @@ public class EditBlock {
                     """.stripIndent();
                 } catch (NoMatchException | AmbiguousMatchException e2) {
                     commentary = "";
-                }
-                logger.debug("Edit application failed for file [{}] {}: {}", file, e.getClass().getSimpleName(), e.getMessage());
-                var reason = e instanceof NoMatchException ? EditBlockFailureReason.NO_MATCH : EditBlockFailureReason.AMBIGUOUS_MATCH;
-                failed.add(new FailedBlock(block, reason, commentary));
-                // Restore original content if we saved it and the edit failed
-                if (changedFiles.containsKey(file)) {
-                    try {
+                    }
+
+                    // Check if the search block looks like a diff
+                    if (block.beforeText().lines().anyMatch(line -> line.startsWith("-") || line.startsWith("+"))) {
+                        commentary += """
+                        Reminder: Brokk uses SEARCH/REPLACE blocks, not unified diff format.
+                        Ensure the `<<<<<<< SEARCH $filename` block matches the existing code exactly.
+                        """.stripIndent();
+                    }
+
+                    logger.debug("Edit application failed for file [{}] {}: {}", file, e.getClass().getSimpleName(), e.getMessage());
+                    var reason = e instanceof NoMatchException ? EditBlockFailureReason.NO_MATCH : EditBlockFailureReason.AMBIGUOUS_MATCH;
+                    failed.add(new FailedBlock(block, reason, commentary));
+                    // Restore original content if we saved it and the edit failed
+                    if (changedFiles.containsKey(file)) {
+                        try {
                         file.write(changedFiles.get(file));
                     } catch (IOException writeErr) {
                         io.toolError("Failed restoring original content for " + file + " after failed edit: " + writeErr.getMessage());
