@@ -25,6 +25,7 @@ import io.github.jbellis.brokk.util.LoggingExecutorService;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.NotNull;
 import scala.Option;
 
@@ -1508,7 +1509,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     @Override
     public void addToGit(List<ProjectFile> files) throws IOException {
-        project.getRepo().add(files);
+        try {
+            project.getRepo().add(files);
+        } catch (GitAPIException e) {
+            logger.warn(e);
+            io.toolErrorRaw(e.getMessage());
+        }
     }
 
     // Convert a throwable to a string with full stack trace
