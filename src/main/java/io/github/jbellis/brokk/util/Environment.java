@@ -17,32 +17,29 @@ public class Environment {
      * Runs a shell command using the appropriate shell for the current OS, returning {stdout, stderr}.
      * The command is executed in the directory specified by `root`.
      */
-    public ProcessResultInternal runShellCommand(String command, Path root) throws IOException, InterruptedException {
-        Process process;
-        if (isWindows()) {
-            process = createProcessBuilder(root, "cmd.exe", "/c", command).start();
-        } else {
-            process = createProcessBuilder(root, "/bin/sh", "-c", command).start();
+    public ProcessResultInternal runShellCommand(String command, Path root)
+    throws IOException, InterruptedException
+    {
+        Process process = isWindows()
+                          ? createProcessBuilder(root, "cmd.exe", "/c", command).start()
+                          : createProcessBuilder(root, "/bin/sh", "-c", command).start();
+
+        try {
+            // Wait (indefinitely) for the process to finish; this call *is* interruptible
+            if (!process.waitFor(120, TimeUnit.SECONDS)) {
+                // TODO need a better way to signal timed out
+                return new ProcessResultInternal(-1, "", "");
+            }
+        } catch (InterruptedException ie) {
+            process.destroyForcibly();
+            throw ie;
         }
 
-        var out = new StringBuilder();
-        var err = new StringBuilder();
-        try (var scOut = new Scanner(process.getInputStream());
-             var scErr = new Scanner(process.getErrorStream()))
-        {
-            while (scOut.hasNextLine()) {
-                out.append(scOut.nextLine()).append("\n");
-            }
-            while (scErr.hasNextLine()) {
-                err.append(scErr.nextLine()).append("\n");
-            }
-        }
+        // Once the process has exited, read its entire output safely
+        var stdout = new String(process.getInputStream().readAllBytes());
+        var stderr = new String(process.getErrorStream().readAllBytes());
 
-        if (process.waitFor(120, TimeUnit.SECONDS)) {
-            return new ProcessResultInternal(process.exitValue(), out.toString(), err.toString());
-        }
-        // TODO need a better way to signal timed out
-        return new ProcessResultInternal(-1, "", "");
+        return new ProcessResultInternal(process.exitValue(), stdout, stderr);
     }
 
     private static ProcessBuilder createProcessBuilder(Path root, String... command) {
