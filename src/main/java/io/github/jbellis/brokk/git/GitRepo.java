@@ -7,7 +7,6 @@ import org.eclipse.jgit.api.CreateBranchCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.api.errors.StashApplyFailureException;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
@@ -372,12 +371,6 @@ public class GitRepo implements Closeable, IGitRepo {
         checkoutRemoteBranch(remoteBranchName, branchName);
     }
 
-    public static class GitStateException extends GitAPIException {
-        protected GitStateException(String message) {
-            super(message);
-        }
-    }
-
     /**
      * Create a new branch from an existing one and check it out
      */
@@ -483,12 +476,6 @@ public class GitRepo implements Closeable, IGitRepo {
         }
         for (var deletedRef : result) {
             logger.debug("Successfully force deleted branch reference: {}", deletedRef);
-        }
-    }
-
-    public static class GitRepoException extends GitAPIException {
-        protected GitRepoException(String message, Throwable cause) {
-            super(message, cause);
         }
     }
 
@@ -748,6 +735,17 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /**
      * Create a stash containing only the specified files.
+     * This involves a more complex workflow:
+     * 1. Get all uncommitted files
+     * 2. Add UN-selected files to index (i.e., everything EXCEPT the files we want to stash)
+     * 3. Commit those unselected files to a temporary branch
+     * 4. Stash what's left (which will be only our selected files)
+     * 5. Soft-reset back to restore the working directory with the UN-selected files uncommitted
+     * 6. Clean up the temporary branch
+     *
+     * @param message The stash message
+     * @param filesToStash The specific files to include in the stash
+     * @throws GitAPIException If there's an error during the stash process
      */
     public void createPartialStash(String message, List<ProjectFile> filesToStash) throws GitAPIException {
         assert message != null && !message.isEmpty();
@@ -930,32 +928,16 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public void popStash(int stashIndex) throws GitAPIException {
         var stashRef = "stash@{" + stashIndex + "}";
-        logger.debug("Popping stash {}", stashRef);
-
-        // Try applying stash with index
-        try {
-            applyStash(stashRef, true);
-        } catch (StashApplyFailureException ex) {
-            logger.info("Stash apply with index failed ({}). Retrying without index …", ex.getMessage());
-            applyStash(stashRef, false);
-        }
-
-        // Drop
-        git.stashDrop().setStashRef(stashIndex).call();
-        logger.debug("Stash pop completed successfully");
-        refresh();
-    }
-
-    /**
-     * Helper used by popStash(int)
-     */
-    private void applyStash(String stashRef, boolean restoreIndex) throws GitAPIException {
+            logger.debug("Popping stash {}", stashRef);
         git.stashApply()
                 .setStashRef(stashRef)
-                .setRestoreIndex(restoreIndex)
+                .setRestoreIndex(false)
                 .setRestoreUntracked(true)
                 .ignoreRepositoryState(true)
                 .call();
+        git.stashDrop().setStashRef(stashIndex).call();
+        logger.debug("Stash pop completed successfully");
+        refresh();
     }
 
     /**
@@ -1042,6 +1024,18 @@ public class GitRepo implements Closeable, IGitRepo {
     public void close() {
         git.close();
         repository.close();
+    }
+
+    public static class GitRepoException extends GitAPIException {
+        protected GitRepoException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    public static class GitStateException extends GitAPIException {
+        protected GitStateException(String message) {
+            super(message);
+        }
     }
 
     private class GitWrappedIOException extends GitAPIException {
