@@ -3,26 +3,21 @@ package io.github.jbellis.brokk.gui;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import dev.langchain4j.data.message.*;
-import io.github.jbellis.brokk.EditBlock;
 import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.TaskEntry;
+import io.github.jbellis.brokk.gui.MOP.AIMessageRenderer;
+import io.github.jbellis.brokk.gui.MOP.CustomMessageRenderer;
+import io.github.jbellis.brokk.gui.MOP.UserMessageRenderer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
-import org.fife.ui.rsyntaxtextarea.Theme;
 
 import javax.swing.*;
 import javax.swing.text.DefaultCaret;
-import javax.swing.text.html.HTMLEditorKit;
 import java.awt.*;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Map;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -61,8 +56,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     // Theme-related fields
     private boolean isDarkTheme = false;
     private Color textBackgroundColor = null;
-    private Color codeBackgroundColor = null;
-    private Color codeBorderColor = null;
 
     public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -71,6 +64,11 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         // Build the Flexmark parser for normal text blocks
         parser = Parser.builder().build();
         renderer = HtmlRenderer.builder().build();
+        
+        // Initialize message renderers
+        aiRenderer = new io.github.jbellis.brokk.gui.MOP.AIMessageRenderer();
+        userRenderer = new io.github.jbellis.brokk.gui.MOP.UserMessageRenderer();
+        customRenderer = new io.github.jbellis.brokk.gui.MOP.CustomMessageRenderer();
     }
 
     /**
@@ -82,12 +80,8 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
 
         if (isDark) {
             textBackgroundColor = new Color(40, 40, 40);
-            codeBackgroundColor = new Color(50, 50, 50);
-            codeBorderColor = new Color(80, 80, 80);
         } else {
             textBackgroundColor = Color.WHITE;
-            codeBackgroundColor = new Color(240, 240, 240);
-            codeBorderColor = Color.GRAY;
         }
 
         setOpaque(true);
@@ -162,52 +156,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
 
         textChangeListeners.forEach(Runnable::run);
     }
-
-    /**
-     * Appends a ChatMessage directly.
-     *
-     * @param message The ChatMessage to append
-     */
-//    public void append(ChatMessage message) {
-//        assert message != null;
-//
-//        // Check if we're appending to an existing message of the same type
-//        if (!messages.isEmpty() && messages.getLast().type() == message.type()) {
-//            // Create a combined message
-//            String combinedText = Models.getRepr(messages.getLast()) + Models.getRepr(message);
-//            // Create new message with combined text
-//            ChatMessage combinedMessage = createChatMessage(combinedText, message.type());
-//
-//            // Replace the last message
-//            messages.set(messages.size() - 1, combinedMessage);
-//
-//            // Re-render the last component
-//            Component lastComponent = messageComponents.getLast();
-//            remove(lastComponent);
-//
-//            // If spinner is showing, remove it temporarily
-//            boolean spinnerWasVisible = false;
-//            if (spinnerPanel != null) {
-//                remove(spinnerPanel);
-//                spinnerWasVisible = true;
-//            }
-//
-//            // Create new component and update the lists
-//            Component newComponent = renderMessageComponent(combinedMessage);
-//            messageComponents.set(messageComponents.size() - 1, newComponent);
-//            add(newComponent);
-//
-//            // Re-add spinner if it was visible
-//            if (spinnerWasVisible) {
-//                add(spinnerPanel);
-//            }
-//        } else {
-//            // Add as a new message
-//            addNewMessage(message);
-//        }
-//
-//        textChangeListeners.forEach(Runnable::run);
-//    }
 
     /**
      * Updates the last message by appending text to it
@@ -329,26 +277,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     }
 
     /**
-     * Legacy method to set plain text content.
-     * Creates a single message of type AI by default.
-     */
-//    public void setText(String text) {
-//        assert text != null;
-//
-//        // Check if this is a TaskEntry XML format
-//        if (text.trim().startsWith("<task") && text.trim().endsWith("</task>")) {
-//            // This appears to be a TaskEntry XML format, but we can't parse it directly
-//            // Just wrap it as an AI message for now
-//            setText(List.of(new AiMessage(text)));
-//        } else {
-//            clear();
-//            if (!text.isEmpty()) {
-//                append(text, ChatMessageType.AI);
-//            }
-//        }
-//    }
-
-    /**
      * Returns text representation of all messages.
      * For backward compatibility with code that expects a String.
      */
@@ -375,329 +303,58 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
         textChangeListeners.add(listener);
     }
 
+    // Message renderers for different message types
+    private final AIMessageRenderer aiRenderer;
+    private final UserMessageRenderer userRenderer;
+    private final CustomMessageRenderer customRenderer;
+    
     /**
      * Renders a single message component based on its type
      */
     private Component renderMessageComponent(ChatMessage message) {
-        // Create a container panel for this message
-        JPanel messagePanel = new JPanel();
-        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
-        messagePanel.setBackground(textBackgroundColor);
-        messagePanel.setAlignmentX(LEFT_ALIGNMENT);
-
-        // Based on message type, add appropriate styles and content
-        switch (message.type()) {
-            case AI -> {
-                String content = Models.getRepr(message);
-                // For AI messages, try to parse edit blocks first
-                var parseResult = EditBlock.parseAllBlocks(content);
-
-                // If we have edit blocks, render them
-                boolean hasEditBlocks = parseResult.blocks().stream()
-                        .anyMatch(block -> block.block() != null);
-
-                if (hasEditBlocks) {
-                    // Create a container for edit blocks
-                    JPanel blocksPanel = new JPanel();
-                    blocksPanel.setLayout(new BoxLayout(blocksPanel, BoxLayout.Y_AXIS));
-                    blocksPanel.setBackground(textBackgroundColor);
-                    blocksPanel.setAlignmentX(LEFT_ALIGNMENT);
-
-                    for (var block : parseResult.blocks()) {
-                        if (block.block() != null) {
-                            // Edit block
-                            blocksPanel.add(renderEditBlockComponent(block.block()));
-                        } else if (!block.text().isBlank()) {
-                            // Text between edit blocks - render as markdown
-                            var textPanel = renderMarkdownContent(block.text());
-                            blocksPanel.add(textPanel);
-                        }
-                    }
-                    blocksPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 2));
-                    messagePanel.add(blocksPanel);
-                } else {
-                    // No edit blocks, render as markdown
-                    var contentPanel = renderMarkdownContent(content);
-                    contentPanel.setBorder(BorderFactory.createLineBorder(Color.yellow, 2));
-                    messagePanel.add(contentPanel);
-                }
-            }
-            case USER -> {
-                // For user messages, render as plain text with styling
-                JPanel userPanel = new JPanel();
-                userPanel.setLayout(new BoxLayout(userPanel, BoxLayout.Y_AXIS));
-                userPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
-                // userPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-                userPanel.setBorder(BorderFactory.createLineBorder(Color.red, 2));
-                userPanel.setAlignmentX(LEFT_ALIGNMENT);
-                var textPane = renderMarkdownContent(Models.getRepr(message));
-                textPane.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
-
-                userPanel.add(textPane);
-                messagePanel.add(userPanel);
-            }
-            case CUSTOM -> {
-                // For custom/common messages, render as plain text with styling
-                JPanel customPanel = new JPanel();
-                customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
-                customPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
-                // customPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-                customPanel.setBorder(BorderFactory.createLineBorder(Color.blue, 2));
-                customPanel.setAlignmentX(LEFT_ALIGNMENT);
-                var textPane = renderMarkdownContent(Models.getRepr(message));
-                textPane.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
-
-                customPanel.add(textPane);
-                messagePanel.add(customPanel);
-            }
+        return switch (message.type()) {
+            case AI -> aiRenderer.renderComponent(message, textBackgroundColor, isDarkTheme);
+            case USER -> userRenderer.renderComponent(message, textBackgroundColor, isDarkTheme);
+            case CUSTOM -> customRenderer.renderComponent(message, textBackgroundColor, isDarkTheme);
             default -> {
                 // Default case for other message types
+                JPanel messagePanel = new JPanel();
+                messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+                messagePanel.setBackground(textBackgroundColor);
+                messagePanel.setAlignmentX(LEFT_ALIGNMENT);
                 messagePanel.add(createPlainTextPane(Models.getRepr(message)));
+                messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
+                yield messagePanel;
             }
-        }
-
-        // Set maximum width and return
-        messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
-        return messagePanel;
+        };
     }
 
     /**
-     * Renders a string containing Markdown, handling ``` code fences.
-     * Returns a panel containing the rendered components.
-     *
-     * @param markdownContent The Markdown content to render.
-     * @return A JPanel containing the rendered content
-     */
-    private JPanel renderMarkdownContent(String markdownContent) {
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setBackground(textBackgroundColor);
-        contentPanel.setAlignmentX(LEFT_ALIGNMENT);
-
-        // Regex to find code blocks ```optional_info \n content ```
-        // DOTALL allows . to match newline characters
-        // reluctant quantifier *? ensures it finds the *next* ```
-        Pattern codeBlockPattern = Pattern.compile("(?s)```(\\w*)[\\r\\n]?(.*?)```");
-        Matcher matcher = codeBlockPattern.matcher(markdownContent);
-
-        int lastMatchEnd = 0;
-
-        while (matcher.find()) {
-            // 1. Render the text segment before the code block
-            String textSegment = markdownContent.substring(lastMatchEnd, matcher.start());
-            if (!textSegment.isEmpty()) {
-                JEditorPane textPane = createHtmlPane();
-                var html = renderer.render(parser.parse(textSegment));
-                textPane.setText("<html><body>" + html + "</body></html>");
-                contentPanel.add(textPane);
+         * Creates a JEditorPane configured for plain text display.
+         * Ensures background color matches the theme.
+         */
+        private JEditorPane createPlainTextPane(String text) {
+            var plainPane = new JEditorPane();
+            DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
+            caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
+            plainPane.setContentType("text/plain"); // Set content type to plain text
+            plainPane.setText(text); // Set text directly
+            plainPane.setEditable(false);
+            plainPane.setAlignmentX(LEFT_ALIGNMENT);
+            if (textBackgroundColor != null) {
+                plainPane.setBackground(textBackgroundColor);
+                // Set foreground based on theme for plain text
+                plainPane.setForeground(isDarkTheme ? new Color(230, 230, 230) : Color.BLACK);
             }
-
-            // 2. Render the code block
-            String fenceInfo = matcher.group(1).toLowerCase();
-            String codeContent = matcher.group(2);
-            RSyntaxTextArea codeArea = createConfiguredCodeArea(fenceInfo, codeContent);
-            contentPanel.add(codeAreaInPanel(codeArea));
-
-            lastMatchEnd = matcher.end();
+            
+            // Configure text wrapping correctly
+                        plainPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+                        plainPane.putClientProperty("caretWidth", 0); // Hide caret
+                        // Don't constrain height, let component determine its own preferred size based on content
+                        plainPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+            
+            return plainPane;
         }
-
-        // Render any remaining text segment after the last code block
-        String remainingText = markdownContent.substring(lastMatchEnd).trim(); // Trim whitespace
-        if (!remainingText.isEmpty()) {
-            JEditorPane textPane = createHtmlPane();
-            // Render potentially trimmed segment as HTML
-            var html = renderer.render(parser.parse(remainingText));
-            textPane.setText("<html><body>" + html + "</body></html>");
-            contentPanel.add(textPane);
-        }
-
-        return contentPanel;
-    }
-
-    /**
-     * Creates a JPanel visually representing a single SEARCH/REPLACE block.
-     *
-     * @param block The SearchReplaceBlock to render.
-     * @return A JPanel containing components for the block.
-     */
-    private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block) {
-        var blockPanel = new JPanel();
-        blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
-        blockPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
-                BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
-        ));
-        blockPanel.setBackground(textBackgroundColor); // Match overall background
-        blockPanel.setAlignmentX(LEFT_ALIGNMENT); // Align components to the left
-
-        // Header label (Filename)
-        var headerLabel = new JLabel(String.format("File: %s", block.filename()));
-        headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD));
-        headerLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5)); // Padding
-        headerLabel.setAlignmentX(LEFT_ALIGNMENT);
-        blockPanel.add(headerLabel);
-
-        // Separator
-        blockPanel.add(new JSeparator());
-
-        // "SEARCH" section
-        blockPanel.add(createEditBlockSectionLabel("SEARCH"));
-        var searchArea = createConfiguredCodeArea("", block.beforeText()); // Use "none" syntax
-        searchArea.setBackground(isDarkTheme ? new Color(55, 55, 55) : new Color(245, 245, 245)); // Slightly different background
-        blockPanel.add(codeAreaInPanel(searchArea, 1)); // Use thinner border for inner parts
-
-        // Separator
-        blockPanel.add(new JSeparator());
-
-        // "REPLACE" section
-        blockPanel.add(createEditBlockSectionLabel("REPLACE"));
-        var replaceArea = createConfiguredCodeArea("", block.afterText()); // Use "none" syntax
-        replaceArea.setBackground(isDarkTheme ? new Color(55, 55, 55) : new Color(245, 245, 245)); // Slightly different background
-        blockPanel.add(codeAreaInPanel(replaceArea, 1)); // Use thinner border for inner parts
-
-        // Adjust panel size
-        blockPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, blockPanel.getPreferredSize().height));
-
-        return blockPanel;
-    }
-
-    /**
-     * Helper to create consistent labels for SEARCH/REPLACE sections
-     */
-    private JLabel createEditBlockSectionLabel(String title) {
-        var label = new JLabel(title);
-        label.setFont(label.getFont().deriveFont(Font.ITALIC));
-        label.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5)); // Padding
-        label.setAlignmentX(LEFT_ALIGNMENT);
-        return label;
-    }
-
-    /**
-     * Creates a JEditorPane configured for plain text display.
-     * Ensures background color matches the theme.
-     */
-    private JEditorPane createPlainTextPane(String text) {
-        var plainPane = new JEditorPane();
-        DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
-        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-        plainPane.setContentType("text/plain"); // Set content type to plain text
-        plainPane.setText(text); // Set text directly
-        plainPane.setEditable(false);
-        plainPane.setAlignmentX(LEFT_ALIGNMENT);
-        if (textBackgroundColor != null) {
-            plainPane.setBackground(textBackgroundColor);
-            // Set foreground based on theme for plain text
-            plainPane.setForeground(isDarkTheme ? new Color(230, 230, 230) : Color.BLACK);
-        }
-        return plainPane;
-    }
-
-    /**
-     * Creates an RSyntaxTextArea for a code block, setting the syntax style and theme.
-     */
-    private RSyntaxTextArea createConfiguredCodeArea(String fenceInfo, String content) {
-        var codeArea = new RSyntaxTextArea(content);
-        codeArea.setEditable(false);
-        codeArea.setLineWrap(true);
-        codeArea.setWrapStyleWord(true);
-        DefaultCaret caret = (DefaultCaret) codeArea.getCaret();
-        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-
-        codeArea.setSyntaxEditingStyle(switch (fenceInfo) {
-            case "java" -> SyntaxConstants.SYNTAX_STYLE_JAVA;
-            case "python" -> SyntaxConstants.SYNTAX_STYLE_PYTHON;
-            case "javascript" -> SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT;
-            default -> SyntaxConstants.SYNTAX_STYLE_NONE;
-        });
-        codeArea.setHighlightCurrentLine(false);
-
-        try {
-            if (isDarkTheme) {
-                var darkTheme = Theme.load(getClass().getResourceAsStream(
-                        "/org/fife/ui/rsyntaxtextarea/themes/dark.xml"));
-                darkTheme.apply(codeArea);
-            } else {
-                var lightTheme = Theme.load(getClass().getResourceAsStream(
-                        "/org/fife/ui/rsyntaxtextarea/themes/default.xml"));
-                lightTheme.apply(codeArea);
-            }
-        } catch (IOException e) {
-            if (isDarkTheme) {
-                codeArea.setBackground(new Color(50, 50, 50));
-                codeArea.setForeground(new Color(230, 230, 230));
-            }
-        }
-
-        return codeArea;
-    }
-
-    /**
-     * Wraps an RSyntaxTextArea in a panel with padding and border.
-     * Allows specifying border thickness.
-     */
-    private JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness) {
-        var panel = new JPanel(new BorderLayout());
-        // Use code background for the outer padding panel
-        panel.setBackground(codeBackgroundColor);
-        panel.setAlignmentX(LEFT_ALIGNMENT);
-        // Padding outside the border
-        panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 0, 0));
-
-        var textAreaPanel = new JPanel(new BorderLayout());
-        // Use text area's actual background for the inner panel
-        textAreaPanel.setBackground(textArea.getBackground());
-        // Border around the text area
-        textAreaPanel.setBorder(BorderFactory.createLineBorder(codeBorderColor, borderThickness, true));
-        textAreaPanel.add(textArea);
-
-        panel.add(textAreaPanel);
-        // Adjust panel size
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, panel.getPreferredSize().height));
-        return panel;
-    }
-
-    /**
-     * Wraps an RSyntaxTextArea in a panel with default border thickness (3).
-     */
-    private JPanel codeAreaInPanel(RSyntaxTextArea textArea) {
-        return codeAreaInPanel(textArea, 3);
-    }
-
-    /**
-     * Creates a JEditorPane for HTML content. We set base CSS to match the theme.
-     */
-    private JEditorPane createHtmlPane() {
-        var htmlPane = new JEditorPane();
-        DefaultCaret caret = (DefaultCaret) htmlPane.getCaret();
-        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-        htmlPane.setContentType("text/html");
-        htmlPane.setEditable(false);
-        htmlPane.setAlignmentX(LEFT_ALIGNMENT);
-        htmlPane.setText("<html><body></body></html>");
-
-        if (textBackgroundColor != null) {
-            htmlPane.setBackground(textBackgroundColor);
-
-            var kit = (HTMLEditorKit) htmlPane.getEditorKit();
-            var ss = kit.getStyleSheet();
-
-            // Base background and text color
-            var bgColorHex = String.format("#%02x%02x%02x",
-                                           textBackgroundColor.getRed(),
-                                           textBackgroundColor.getGreen(),
-                                           textBackgroundColor.getBlue());
-            var textColor = isDarkTheme ? "#e6e6e6" : "#000000";
-            var linkColor = isDarkTheme ? "#88b3ff" : "#0366d6";
-
-            ss.addRule("body { font-family: sans-serif; background-color: "
-                               + bgColorHex + "; color: " + textColor + "; }");
-            ss.addRule("a { color: " + linkColor + "; }");
-            ss.addRule("code { padding: 2px; background-color: "
-                               + (isDarkTheme ? "#3c3f41" : "#f6f8fa") + "; }");
-        }
-
-        return htmlPane;
-    }
 
     // --- Spinner Logic ---
 

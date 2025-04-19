@@ -604,6 +604,11 @@ public interface ContextFragment extends Serializable {
               </fragment>
               """.stripIndent().formatted(description(), id(), text());
         }
+
+        @Override
+        public Set<ProjectFile> files(IProject project) {
+            return Set.of();
+        }
     }
 
     class StacktraceFragment extends VirtualFragment {
