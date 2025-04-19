@@ -10,7 +10,6 @@ import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.Coder.StreamingResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.prompts.BuildPrompts;
 import io.github.jbellis.brokk.prompts.DefaultPrompts;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -67,14 +66,14 @@ public class CodeAgent {
         var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
 
         // Start verification command inference concurrently
-        var verificationCommandFuture = determineVerificationCommandAsync(contextManager, contextManager.getCoder(contextManager.getModels().quickModel(), "Infer tests"));
+        var verificationCommandFuture = determineVerificationCommandAsync(contextManager);
 
         // Retry-loop state tracking
         int parseFailures = 0;
         int applyFailures = 0;
         int blocksAppliedWithoutBuild = 0;
 
-        var buildErrors = new ArrayList<String>();
+        String buildError = "";
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
 
         io.systemOutput("Code Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(userInput)));
@@ -143,9 +142,9 @@ public class CodeAgent {
             // If no blocks are pending and we haven't applied anything yet, we're done
             if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
                 io.systemOutput("No edits found in response, and no changes since last build; ending session");
-                if (!buildErrors.isEmpty()) {
+                if (!buildError.isEmpty()) {
                     // Previous build failed and LLM provided no fixes
-                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.BUILD_ERROR, buildErrors.getLast());
+                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.BUILD_ERROR, buildError);
                 } else {
                     stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
                 }
@@ -206,24 +205,18 @@ public class CodeAgent {
             }
 
             // Attempt build/verification
-            boolean buildSuccess = attemptBuildVerification(verificationCommandFuture, contextManager, io, buildErrors);
+            buildError = attemptBuildVerification(verificationCommandFuture, contextManager, io);
             blocksAppliedWithoutBuild = 0; // reset after each build attempt
 
-            if (buildSuccess) {
+            if (buildError.isEmpty()) {
                 stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
                 break;
             }
 
-            // Build failed => check if it's improving or floundering
-            if (!buildErrors.isEmpty() && !isBuildProgressing(contextManager.getCoder(contextManager.getModels().quickModel(), "Infer build progress"), buildErrors)) {
-                io.systemOutput("Build errors are not improving; ending session");
-                // Use the last build error message as details
-                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.BUILD_ERROR, buildErrors.getLast());
-                break;
-            }
-
+            // If the build failed after applying edits, create the next request for the LLM
+            // (formatBuildErrorsForLLM includes instructions to stop if not progressing)
             io.systemOutput("Attempting to fix build errors...");
-            nextRequest = new UserMessage(formatBuildErrorsForLLM(buildErrors));
+            nextRequest = new UserMessage(formatBuildErrorsForLLM(buildError));
         }
 
         // Conclude session
@@ -295,7 +288,8 @@ public class CodeAgent {
             List<EditBlock.SearchReplaceBlock> blocks,
             ContextManager cm,
             boolean rejectReadonlyEdits
-    ) {
+    )
+    {
         // Use the passed coder instance directly
         var filesToAdd = blocks.stream()
                 .map(EditBlock.SearchReplaceBlock::filename)
@@ -325,12 +319,11 @@ public class CodeAgent {
 
     /**
      * Runs the build verification command (once available) and appends any build error text to buildErrors list.
-     * Returns true if the build/verification was successful or skipped, false otherwise.
+     * Returns empty string if build is successful, error message otherwise.
      */
-    private static boolean attemptBuildVerification(CompletableFuture<String> verificationCommandFuture,
-                                                    ContextManager contextManager,
-                                                    IConsoleIO io,
-                                                    List<String> buildErrors) throws InterruptedException
+    private static String attemptBuildVerification(CompletableFuture<String> verificationCommandFuture,
+                                                   ContextManager contextManager,
+                                                   IConsoleIO io) throws InterruptedException
     {
         String verificationCommand;
         try {
@@ -341,7 +334,7 @@ public class CodeAgent {
             verificationCommand = (bd == null ? null : bd.buildLintCommand());
         }
 
-        return checkBuild(verificationCommand, contextManager, io, buildErrors);
+        return checkBuild(verificationCommand, contextManager, io);
     }
 
     /**
@@ -351,12 +344,11 @@ public class CodeAgent {
      * Determines the command by checking for relevant test files in the workspace
      * and the availability of a specific test command in BuildDetails.
      *
-     * @param cm    The ContextManager instance.
-     * @param coder The Coder instance (not used in the new logic, but kept for signature compatibility if needed elsewhere).
+     * @param cm The ContextManager instance.
      * @return A CompletableFuture containing the suggested verification command string (either specific test command or build/lint command),
      * or null if BuildDetails are unavailable.
      */
-    private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder) {
+    private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm) {
         // Runs asynchronously on the background executor provided by ContextManager
         return CompletableFuture.supplyAsync(() -> {
             // Retrieve build details from the project associated with the ContextManager
@@ -402,10 +394,12 @@ public class CodeAgent {
                                   details.buildLintCommand(),
                                   details.instructions(),
                                   workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
+            // Need a coder instance specifically for this task
+            var inferTestCoder = cm.getCoder(cm.getModels().quickModel(), "Infer tests");
             // Ask the LLM
             StreamingResult llmResult = null;
             try {
-                llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
+                llmResult = inferTestCoder.sendRequest(List.of(new UserMessage(prompt)));
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -498,20 +492,20 @@ public class CodeAgent {
     }
 
     /**
-     * Formats the history of build errors for the LLM retry prompt.
+     * Formats the most recent build error for the LLM retry prompt.
      */
-    private static String formatBuildErrorsForLLM(List<String> buildErrors) {
-        if (buildErrors.isEmpty()) {
-            return ""; // Should not happen if checkBuild returned false, but defensive check.
-        }
-        StringBuilder query = new StringBuilder("The build failed. Here is the history of build attempts:\n\n");
-        for (int i = 0; i < buildErrors.size(); i++) {
-            query.append("=== Attempt ").append(i + 1).append(" ===\n")
-                    .append(buildErrors.get(i))
-                    .append("\n\n");
-        }
-        query.append("Please fix these build errors.");
-        return query.toString();
+    private static String formatBuildErrorsForLLM(String latestBuildError) {
+        return """
+                The build failed with the following error:
+                
+                %s
+                
+                Please analyze the error message, review the conversation history for previous attempts, and provide SEARCH/REPLACE blocks to fix the error.
+                
+                IMPORTANT: If you determine that the build errors are not improving or are going in circles after reviewing the history,
+                do your best to explain the problem but DO NOT provide any edits.
+                Otherwise, provide the edits as usual.
+                """.stripIndent().formatted(latestBuildError);
     }
 
     /**
@@ -565,13 +559,12 @@ public class CodeAgent {
     /**
      * Executes the verification command and updates build error history.
      *
-     * @return true if the build was successful or skipped, false otherwise.
+     * @return empty string if the build was successful or skipped, error message otherwise.
      */
-    private static boolean checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io, List<String> buildErrors) throws InterruptedException {
+    private static String checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io) throws InterruptedException {
         if (verificationCommand == null) {
             io.systemOutput("No verification command specified, skipping build check.");
-            buildErrors.clear(); // Clear errors if skipping
-            return true; // Treat skipped build as success for workflow purposes
+            return ""; // Treat skipped build as success for workflow purposes
         }
 
         io.systemOutput("Running verification command: " + verificationCommand);
@@ -580,8 +573,7 @@ public class CodeAgent {
 
         if (result.error() == null) {
             io.systemOutput("Verification successful!");
-            buildErrors.clear(); // Reset on successful build
-            return true;
+            return "";
         }
 
         // Build failed
@@ -593,30 +585,6 @@ public class CodeAgent {
                              """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.USER, IConsoleIO.MessageSubType.BuildError);
         io.systemOutput("Verification failed (details above)");
         // Add the combined error and output to the history for the next request
-        buildErrors.add(result.error() + "\n\n" + result.output());
-        return false;
-    }
-
-
-    /**
-     * Helper to get a quick response from the LLM without streaming to determine if build errors are improving
-     */
-    private static boolean isBuildProgressing(Coder coder, List<String> buildResults) throws InterruptedException {
-        if (buildResults.size() < 2) {
-            return true;
-        }
-
-        var messages = BuildPrompts.instance.collectBuildProgressingMessages(buildResults);
-        var response = coder.sendRequest(messages).chatResponse().aiMessage().text().trim();
-
-        // Keep trying until we get one of our expected tokens
-        while (!response.contains("BROKK_PROGRESSING") && !response.contains("BROKK_FLOUNDERING")) {
-            messages = new ArrayList<>(messages);
-            messages.add(new AiMessage(response));
-            messages.add(new UserMessage("Please indicate either BROKK_PROGRESSING or BROKK_FLOUNDERING."));
-            response = coder.sendRequest(messages).chatResponse().aiMessage().text().trim();
-        }
-
-        return response.contains("BROKK_PROGRESSING");
+        return result.error() + "\n\n" + result.output();
     }
 }
