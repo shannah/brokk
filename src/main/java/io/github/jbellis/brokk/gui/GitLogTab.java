@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitRepo.CommitInfo;
 import org.apache.logging.log4j.LogManager;
@@ -195,23 +196,24 @@ public class GitLogTab extends JPanel {
         commitsTable.getColumnModel().getColumn(4).setWidth(0);
 
         // Highlight unpushed rows
-        commitsTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(
-                    JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)
-            {
-                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                if (!isSelected) {
-                    Boolean unpushed = (Boolean) table.getModel().getValueAt(row, 4);
-                    if (Boolean.TRUE.equals(unpushed)) {
-                        c.setBackground(new Color(220, 255, 220));
-                    } else {
-                        c.setBackground(table.getBackground());
+            commitsTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
+                @Override
+                public Component getTableCellRendererComponent(
+                        JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)
+                {
+                    Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                    if (!isSelected) {
+                        Boolean unpushed = (Boolean) table.getModel().getValueAt(row, 4);
+                        if (Boolean.TRUE.equals(unpushed)) {
+                            boolean isDark = chrome.themeManager != null && chrome.themeManager.isDarkTheme();
+                            c.setBackground(Colors.getChanged(isDark));
+                        } else {
+                            c.setBackground(table.getBackground());
+                        }
                     }
+                    return c;
                 }
-                return c;
-            }
-        });
+            });
 
         // Commit selection => show changed files
         commitsTable.getSelectionModel().addListSelectionListener(e -> {
