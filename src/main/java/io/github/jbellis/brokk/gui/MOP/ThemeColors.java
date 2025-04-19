@@ -22,6 +22,17 @@ public class ThemeColors {
         DARK_COLORS.put("message_border_custom", new Color(46, 100, 55));
         DARK_COLORS.put("message_border_ai", new Color(139, 92, 246));
         DARK_COLORS.put("message_border_user", new Color(59, 130, 246));
+        
+        // Code and text colors
+        DARK_COLORS.put("code_block_background", new Color(50, 50, 50));
+        DARK_COLORS.put("code_block_border", new Color(80, 80, 80));
+        DARK_COLORS.put("plain_text_foreground", new Color(230, 230, 230));
+        DARK_COLORS.put("custom_message_background", new Color(60, 60, 60));
+        DARK_COLORS.put("custom_message_foreground", new Color(220, 220, 220));
+        
+        // HTML specific colors as hex strings
+        DARK_COLORS.put("link_color_hex", Color.decode("#88b3ff"));
+        DARK_COLORS.put("border_color_hex", Color.decode("#555555"));
 
         // Initialize light theme colors
         LIGHT_COLORS.put("chat_background", new Color(240, 240, 240));
@@ -31,6 +42,17 @@ public class ThemeColors {
         LIGHT_COLORS.put("message_border_custom", new Color(46, 100, 55));  // Green for system messages
         LIGHT_COLORS.put("message_border_ai", new Color(128, 0, 128));      // Purple for AI messages
         LIGHT_COLORS.put("message_border_user", new Color(0, 102, 204));    // Blue for user messages
+        
+        // Code and text colors
+        LIGHT_COLORS.put("code_block_background", new Color(240, 240, 240));
+        LIGHT_COLORS.put("code_block_border", Color.GRAY);
+        LIGHT_COLORS.put("plain_text_foreground", Color.BLACK);
+        LIGHT_COLORS.put("custom_message_background", new Color(245, 245, 245));
+        LIGHT_COLORS.put("custom_message_foreground", new Color(30, 30, 30));
+        
+        // HTML specific colors as hex strings
+        LIGHT_COLORS.put("link_color_hex", Color.decode("#0366d6"));
+        LIGHT_COLORS.put("border_color_hex", Color.decode("#dddddd"));
     }
     
     /**
@@ -50,6 +72,18 @@ public class ThemeColors {
         }
 
         return color;
+    }
+    
+    /**
+     * Gets a color as a hex string (e.g., "#rrggbb") for use in HTML/CSS.
+     *
+     * @param isDarkTheme true for dark theme, false for light theme
+     * @param key         the color key ending with "_hex"
+     * @return the color as a hex string
+     */
+    public static String getColorHex(boolean isDarkTheme, String key) {
+        Color color = getColor(isDarkTheme, key);
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 
     /**

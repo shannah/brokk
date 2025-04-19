@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.gui.MOP.AIMessageRenderer;
 import io.github.jbellis.brokk.gui.MOP.CustomMessageRenderer;
+import io.github.jbellis.brokk.gui.MOP.ThemeColors;
 import io.github.jbellis.brokk.gui.MOP.UserMessageRenderer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,7 +53,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
 
     // Theme-related fields
     private boolean isDarkTheme = false;
-    private Color textBackgroundColor = null;
 
     public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -71,29 +71,24 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     public void updateTheme(boolean isDark) {
         this.isDarkTheme = isDark;
 
-        if (isDark) {
-            textBackgroundColor = new Color(40, 40, 40);
-        } else {
-            textBackgroundColor = Color.WHITE;
-        }
-
+        var backgroundColor = ThemeColors.getColor(isDark, "chat_background");
         setOpaque(true);
-        setBackground(textBackgroundColor);
+        setBackground(backgroundColor);
 
         var parent = getParent();
         if (parent instanceof JViewport vp) {
             vp.setOpaque(true);
-            vp.setBackground(textBackgroundColor);
+            vp.setBackground(backgroundColor);
             var gp = vp.getParent();
             if (gp instanceof JScrollPane sp) {
                 sp.setOpaque(true);
-                sp.setBackground(textBackgroundColor);
+                sp.setBackground(backgroundColor);
             }
         }
 
         // Update spinner background if visible
         if (spinnerPanel != null) {
-            spinnerPanel.updateBackgroundColor(textBackgroundColor);
+            spinnerPanel.updateBackgroundColor(backgroundColor);
         }
 
         // Re-render all components with new theme
@@ -311,34 +306,31 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
                 case CUSTOM -> customRenderer.renderComponent(message, isDarkTheme);
                 default -> {
                     // Default case for other message types
-                    JPanel messagePanel = new JPanel();
-                    messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
-                    messagePanel.setBackground(textBackgroundColor);
-                    messagePanel.setAlignmentX(LEFT_ALIGNMENT);
-                    messagePanel.add(createPlainTextPane(Models.getRepr(message)));
-                    messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
-                    yield messagePanel;
+                        JPanel messagePanel = new JPanel();
+                        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+                        messagePanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background"));
+                        messagePanel.setAlignmentX(LEFT_ALIGNMENT);
+                        messagePanel.add(createPlainTextPane(Models.getRepr(message)));
+                        messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
+                        yield messagePanel;
                 }
             };
         }
 
     /**
-         * Creates a JEditorPane configured for plain text display.
-         * Ensures background color matches the theme.
-         */
-        private JEditorPane createPlainTextPane(String text) {
-            var plainPane = new JEditorPane();
-            DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
-            caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-            plainPane.setContentType("text/plain"); // Set content type to plain text
-            plainPane.setText(text); // Set text directly
-            plainPane.setEditable(false);
-            plainPane.setAlignmentX(LEFT_ALIGNMENT);
-            if (textBackgroundColor != null) {
-                plainPane.setBackground(textBackgroundColor);
-                // Set foreground based on theme for plain text
-                plainPane.setForeground(isDarkTheme ? new Color(230, 230, 230) : Color.BLACK);
-            }
+             * Creates a JEditorPane configured for plain text display.
+             * Ensures background color matches the theme.
+             */
+            private JEditorPane createPlainTextPane(String text) {
+                var plainPane = new JEditorPane();
+                DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
+                caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
+                plainPane.setContentType("text/plain"); // Set content type to plain text
+                plainPane.setText(text); // Set text directly
+                plainPane.setEditable(false);
+                plainPane.setAlignmentX(LEFT_ALIGNMENT);
+                plainPane.setBackground(ThemeColors.getColor(isDarkTheme, "message_background"));
+                plainPane.setForeground(ThemeColors.getColor(isDarkTheme, "plain_text_foreground"));
             
             // Configure text wrapping correctly
                         plainPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
@@ -364,11 +356,12 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     public void showSpinner(String message) {
         if (spinnerPanel != null) {
             // Already showing, update the message and return
-            spinnerPanel.setMessage(message);
-            return;
-        }
-        // Create a new spinner instance each time
-        spinnerPanel = new SpinnerIndicatorPanel(message, isDarkTheme, textBackgroundColor);
+                spinnerPanel.setMessage(message);
+                return;
+            }
+            // Create a new spinner instance each time
+            spinnerPanel = new SpinnerIndicatorPanel(message, isDarkTheme, 
+                                 ThemeColors.getColor(isDarkTheme, "chat_background"));
 
         // Add to the end of this panel. Since we have a BoxLayout (Y_AXIS),
         // it shows up below the existing rendered content.

@@ -61,24 +61,24 @@ public class AIMessageRenderer implements MessageComponentRenderer {
     }
 
     /**
-     * Creates a JPanel visually representing a single SEARCH/REPLACE block.
-     *
-     * @param block The SearchReplaceBlock to render.
-     * @param isDarkTheme Whether dark theme is active
-     * @return A JPanel containing components for the block.
-     */
-    private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block, boolean isDarkTheme) {
-        Color codeBackgroundColor = isDarkTheme ? new Color(50, 50, 50) : new Color(240, 240, 240);
-        Color codeBorderColor = isDarkTheme ? new Color(80, 80, 80) : Color.GRAY;
-        
-        var blockPanel = new JPanel();
-        blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
-        blockPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
-                BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
-        ));
-        blockPanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background")); // Match overall background
-        blockPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align components to the left
+         * Creates a JPanel visually representing a single SEARCH/REPLACE block.
+         *
+         * @param block The SearchReplaceBlock to render.
+         * @param isDarkTheme Whether dark theme is active
+         * @return A JPanel containing components for the block.
+         */
+        private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block, boolean isDarkTheme) {
+            Color codeBackgroundColor = ThemeColors.getColor(isDarkTheme, "code_block_background");
+            Color codeBorderColor = ThemeColors.getColor(isDarkTheme, "code_block_border");
+            
+            var blockPanel = new JPanel();
+            blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
+            blockPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
+                    BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
+            ));
+            blockPanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background")); // Match overall background
+            blockPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align components to the left
 
         // Header label (Filename)
         var headerLabel = new JLabel(String.format("File: %s", block.filename()));

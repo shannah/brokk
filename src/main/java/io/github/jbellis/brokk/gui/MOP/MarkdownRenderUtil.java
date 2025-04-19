@@ -147,13 +147,13 @@ public class MarkdownRenderUtil {
     }
 
     /**
-     * Wraps an RSyntaxTextArea in a panel with default border thickness.
-     */
-    public static JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness, boolean isDarkTheme) {
-        Color codeBackgroundColor = isDarkTheme ? new Color(50, 50, 50) : new Color(240, 240, 240);
-        Color codeBorderColor = isDarkTheme ? new Color(80, 80, 80) : Color.GRAY;
-        return codeAreaInPanel(textArea, borderThickness, isDarkTheme, codeBackgroundColor, codeBorderColor);
-    }
+         * Wraps an RSyntaxTextArea in a panel with default border thickness.
+         */
+        public static JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness, boolean isDarkTheme) {
+            Color codeBackgroundColor = ThemeColors.getColor(isDarkTheme, "code_block_background");
+            Color codeBorderColor = ThemeColors.getColor(isDarkTheme, "code_block_border");
+            return codeAreaInPanel(textArea, borderThickness, isDarkTheme, codeBackgroundColor, codeBorderColor);
+        }
 
     /**
      * Creates a JEditorPane for HTML content with base CSS to match the theme.
@@ -184,10 +184,10 @@ public class MarkdownRenderUtil {
                                          textColor.getRed(),
                                          textColor.getGreen(),
                                          textColor.getBlue());
-        var linkColor = isDarkTheme ? "#88b3ff" : "#0366d6";
-
-        // Define theme-specific colors
-            var borderColor = isDarkTheme ? "#555" : "#ddd";
+        var linkColor = ThemeColors.getColorHex(isDarkTheme, "link_color_hex");
+    
+            // Define theme-specific colors
+                var borderColor = ThemeColors.getColorHex(isDarkTheme, "border_color_hex");
             //var headerColor = isDarkTheme ? "#e1e1e1" : "#333";
 
             // Base typography

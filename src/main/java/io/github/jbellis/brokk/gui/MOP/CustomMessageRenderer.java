@@ -21,11 +21,11 @@ public class CustomMessageRenderer implements MessageComponentRenderer {
         var contentPanel = MarkdownRenderUtil.renderMarkdownContent(content, isDarkTheme);
         
         // Apply special styling for system messages
-            JPanel customPanel = new JPanel();
-            customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
-            customPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
-            customPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            contentPanel.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
+                JPanel customPanel = new JPanel();
+                customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
+                customPanel.setBackground(ThemeColors.getColor(isDarkTheme, "custom_message_background"));
+                customPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                contentPanel.setForeground(ThemeColors.getColor(isDarkTheme, "custom_message_foreground"));
             
             // Allow content to dynamically resize both width and height
                 contentPanel.setPreferredSize(null);
