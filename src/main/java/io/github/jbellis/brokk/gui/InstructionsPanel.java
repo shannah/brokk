@@ -255,7 +255,7 @@ public class InstructionsPanel extends JPanel {
                 TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        new SmartScroll(scrollPane);
+        // new SmartScroll(scrollPane);
 
         return scrollPane;
     }
@@ -455,6 +455,7 @@ public class InstructionsPanel extends JPanel {
                     // Construct SessionResult for 'Ask'
                     var sessionResult = new SessionResult("Ask: " + question,
                                                           List.of(messages.getLast(), aiResponse),
+                                                          List.copyOf(chrome.getLlmRawMessages()),
                                                           Map.of(), // No undo contents for Ask
                                                           chrome.getLlmOutputText(),
                                                           new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
