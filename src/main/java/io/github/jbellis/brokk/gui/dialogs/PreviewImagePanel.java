@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
+import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 
 import javax.imageio.ImageIO;
@@ -78,9 +79,9 @@ public class PreviewImagePanel extends JPanel {
     }
 
     public static void showFrame(ContextManager contextManager, String title, PreviewImagePanel previewPanel) {
-        JFrame frame = new JFrame(title);
-        frame.setContentPane(previewPanel);
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+        JFrame frame = Chrome.newFrame(title);
+            frame.setContentPane(previewPanel);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
 
         var project = contextManager.getProject();
         assert project != null;

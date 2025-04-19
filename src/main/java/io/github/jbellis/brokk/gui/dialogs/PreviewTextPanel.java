@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
 import org.apache.logging.log4j.LogManager;
@@ -284,9 +285,9 @@ public class PreviewTextPanel extends JPanel {
     }
 
     public static void showFrame(ContextManager contextManager, String title, PreviewTextPanel previewPanel) {
-        JFrame frame = new JFrame(title);
-        frame.setContentPane(previewPanel);
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+        JFrame frame = Chrome.newFrame(title);
+            frame.setContentPane(previewPanel);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
 
         var project = contextManager.getProject();
         assert project != null;

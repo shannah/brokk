@@ -538,9 +538,21 @@ public class HistoryOutputPanel extends JPanel {
          */
         public OutputWindow(HistoryOutputPanel parentPanel, List<ChatMessage> messages, boolean isDark) {
             super("Output"); // Call superclass constructor first
-            this.parentPanel = parentPanel;
-            this.project = parentPanel.contextManager.getProject(); // Get project reference
-            setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                
+                // Set icon from Chrome.newFrame
+                try {
+                    var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
+                    if (iconUrl != null) {
+                        var icon = new ImageIcon(iconUrl);
+                        setIconImage(icon.getImage());
+                    }
+                } catch (Exception e) {
+                    // Silently ignore icon setting failures in child windows
+                }
+                
+                this.parentPanel = parentPanel;
+                this.project = parentPanel.contextManager.getProject(); // Get project reference
+                setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
             // Create markdown panel with the text
             var outputPanel = new MarkdownOutputPanel();

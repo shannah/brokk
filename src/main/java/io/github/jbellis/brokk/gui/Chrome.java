@@ -70,23 +70,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // 2) Build main window
-        frame = new JFrame("Brokk: Code Intelligence for AI");
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        frame.setSize(800, 1200);  // Taller than wide
-        frame.setLayout(new BorderLayout());
-
-        // Set application icon
-        try {
-            var iconUrl = getClass().getResource(Brokk.ICON_RESOURCE);
-            if (iconUrl != null) {
-                var icon = new ImageIcon(iconUrl);
-                frame.setIconImage(icon.getImage());
-            } else {
-                logger.warn("Could not find resource {}", Brokk.ICON_RESOURCE);
-            }
-        } catch (Exception e) {
-            logger.warn("Failed to set application icon", e);
-        }
+    frame = newFrame("Brokk: Code Intelligence for AI");
+    frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+    frame.setSize(800, 1200);  // Taller than wide
+    frame.setLayout(new BorderLayout());
 
         // 3) Main panel (top area + bottom area)
         frame.add(buildMainPanel(), BorderLayout.CENTER);
@@ -502,9 +489,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * @param contentComponent The JComponent to display within the frame.
      */
     private void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
-        JFrame previewFrame = new JFrame(title);
-        previewFrame.setContentPane(contentComponent);
-        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+        JFrame previewFrame = newFrame(title);
+            previewFrame.setContentPane(contentComponent);
+            previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
 
         var project = contextManager.getProject();
         assert project != null;
@@ -798,6 +785,30 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public ContextPanel getContextPanel() {
         return contextPanel;
+    }
+    
+    /**
+     * Creates a new JFrame with the Brokk icon set properly.
+     * 
+     * @param title The title for the new frame
+     * @return A configured JFrame with the application icon
+     */
+    public static JFrame newFrame(String title) {
+        JFrame frame = new JFrame(title);
+        
+        try {
+            var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
+            if (iconUrl != null) {
+                var icon = new ImageIcon(iconUrl);
+                frame.setIconImage(icon.getImage());
+            } else {
+                LogManager.getLogger(Chrome.class).warn("Could not find resource {}", Brokk.ICON_RESOURCE);
+            }
+        } catch (Exception e) {
+            LogManager.getLogger(Chrome.class).warn("Failed to set application icon", e);
+        }
+        
+        return frame;
     }
 
     public void showSetAutoContextSizeDialog() {

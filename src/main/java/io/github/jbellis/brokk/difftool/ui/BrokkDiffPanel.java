@@ -11,6 +11,7 @@ import com.github.difflib.algorithm.DiffAlgorithmListener;
 import com.github.difflib.patch.Patch;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.gui.Chrome;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.beans.PropertyChangeEvent;
@@ -313,9 +314,9 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
      * @param title The frame title
      */
     public void showInFrame(String title) {
-        JFrame frame = new JFrame(title);
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        frame.getContentPane().add(this);
+        JFrame frame = Chrome.newFrame(title);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            frame.getContentPane().add(this);
 
         // Get saved bounds from Project via the stored ContextManager
         var bounds = contextManager.getProject().getDiffWindowBounds();
