@@ -22,9 +22,25 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public interface ContextFragment extends Serializable {
-
     // Static counter for all fragments
+    // TODO reset this on new session (when we have sessions)
     AtomicInteger NEXT_ID = new AtomicInteger(1);
+    
+    /** 
+     * Gets the current max fragment ID for serialization purposes
+     */
+    static int getCurrentMaxId() {
+        return NEXT_ID.get();
+    }
+    
+    /**
+     * Sets the next fragment ID value (used during deserialization)
+     */
+    static void setNextId(int value) {
+        if (value > NEXT_ID.get()) {
+            NEXT_ID.set(value);
+        }
+    }
     
     /** Unique identifier for this fragment */
     int id();

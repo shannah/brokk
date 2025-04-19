@@ -486,9 +486,15 @@ public class Project implements IProject, AutoCloseable {
      */
     public void saveContext(Context context) {
         try {
+            // Save the context
             byte[] serialized = Context.serialize(context);
             String encoded = java.util.Base64.getEncoder().encodeToString(serialized);
             workspaceProps.setProperty("context", encoded);
+            
+            // Save the current fragment ID counter
+            int currentMaxId = ContextFragment.getCurrentMaxId();
+            workspaceProps.setProperty("contextFragmentNextId", String.valueOf(currentMaxId));
+            
             saveWorkspaceProperties();
         } catch (Exception e) {
             logger.error("Error saving context: {}", e.getMessage());
@@ -502,6 +508,19 @@ public class Project implements IProject, AutoCloseable {
      */
     public Context loadContext(IContextManager contextManager, String welcomeMessage) {
         try {
+            // Restore the fragment ID counter first
+            String nextIdStr = workspaceProps.getProperty("contextFragmentNextId");
+            if (nextIdStr != null && !nextIdStr.isEmpty()) {
+                try {
+                    int nextId = Integer.parseInt(nextIdStr);
+                    ContextFragment.setNextId(nextId);
+                    logger.debug("Restored fragment ID counter to {}", nextId);
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid fragment ID counter value: {}", nextIdStr);
+                }
+            }
+            
+            // Then load the context
             String encoded = workspaceProps.getProperty("context");
             if (encoded != null && !encoded.isEmpty()) {
                 byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
@@ -516,6 +535,7 @@ public class Project implements IProject, AutoCloseable {
 
     private void clearSavedContext() {
         workspaceProps.remove("context");
+        workspaceProps.remove("contextFragmentNextId");
         saveWorkspaceProperties();
         logger.debug("Cleared saved context from workspace properties");
     }

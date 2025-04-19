@@ -59,7 +59,11 @@ public class Context implements Serializable {
 
     /** description of the action that created this context, can be a future (like PasteFragment) */
     transient final Future<String> action;
-    /** Unique transient identifier for this context instance */
+
+    /**
+     * Unique transient identifier for this context instance.
+     * Used to track identity across asynchronous autocontext refresh
+     */
     transient final int id;
 
     public record ParsedOutput(String text, ContextFragment.VirtualFragment parsedFragment) {
