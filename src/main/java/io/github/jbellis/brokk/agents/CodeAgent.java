@@ -140,10 +140,15 @@ public class CodeAgent {
 
             logger.debug("{} total unapplied blocks", blocks.size());
 
-            // If no blocks are pending and we haven't applied anything yet, assume we're done
+            // If no blocks are pending and we haven't applied anything yet, we're done
             if (blocks.isEmpty() && blocksAppliedWithoutBuild == 0) {
-                io.systemOutput("No edits found in response; ending session");
-                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
+                io.systemOutput("No edits found in response, and no changes since last build; ending session");
+                if (!buildErrors.isEmpty()) {
+                    // Previous build failed and LLM provided no fixes
+                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.BUILD_ERROR, buildErrors.getLast());
+                } else {
+                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
+                }
                 break;
             }
 
@@ -225,8 +230,8 @@ public class CodeAgent {
         assert stopDetails != null; // Ensure a stop reason was set before exiting the loop
         boolean completedSuccessfully = (stopDetails.reason() == SessionResult.StopReason.SUCCESS);
         String finalActionDescription = completedSuccessfully
-                ? userInput
-                : userInput + " [" + stopDetails.reason().name() + "]";
+                                        ? userInput
+                                        : userInput + " [" + stopDetails.reason().name() + "]";
         var sessionResult = new SessionResult(finalActionDescription,
                                               List.copyOf(sessionMessages),
                                               Map.copyOf(originalContents),
@@ -284,7 +289,7 @@ public class CodeAgent {
      * Otherwise, it returns an empty list.
      *
      * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
-     *         or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
+     * or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
      */
     private static List<ProjectFile> autoAddReferencedFiles(
             List<EditBlock.SearchReplaceBlock> blocks,
@@ -346,10 +351,10 @@ public class CodeAgent {
      * Determines the command by checking for relevant test files in the workspace
      * and the availability of a specific test command in BuildDetails.
      *
-     * @param cm        The ContextManager instance.
-     * @param coder     The Coder instance (not used in the new logic, but kept for signature compatibility if needed elsewhere).
+     * @param cm    The ContextManager instance.
+     * @param coder The Coder instance (not used in the new logic, but kept for signature compatibility if needed elsewhere).
      * @return A CompletableFuture containing the suggested verification command string (either specific test command or build/lint command),
-     *         or null if BuildDetails are unavailable.
+     * or null if BuildDetails are unavailable.
      */
     private static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm, Coder coder) {
         // Runs asynchronously on the background executor provided by ContextManager
@@ -378,25 +383,25 @@ public class CodeAgent {
             // Construct the prompt for the LLM
             logger.debug("Found relevant tests {}, asking LLM for specific command.", workspaceTestFiles);
             var prompt = """
-                        Given the build details and the list of test files modified or relevant to the recent changes,
-                        give the shell command to run *only* these specific tests. (You may chain multiple
-                        commands with &&, if necessary.)
-                        
-                        Build Details:
-                        Test All Command: %s
-                        Build/Lint Command: %s
-                        Other Instructions: %s
-                        
-                        Test Files to execute:
-                        %s
-                        
-                        Provide *only* the command line string to execute these specific tests.
-                        Do not include any explanation or formatting.
-                        If you cannot determine a more specific command, respond with an empty string.
-                        """.formatted(details.testAllCommand(),
-                                      details.buildLintCommand(),
-                                      details.instructions(),
-                                      workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
+                    Given the build details and the list of test files modified or relevant to the recent changes,
+                    give the shell command to run *only* these specific tests. (You may chain multiple
+                    commands with &&, if necessary.)
+                    
+                    Build Details:
+                    Test All Command: %s
+                    Build/Lint Command: %s
+                    Other Instructions: %s
+                    
+                    Test Files to execute:
+                    %s
+                    
+                    Provide *only* the command line string to execute these specific tests.
+                    Do not include any explanation or formatting.
+                    If you cannot determine a more specific command, respond with an empty string.
+                    """.formatted(details.testAllCommand(),
+                                  details.buildLintCommand(),
+                                  details.instructions(),
+                                  workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
             // Ask the LLM
             StreamingResult llmResult = null;
             try {
@@ -405,8 +410,8 @@ public class CodeAgent {
                 throw new RuntimeException(e);
             }
             var suggestedCommand = llmResult.chatResponse() != null && llmResult.chatResponse().aiMessage() != null
-                    ? llmResult.chatResponse().aiMessage().text().trim()
-                    : null; // Handle potential nulls from LLM response
+                                   ? llmResult.chatResponse().aiMessage().text().trim()
+                                   : null; // Handle potential nulls from LLM response
 
             // Use the suggested command if valid, otherwise fallback
             if (suggestedCommand != null && !suggestedCommand.isBlank()) {
@@ -426,7 +431,7 @@ public class CodeAgent {
      * 3) Replace the old text with the new snippet in the file
      *
      * @return A SessionResult containing the conversation and original content.
-         */
+     */
     public SessionResult runQuickSession(ProjectFile file,
                                          String oldText,
                                          String instructions) throws InterruptedException
@@ -492,7 +497,9 @@ public class CodeAgent {
                                  stopDetails);
     }
 
-    /** Formats the history of build errors for the LLM retry prompt. */
+    /**
+     * Formats the history of build errors for the LLM retry prompt.
+     */
     private static String formatBuildErrorsForLLM(List<String> buildErrors) {
         if (buildErrors.isEmpty()) {
             return ""; // Should not happen if checkBuild returned false, but defensive check.
@@ -524,31 +531,31 @@ public class CodeAgent {
         var failedText = failedBlocks.stream()
                 .map(f -> {
                     return """
-                    ## Failed to match (%s)
-                    ```
-                    %s
-                    ```
-                    %s
-                    """.stripIndent().formatted(f.reason(),
-                                                f.block().toString(),
-                                                f.commentary());
+                            ## Failed to match (%s)
+                            ```
+                            %s
+                            ```
+                            %s
+                            """.stripIndent().formatted(f.reason(),
+                                                        f.block().toString(),
+                                                        f.commentary());
                 })
                 .collect(Collectors.joining("\n\n"));
         var successfulText = succeededCount > 0
-                ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
-                : "";
+                             ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
+                             : "";
         var pluralize = singular ? "" : "s";
         var failedApplyMessage = """
-          # %d SEARCH/REPLACE block%s failed to match!
-
-          %s
-
-          Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
-          please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
-          check the filename carefully.
-
-          %s
-          """.stripIndent().formatted(count, pluralize, failedText, pluralize, pluralize, successfulText);
+                # %d SEARCH/REPLACE block%s failed to match!
+                
+                %s
+                
+                Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
+                please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
+                check the filename carefully.
+                
+                %s
+                """.stripIndent().formatted(count, pluralize, failedText, pluralize, pluralize, successfulText);
 
         io.llmOutput("\n" + failedApplyMessage, ChatMessageType.USER); // Show the user what we're telling the LLM
         return failedApplyMessage; // Return the message to be sent to the LLM
@@ -557,6 +564,7 @@ public class CodeAgent {
 
     /**
      * Executes the verification command and updates build error history.
+     *
      * @return true if the build was successful or skipped, false otherwise.
      */
     private static boolean checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io, List<String> buildErrors) throws InterruptedException {
@@ -578,11 +586,11 @@ public class CodeAgent {
 
         // Build failed
         io.llmOutput("""
-        **Verification Failed:** %s
-        ```
-        %s
-        ```
-        """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.USER, IConsoleIO.MessageSubType.BuildError);
+                             **Verification Failed:** %s
+                             ```
+                             %s
+                             ```
+                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.USER, IConsoleIO.MessageSubType.BuildError);
         io.systemOutput("Verification failed (details above)");
         // Add the combined error and output to the history for the next request
         buildErrors.add(result.error() + "\n\n" + result.output());
