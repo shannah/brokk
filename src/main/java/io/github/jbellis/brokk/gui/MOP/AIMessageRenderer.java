@@ -17,7 +17,7 @@ public class AIMessageRenderer implements MessageComponentRenderer {
     private static final Logger logger = LogManager.getLogger(AIMessageRenderer.class);
 
     @Override
-    public Component renderComponent(ChatMessage message, Color textBackgroundColor, boolean isDarkTheme) {
+    public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
         String content = MarkdownRenderUtil.getMessageContent(message);
         // For AI messages, try to parse edit blocks first
         var parseResult = EditBlock.parseAllBlocks(content);
@@ -25,7 +25,7 @@ public class AIMessageRenderer implements MessageComponentRenderer {
         // Create content panel for AI message
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setBackground(textBackgroundColor);
+        contentPanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background"));
         contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // If we have edit blocks, render them
@@ -37,7 +37,7 @@ public class AIMessageRenderer implements MessageComponentRenderer {
             for (var block : parseResult.blocks()) {
                 if (block.block() != null) {
                     // Edit block
-                    contentPanel.add(renderEditBlockComponent(block.block(), textBackgroundColor, isDarkTheme));
+                    contentPanel.add(renderEditBlockComponent(block.block(), isDarkTheme));
                 } else if (!block.text().isBlank()) {
                     // Text between edit blocks - render as markdown
                     var textPanel = MarkdownRenderUtil.renderMarkdownContent(block.text(), isDarkTheme);
@@ -64,11 +64,10 @@ public class AIMessageRenderer implements MessageComponentRenderer {
      * Creates a JPanel visually representing a single SEARCH/REPLACE block.
      *
      * @param block The SearchReplaceBlock to render.
-     * @param textBackgroundColor The background color for text
      * @param isDarkTheme Whether dark theme is active
      * @return A JPanel containing components for the block.
      */
-    private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block, Color textBackgroundColor, boolean isDarkTheme) {
+    private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block, boolean isDarkTheme) {
         Color codeBackgroundColor = isDarkTheme ? new Color(50, 50, 50) : new Color(240, 240, 240);
         Color codeBorderColor = isDarkTheme ? new Color(80, 80, 80) : Color.GRAY;
         
@@ -78,7 +77,7 @@ public class AIMessageRenderer implements MessageComponentRenderer {
                 BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
                 BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
         ));
-        blockPanel.setBackground(textBackgroundColor); // Match overall background
+        blockPanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background")); // Match overall background
         blockPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align components to the left
 
         // Header label (Filename)

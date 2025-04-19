@@ -14,7 +14,7 @@ public class UserMessageRenderer implements MessageComponentRenderer {
     private static final Logger logger = LogManager.getLogger(UserMessageRenderer.class);
 
     @Override
-    public Component renderComponent(ChatMessage message, Color textBackgroundColor, boolean isDarkTheme) {
+    public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
         // Create content panel
         String content = MarkdownRenderUtil.getMessageContent(message);
         var contentPanel = MarkdownRenderUtil.renderMarkdownContent(content, isDarkTheme);

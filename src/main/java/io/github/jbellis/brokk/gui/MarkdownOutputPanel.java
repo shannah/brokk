@@ -49,9 +49,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     // Listeners to notify whenever text changes
     private final List<Runnable> textChangeListeners = new ArrayList<>();
 
-    // Flexmark parser and renderer for Markdown segments
-    private final Parser parser;
-    private final HtmlRenderer renderer;
 
     // Theme-related fields
     private boolean isDarkTheme = false;
@@ -60,10 +57,6 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(true);
-
-        // Build the Flexmark parser for normal text blocks
-        parser = Parser.builder().build();
-        renderer = HtmlRenderer.builder().build();
         
         // Initialize message renderers
         aiRenderer = new io.github.jbellis.brokk.gui.MOP.AIMessageRenderer();
@@ -309,25 +302,25 @@ class MarkdownOutputPanel extends JPanel implements Scrollable {
     private final CustomMessageRenderer customRenderer;
     
     /**
-     * Renders a single message component based on its type
-     */
-    private Component renderMessageComponent(ChatMessage message) {
-        return switch (message.type()) {
-            case AI -> aiRenderer.renderComponent(message, textBackgroundColor, isDarkTheme);
-            case USER -> userRenderer.renderComponent(message, textBackgroundColor, isDarkTheme);
-            case CUSTOM -> customRenderer.renderComponent(message, textBackgroundColor, isDarkTheme);
-            default -> {
-                // Default case for other message types
-                JPanel messagePanel = new JPanel();
-                messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
-                messagePanel.setBackground(textBackgroundColor);
-                messagePanel.setAlignmentX(LEFT_ALIGNMENT);
-                messagePanel.add(createPlainTextPane(Models.getRepr(message)));
-                messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
-                yield messagePanel;
-            }
-        };
-    }
+         * Renders a single message component based on its type
+         */
+        private Component renderMessageComponent(ChatMessage message) {
+            return switch (message.type()) {
+                case AI -> aiRenderer.renderComponent(message, isDarkTheme);
+                case USER -> userRenderer.renderComponent(message, isDarkTheme);
+                case CUSTOM -> customRenderer.renderComponent(message, isDarkTheme);
+                default -> {
+                    // Default case for other message types
+                    JPanel messagePanel = new JPanel();
+                    messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+                    messagePanel.setBackground(textBackgroundColor);
+                    messagePanel.setAlignmentX(LEFT_ALIGNMENT);
+                    messagePanel.add(createPlainTextPane(Models.getRepr(message)));
+                    messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
+                    yield messagePanel;
+                }
+            };
+        }
 
     /**
          * Creates a JEditorPane configured for plain text display.
