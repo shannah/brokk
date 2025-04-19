@@ -1025,7 +1025,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // top 10 related classes
         String topClassesRaw = "";
         // this check is mostly equivalent to analyzer.isEmpty() but doesn't block for analyzer creation (or throw InterruptedException)
-        if (project.getAnalyzerLanguage() != Language.None) {
+        if (addRelatedClasses && project.getAnalyzerLanguage() != Language.None) {
             var ac = selectedContext().setAutoContextFiles(10).buildAutoContext();
             topClassesRaw = ac.text();
             var topClassesText = topClassesRaw.isBlank() ? "" : """
