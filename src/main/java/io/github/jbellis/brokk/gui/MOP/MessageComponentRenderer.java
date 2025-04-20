@@ -14,9 +14,8 @@ public interface MessageComponentRenderer {
      * Renders a chat message as a Swing component.
      *
      * @param message The message to render
-     * @param textBackgroundColor The background color for text components
      * @param isDarkTheme Whether the dark theme is active
      * @return A Component representing the rendered message
      */
-    Component renderComponent(ChatMessage message, Color textBackgroundColor, boolean isDarkTheme);
+    Component renderComponent(ChatMessage message, boolean isDarkTheme);
 }

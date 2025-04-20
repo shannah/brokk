@@ -335,8 +335,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {
-        var text = "# %s\n%s\n\n# %s\n".formatted(action, input, action.equals("Run") ? "Output" : "Response");
-        io.setLlmOutput(List.of(new UserMessage(text)));
+        IConsoleIO.MessageSubType messageSubType = null;
+        try {
+            messageSubType = IConsoleIO.MessageSubType.valueOf(action);
+        } catch (IllegalArgumentException e) {
+            logger.error("Unknown action type: {}", action);
+        }
+        io.setLlmOutput(List.of(new UserMessage(messageSubType.toString(), input)));
         return submitUserTask(action, task);
     }
 
