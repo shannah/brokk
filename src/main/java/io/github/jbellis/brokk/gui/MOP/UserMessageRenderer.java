@@ -30,7 +30,7 @@ public class UserMessageRenderer implements MessageComponentRenderer {
                     null,
                     new JLabel(userMessage.name().toUpperCase() + " MODE"),
                     isDarkTheme,
-                    ThemeColors.getColor(isDarkTheme, "message_border_user")
+                    ThemeColors.getColor(isDarkTheme, "message_background")
             );
 
             // 2. Create the regular message panel

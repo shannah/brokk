@@ -80,7 +80,43 @@ public class BaseChatMessagePanel extends JPanel {
     }
 
     /**
-     * Creates a new base chat message panel with the given title, icon, content, and custom highlight color.
+     * Creates a new base chat message panel with custom background and message colors.
+     *
+     * @param title            The title text to display in the header
+     * @param iconText         Unicode icon text to display
+     * @param contentComponent The main content component to display
+     * @param isDarkTheme      Whether dark theme is active
+     * @param highlightColor   The color to use for the left highlight bar
+     * @param messageBgColor   The background color for the message (optional)
+     * @param chatBgColor      The background color for the chat panel (optional)
+     */
+    public BaseChatMessagePanel(String title, String iconText, Component contentComponent,
+                                boolean isDarkTheme, Color highlightColor, 
+                                Color messageBgColor, Color chatBgColor)
+    {
+        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
+                   messageBgColor, chatBgColor);
+    }
+
+    /**
+     * Creates a new base chat message panel with custom message background color.
+     *
+     * @param title            The title text to display in the header
+     * @param iconText         Unicode icon text to display
+     * @param contentComponent The main content component to display
+     * @param isDarkTheme      Whether dark theme is active
+     * @param highlightColor   The color to use for the left highlight bar
+     * @param messageBgColor   The background color for the message (optional)
+     */
+    public BaseChatMessagePanel(String title, String iconText, Component contentComponent,
+                                boolean isDarkTheme, Color highlightColor, Color messageBgColor)
+    {
+        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
+                   messageBgColor, null);
+    }
+
+    /**
+     * Creates a new base chat message panel with default colors.
      *
      * @param title            The title text to display in the header
      * @param iconText         Unicode icon text to display
@@ -91,24 +127,31 @@ public class BaseChatMessagePanel extends JPanel {
     public BaseChatMessagePanel(String title, String iconText, Component contentComponent,
                                 boolean isDarkTheme, Color highlightColor)
     {
-        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor);
+        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
+                   null, null);
     }
 
     /**
      * Common initialization method for all constructors.
      */
     private void initialize(String title, String iconText, Component contentComponent,
-                            boolean isDarkTheme, Color highlightColor)
+                            boolean isDarkTheme, Color highlightColor, 
+                            Color customMessageBgColor, Color customChatBgColor)
     {
         setLayout(new BorderLayout());
-        setBackground(ThemeColors.getColor(isDarkTheme, "chat_background"));
+        Color chatBgColor = customChatBgColor != null ? 
+            customChatBgColor : 
+            ThemeColors.getColor(isDarkTheme, "chat_background");
+        setBackground(chatBgColor);
         // Overall padding for the entire message panel (header + content area)
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         setAlignmentX(Component.LEFT_ALIGNMENT);  // Also ensure *this* panel is left-aligned in its parent
         setAlignmentY(Component.TOP_ALIGNMENT);
 
         // Get theme colors
-        Color messageBgColor = ThemeColors.getColor(isDarkTheme, "message_background");
+        Color messageBgColor = customMessageBgColor != null ? 
+            customMessageBgColor : 
+            ThemeColors.getColor(isDarkTheme, "message_background");
 
         // Create a panel for the content area
         JPanel contentArea = new JPanel();

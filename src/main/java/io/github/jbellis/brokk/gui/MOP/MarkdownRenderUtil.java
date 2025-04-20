@@ -31,7 +31,6 @@ public class MarkdownRenderUtil {
      * Returns a panel containing the rendered components.
      *
      * @param markdownContent The Markdown content to render.
-     * @param textBackgroundColor The background color for text components
      * @param isDarkTheme Whether dark theme is active
      * @return A JPanel containing the rendered content
      */
@@ -61,10 +60,10 @@ public class MarkdownRenderUtil {
             }
 
             // 2. Render the code block
-            String fenceInfo = matcher.group(1).toLowerCase();
-            String codeContent = matcher.group(2);
-            RSyntaxTextArea codeArea = createConfiguredCodeArea(fenceInfo, codeContent, isDarkTheme);
-            contentPanel.add(codeAreaInPanel(codeArea, 3, isDarkTheme));
+                String fenceInfo = matcher.group(1).toLowerCase();
+                String codeContent = matcher.group(2);
+                RSyntaxTextArea codeArea = createConfiguredCodeArea(fenceInfo, codeContent, isDarkTheme);
+                contentPanel.add(createCodeBlockPanel(codeArea, fenceInfo, isDarkTheme));
 
             lastMatchEnd = matcher.end();
         }
@@ -154,6 +153,35 @@ public class MarkdownRenderUtil {
             Color codeBorderColor = ThemeColors.getColor(isDarkTheme, "code_block_border");
             return codeAreaInPanel(textArea, borderThickness, isDarkTheme, codeBackgroundColor, codeBorderColor);
         }
+        
+        /**
+         * Creates a code block panel using BaseChatMessagePanel.
+         * This provides consistent styling with other message components.
+         * 
+         * @param textArea The RSyntaxTextArea containing the code
+         * @param fenceInfo The language identifier from the code fence
+         * @param isDarkTheme Whether dark theme is active
+         * @return A panel containing the styled code block
+         */
+        public static JPanel createCodeBlockPanel(RSyntaxTextArea textArea, String fenceInfo, boolean isDarkTheme) {
+            // Format the title based on fence info
+            String title = fenceInfo.isEmpty() ? "Code" : 
+                           fenceInfo.substring(0, 1).toUpperCase() + fenceInfo.substring(1);
+                           
+            // Use code icon
+            String iconText = "📝"; 
+            
+            // Create the panel using BaseChatMessagePanel
+            return new BaseChatMessagePanel(
+                title,
+                iconText,
+                textArea,
+                isDarkTheme,
+                new Color(125,140,111),
+                new Color(41, 49, 52),
+                ThemeColors.getColor(isDarkTheme, "message_background")
+            );
+        }
 
     /**
      * Creates a JEditorPane for HTML content with base CSS to match the theme.
@@ -195,10 +223,10 @@ public class MarkdownRenderUtil {
                        "background-color: " + bgColorHex + "; color: " + textColorHex + "; margin: 0; padding: 8px; }");
 
             // Headings
-            ss.addRule("h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; " +
+            ss.addRule("h1, h2, h3, h4, h5, h6 { margin-top: 18px; margin-bottom: 12px; " +
                        "font-weight: 600; line-height: 1.25; color: " + textColorHex + "; }");
-            ss.addRule("h1 { font-size: 2em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.3em; }");
-            ss.addRule("h2 { font-size: 1.5em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.3em; }");
+            ss.addRule("h1 { font-size: 1.7em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
+            ss.addRule("h2 { font-size: 1.5em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
             ss.addRule("h3 { font-size: 1.25em; }");
             ss.addRule("h4 { font-size: 1em; }");
 
@@ -207,15 +235,15 @@ public class MarkdownRenderUtil {
             ss.addRule("a:hover { text-decoration: underline; }");
 
             // Paragraphs and lists
-                ss.addRule("p, ul, ol { margin-top: 0; margin-bottom: 16px; }");
+                ss.addRule("p, ul, ol { margin-top: 0; margin-bottom: 12px; }");
                 ss.addRule("ul, ol { padding-left: 2em; }");
                 ss.addRule("li { margin: 0.25em 0; }");
-                ss.addRule("li > p { margin-top: 16px; }");
+                ss.addRule("li > p { margin-top: 12px; }");
 
             // Code styling
                 ss.addRule("code { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; " +
                            "padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 3px; " +
-                           "background-color: " + (isDarkTheme ? "#4d5462" : "#f6f8fa") + "; }");
+                           "color: " + (isDarkTheme ? "#678cb1" : "#f6f8fa") + "; }");
 
                 // Tables
             ss.addRule("table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }");

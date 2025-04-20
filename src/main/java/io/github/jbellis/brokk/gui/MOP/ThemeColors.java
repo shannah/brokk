@@ -20,8 +20,8 @@ public class ThemeColors {
         DARK_COLORS.put("chat_text", new Color(212, 212, 212));
         DARK_COLORS.put("chat_header_text", new Color(114, 159, 207));
         DARK_COLORS.put("message_border_custom", new Color(46, 100, 55));
-        DARK_COLORS.put("message_border_ai", new Color(139, 92, 246));
-        DARK_COLORS.put("message_border_user", new Color(59, 130, 246));
+        DARK_COLORS.put("message_border_ai", new Color(86,142,130));
+        DARK_COLORS.put("message_border_user", new Color(94, 125, 175));
         
         // Code and text colors
         DARK_COLORS.put("code_block_background", new Color(50, 50, 50));
