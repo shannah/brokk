@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.mop;
 
 import javax.swing.*;
 import java.awt.*;
@@ -8,7 +8,7 @@ import java.util.Objects;
  * A simple panel displaying a spinner icon and a message.
  * Handles its own background color based on the theme.
  */
-class SpinnerIndicatorPanel extends JPanel {
+public class SpinnerIndicatorPanel extends JPanel {
     private final JLabel textLabel;
 
     /**

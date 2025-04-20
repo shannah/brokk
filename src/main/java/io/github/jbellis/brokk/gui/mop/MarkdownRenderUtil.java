@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui.MOP;
+package io.github.jbellis.brokk.gui.mop;
 
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;

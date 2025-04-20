@@ -1,10 +1,9 @@
-package io.github.jbellis.brokk.gui.MOP;
+package io.github.jbellis.brokk.gui.mop;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.border.Border;
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
 

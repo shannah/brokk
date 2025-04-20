@@ -1,8 +1,7 @@
-package io.github.jbellis.brokk.gui.MOP;
+package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.ChatMessage;
 
-import javax.swing.*;
 import java.awt.*;
 
 /**
