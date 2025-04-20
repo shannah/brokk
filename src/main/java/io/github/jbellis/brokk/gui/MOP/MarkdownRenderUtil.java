@@ -169,7 +169,7 @@ public class MarkdownRenderUtil {
                            fenceInfo.substring(0, 1).toUpperCase() + fenceInfo.substring(1);
                            
             // Use code icon
-            String iconText = "📝"; 
+            String iconText = "\uD83D\uDCDD"; // Unicode for memo/pencil emoji
             
             // Create the panel using BaseChatMessagePanel
             return new BaseChatMessagePanel(
@@ -225,9 +225,9 @@ public class MarkdownRenderUtil {
             // Headings
             ss.addRule("h1, h2, h3, h4, h5, h6 { margin-top: 18px; margin-bottom: 12px; " +
                        "font-weight: 600; line-height: 1.25; color: " + textColorHex + "; }");
-            ss.addRule("h1 { font-size: 1.7em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
-            ss.addRule("h2 { font-size: 1.5em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
-            ss.addRule("h3 { font-size: 1.25em; }");
+            ss.addRule("h1 { font-size: 1.5em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
+            ss.addRule("h2 { font-size: 1.3em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
+            ss.addRule("h3 { font-size: 1.1em; }");
             ss.addRule("h4 { font-size: 1em; }");
 
             // Links
