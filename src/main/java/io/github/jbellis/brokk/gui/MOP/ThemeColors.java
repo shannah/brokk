@@ -31,17 +31,19 @@ public class ThemeColors {
         DARK_COLORS.put("custom_message_foreground", new Color(220, 220, 220));
         
         // HTML specific colors as hex strings
-        DARK_COLORS.put("link_color_hex", Color.decode("#88b3ff"));
+        DARK_COLORS.put("link_color_hex", Color.decode("#678cb1"));
         DARK_COLORS.put("border_color_hex", Color.decode("#555555"));
+        DARK_COLORS.put("codeHighlight", new Color(125, 140, 111));
+        DARK_COLORS.put("rsyntax_background", new Color(50, 50, 50));
 
         // Initialize light theme colors
         LIGHT_COLORS.put("chat_background", new Color(240, 240, 240));
         LIGHT_COLORS.put("message_background", new Color(250, 250, 250));
         LIGHT_COLORS.put("chat_text", new Color(30, 30, 30));
         LIGHT_COLORS.put("chat_header_text", new Color(51, 103, 214));
-        LIGHT_COLORS.put("message_border_custom", new Color(46, 100, 55));  // Green for system messages
-        LIGHT_COLORS.put("message_border_ai", new Color(128, 0, 128));      // Purple for AI messages
-        LIGHT_COLORS.put("message_border_user", new Color(0, 102, 204));    // Blue for user messages
+        LIGHT_COLORS.put("message_border_custom", new Color(46, 100, 55));
+        LIGHT_COLORS.put("message_border_ai", new Color(86,142,130));
+        LIGHT_COLORS.put("message_border_user", new Color(94, 125, 175));
         
         // Code and text colors
         LIGHT_COLORS.put("code_block_background", new Color(240, 240, 240));
@@ -51,8 +53,10 @@ public class ThemeColors {
         LIGHT_COLORS.put("custom_message_foreground", new Color(30, 30, 30));
         
         // HTML specific colors as hex strings
-        LIGHT_COLORS.put("link_color_hex", Color.decode("#0366d6"));
+        LIGHT_COLORS.put("link_color_hex", Color.decode("#678cb1"));
         LIGHT_COLORS.put("border_color_hex", Color.decode("#dddddd"));
+        LIGHT_COLORS.put("codeHighlight", new Color(125, 140, 111));
+        LIGHT_COLORS.put("rsyntax_background", Color.WHITE);
     }
     
     /**
