@@ -43,7 +43,7 @@ public record SessionResult(String actionDescription,
              originalContents,
              new Context.ParsedOutput(outputString,
                                       new ContextFragment.SessionFragment(
-                                              List.of(new TaskMessages(0, actionDescription, uiMessages == null ? messages : uiMessages, null)),
+                                              List.of(new TaskMessages(0, uiMessages == null ? messages : uiMessages, null)),
                                               actionDescription)),
              stopDetails);
     }

@@ -1479,18 +1479,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
-            logger.warn("History compression failed for entry '{}': {}", entry.description(),
-                        result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled");
+            logger.warn("History compression failed ({}) for entry: {}",
+                        result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled",
+                        entry);
             return entry;
         }
 
         String summary = result.chatResponse().aiMessage().text();
         if (summary == null || summary.isBlank()) {
-            logger.warn("History compression for entry '{}' resulted in empty summary.", entry.description());
+            logger.warn("History compression resulted in empty summary for entry: {}", entry);
             return entry;
         }
 
-        logger.debug("Compressed history entry '{}' to summary: {}", entry.description(), summary);
+        logger.debug("Compressed summary '{}' from entry: {}", summary, entry);
         return TaskMessages.fromCompressed(entry.sequence(), summary);
     }
 

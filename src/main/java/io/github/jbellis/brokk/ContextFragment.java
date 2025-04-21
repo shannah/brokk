@@ -427,7 +427,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public List<TaskMessages> getMessages() {
-            return List.of(new TaskMessages(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
+            return List.of(new TaskMessages(0, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 
@@ -483,7 +483,7 @@ public interface ContextFragment extends Serializable {
                     new UserMessage("# Query\n\n%s".formatted(query)),
                     new AiMessage("# Answer\n\n%s".formatted(explanation))
             );
-            return List.of(new TaskMessages(0, "Search", messages, null));
+            return List.of(new TaskMessages(0, messages, null));
         }
     }
 
@@ -561,7 +561,7 @@ public interface ContextFragment extends Serializable {
         @Override
         public List<TaskMessages> getMessages() {
             var description = descriptionFuture.isDone() ? description() : "Paste";
-            return List.of(new TaskMessages(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
+            return List.of(new TaskMessages(0, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 

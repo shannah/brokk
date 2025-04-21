@@ -17,19 +17,17 @@ import java.util.stream.Collectors;
  * The log can be compressed to save context space while retaining the most relevant information.
  * This record is serializable, using langchain4j's JSON serialization for ChatMessage lists.
  *
- * @param sequence      A unique sequence number for ordering tasks.
- * @param description   A short description of the user's request for this task.
- * @param log           The uncompressed list of chat messages for this task. Null if compressed.
- * @param summary The compressed representation of the chat messages (summary). Null if uncompressed.
+ * @param sequence A unique sequence number for ordering tasks.
+ * @param log      The uncompressed list of chat messages for this task. Null if compressed.
+ * @param summary  The compressed representation of the chat messages (summary). Null if uncompressed.
  */
-public record TaskMessages(int sequence, String description, List<ChatMessage> log, String summary) implements Serializable {
+public record TaskMessages(int sequence, List<ChatMessage> log, String summary) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L; // Initial version
     private static final System.Logger logger = System.getLogger(TaskMessages.class.getName());
 
     /** Enforce that exactly one of log or summary is non-null */
     public TaskMessages {
-        assert (description == null) == (log == null);
         assert (log == null) != (summary == null) : "Exactly one of log or summary must be non-null";
         assert log == null || !log.isEmpty();
         assert summary == null || !summary.isEmpty();
@@ -41,19 +39,14 @@ public record TaskMessages(int sequence, String description, List<ChatMessage> l
      * The first message *must* be a UserMessage, its content is stored as the `description`.
      * The remaining messages (AI responses, tool calls/results) are stored in the `log`.
      * The TaskEntry starts uncompressed.
-     *
-     * @param sequence The sequence number for this task.
-     * @param sessionMessages The full list of messages from the session, starting with the user's request.
-     *                        (So, NOT including system messages, workspace messages, example edit messages, etc.)
-     * @return A new TaskEntry instance.
      */
     public static TaskMessages fromSession(int sequence, SessionResult result) {
         assert result != null;
-        return new TaskMessages(sequence, result.actionDescription(), result.messages(), null);
+        return new TaskMessages(sequence, result.messages(), null);
     }
 
     public static TaskMessages fromCompressed(int sequence, String compressedLog) {
-        return new TaskMessages(sequence, null, null, compressedLog);
+        return new TaskMessages(sequence, null, compressedLog);
     }
 
     /**
@@ -81,11 +74,8 @@ public record TaskMessages(int sequence, String description, List<ChatMessage> l
         return """
           <task sequence=%s>
           %s
-          %s
           </task>
-          """.stripIndent().formatted(sequence,
-                        description.indent(2).stripTrailing(),
-                        logText.indent(2).stripTrailing());
+          """.stripIndent().formatted(sequence, logText.indent(2).stripTrailing());
     }
 
     public static @NotNull String formatMessages(List<ChatMessage> messages) {
@@ -129,13 +119,11 @@ public record TaskMessages(int sequence, String description, List<ChatMessage> l
         private static final long serialVersionUID = 1L;
 
         private final int sequence;
-        private final String description;
         private final String serializedLog; // Store log as JSON string
         private final String summary;
 
         SerializationProxy(TaskMessages taskMessages) {
             this.sequence = taskMessages.sequence();
-            this.description = taskMessages.description();
             this.summary = taskMessages.summary();
             // Serialize the log to JSON if it exists
             this.serializedLog = taskMessages.log() != null
@@ -151,10 +139,10 @@ public record TaskMessages(int sequence, String description, List<ChatMessage> l
             if (serializedLog != null) {
                 // Deserialize log from JSON
                 List<ChatMessage> deserializedLog = ChatMessageDeserializer.messagesFromJson(serializedLog);
-                return new TaskMessages(sequence, description, deserializedLog, null);
+                return new TaskMessages(sequence, deserializedLog, null);
             } else {
                 // Entry was compressed or had no log originally
-                return new TaskMessages(sequence, description, null, summary);
+                return new TaskMessages(sequence, null, summary);
             }
         }
     }
