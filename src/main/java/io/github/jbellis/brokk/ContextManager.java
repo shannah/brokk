@@ -1161,7 +1161,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
                 // Use quickModel for summarization
-                Coder.StreamingResult result = null; // Use instance field
+                Llm.StreamingResult result = null; // Use instance field
                 try {
                     result = getCoder(models.quickestModel(), "Summarize paste").sendRequest(msgs);
                 } catch (InterruptedException e) {
@@ -1191,7 +1191,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             protected String doInBackground() {
                 var msgs = SummarizerPrompts.instance.collectMessages(input, 5);
                 // Use quickModel for summarization
-                Coder.StreamingResult result = null; // Use instance field
+                Llm.StreamingResult result = null; // Use instance field
                 try {
                     result = getCoder(models.quickestModel(), input).sendRequest(msgs);
                 } catch (InterruptedException e) {
@@ -1234,7 +1234,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     var textContent = TextContent.from("Briefly describe this image in a few words (e.g., 'screenshot of code', 'diagram of system').");
                     var userMessage = UserMessage.from(textContent, imageContent);
                     List<ChatMessage> messages = List.of(userMessage);
-                    Coder.StreamingResult result = null;
+                    Llm.StreamingResult result = null;
                     try {
                         result = getCoder(models.quickModel(), "Summarize pasted image").sendRequest(messages);
                     } catch (InterruptedException e) {
@@ -1471,7 +1471,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Compress
         var historyString = entry.toString();
         var msgs = SummarizerPrompts.instance.compressHistory(historyString);
-        Coder.StreamingResult result = null;
+        Llm.StreamingResult result = null;
         try {
             result = getCoder(models.quickModel(), "Compress history entry").sendRequest(msgs);
         } catch (InterruptedException e) {

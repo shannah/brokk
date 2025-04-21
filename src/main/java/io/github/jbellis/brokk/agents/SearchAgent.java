@@ -57,7 +57,7 @@ public class SearchAgent {
     private final IAnalyzer analyzer;
     private final boolean interactive;
     private final ContextManager contextManager;
-    private final Coder coder;
+    private final Llm llm;
     private final IConsoleIO io;
     private final ToolRegistry toolRegistry;
 
@@ -90,7 +90,7 @@ public class SearchAgent {
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
         this.interactive = interactive;
-        this.coder = contextManager.getCoder(model, "Search: " + query);
+        this.llm = contextManager.getCoder(model, "Search: " + query);
         this.io = contextManager.getIo();
         this.toolRegistry = toolRegistry;
 
@@ -185,9 +185,9 @@ public class SearchAgent {
                     step.execResult.resultText()
             )));
 
-            Coder.StreamingResult result = null;
+            Llm.StreamingResult result = null;
             try {
-                result = coder.sendRequest(messages);
+                result = llm.sendRequest(messages);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -234,7 +234,7 @@ public class SearchAgent {
                        Make sure to include the fully qualified source (class, method, etc) as well as the code.
                        """.stripIndent()));
             messages.add(new UserMessage("<query>%s</query>\n\n".formatted(query) + contextWithClasses));
-            var result = coder.sendRequest(messages);
+            var result = llm.sendRequest(messages);
             if (result.error() != null) {
                 io.systemOutput("LLM error evaluating context: " + result.error().getMessage() + "; stopping search");
                 // Propagate cancellation or error
@@ -421,7 +421,7 @@ public class SearchAgent {
 
             ChatResponse response;
             try {
-                response = coder.sendRequest(messages).chatResponse();
+                response = llm.sendRequest(messages).chatResponse();
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -693,7 +693,7 @@ public class SearchAgent {
             // Pass an instance of the tools class, correct typo, add missing parenthesis
             tools.addAll(toolRegistry.getTools(this, List.of("answerSearch", "abortSearch")));
         }
-        var result = coder.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
+        var result = llm.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
 
         if (result.error() != null) {
             // Coder logs the error, return empty list to signal failure

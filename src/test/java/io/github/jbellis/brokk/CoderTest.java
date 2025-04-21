@@ -42,7 +42,7 @@ public class CoderTest {
         @Override public void hideOutputSpinner() {}
     }
 
-    private static Coder coder;
+    private static Llm llm;
     private static IContextManager contextManager; // Add field for ContextManager
 
     @TempDir
@@ -226,7 +226,7 @@ public class CoderTest {
 
         // Case 1: Single TERM followed by UserMessage
         var messages1 = List.of(user1, term1, user2);
-        var result1 = Coder.emulateToolExecutionResults(messages1);
+        var result1 = llm.emulateToolExecutionResults(messages1);
         assertEquals(2, result1.size());
         assertEquals(user1, result1.get(0));
         assertTrue(result1.get(1) instanceof UserMessage);
@@ -235,7 +235,7 @@ public class CoderTest {
 
         // Case 2: Multiple TERMs followed by UserMessage
         var messages2 = List.of(user1, term1, term2, user2);
-        var result2 = Coder.emulateToolExecutionResults(messages2);
+        var result2 = llm.emulateToolExecutionResults(messages2);
         assertEquals(2, result2.size());
         assertEquals(user1, result2.get(0));
         assertTrue(result2.get(1) instanceof UserMessage);
@@ -243,7 +243,7 @@ public class CoderTest {
 
         // Case 3: TERM followed by non-UserMessage (AiMessage)
         var messages3 = List.of(user1, term1, ai1, user2);
-        var result3 = Coder.emulateToolExecutionResults(messages3);
+        var result3 = llm.emulateToolExecutionResults(messages3);
         assertEquals(4, result3.size());
         assertEquals(user1, result3.get(0));
         assertTrue(result3.get(1) instanceof UserMessage);
@@ -253,7 +253,7 @@ public class CoderTest {
 
         // Case 4: Trailing TERM(s)
         var messages4 = List.of(user1, term1, user2, term4);
-        var result4 = Coder.emulateToolExecutionResults(messages4);
+        var result4 = llm.emulateToolExecutionResults(messages4);
         assertEquals(3, result4.size());
         assertEquals(user1, result4.get(0));
         assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nFollow-up based on results", Models.getText(result4.get(1)).stripIndent());
@@ -261,7 +261,7 @@ public class CoderTest {
 
         // Case 5: Multiple combinations and other messages, including combining multiple terms
         var messages5 = List.of(user1, term1, term2, user2, ai1, term3, term4, user3);
-        var result5 = Coder.emulateToolExecutionResults(messages5);
+        var result5 = llm.emulateToolExecutionResults(messages5);
         // Expected: user1, combined(message from term1,term2 and user2), ai1, combined(message from term3,term4 and user3)
         assertEquals(4, result5.size());
         assertEquals(user1, result5.get(0));
@@ -291,20 +291,20 @@ public class CoderTest {
 
         // Case 6: No TERMs
         var messages6 = List.of(user1, ai1, user2);
-        var result6 = Coder.emulateToolExecutionResults(messages6);
+        var result6 = llm.emulateToolExecutionResults(messages6);
         assertEquals(messages6, result6);
         assertEquals(messages6, result6, "List should be identical if unmodified");
 
         // Case 7: Only TERMs - creates a new UserMessage
         var messages7 = List.<ChatMessage>of(term1, term2);
-        var result7 = Coder.emulateToolExecutionResults(messages7);
+        var result7 = llm.emulateToolExecutionResults(messages7);
         assertEquals(1, result7.size());
         assertTrue(result7.get(0) instanceof UserMessage);
         assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\n<toolcall id=\"t2\" name=\"toolB\">\nResult B\n</toolcall>\n", Models.getText(result7.get(0)).stripIndent());
 
         // Case 8: TERM at the beginning followed by UserMessage
         var messages8 = List.of(term1, user1);
-        var result8 = Coder.emulateToolExecutionResults(messages8);
+        var result8 = llm.emulateToolExecutionResults(messages8);
         assertEquals(1, result8.size());
         assertTrue(result8.get(0) instanceof UserMessage);
         assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nInitial request", Models.getText(result8.get(0)).stripIndent());

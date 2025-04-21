@@ -10,7 +10,7 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import io.github.jbellis.brokk.Coder;
+import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
@@ -28,7 +28,7 @@ public class BuildAgent {
     private static final Logger logger = LogManager.getLogger(BuildAgent.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private final Coder coder;
+    private final Llm llm;
     // Primarily for listFiles tool via SearchTools
     private final StreamingChatLanguageModel model;
     private final ToolRegistry toolRegistry;
@@ -41,11 +41,11 @@ public class BuildAgent {
     // Field to store the reason from the abortBuildDetails tool
     private String abortReason = null;
 
-    public BuildAgent(ContextManager contextManager, Coder coder, ToolRegistry toolRegistry) {
+    public BuildAgent(ContextManager contextManager, Llm llm, ToolRegistry toolRegistry) {
         this.contextManager = contextManager;
-        assert coder != null : "coder cannot be null";
+        assert llm != null : "coder cannot be null";
         assert toolRegistry != null : "toolRegistry cannot be null";
-        this.coder = coder;
+        this.llm = llm;
         this.toolRegistry = toolRegistry;
         // Get Models instance from coder and call instance method
         this.model = contextManager.getModels().quickModel();
@@ -83,9 +83,9 @@ public class BuildAgent {
             }
 
             // Call the Coder to get the LLM's response, including potential tool calls
-            Coder.StreamingResult result;
+            Llm.StreamingResult result;
             try {
-                result = coder.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
+                result = llm.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.error("Unexpected request cancellation in build agent");

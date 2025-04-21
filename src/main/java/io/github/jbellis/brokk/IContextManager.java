@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
@@ -11,7 +10,6 @@ import io.github.jbellis.brokk.tools.ToolRegistry;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -79,8 +77,8 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default Coder getCoder(StreamingChatLanguageModel model, String taskDescription) {
-        return new Coder(model, taskDescription, this);
+    default Llm getCoder(StreamingChatLanguageModel model, String taskDescription) {
+        return new Llm(model, taskDescription, this);
     }
 
     default IAnalyzer getAnalyzerUninterrupted() {

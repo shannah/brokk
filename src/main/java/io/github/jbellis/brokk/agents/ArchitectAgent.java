@@ -21,7 +21,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -201,7 +200,7 @@ public class ArchitectAgent {
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject", "callCodeAgent", "callSearchAgent")));
 
             // 5) Ask the LLM for the next step with tools required
-            Coder.StreamingResult result;
+            Llm.StreamingResult result;
             try {
                 result = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
             } catch (InterruptedException e) {

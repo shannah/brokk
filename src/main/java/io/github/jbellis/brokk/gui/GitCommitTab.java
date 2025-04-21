@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Coder;
+import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
@@ -686,7 +686,7 @@ public class GitCommitTab extends JPanel {
         }
 
         // Use quickest model for commit messages via ContextManager
-        Coder.StreamingResult result;
+        Llm.StreamingResult result;
         try {
             result = contextManager.getCoder(contextManager.getModels().quickestModel(), "Infer commit message").sendRequest(messages);
         } catch (InterruptedException e) {

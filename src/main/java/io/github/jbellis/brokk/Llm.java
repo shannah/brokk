@@ -50,8 +50,8 @@ import static io.github.jbellis.brokk.SessionResult.getShortDescription;
  * The main orchestrator for sending requests to an LLM, possibly with tools, collecting
  * streaming responses, etc.
  */
-public class Coder {
-    private static final Logger logger = LogManager.getLogger(Coder.class);
+public class Llm {
+    private static final Logger logger = LogManager.getLogger(Llm.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final IConsoleIO io;
@@ -60,7 +60,7 @@ public class Coder {
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
     private final StreamingChatLanguageModel model;
 
-    public Coder(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager) {
+    public Llm(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager) {
         this.model = model;
         this.contextManager = contextManager;
         this.io = contextManager.getIo();
@@ -327,7 +327,7 @@ public class Coder {
         // This handles the case where prior TERMs exist in history but the current
         // request doesn't involve tools (which makes Anthropic unhappy if it sees it).
         if (tools.isEmpty()) {
-            messagesToSend = Coder.emulateToolExecutionResults(messages);
+            messagesToSend = Llm.emulateToolExecutionResults(messages);
         }
 
         if (!tools.isEmpty() && contextManager.getModels().requiresEmulatedTools(model)) {
@@ -384,7 +384,7 @@ public class Coder {
         assert !tools.isEmpty();
 
         // Preprocess messages to combine tool results with subsequent user messages for emulation
-        List<ChatMessage> initialProcessedMessages = Coder.emulateToolExecutionResults(messages);
+        List<ChatMessage> initialProcessedMessages = Llm.emulateToolExecutionResults(messages);
 
         // We'll do up to 3 tries
         int maxTries = 3;

@@ -5,7 +5,7 @@ package io.github.jbellis.brokk.agents;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.Coder;
+import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
@@ -14,9 +14,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -72,7 +70,7 @@ public class ValidationAgent {
     /**
      * Step 1: Asks the LLM to identify which test files from a list MIGHT be relevant.
      */
-    private List<ProjectFile> getPotentiallyRelevantFiles(List<ProjectFile> allTestFiles, String instructions, Coder coder) throws InterruptedException {
+    private List<ProjectFile> getPotentiallyRelevantFiles(List<ProjectFile> allTestFiles, String instructions, Llm llm) throws InterruptedException {
         var filesText = allTestFiles.stream()
                 .map(ProjectFile::toString)
                 .collect(Collectors.joining("\n"));
@@ -97,7 +95,7 @@ public class ValidationAgent {
         // send the request
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
         logger.debug("Invoking quickModel via Coder for initial test file filtering. Prompt:\n{}", userMessage);
-        var result = coder.sendRequest(messages);
+        var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error during initial test file filtering call: {}", result.error() != null ? result.error().getMessage() : "Empty response");
@@ -128,10 +126,10 @@ public class ValidationAgent {
     /**
      * Step 2: Checks a list of potentially relevant files in parallel to confirm relevance using a parallel stream.
      */
-    private List<ProjectFile> checkFilesForRelevance(List<ProjectFile> potentialFiles, String instructions, Coder coder) {
+    private List<ProjectFile> checkFilesForRelevance(List<ProjectFile> potentialFiles, String instructions, Llm llm) {
         // Use a parallel stream to check files for relevance concurrently
         return potentialFiles.stream().parallel()
-                .map(file -> isFileRelevant(file, instructions, coder))
+                .map(file -> isFileRelevant(file, instructions, llm))
                 .filter(result -> result.relevant)
                 .map(result -> result.file)
                 .collect(Collectors.toList());
@@ -147,7 +145,7 @@ public class ValidationAgent {
      * Asks the LLM if a specific test file is relevant to the instructions, given its content.
      * Retries if the LLM response doesn't clearly indicate relevance or irrelevance.
      */
-    private RelevanceResult isFileRelevant(ProjectFile file, String instructions, Coder coder) {
+    private RelevanceResult isFileRelevant(ProjectFile file, String instructions, Llm llm) {
         String fileContent;
         try {
             // Use Files.readString to read content; handle potential IOException
@@ -181,9 +179,9 @@ public class ValidationAgent {
         for (int attempt = 1; attempt <= MAX_RELEVANCE_TRIES; attempt++) {
             logger.debug("Invoking quickModel via Coder for relevance check of file: {} (Attempt {}/{})", file, attempt, MAX_RELEVANCE_TRIES);
             // Use Coder to send the request
-            Coder.StreamingResult result;
+            Llm.StreamingResult result;
             try {
-                result = coder.sendRequest(messages);
+                result = llm.sendRequest(messages);
             } catch (InterruptedException e) {
                 // normally we want to propagate request interruptions, but this is running in the parallel thread pool
                 // so we don't expect to be interrupted

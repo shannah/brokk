@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Coder;
 import io.github.jbellis.brokk.ContextManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
