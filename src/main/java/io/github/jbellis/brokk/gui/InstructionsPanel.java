@@ -4,7 +4,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.Context.ParsedOutput;
+import io.github.jbellis.brokk.ContextFragment.SessionFragment;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
@@ -459,10 +459,8 @@ public class InstructionsPanel extends JPanel {
                 if (aiResponse.text() != null && !aiResponse.text().isBlank()) {
                     // Construct SessionResult for 'Ask'
                     var sessionResult = new SessionResult("Ask: " + question,
-                                                          List.of(messages.getLast(), aiResponse),
                                                           List.copyOf(chrome.getLlmRawMessages()),
                                                           Map.of(), // No undo contents for Ask
-                                                          chrome.getLlmOutputText(),
                                                           new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
                     contextManager.addToHistory(sessionResult, false);
                 } else {
@@ -481,12 +479,9 @@ public class InstructionsPanel extends JPanel {
     private void maybeAddInterruptedResult(String action, String input) {
         if (chrome.getLlmRawMessages().stream().anyMatch(m -> m instanceof AiMessage)) {
             logger.debug("Ask command cancelled with partial results");
-            var outputSoFar = chrome.getLlmOutputText();
             var sessionResult = new SessionResult("%s (Cancelled): %s".formatted(action, input),
                                                   List.copyOf(chrome.getLlmRawMessages()),
-                                                  List.copyOf(chrome.getLlmRawMessages()),
                                                   Map.of(),
-                                                  outputSoFar,
                                                   new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED));
             chrome.getContextManager().addToHistory(sessionResult, false);
         }
@@ -527,7 +522,7 @@ public class InstructionsPanel extends JPanel {
             var result = agent.execute();
             assert result != null;
             // Search does not stream to llmOutput, so set the final answer here
-            chrome.setLlmOutput(List.of(new AiMessage(result.output().text())));
+            chrome.setLlmOutput(result.output().messages());
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
             chrome.toolErrorRaw("Search agent interrupted without answering");
@@ -548,14 +543,13 @@ public class InstructionsPanel extends JPanel {
             return;
         }
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-        var wrappedPutput = "\n```\n" + output + "\n```";
-        chrome.llmOutput(wrappedPutput, ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
+        var wrappedOutput = "\n```\n" + output + "\n```";
+        chrome.llmOutput(wrappedOutput, ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
 
         // Add to context history with the output text
         var llmOutputText = chrome.getLlmOutputText();
         contextManager.pushContext(ctx -> {
-            var runFrag = new ContextFragment.StringFragment(wrappedPutput, "Run " + input, SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
-            var parsed = new ParsedOutput(llmOutputText, runFrag);
+            var parsed = new ContextFragment.SessionFragment(List.of(new UserMessage(input), new AiMessage(llmOutputText)), wrappedOutput);
             return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
         });
     }

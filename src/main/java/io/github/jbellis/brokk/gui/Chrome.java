@@ -5,12 +5,11 @@ import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
+import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -314,8 +313,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         SwingUtilities.invokeLater(() -> {
             contextPanel.populateContextTable(ctx);
             if (resetOutput) {
-                if (ctx.getParsedOutput() != null && ctx.getParsedOutput().parsedFragment() instanceof ContextFragment.OutputFragment) {
-                    historyOutputPanel.resetLlmOutput(((ContextFragment.OutputFragment) ctx.getParsedOutput().parsedFragment()).getMessages().getFirst());    
+                if (ctx.getParsedOutput() != null) {
+                    historyOutputPanel.resetLlmOutput(ctx.getParsedOutput().messages());
                 } else {
                     historyOutputPanel.clearLlmOutput();
                 }
@@ -574,36 +573,33 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
                 PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
                 showPreviewFrame(contextManager, title, previewPanel); // Use helper
-            } else {
-                // Handle fragments that implement OutputFragment
-                if (fragment instanceof ContextFragment.OutputFragment outputFragment && fragment.syntaxStyle() == SyntaxConstants.SYNTAX_STYLE_MARKDOWN) {
-                    // Create a panel to hold all message panels
-                    JPanel messagesContainer = new JPanel();
-                    messagesContainer.setLayout(new BoxLayout(messagesContainer, BoxLayout.Y_AXIS));
-                    messagesContainer.setBackground(themeManager != null && themeManager.isDarkTheme() ?
-                                                    UIManager.getColor("Panel.background") : Color.WHITE);
+            } else if (fragment instanceof ContextFragment.OutputFragment outputFragment) {
+                // Create a panel to hold all message panels
+                JPanel messagesContainer = new JPanel();
+                messagesContainer.setLayout(new BoxLayout(messagesContainer, BoxLayout.Y_AXIS));
+                messagesContainer.setBackground(themeManager != null && themeManager.isDarkTheme() ?
+                                                UIManager.getColor("Panel.background") : Color.WHITE);
 
-                    // Get all messages and create a MarkdownOutputPanel for each
-                    List<TaskMessages> taskEntries = outputFragment.getMessages();
-                    for (TaskMessages entry : taskEntries) {
-                        var markdownPanel = new MarkdownOutputPanel();
-                        markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
-                        markdownPanel.setText(entry.log());
-                        markdownPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.GRAY));
-                        messagesContainer.add(markdownPanel);
-                    }
-
-                    // Wrap in a scroll pane
-                    var scrollPane = new JScrollPane(messagesContainer);
-                    scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-                    scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-
-                    showPreviewFrame(contextManager, title, scrollPane); // Use helper
-                } else {
-                    // Use PreviewTextPanel for other virtual/plain text fragments
-                    var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);
-                    showPreviewFrame(contextManager, title, previewPanel); // Use helper
+                // Get all messages and create a MarkdownOutputPanel for each
+                List<TaskMessages> taskEntries = outputFragment.entries();
+                for (TaskMessages entry : taskEntries) {
+                    var markdownPanel = new MarkdownOutputPanel();
+                    markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
+                    markdownPanel.setText(entry.log());
+                    markdownPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.GRAY));
+                    messagesContainer.add(markdownPanel);
                 }
+
+                // Wrap in a scroll pane
+                var scrollPane = new JScrollPane(messagesContainer);
+                scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+                scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+
+                showPreviewFrame(contextManager, title, scrollPane); // Use helper
+            } else {
+                // Use PreviewTextPanel for other virtual/plain text fragments
+                var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);
+                showPreviewFrame(contextManager, title, previewPanel); // Use helper
             }
         } catch (IOException ex) {
             toolErrorRaw("Error reading fragment content: " + ex.getMessage());

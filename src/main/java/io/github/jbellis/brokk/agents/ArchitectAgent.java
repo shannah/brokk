@@ -155,7 +155,7 @@ public class ArchitectAgent {
             return result.stopDetails().toString();
         }
 
-        var relevantClasses = result.output().parsedFragment().sources(contextManager.getProject()).stream()
+        var relevantClasses = result.output().sources(contextManager.getProject()).stream()
                 .map(CodeUnit::fqName)
                 .collect(Collectors.joining(","));
         var stringResult = """
@@ -163,9 +163,9 @@ public class ArchitectAgent {
                 
                 Full list of potentially relevant classes:
                 %s
-                """.stripIndent().formatted(result.output().text(), relevantClasses);
-
+                """.stripIndent().formatted(TaskMessages.formatMessages(result.output().messages()), relevantClasses);
         logger.debug(stringResult);
+
         return stringResult;
     }
 

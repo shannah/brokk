@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.util.Arrays;
 import java.util.List;
@@ -10,41 +11,27 @@ import java.util.Map;
 /**
  * Represents the outcome of a CodeAgent session, containing all necessary information
  * to update the context history.
- *
- * @param actionDescription A description of the user's goal for the session.
- * @param messages          The list of chat messages exchanged during the session.
- * @param originalContents  A map of project files to their original content before edits.
- * @param finalLlmOutput    The final raw text output from the LLM.
- * @param stopDetails       The reason the session concluded.
  */
 public record SessionResult(String actionDescription,
-                            List<ChatMessage> messages, // for Task History context
                             Map<ProjectFile, String> originalContents, // for undo
-                            Context.ParsedOutput output,
+                            ContextFragment.SessionFragment output,
                             StopDetails stopDetails)
 {
     public SessionResult {
         assert actionDescription != null;
-        assert messages != null;
         assert originalContents != null;
         assert output != null;
         assert stopDetails != null;
     }
 
     public SessionResult(String actionDescription,
-                         List<ChatMessage> messages,
                          List<ChatMessage> uiMessages,
                          Map<ProjectFile, String> originalContents,
-                         String outputString,
                          StopDetails stopDetails)
     {
         this(actionDescription,
-             messages,
              originalContents,
-             new Context.ParsedOutput(outputString,
-                                      new ContextFragment.SessionFragment(
-                                              List.of(new TaskMessages(0, uiMessages == null ? messages : uiMessages, null)),
-                                              actionDescription)),
+             new ContextFragment.SessionFragment(uiMessages, actionDescription),
              stopDetails);
     }
 

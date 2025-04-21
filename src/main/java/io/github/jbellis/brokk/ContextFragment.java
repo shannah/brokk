@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.CustomMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
@@ -93,10 +93,6 @@ public interface ContextFragment extends Serializable {
                 .collect(Collectors.toSet());
     }
 
-    sealed interface OutputFragment permits ConversationFragment, SessionFragment, StringFragment, PasteTextFragment, SearchFragment {
-        List<TaskMessages> getMessages();
-    }
-
     sealed interface PathFragment extends ContextFragment
             permits ProjectPathFragment, GitFileFragment, ExternalPathFragment, ImageFileFragment {
         BrokkFile file();
@@ -112,7 +108,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        default public String syntaxStyle() {
+        default String syntaxStyle() {
             return FileTypeUtil.get().guessContentType(file().absPath().toFile());
         }
 
@@ -390,10 +386,10 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    final class StringFragment extends VirtualFragment implements OutputFragment {
-            private static final long serialVersionUID = 3L;
-            private final String text;
-            private final String description;
+    class StringFragment extends VirtualFragment {
+        private static final long serialVersionUID = 3L;
+        private final String text;
+        private final String description;
         private final String syntaxStyle;
 
         public StringFragment(String text, String description, String syntaxStyle) {
@@ -424,32 +420,20 @@ public interface ContextFragment extends Serializable {
         public String toString() {
             return "StringFragment('%s')".formatted(description);
         }
-
-        @Override
-        public List<TaskMessages> getMessages() {
-            return List.of(new TaskMessages(0, List.of(new CustomMessage(Map.of("text", text))), null));
-        }
     }
 
-    final class SearchFragment extends VirtualFragment implements OutputFragment {
-            private static final long serialVersionUID = 3L;
-            private final String query;
-            private final String explanation;
+    class SearchFragment extends SessionFragment {
+        private static final long serialVersionUID = 4L;
+        private final String query;
+        private final String explanation;
         private final Set<CodeUnit> sources;
 
         public SearchFragment(String query, String explanation, Set<CodeUnit> sources) {
-            super();
-            assert query != null;
-            assert explanation != null;
+            super(List.of(new UserMessage(query), new AiMessage(explanation)), query);
             assert sources != null;
             this.query = query;
             this.explanation = explanation;
             this.sources = sources;
-        }
-
-        @Override
-        public String text() {
-            return explanation;
         }
 
         @Override
@@ -466,30 +450,9 @@ public interface ContextFragment extends Serializable {
         public String description() {
             return "Search: " + query;
         }
-
-        @Override
-        public String syntaxStyle() {
-            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
-        }
-
-        @Override
-        public String toString() {
-            return "SearchFragment('%s')".formatted(query);
-        }
-
-        @Override
-        public List<TaskMessages> getMessages() {
-            var messages = List.of(
-                    new UserMessage("# Query\n\n%s".formatted(query)),
-                    new AiMessage("# Answer\n\n%s".formatted(explanation))
-            );
-            return List.of(new TaskMessages(0, messages, null));
-        }
     }
 
     abstract class PasteFragment extends ContextFragment.VirtualFragment {
-        private static final long serialVersionUID = 1L;
-
         protected transient Future<String> descriptionFuture;
 
         public PasteFragment(Future<String> descriptionFuture) {
@@ -536,9 +499,9 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    final class PasteTextFragment extends PasteFragment implements OutputFragment {
-            private static final long serialVersionUID = 4L;
-            private final String text;
+    class PasteTextFragment extends PasteFragment {
+        private static final long serialVersionUID = 4L;
+        private final String text;
 
         public PasteTextFragment(String text, Future<String> descriptionFuture) {
             super(descriptionFuture);
@@ -556,12 +519,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public String text() {
             return text;
-        }
-
-        @Override
-        public List<TaskMessages> getMessages() {
-            var description = descriptionFuture.isDone() ? description() : "Paste";
-            return List.of(new TaskMessages(0, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 
@@ -788,12 +745,12 @@ public interface ContextFragment extends Serializable {
               %s
               </summary>
               """.stripIndent().formatted(
-                      skeletons.keySet().stream()
+                    skeletons.keySet().stream()
                               .map(CodeUnit::fqName)
                               .sorted()
                               .collect(Collectors.joining(", ")),
-                      id(),
-                      text()
+                    id(),
+                    text()
               );
         }
 
@@ -808,26 +765,32 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    /** Base class for fragments that represent task history */
-        abstract class TaskHistoryFragment extends VirtualFragment {
-            private static final long serialVersionUID = 4L;
-            protected final List<TaskMessages> history;
+    interface OutputFragment {
+        List<TaskMessages> entries();
+    }
 
-        public TaskHistoryFragment(List<TaskMessages> history) {
+    /**
+     * represents the entire Task History
+     */
+    class HistoryFragment extends VirtualFragment implements OutputFragment {
+        private static final long serialVersionUID = 3L;
+        private final List<TaskMessages> history;
+
+        public HistoryFragment(List<TaskMessages> history) {
             super();
             assert history != null;
             this.history = List.copyOf(history);
         }
 
-        public List<TaskMessages> getMessages() {
+        public List<TaskMessages> entries() {
             return history;
         }
 
         @Override
         public String text() {
-            return history.stream()
-                    .map(TaskMessages::toString)
-                    .collect(Collectors.joining("\n\n"));
+            // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
+            // but lots of stuff breaks without text(), so I am putting that off for another refactor
+            return TaskMessages.formatMessages(history.stream().flatMap(e -> e.log().stream()).toList());
         }
 
         @Override
@@ -838,6 +801,11 @@ public interface ContextFragment extends Serializable {
         @Override
         public Set<ProjectFile> files(IProject project) {
             return Set.of();
+        }
+
+        @Override
+        public String description() {
+            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
         }
 
         @Override
@@ -855,48 +823,51 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public String toString() {
+            return "ConversationFragment(" + history.size() + " tasks)";
+        }
+
+        @Override
         public String syntaxStyle() {
             return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
         }
     }
 
-    /** represents the entire Task History */
-        final class ConversationFragment extends TaskHistoryFragment implements OutputFragment {
-            private static final long serialVersionUID = 4L;
-    
-            public ConversationFragment(List<TaskMessages> history) {
-            super(history);
-        }
-
-        @Override
-        public String description() {
-            return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
-        }
-
-        @Override
-        public String toString() {
-            return "ConversationFragment(" + history.size() + " tasks)";
-        }
-    }
-
     /** represents a single session's Task History */
-        final class SessionFragment extends TaskHistoryFragment implements OutputFragment {
-            private static final long serialVersionUID = 4L;
-            private final String sessionName;
+    class SessionFragment extends VirtualFragment implements OutputFragment {
+        private static final long serialVersionUID = 5L;
+        private final List<ChatMessage> messages;
+        private final String sessionName;
 
-        public SessionFragment(List<TaskMessages> history, String sessionName) {
-            super(history);
+        public SessionFragment(List<ChatMessage> messages, String sessionName) {
+            super();
+            this.messages = messages;
             this.sessionName = sessionName;
         }
 
         @Override
         public String description() {
-            return "AI response: " + sessionName;
+            return sessionName;
         }
 
         @Override
-        public String toString() {
-            return "SessionFragment(" + sessionName + ")";
+        public String text() {
+            // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
+            // but lots of stuff breaks without text(), so I am putting that off for another refactor
+            return TaskMessages.formatMessages(messages);
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
+        }
+
+        public List<ChatMessage> messages() {
+            return messages;
+        }
+
+        public List<TaskMessages> entries() {
+            return List.of(new TaskMessages(-1, messages, null));
         }
     }
 

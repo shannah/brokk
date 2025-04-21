@@ -23,7 +23,6 @@ import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import scala.Option;
 import scala.Tuple2;
 
@@ -382,18 +381,10 @@ public class SearchAgent {
     }
 
     private SessionResult errorResult(SessionResult.StopDetails details, String explanation) {
-        var fragment = new ContextFragment.StringFragment(explanation, "%s: %s".formatted(details.reason(), query), SyntaxConstants.SYNTAX_STYLE_MARKDOWN);
         return new SessionResult("Search: " + query,
-                                 forgeMessagesForResult(),
                                  Map.of(),
-                                 new Context.ParsedOutput("# Query\n\n%s\n\n# No Answer\n%s\n".formatted(query, details.explanation()), fragment),
+                                 new ContextFragment.SessionFragment(List.of(new UserMessage(query), new AiMessage(explanation)), query),
                                  details);
-    }
-
-    private List<ChatMessage> forgeMessagesForResult() {
-        return actionHistory.stream()
-                .map(the -> (ChatMessage) new AiMessage(Models.getRepr(the.request)))
-                .toList();
     }
 
     /**
@@ -1191,9 +1182,8 @@ public class SearchAgent {
         logger.debug("Final sources identified (files): {}", sources.stream().map(CodeUnit::source).toList());
         var fragment = new ContextFragment.SearchFragment(query, explanationText, sources);
         return new SessionResult("Search: " + query,
-                                 forgeMessagesForResult(),
                                  Map.of(),
-                                 new Context.ParsedOutput("# Query\n\n%s\n\n# Answer\n\n%s\n".formatted(query, explanationText), fragment),
+                                 fragment,
                                  new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
     }
 

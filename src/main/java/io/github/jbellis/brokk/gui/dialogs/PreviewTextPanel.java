@@ -761,7 +761,7 @@ public class PreviewTextPanel extends JPanel {
                                              String selectedText) throws ExecutionException, InterruptedException {
         var sessionResult = future.get(); // might throw InterruptedException or ExecutionException
         var stopDetails = sessionResult.stopDetails();
-        quickEditMessages = sessionResult.messages(); // Capture messages regardless of outcome
+        quickEditMessages = sessionResult.output().messages(); // Capture messages regardless of outcome
 
         // If the LLM itself was not successful, return the error
         if (stopDetails.reason() != SessionResult.StopReason.SUCCESS) {
@@ -955,9 +955,7 @@ public class PreviewTextPanel extends JPanel {
             var saveResult = new SessionResult(
                     diffOutput,                      // Action description -- will be summarized by LLM
                     quickEditMessages,               // Use collected messages
-                    null,
                     Map.of(file, contentBeforeSave), // Content before this save
-                    "```\n" + diffOutput + "\n```",  // llmoutput
                     new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS)
             );
             contextManager.addToHistory(saveResult, false); // Add to history, don't compress

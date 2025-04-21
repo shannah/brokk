@@ -1,12 +1,9 @@
 package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.AiMessage;
-import io.github.jbellis.brokk.Context;
-import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
@@ -279,7 +276,7 @@ public class ContextPanel extends JPanel {
                                     chrome.getGitPanel().addFileHistoryTab(ppf.file());
                                 });
                                 contextMenu.add(viewHistoryItem);
-                            } else if (fragmentToShow instanceof ContextFragment.ConversationFragment cf) {
+                            } else if (fragmentToShow instanceof ContextFragment.HistoryFragment cf) {
                                 // Add Compress History option for conversation fragment
                                 JMenuItem compressHistoryItem = new JMenuItem("Compress History");
                                 compressHistoryItem.addActionListener(e1 -> {
@@ -288,7 +285,7 @@ public class ContextPanel extends JPanel {
                                 });
                                 contextMenu.add(compressHistoryItem);
                                 // Only enable if uncompressed entries exist
-                                var uncompressedExists = cf.getMessages().stream().anyMatch(entry -> !entry.isCompressed());
+                                var uncompressedExists = cf.entries().stream().anyMatch(entry -> !entry.isCompressed());
                                 compressHistoryItem.setEnabled(uncompressedExists);
                             }
                         }
@@ -1093,7 +1090,7 @@ public class ContextPanel extends JPanel {
             boolean clearHistory = false;
 
             for (var frag : selectedFragments) {
-                if (frag instanceof ContextFragment.ConversationFragment) {
+                if (frag instanceof ContextFragment.HistoryFragment) {
                     clearHistory = true;
                 } else if (frag instanceof ContextFragment.AutoContext) {
                     contextManager.setAutoContextFiles(0); // Qualify contextManager

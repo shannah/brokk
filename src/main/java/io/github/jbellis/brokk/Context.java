@@ -1,15 +1,17 @@
 package io.github.jbellis.brokk;
 
 import com.google.common.collect.Streams;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.CustomMessage;
+import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
-import io.github.jbellis.brokk.ContextFragment.ConversationFragment;
+import io.github.jbellis.brokk.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -55,7 +57,7 @@ public class Context implements Serializable {
     transient final Map<ProjectFile, String> originalContents;
 
     /** LLM output or other parsed content, with optional fragment. May be null */
-    transient final ParsedOutput parsedOutput;
+    transient final ContextFragment.SessionFragment parsedOutput;
 
     /** description of the action that created this context, can be a future (like PasteFragment) */
     transient final Future<String> action;
@@ -65,14 +67,6 @@ public class Context implements Serializable {
      * Used to track identity across asynchronous autocontext refresh
      */
     transient final int id;
-
-    public record ParsedOutput(String text, ContextFragment.VirtualFragment parsedFragment) {
-        public ParsedOutput {
-            assert text != null;
-            assert !text.isBlank(); // at the very least we should have the preamble we populate it with
-            assert parsedFragment != null;
-        }
-    }
 
     /**
      * Constructor for initial empty context
@@ -91,8 +85,9 @@ public class Context implements Serializable {
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
 
-    private static @NotNull ParsedOutput getWelcomeOutput(String initialOutputText) {
-        return new ParsedOutput(initialOutputText, new ContextFragment.StringFragment(initialOutputText, "Welcome", SyntaxConstants.SYNTAX_STYLE_MARKDOWN));
+    private static @NotNull ContextFragment.SessionFragment getWelcomeOutput(String initialOutputText) {
+        var messages = List.<ChatMessage>of(new CustomMessage(Map.of("text", initialOutputText)));
+        return new ContextFragment.SessionFragment(messages, "Welcome");
     }
 
     /**
@@ -111,7 +106,7 @@ public class Context implements Serializable {
                     int autoContextFileCount,
                     List<TaskMessages> taskHistory,
                     Map<ProjectFile, String> originalContents,
-                    ParsedOutput parsedOutput,
+                    ContextFragment.SessionFragment parsedOutput,
                     Future<String> action)
     {
         assert id > 0;
@@ -519,7 +514,7 @@ public class Context implements Serializable {
      * @param action           A future describing the action that created this history entry.
      * @return A new Context instance with the added task history.
      */
-    public Context addHistoryEntry(TaskMessages taskMessages, ParsedOutput parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
+    public Context addHistoryEntry(TaskMessages taskMessages, ContextFragment.SessionFragment parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
         var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(taskMessages)).toList();
         return new Context(newId(),
                            contextManager,
@@ -606,7 +601,7 @@ public class Context implements Serializable {
 
         // Then conversation history
         if (!taskHistory.isEmpty()) {
-            result.add(new ConversationFragment(taskHistory));
+            result.add(new HistoryFragment(taskHistory));
         }
 
         // Then include autoContext
@@ -622,7 +617,7 @@ public class Context implements Serializable {
         return result;
     }
 
-    public Context withParsedOutput(ParsedOutput parsedOutput, Future<String> action) {
+    public Context withParsedOutput(ContextFragment.SessionFragment parsedOutput, Future<String> action) {
         return new Context(newId(),
                            contextManager,
                            editableFiles,
@@ -658,7 +653,7 @@ public class Context implements Serializable {
                            CompletableFuture.completedFuture("Compressed History")).refresh(); // Call refresh to potentially update autoContext
     }
 
-    public ParsedOutput getParsedOutput() {
+    public ContextFragment.SessionFragment getParsedOutput() {
         return parsedOutput;
     }
 

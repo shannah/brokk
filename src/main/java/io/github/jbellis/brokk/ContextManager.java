@@ -649,7 +649,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             try {
                 var selectedCtx = selectedContext();
                 if (selectedCtx != null && selectedCtx.getParsedOutput() != null) {
-                    addVirtualFragment(selectedCtx.getParsedOutput().parsedFragment());
+                    addVirtualFragment(selectedCtx.getParsedOutput());
                     io.systemOutput("Content captured from output");
                 } else {
                     io.toolErrorRaw("No content to capture");
@@ -1102,7 +1102,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return newContext;
         }
 
-        var cf = new ContextFragment.ConversationFragment(newContext.getTaskHistory());
+        var cf = new ContextFragment.HistoryFragment(newContext.getTaskHistory());
         int tokenCount = Models.getApproximateTokens(cf.format());
         if (tokenCount > 32 * 1024) {
             // Show a dialog asking if we should compress the history
@@ -1503,7 +1503,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public TaskMessages addToHistory(SessionResult result, boolean compress) {
         assert result != null;
-        if (result.messages().isEmpty()) {
+        if (result.output().messages().isEmpty()) {
             logger.debug("Skipping adding empty session result to history.");
             return null;
         }
@@ -1526,7 +1526,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     @Override
-    public void addToGit(List<ProjectFile> files) throws IOException {
+    public void addToGit(List<ProjectFile> files) {
         try {
             project.getRepo().add(files);
         } catch (GitAPIException e) {

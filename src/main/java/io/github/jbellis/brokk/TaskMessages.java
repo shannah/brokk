@@ -42,7 +42,7 @@ public record TaskMessages(int sequence, List<ChatMessage> log, String summary) 
      */
     public static TaskMessages fromSession(int sequence, SessionResult result) {
         assert result != null;
-        return new TaskMessages(sequence, result.messages(), null);
+        return new TaskMessages(sequence, result.output().messages(), null);
     }
 
     public static TaskMessages fromCompressed(int sequence, String compressedLog) {
