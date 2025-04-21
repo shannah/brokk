@@ -18,6 +18,11 @@ public interface IConsoleIO {
     void toolErrorRaw(String msg);
 
     public enum MessageSubType {
+        Run,
+        Ask,
+        Code,
+        Agent,
+        Search,
         BuildError,
         CommandOutput
     }

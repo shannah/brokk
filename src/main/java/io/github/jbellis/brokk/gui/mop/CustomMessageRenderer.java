@@ -1,11 +1,10 @@
-package io.github.jbellis.brokk.gui.MOP;
+package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.ChatMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.border.Border;
 import java.awt.*;
 
 /**
@@ -15,17 +14,17 @@ public class CustomMessageRenderer implements MessageComponentRenderer {
     private static final Logger logger = LogManager.getLogger(CustomMessageRenderer.class);
 
     @Override
-    public Component renderComponent(ChatMessage message, Color textBackgroundColor, boolean isDarkTheme) {
+    public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
         // Create content panel
         String content = MarkdownRenderUtil.getMessageContent(message);
         var contentPanel = MarkdownRenderUtil.renderMarkdownContent(content, isDarkTheme);
         
         // Apply special styling for system messages
-            JPanel customPanel = new JPanel();
-            customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
-            customPanel.setBackground(isDarkTheme ? new Color(60, 60, 60) : new Color(245, 245, 245));
-            customPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            contentPanel.setForeground(isDarkTheme ? new Color(220, 220, 220) : new Color(30, 30, 30));
+                JPanel customPanel = new JPanel();
+                customPanel.setLayout(new BoxLayout(customPanel, BoxLayout.Y_AXIS));
+                customPanel.setBackground(ThemeColors.getColor(isDarkTheme, "custom_message_background"));
+                customPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                contentPanel.setForeground(ThemeColors.getColor(isDarkTheme, "custom_message_foreground"));
             
             // Allow content to dynamically resize both width and height
                 contentPanel.setPreferredSize(null);

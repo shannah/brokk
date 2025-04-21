@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui.MOP;
+package io.github.jbellis.brokk.gui.mop;
 
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
@@ -31,8 +31,7 @@ public class MarkdownRenderUtil {
      * Returns a panel containing the rendered components.
      *
      * @param markdownContent The Markdown content to render.
-     * @param textBackgroundColor The background color for text components
-     * @param isDarkTheme Whether dark theme is active
+     * @param isDarkTheme     Whether dark theme is active
      * @return A JPanel containing the rendered content
      */
     public static JPanel renderMarkdownContent(String markdownContent, boolean isDarkTheme) {
@@ -64,7 +63,7 @@ public class MarkdownRenderUtil {
             String fenceInfo = matcher.group(1).toLowerCase();
             String codeContent = matcher.group(2);
             RSyntaxTextArea codeArea = createConfiguredCodeArea(fenceInfo, codeContent, isDarkTheme);
-            contentPanel.add(codeAreaInPanel(codeArea, 3, isDarkTheme));
+            contentPanel.add(createCodeBlockPanel(codeArea, fenceInfo, isDarkTheme));
 
             lastMatchEnd = matcher.end();
         }
@@ -124,8 +123,9 @@ public class MarkdownRenderUtil {
     /**
      * Wraps an RSyntaxTextArea in a panel with padding and border with custom colors.
      */
-    public static JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness, boolean isDarkTheme, 
-                                   Color codeBackgroundColor, Color codeBorderColor) {
+    public static JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness, boolean isDarkTheme,
+                                         Color codeBackgroundColor, Color codeBorderColor)
+    {
         var panel = new JPanel(new BorderLayout());
         // Use code background for the outer padding panel
         panel.setBackground(codeBackgroundColor);
@@ -150,9 +150,38 @@ public class MarkdownRenderUtil {
      * Wraps an RSyntaxTextArea in a panel with default border thickness.
      */
     public static JPanel codeAreaInPanel(RSyntaxTextArea textArea, int borderThickness, boolean isDarkTheme) {
-        Color codeBackgroundColor = isDarkTheme ? new Color(50, 50, 50) : new Color(240, 240, 240);
-        Color codeBorderColor = isDarkTheme ? new Color(80, 80, 80) : Color.GRAY;
+        Color codeBackgroundColor = ThemeColors.getColor(isDarkTheme, "code_block_background");
+        Color codeBorderColor = ThemeColors.getColor(isDarkTheme, "code_block_border");
         return codeAreaInPanel(textArea, borderThickness, isDarkTheme, codeBackgroundColor, codeBorderColor);
+    }
+
+    /**
+     * Creates a code block panel using BaseChatMessagePanel.
+     * This provides consistent styling with other message components.
+     *
+     * @param textArea    The RSyntaxTextArea containing the code
+     * @param fenceInfo   The language identifier from the code fence
+     * @param isDarkTheme Whether dark theme is active
+     * @return A panel containing the styled code block
+     */
+    public static JPanel createCodeBlockPanel(RSyntaxTextArea textArea, String fenceInfo, boolean isDarkTheme) {
+        // Format the title based on fence info
+        String title = fenceInfo.isEmpty() ? "Code" :
+                       fenceInfo.substring(0, 1).toUpperCase() + fenceInfo.substring(1);
+
+        // Use code icon
+        String iconText = "\uD83D\uDCDD"; // Unicode for memo/pencil emoji
+
+        // Create the panel using BaseChatMessagePanel
+        return new BaseChatMessagePanel(
+                title,
+                iconText,
+                textArea,
+                isDarkTheme,
+                ThemeColors.getColor(isDarkTheme, "codeHighlight"),
+                ThemeColors.getColor(isDarkTheme, "rsyntax_background"),
+                ThemeColors.getColor(isDarkTheme, "message_background")
+        );
     }
 
     /**
@@ -184,55 +213,40 @@ public class MarkdownRenderUtil {
                                          textColor.getRed(),
                                          textColor.getGreen(),
                                          textColor.getBlue());
-        var linkColor = isDarkTheme ? "#88b3ff" : "#0366d6";
+        var linkColor = ThemeColors.getColorHex(isDarkTheme, "link_color_hex");
 
         // Define theme-specific colors
-            var borderColor = isDarkTheme ? "#555" : "#ddd";
-            //var headerColor = isDarkTheme ? "#e1e1e1" : "#333";
+        var borderColor = ThemeColors.getColorHex(isDarkTheme, "border_color_hex");
+        // Base typography
+        ss.addRule("body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.5; " +
+                           "background-color: " + bgColorHex + "; color: " + textColorHex + "; margin: 0; padding: 8px; }");
 
-            // Base typography
-            ss.addRule("body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.5; " +
-                       "background-color: " + bgColorHex + "; color: " + textColorHex + "; margin: 0; padding: 8px; }");
+        // Headings
+        ss.addRule("h1, h2, h3, h4, h5, h6 { margin-top: 18px; margin-bottom: 12px; " +
+                           "font-weight: 600; line-height: 1.25; color: " + textColorHex + "; }");
+        ss.addRule("h1 { font-size: 1.5em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
+        ss.addRule("h2 { font-size: 1.3em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.2em; }");
+        ss.addRule("h3 { font-size: 1.1em; }");
+        ss.addRule("h4 { font-size: 1em; }");
 
-            // Headings
-            ss.addRule("h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; " +
-                       "font-weight: 600; line-height: 1.25; color: " + textColorHex + "; }");
-            ss.addRule("h1 { font-size: 2em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.3em; }");
-            ss.addRule("h2 { font-size: 1.5em; border-bottom: 1px solid " + borderColor + "; padding-bottom: 0.3em; }");
-            ss.addRule("h3 { font-size: 1.25em; }");
-            ss.addRule("h4 { font-size: 1em; }");
+        // Links
+        ss.addRule("a { color: " + linkColor + "; text-decoration: none; }");
+        ss.addRule("a:hover { text-decoration: underline; }");
 
-            // Links
-            ss.addRule("a { color: " + linkColor + "; text-decoration: none; }");
-            ss.addRule("a:hover { text-decoration: underline; }");
+        // Paragraphs and lists
+        ss.addRule("p, ul, ol { margin-top: 0; margin-bottom: 12px; }");
+        ss.addRule("ul, ol { padding-left: 2em; }");
+        ss.addRule("li { margin: 0.25em 0; }");
+        ss.addRule("li > p { margin-top: 12px; }");
 
-            // Paragraphs and lists
-                ss.addRule("p, ul, ol { margin-top: 0; margin-bottom: 16px; }");
-                ss.addRule("ul, ol { padding-left: 2em; }");
-                ss.addRule("li { margin: 0.25em 0; }");
-                ss.addRule("li > p { margin-top: 16px; }");
-
-            // Code styling
-                ss.addRule("code { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; " +
+        // Code styling
+        ss.addRule("code { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; " +
                            "padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 3px; " +
-                           "background-color: " + (isDarkTheme ? "#4d5462" : "#f6f8fa") + "; }");
-
-                // Tables
-            ss.addRule("table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }");
-            ss.addRule("table th, table td { padding: 6px 13px; border: 1px solid " + borderColor + "; }");
-            ss.addRule("table tr { background-color: " + bgColorHex + "; }");
-            ss.addRule("table tr:nth-child(2n) { background-color: " +
-                       (isDarkTheme ? "#2a2a2a" : "#f6f8fa") + "; }");
-            ss.addRule("table th { font-weight: 600; background-color: " +
-                       (isDarkTheme ? "#333" : "#f0f0f0") + "; }");
-
-            // Horizontal rule
-            ss.addRule("hr { height: 0.25em; padding: 0; margin: 24px 0; " +
-                       "background-color: " + (isDarkTheme ? "#555" : "#e1e4e8") + "; border: 0; }");
+                           "color: " + linkColor + "; }");
 
         return htmlPane;
     }
-    
+
     /**
      * Helper to create consistent labels for SEARCH/REPLACE sections
      */
@@ -243,11 +257,11 @@ public class MarkdownRenderUtil {
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
     }
-    
+
     /**
      * Extract the content from a message for rendering.
      * This provides a consistent way to get the text content across all renderers.
-     * 
+     *
      * @param message The chat message to extract content from
      * @return The string content to render
      */
