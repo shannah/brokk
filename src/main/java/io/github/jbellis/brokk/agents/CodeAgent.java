@@ -48,7 +48,7 @@ public class CodeAgent {
      * Uses the provided model for the initial request and potentially switches for fixes.
      *
      * @param userInput The user's goal/instructions.
-     * @return A SessionResult containing the conversation history and original file contents, or null if no history was generated.
+     * @return A SessionResult containing the conversation history and original file contents
      */
     public SessionResult runSession(String userInput, boolean rejectReadonlyEdits) throws InterruptedException
     {
@@ -80,16 +80,13 @@ public class CodeAgent {
         SessionResult.StopDetails stopDetails;
 
         while (true) {
-            stopDetails = checkInterruption();
-            if (stopDetails != null) break;
-
             // Prepare and send request to LLM
             var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages,
                                                                       DefaultPrompts.reminderForModel(contextManager.getModels(), model));
             allMessages.add(nextRequest);
 
-            var streamingResult = coder.sendRequest(allMessages, true);
-            stopDetails = checkLlmErrorOrEmpty(streamingResult, io);
+            StreamingResult streamingResult = coder.sendRequest(allMessages, true);
+            stopDetails = checkLlmResult(streamingResult, io);
             if (stopDetails != null) break;
 
             // Append request/response to session history
@@ -98,7 +95,7 @@ public class CodeAgent {
             sessionMessages.add(llmResponse.aiMessage());
 
             String llmText = llmResponse.aiMessage().text();
-            logger.debug("got response"); // details in Coder's llm-history
+            logger.debug("got response");
 
             // Parse any edit blocks from LLM response
             var parseResult = EditBlock.parseEditBlocks(llmText);
@@ -151,10 +148,6 @@ public class CodeAgent {
                 break;
             }
 
-            // Check for interruption again before applying
-            stopDetails = checkInterruption();
-            if (stopDetails != null) break;
-
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
             var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, rejectReadonlyEdits);
             if (!readOnlyFiles.isEmpty()) {
@@ -169,6 +162,11 @@ public class CodeAgent {
             int succeededCount = (blocks.size() - editResult.failedBlocks().size());
             blocksAppliedWithoutBuild += succeededCount;
             blocks.clear(); // Clear them out: either successful or moved to editResult.failed
+
+            // the above is our largest block of logic so check for interruption now
+            if (Thread.interrupted()) {
+                throw new InterruptedException();
+            }
 
             // Handle any failed blocks
             if (!editResult.failedBlocks().isEmpty()) {
@@ -221,45 +219,23 @@ public class CodeAgent {
 
         // Conclude session
         assert stopDetails != null; // Ensure a stop reason was set before exiting the loop
-        boolean completedSuccessfully = (stopDetails.reason() == SessionResult.StopReason.SUCCESS);
-        String finalActionDescription = completedSuccessfully
+        // create the Result for history
+        String finalActionDescription = (stopDetails.reason() == SessionResult.StopReason.SUCCESS)
                                         ? userInput
                                         : userInput + " [" + stopDetails.reason().name() + "]";
-        var sessionResult = new SessionResult(finalActionDescription,
-                                              List.copyOf(sessionMessages),
-                                              List.copyOf(io.getLlmRawMessages()),
-                                              Map.copyOf(originalContents),
-                                              io.getLlmOutputText(),
-                                              stopDetails);
-
-        if (completedSuccessfully) {
-            io.systemOutput("Code Agent finished!");
-        }
-        return sessionResult;
-    }
-
-    /**
-     * Checks if the current thread is interrupted. Returns StopDetails(StopReason.INTERRUPTED) if so,
-     * or null if everything is fine.
-     */
-    private SessionResult.StopDetails checkInterruption() {
-        if (Thread.currentThread().isInterrupted()) {
-            io.systemOutput("Session interrupted");
-            return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
-        }
-        return null;
+        return new SessionResult(finalActionDescription,
+                                 List.copyOf(sessionMessages),
+                                 List.copyOf(io.getLlmRawMessages()),
+                                 Map.copyOf(originalContents),
+                                 io.getLlmOutputText(),
+                                 stopDetails);
     }
 
     /**
      * Checks if a streaming result is empty or errored. If so, logs and returns StopDetails;
      * otherwise returns null to proceed.
      */
-    private static SessionResult.StopDetails checkLlmErrorOrEmpty(StreamingResult streamingResult, IConsoleIO io) {
-        if (false) {
-            io.systemOutput("Session interrupted");
-            return new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
-        }
-
+    private static SessionResult.StopDetails checkLlmResult(StreamingResult streamingResult, IConsoleIO io) {
         if (streamingResult.error() != null) {
             io.systemOutput("LLM returned an error even after retries. Ending session");
             return new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, streamingResult.error().getMessage());
@@ -468,10 +444,7 @@ public class CodeAgent {
         // Determine stop reason based on LLM response
         SessionResult.StopDetails stopDetails;
         String responseText = "";
-        if (false) {
-            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
-            io.toolErrorRaw("Quick edit was cancelled.");
-        } else if (result.error() != null) {
+        if (result.error() != null) {
             stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, result.error().getMessage());
             io.toolErrorRaw("Quick edit failed: " + result.error().getMessage());
         } else if (result.chatResponse() == null || result.chatResponse().aiMessage() == null || result.chatResponse().aiMessage().text() == null || result.chatResponse().aiMessage().text().isBlank()) {

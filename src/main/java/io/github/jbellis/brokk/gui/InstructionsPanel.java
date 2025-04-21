@@ -421,9 +421,14 @@ public class InstructionsPanel extends JPanel {
         project.pauseAnalyzerRebuilds();
         try {
             var result = new CodeAgent(contextManager, model).runSession(input, true);
+            if (result.stopDetails().reason() == SessionResult.StopReason.SUCCESS) {
+                chrome.systemOutput("Code Agent complete!");
+            } // else we should have details explaining the problem output already
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
-            chrome.systemOutput("Code agent cancelled!");
+            chrome.systemOutput("Code Agent cancelled!");
+            // Check if we have any partial output to save
+            maybeAddInterruptedResult("Code", input);
         } finally {
             project.resumeAnalyzerRebuilds();
         }
@@ -468,9 +473,22 @@ public class InstructionsPanel extends JPanel {
             }
         } catch (InterruptedException e) {
             chrome.systemOutput("Ask command cancelled!");
-        } catch (Exception e) {
-            logger.error("Error during 'Ask' execution", e);
-            chrome.toolErrorRaw("Internal error during ask command: " + e.getMessage());
+            // Check if we have any partial output to save
+            maybeAddInterruptedResult("Ask", question);
+        }
+    }
+
+    private void maybeAddInterruptedResult(String action, String input) {
+        if (chrome.getLlmRawMessages().stream().anyMatch(m -> m instanceof AiMessage)) {
+            logger.debug("Ask command cancelled with partial results");
+            var outputSoFar = chrome.getLlmOutputText();
+            var sessionResult = new SessionResult("%s (Cancelled): %s".formatted(action, input),
+                                                  List.copyOf(chrome.getLlmRawMessages()),
+                                                  List.copyOf(chrome.getLlmRawMessages()),
+                                                  Map.of(),
+                                                  outputSoFar,
+                                                  new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED));
+            chrome.getContextManager().addToHistory(sessionResult, false);
         }
     }
 
@@ -486,7 +504,8 @@ public class InstructionsPanel extends JPanel {
             var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
             agent.execute();
         } catch (InterruptedException e) {
-            chrome.systemOutput("Agent execution cancelled!");
+            chrome.systemOutput("Architect Agent cancelled!");
+            maybeAddInterruptedResult("Architect", goal);
         } catch (Exception e) {
             logger.error("Error during Agent execution", e);
             chrome.toolErrorRaw("Internal error during Agent command: " + e.getMessage());
