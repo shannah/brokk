@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageDeserializer;
 import dev.langchain4j.data.message.ChatMessageSerializer;
-import dev.langchain4j.data.message.UserMessage;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -23,13 +22,13 @@ import java.util.stream.Collectors;
  * @param log           The uncompressed list of chat messages for this task. Null if compressed.
  * @param summary The compressed representation of the chat messages (summary). Null if uncompressed.
  */
-public record TaskEntry(int sequence, String description, List<ChatMessage> log, String summary) implements Serializable {
+public record TaskMessages(int sequence, String description, List<ChatMessage> log, String summary) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L; // Initial version
-    private static final System.Logger logger = System.getLogger(TaskEntry.class.getName());
+    private static final System.Logger logger = System.getLogger(TaskMessages.class.getName());
 
     /** Enforce that exactly one of log or summary is non-null */
-    public TaskEntry {
+    public TaskMessages {
         assert (description == null) == (log == null);
         assert (log == null) != (summary == null) : "Exactly one of log or summary must be non-null";
         assert log == null || !log.isEmpty();
@@ -48,13 +47,13 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
      *                        (So, NOT including system messages, workspace messages, example edit messages, etc.)
      * @return A new TaskEntry instance.
      */
-    public static TaskEntry fromSession(int sequence, SessionResult result) {
+    public static TaskMessages fromSession(int sequence, SessionResult result) {
         assert result != null;
-        return new TaskEntry(sequence, result.actionDescription(), result.messages(), null);
+        return new TaskMessages(sequence, result.actionDescription(), result.messages(), null);
     }
 
-    public static TaskEntry fromCompressed(int sequence, String compressedLog) {
-        return new TaskEntry(sequence, null, null, compressedLog);
+    public static TaskMessages fromCompressed(int sequence, String compressedLog) {
+        return new TaskMessages(sequence, null, null, compressedLog);
     }
 
     /**
@@ -134,13 +133,13 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
         private final String serializedLog; // Store log as JSON string
         private final String summary;
 
-        SerializationProxy(TaskEntry taskEntry) {
-            this.sequence = taskEntry.sequence();
-            this.description = taskEntry.description();
-            this.summary = taskEntry.summary();
+        SerializationProxy(TaskMessages taskMessages) {
+            this.sequence = taskMessages.sequence();
+            this.description = taskMessages.description();
+            this.summary = taskMessages.summary();
             // Serialize the log to JSON if it exists
-            this.serializedLog = taskEntry.log() != null
-                    ? ChatMessageSerializer.messagesToJson(taskEntry.log())
+            this.serializedLog = taskMessages.log() != null
+                    ? ChatMessageSerializer.messagesToJson(taskMessages.log())
                     : null;
         }
 
@@ -152,10 +151,10 @@ public record TaskEntry(int sequence, String description, List<ChatMessage> log,
             if (serializedLog != null) {
                 // Deserialize log from JSON
                 List<ChatMessage> deserializedLog = ChatMessageDeserializer.messagesFromJson(serializedLog);
-                return new TaskEntry(sequence, description, deserializedLog, null);
+                return new TaskMessages(sequence, description, deserializedLog, null);
             } else {
                 // Entry was compressed or had no log originally
-                return new TaskEntry(sequence, description, null, summary);
+                return new TaskMessages(sequence, description, null, summary);
             }
         }
     }

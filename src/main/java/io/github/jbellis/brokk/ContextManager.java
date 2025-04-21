@@ -862,7 +862,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // Concatenate the string representation of each TaskHistory
         String historyString = taskHistory.stream()
-                .map(TaskEntry::toString)
+                .map(TaskMessages::toString)
                 .collect(Collectors.joining("\n\n"));
 
         // Create the UserMessage containing the history and the AI acknowledgment
@@ -1462,7 +1462,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * @param entry The TaskEntry to compress.
      * @return A new compressed TaskEntry, or the original entry (with updated sequence) if compression fails.
      */
-    public TaskEntry compressHistory(TaskEntry entry) {
+    public TaskMessages compressHistory(TaskMessages entry) {
         // If already compressed, return as is
         if (entry.isCompressed()) {
             return entry;
@@ -1491,7 +1491,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         logger.debug("Compressed history entry '{}' to summary: {}", entry.description(), summary);
-        return TaskEntry.fromCompressed(entry.sequence(), summary);
+        return TaskMessages.fromCompressed(entry.sequence(), summary);
     }
 
     /**
@@ -1500,7 +1500,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * <p>
      * returns null if the session is empty, otherwise returns the new TaskEntry
      */
-    public TaskEntry addToHistory(SessionResult result, boolean compress) {
+    public TaskMessages addToHistory(SessionResult result, boolean compress) {
         assert result != null;
         if (result.messages().isEmpty()) {
             logger.debug("Skipping adding empty session result to history.");
@@ -1513,7 +1513,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, originalContents.size(), result.stopDetails());
 
         // Push the new context state with the added history entry
-        TaskEntry newEntry = topContext().createTaskEntry(result);
+        TaskMessages newEntry = topContext().createTaskEntry(result);
         var finalEntry = compress ? compressHistory(newEntry) : newEntry;
         Future<String> actionFuture = submitSummarizeTaskForConversation(action);
         var newContext = pushContext(ctx -> ctx.addHistoryEntry(finalEntry, result.output(), actionFuture, originalContents));
@@ -1566,11 +1566,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 var history = currentContext.getTaskHistory();
 
                 io.systemOutput("Compressing conversation history...");
-                List<TaskEntry> compressedHistory = new ArrayList<>(history.size());
+                List<TaskMessages> compressedHistory = new ArrayList<>(history.size());
                 boolean changed = false;
-                for (TaskEntry entry : history) {
+                for (TaskMessages entry : history) {
                     // Pass the sequence number (i + 1) for the new entry in the compressed list
-                    TaskEntry compressedEntry = compressHistory(entry);
+                    TaskMessages compressedEntry = compressHistory(entry);
                     compressedHistory.add(compressedEntry);
                     if (!entry.equals(compressedEntry)) { // Check if the entry actually changed (e.g., wasn't already compressed)
                         changed = true;

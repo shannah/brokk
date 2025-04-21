@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.util.Arrays;
 import java.util.List;
@@ -44,7 +43,7 @@ public record SessionResult(String actionDescription,
              originalContents,
              new Context.ParsedOutput(outputString,
                                       new ContextFragment.SessionFragment(
-                                              List.of(new TaskEntry(0, actionDescription, uiMessages == null ? messages : uiMessages, null)),
+                                              List.of(new TaskMessages(0, actionDescription, uiMessages == null ? messages : uiMessages, null)),
                                               actionDescription)),
              stopDetails);
     }

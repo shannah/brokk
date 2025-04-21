@@ -584,8 +584,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                                                     UIManager.getColor("Panel.background") : Color.WHITE);
 
                     // Get all messages and create a MarkdownOutputPanel for each
-                    List<TaskEntry> taskEntries = outputFragment.getMessages();
-                    for (TaskEntry entry : taskEntries) {
+                    List<TaskMessages> taskEntries = outputFragment.getMessages();
+                    for (TaskMessages entry : taskEntries) {
                         var markdownPanel = new MarkdownOutputPanel();
                         markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
                         markdownPanel.setText(entry.log());

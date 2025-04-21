@@ -450,8 +450,8 @@ public class HistoryOutputPanel extends JPanel {
         return llmStreamArea.getRawMessages();
     }
 
-    public void setLlmOutput(TaskEntry taskEntry) {
-        llmStreamArea.setText(taskEntry);
+    public void setLlmOutput(TaskMessages taskMessages) {
+        llmStreamArea.setText(taskMessages);
     }
 
     public void setLlmOutput(List<ChatMessage> newMessages) {
@@ -461,17 +461,17 @@ public class HistoryOutputPanel extends JPanel {
     /**
      * Sets the text in the LLM output area
      */
-    public void resetLlmOutput(TaskEntry taskEntry) {
+    public void resetLlmOutput(TaskMessages taskMessages) {
         // this is called by the context selection listener, but when we just finished streaming a response
         // we don't want scroll-to-top behavior
-        var newText = taskEntry.log().stream()
+        var newText = taskMessages.log().stream()
                 .map(Models::getRepr)
                 .collect(Collectors.joining("\n\n"));
         if (llmStreamArea.getText().equals(newText)) {
             return;
         }
 
-        setLlmOutput(taskEntry);
+        setLlmOutput(taskMessages);
         // Scroll to the top
         SwingUtilities.invokeLater(() -> {
             llmScrollPane.getVerticalScrollBar().setValue(0);

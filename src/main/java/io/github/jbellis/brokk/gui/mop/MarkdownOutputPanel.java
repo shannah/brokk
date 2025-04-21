@@ -2,7 +2,7 @@ package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.*;
 import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.TaskEntry;
+import io.github.jbellis.brokk.TaskMessages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -249,13 +249,13 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     /**
      * Sets the content from a TaskEntry
      */
-    public void setText(TaskEntry taskEntry) {
-        if (taskEntry == null) {
+    public void setText(TaskMessages taskMessages) {
+        if (taskMessages == null) {
             clear();
             return;
         }
 
-        setText(taskEntry.log());
+        setText(taskMessages.log());
     }
 
     /**

@@ -94,7 +94,7 @@ public interface ContextFragment extends Serializable {
     }
 
     sealed interface OutputFragment permits ConversationFragment, SessionFragment, StringFragment, PasteTextFragment, SearchFragment {
-        List<TaskEntry> getMessages();
+        List<TaskMessages> getMessages();
     }
 
     sealed interface PathFragment extends ContextFragment
@@ -426,8 +426,8 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public List<TaskEntry> getMessages() {
-            return List.of(new TaskEntry(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
+        public List<TaskMessages> getMessages() {
+            return List.of(new TaskMessages(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 
@@ -478,12 +478,12 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public List<TaskEntry> getMessages() {
+        public List<TaskMessages> getMessages() {
             var messages = List.of(
                     new UserMessage("# Query\n\n%s".formatted(query)),
                     new AiMessage("# Answer\n\n%s".formatted(explanation))
             );
-            return List.of(new TaskEntry(0, "Search", messages, null));
+            return List.of(new TaskMessages(0, "Search", messages, null));
         }
     }
 
@@ -559,9 +559,9 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public List<TaskEntry> getMessages() {
+        public List<TaskMessages> getMessages() {
             var description = descriptionFuture.isDone() ? description() : "Paste";
-            return List.of(new TaskEntry(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
+            return List.of(new TaskMessages(0, description, List.of(new CustomMessage(Map.of("text", text))), null));
         }
     }
 
@@ -811,22 +811,22 @@ public interface ContextFragment extends Serializable {
     /** Base class for fragments that represent task history */
         abstract class TaskHistoryFragment extends VirtualFragment {
             private static final long serialVersionUID = 4L;
-            protected final List<TaskEntry> history;
+            protected final List<TaskMessages> history;
 
-        public TaskHistoryFragment(List<TaskEntry> history) {
+        public TaskHistoryFragment(List<TaskMessages> history) {
             super();
             assert history != null;
             this.history = List.copyOf(history);
         }
 
-        public List<TaskEntry> getMessages() {
+        public List<TaskMessages> getMessages() {
             return history;
         }
 
         @Override
         public String text() {
             return history.stream()
-                    .map(TaskEntry::toString)
+                    .map(TaskMessages::toString)
                     .collect(Collectors.joining("\n\n"));
         }
 
@@ -864,7 +864,7 @@ public interface ContextFragment extends Serializable {
         final class ConversationFragment extends TaskHistoryFragment implements OutputFragment {
             private static final long serialVersionUID = 4L;
     
-            public ConversationFragment(List<TaskEntry> history) {
+            public ConversationFragment(List<TaskMessages> history) {
             super(history);
         }
 
@@ -884,7 +884,7 @@ public interface ContextFragment extends Serializable {
             private static final long serialVersionUID = 4L;
             private final String sessionName;
 
-        public SessionFragment(List<TaskEntry> history, String sessionName) {
+        public SessionFragment(List<TaskMessages> history, String sessionName) {
             super(history);
             this.sessionName = sessionName;
         }

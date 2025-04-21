@@ -297,7 +297,7 @@ public class ContextSerializationTest {
 
         // Verify task history count
         assertEquals(1, deserialized.getTaskHistory().size(), "Deserialized context should have one task history entry.");
-        TaskEntry deserializedTask = deserialized.getTaskHistory().getFirst();
+        TaskMessages deserializedTask = deserialized.getTaskHistory().getFirst();
 
         // Verify TaskEntry content (first message becomes description, rest becomes log)
         assertEquals("What is the capital of France?", deserializedTask.description(), "Task description should match the first UserMessage.");
