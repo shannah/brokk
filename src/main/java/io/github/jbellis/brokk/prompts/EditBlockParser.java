@@ -11,10 +11,10 @@ import java.io.File;
 import java.util.*;
 import java.util.regex.Pattern;
 
-public class EditBlockPrompts {
-    public static EditBlockPrompts instance = new EditBlockPrompts();
+public class EditBlockParser {
+    public static EditBlockParser instance = new EditBlockParser();
 
-    protected EditBlockPrompts() {}
+    protected EditBlockParser() {}
 
     public List<ChatMessage> exampleMessages() {
         return List.of(
@@ -288,8 +288,8 @@ public class EditBlockPrompts {
         }
         // If triple-backtick block
         if (lines.length >= 2
-                && lines[0].startsWith(EditBlockPrompts.DEFAULT_FENCE[0])
-                && lines[lines.length - 1].startsWith(EditBlockPrompts.DEFAULT_FENCE[1])) {
+                && lines[0].startsWith(EditBlockParser.DEFAULT_FENCE[0])
+                && lines[lines.length - 1].startsWith(EditBlockParser.DEFAULT_FENCE[1])) {
             lines = Arrays.copyOfRange(lines, 1, lines.length - 1);
         }
         String result = String.join("\n", lines);
@@ -364,7 +364,7 @@ public class EditBlockPrompts {
      */
     private static String stripFilename(String line) {
         String s = line.trim();
-        if (s.equals("...") || s.equals(EditBlockPrompts.DEFAULT_FENCE[0])) {
+        if (s.equals("...") || s.equals(EditBlockParser.DEFAULT_FENCE[0])) {
             return null;
         }
         // remove trailing colons, leading #, etc.

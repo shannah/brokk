@@ -45,11 +45,11 @@ public abstract class CodePrompts {
         var messages = new ArrayList<ChatMessage>();
 
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
-        messages.addAll(EditBlockConflictsPrompts.instance.exampleMessages());
+        messages.addAll(EditBlockConflictsParser.instance.exampleMessages());
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(sessionMessages);
         messages.addAll(cm.getWorkspaceContentsMessages(false));
-        messages.add(new UserMessage(EditBlockConflictsPrompts.instance.instructions(reminder)));
+        messages.add(new UserMessage(EditBlockConflictsParser.instance.instructions(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
 
         return messages;

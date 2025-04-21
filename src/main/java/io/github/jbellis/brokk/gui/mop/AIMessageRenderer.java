@@ -2,7 +2,7 @@ package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.EditBlock;
-import io.github.jbellis.brokk.prompts.EditBlockPrompts;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,7 +20,7 @@ public class AIMessageRenderer implements MessageComponentRenderer {
     public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
         String content = MarkdownRenderUtil.getMessageContent(message);
         // For AI messages, try to parse edit blocks first
-        var parseResult = EditBlockPrompts.instance.parse(content, Set.of()); // FIXME
+        var parseResult = EditBlockParser.instance.parse(content, Set.of()); // FIXME
 
         // Create content panel for AI message
         JPanel contentPanel = new JPanel();

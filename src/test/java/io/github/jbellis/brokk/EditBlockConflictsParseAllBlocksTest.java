@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.EditBlock.OutputBlock;
-import io.github.jbellis.brokk.prompts.EditBlockConflictsPrompts;
+import io.github.jbellis.brokk.prompts.EditBlockConflictsParser;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -9,14 +9,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class EditBlockConflictsParseAllBlocksTest {
     @Test
     void testParseEmptyString() {
-        var result = EditBlockConflictsPrompts.instance.parse("").blocks();
+        var result = EditBlockConflictsParser.instance.parse("").blocks();
         assertEquals(0, result.size());
     }
 
     @Test
     void testParsePlainTextOnly() {
         String input = "This is just plain text.";
-        var result = EditBlockConflictsPrompts.instance.parse(input).blocks();
+        var result = EditBlockConflictsParser.instance.parse(input).blocks();
         assertEquals(1, result.size());
         assertEquals(OutputBlock.plain(input), result.getFirst());
     }
@@ -34,7 +34,7 @@ class EditBlockConflictsParseAllBlocksTest {
                 }
                 >>>>>>> REPLACE build.gradle
                 """;
-        var result = EditBlockConflictsPrompts.instance.parse(input).blocks();
+        var result = EditBlockConflictsParser.instance.parse(input).blocks();
 
         assertEquals(1, result.size());
         assertEquals("build.gradle", result.getFirst().block().filename());
@@ -57,7 +57,7 @@ class EditBlockConflictsParseAllBlocksTest {
         >>>>>>> REPLACE build.gradle
         Some concluding text.
         """;
-        var result = EditBlockConflictsPrompts.instance.parse(input).blocks();
+        var result = EditBlockConflictsParser.instance.parse(input).blocks();
 
         assertEquals(3, result.size());
         assertTrue(result.get(0).text().contains("introductory")); 
@@ -84,7 +84,7 @@ class EditBlockConflictsParseAllBlocksTest {
                 >>>>>>> REPLACE file2.java
                 Text epilogue
                 """;
-        var result = EditBlockConflictsPrompts.instance.parse(input).blocks();
+        var result = EditBlockConflictsParser.instance.parse(input).blocks();
 
         assertEquals(4, result.size()); // prologue, s/r, s/r, epilogue
         // TODO flesh out asserts
@@ -103,12 +103,12 @@ class EditBlockConflictsParseAllBlocksTest {
                 >>>>>>> REPLACE build.gradle
                 Some concluding text.
                 """;
-        var editParseResult = EditBlockConflictsPrompts.instance.parseEditBlocks(input, null);
+        var editParseResult = EditBlockConflictsParser.instance.parseEditBlocks(input, null);
         assertNotNull(editParseResult.parseError(), "EditBlock parser should report an error");
         assertTrue(editParseResult.blocks().isEmpty(), "EditBlock parser should find no valid blocks");
 
         // LlmOutputParser should fall back to plain/code parsing
-        var result = EditBlockConflictsPrompts.instance.parse(input).blocks();
+        var result = EditBlockConflictsParser.instance.parse(input).blocks();
         assertEquals(1, result.size());
         assertNotNull(result.getFirst().text());
     }

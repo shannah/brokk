@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.EditBlock.OutputBlock;
-import io.github.jbellis.brokk.prompts.EditBlockPrompts;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
@@ -11,14 +11,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class EditBlockParseAllBlocksTest {
     @Test
     void testParseEmptyString() {
-        var result = EditBlockPrompts.instance.parse("", Set.of()).blocks();
+        var result = EditBlockParser.instance.parse("", Set.of()).blocks();
         assertEquals(0, result.size());
     }
 
     @Test
     void testParsePlainTextOnly() {
         String input = "This is just plain text.";
-        var result = EditBlockPrompts.instance.parse(input, Set.of()).blocks();
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
         assertEquals(1, result.size());
         assertEquals(OutputBlock.plain(input), result.getFirst());
     }
@@ -39,7 +39,7 @@ class EditBlockParseAllBlocksTest {
                 >>>>>>> REPLACE
                 ```
                 """;
-        var result = EditBlockPrompts.instance.parse(input, Set.of()).blocks();
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
 
         assertEquals(1, result.size());
         assertEquals("build.gradle", result.getFirst().block().filename());
@@ -65,7 +65,7 @@ class EditBlockParseAllBlocksTest {
         ```
         Some concluding text.
         """;
-        var result = EditBlockPrompts.instance.parse(input, Set.of()).blocks();
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
 
         assertEquals(3, result.size());
         assertTrue(result.get(0).text().contains("introductory")); 
@@ -98,7 +98,7 @@ class EditBlockParseAllBlocksTest {
                 ```
                 Text epilogue
                 """;
-        var result = EditBlockPrompts.instance.parse(input, Set.of()).blocks();
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
 
         assertEquals(4, result.size()); // prologue, s/r, s/r, epilogue
         // TODO flesh out asserts
@@ -120,12 +120,12 @@ class EditBlockParseAllBlocksTest {
                 ```
                 Some concluding text.
                 """;
-        var editParseResult = EditBlockPrompts.instance.parseEditBlocks(input, Set.of());
+        var editParseResult = EditBlockParser.instance.parseEditBlocks(input, Set.of());
         assertNotNull(editParseResult.parseError(), "EditBlock parser should report an error");
         assertTrue(editParseResult.blocks().isEmpty(), "EditBlock parser should find no valid blocks");
 
         // LlmOutputParser should fall back to plain/code parsing
-        var result = EditBlockPrompts.instance.parse(input, Set.of()).blocks();
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
         assertEquals(1, result.size());
         assertNotNull(result.getFirst().text());
     }

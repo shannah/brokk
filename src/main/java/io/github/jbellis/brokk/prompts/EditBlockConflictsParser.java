@@ -11,10 +11,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-public class EditBlockConflictsPrompts extends EditBlockPrompts {
-    public static EditBlockConflictsPrompts instance = new EditBlockConflictsPrompts();
+public class EditBlockConflictsParser extends EditBlockParser {
+    public static EditBlockConflictsParser instance = new EditBlockConflictsParser();
 
-    private EditBlockConflictsPrompts() {
+    private EditBlockConflictsParser() {
         super();
     }
 
