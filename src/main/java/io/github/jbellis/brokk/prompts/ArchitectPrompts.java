@@ -1,19 +1,18 @@
 package io.github.jbellis.brokk.prompts;
 
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.Content;
 import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextManager;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class ArchitectPrompts extends DefaultPrompts {
+public abstract class ArchitectPrompts extends CodePrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
 
     public List<ChatMessage> collectMessages(ContextManager cm, List<ChatMessage> sessionMessages) {
         var messages = new ArrayList<ChatMessage>();
-        messages.add(new SystemMessage(formatIntro(cm, DefaultPrompts.ARCHITECT_REMINDER)));
+        messages.add(new SystemMessage(formatIntro(cm, CodePrompts.ARCHITECT_REMINDER)));
         messages.addAll(sessionMessages);
         messages.addAll(cm.getWorkspaceContentsMessages(true));
         return messages;

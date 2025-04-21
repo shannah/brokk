@@ -10,7 +10,7 @@ import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.Llm.StreamingResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.prompts.DefaultPrompts;
+import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
@@ -81,8 +81,8 @@ public class CodeAgent {
 
         while (true) {
             // Prepare and send request to LLM
-            var allMessages = DefaultPrompts.instance.collectMessages(contextManager, sessionMessages,
-                                                                      DefaultPrompts.reminderForModel(contextManager.getModels(), model));
+            var allMessages = CodePrompts.instance.collectMessages(contextManager, sessionMessages,
+                                                                   CodePrompts.reminderForModel(contextManager.getModels(), model));
             allMessages.add(nextRequest);
 
             StreamingResult streamingResult = coder.sendRequest(allMessages, true);

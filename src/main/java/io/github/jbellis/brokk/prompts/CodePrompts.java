@@ -11,8 +11,8 @@ import io.github.jbellis.brokk.Models;
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class DefaultPrompts {
-    public static final DefaultPrompts instance = new DefaultPrompts() {
+public abstract class CodePrompts {
+    public static final CodePrompts instance = new CodePrompts() {
     };
 
     public static final String LAZY_REMINDER = """
