@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.Llm.StreamingResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.CodePrompts;
+import io.github.jbellis.brokk.prompts.EditBlockPrompts;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
@@ -98,7 +99,7 @@ public class CodeAgent {
             logger.debug("got response");
 
             // Parse any edit blocks from LLM response
-            var parseResult = EditBlock.parseEditBlocks(llmText);
+            var parseResult = EditBlockPrompts.instance.parseEditBlocks(llmText, contextManager.getRepo().getTrackedFiles());
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks);
 

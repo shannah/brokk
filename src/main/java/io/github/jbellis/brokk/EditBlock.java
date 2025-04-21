@@ -22,13 +22,6 @@ import java.util.regex.Pattern;
 public class EditBlock {
     private static final Logger logger = LogManager.getLogger(EditBlock.class);
 
-    // Pattern for the start of a search block, capturing the filename
-    private static final Pattern SEARCH = Pattern.compile("^\\s*<{5,9} SEARCH\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
-    // Pattern for the divider, capturing the filename
-    private static final Pattern DIVIDER = Pattern.compile("^\\s*={5,9}\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
-    // Pattern for the end of a replace block, capturing the filename
-    private static final Pattern REPLACE = Pattern.compile("^\\s*>{5,9} REPLACE\\s*(\\S+?)\\s*$", Pattern.MULTILINE);
-
     private EditBlock() {
         // utility class
     }
@@ -203,27 +196,9 @@ public class EditBlock {
      */
     public record SearchReplaceBlock(String filename, String beforeText, String afterText) {
         public SearchReplaceBlock {
-            assert filename != null;
+            // filename can be null on bad parse
             assert beforeText != null;
             assert  afterText != null;
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("<<<<<<< SEARCH %s\n".formatted(filename));
-            sb.append(beforeText);
-            if (!beforeText.endsWith("\n")) {
-                sb.append("\n");
-            }
-            sb.append("======= %s\n".formatted(filename));
-            sb.append(afterText);
-            if (!afterText.endsWith("\n")) {
-                sb.append("\n");
-            }
-            sb.append(">>>>>>> REPLACE %s\n".formatted(filename));
-
-            return sb.toString();
         }
     }
 
@@ -232,10 +207,9 @@ public class EditBlock {
     public record ExtendedParseResult(List<OutputBlock> blocks, String parseError) { }
     
     /**
-     * Represents a segment of the LLM output, categorized as either plain text,
-     * fenced code, or a parsed Edit Block.
+     * Represents a segment of the LLM output, categorized as either plain text or a parsed Edit Block.
      */
-    public record OutputBlock(String text, EditBlock.SearchReplaceBlock block) {
+    public record OutputBlock(String text, SearchReplaceBlock block) {
         /**
          * Ensures that exactly one of the fields is non-null.
          */
@@ -249,7 +223,7 @@ public class EditBlock {
         }
 
         /** Convenience constructor for Edit blocks. */
-        public static OutputBlock edit(EditBlock.SearchReplaceBlock block) {
+        public static OutputBlock edit(SearchReplaceBlock block) {
             return new OutputBlock(null, block);
         }
     }
@@ -283,238 +257,6 @@ public class EditBlock {
         public AmbiguousMatchException(String message) {
             super(message);
         }
-    }
-
-    /**
-     * Parses the given content into a sequence of OutputBlock records (plain text or edit blocks).
-     * Supports a "forgiving" divider approach if we do not see a standard "filename =======" line
-     * but do see exactly one line of "=======" in the lines between SEARCH and REPLACE.
-     * Malformed blocks do not prevent parsing subsequent blocks.
-     */
-    public static ExtendedParseResult parseAllBlocks(String content)
-    {
-        var outputBlocks = new ArrayList<OutputBlock>();
-        var parseErrors = new StringBuilder();
-        var leftoverText = new StringBuilder();
-
-        String[] lines = content.split("\n", -1);
-        int i = 0;
-
-        outerLoop:
-        while (i < lines.length) {
-            // 1) Look for "<<<<<<< SEARCH filename"
-            var headMatcher = SEARCH.matcher(lines[i]);
-            if (!headMatcher.matches()) {
-                // Not a SEARCH line => treat as plain text
-                leftoverText.append(lines[i]);
-                if (i < lines.length - 1) {
-                    leftoverText.append("\n");
-                }
-                i++;
-                continue;
-            }
-
-            // We found a SEARCH line
-            String currentFilename = headMatcher.group(1).trim();
-            int searchLineIndex = i;
-            i++;
-
-            var beforeLines = new ArrayList<String>();
-            boolean blockSuccess = false;
-
-            blockLoop:
-            while (i < lines.length) {
-                var dividerMatcher = DIVIDER.matcher(lines[i]);
-                var replaceMatcher = REPLACE.matcher(lines[i]);
-
-                // 2a) If we encounter a "filename =======" line, gather "after" lines until REPLACE
-                if (dividerMatcher.matches() && dividerMatcher.group(1).trim().equals(currentFilename)) {
-                    var afterLines = new ArrayList<String>();
-                    i++; // skip the divider line
-
-                    int replaceIndex = -1;
-                    while (i < lines.length) {
-                        var r2 = REPLACE.matcher(lines[i]);
-                        var divider2 = DIVIDER.matcher(lines[i]);
-
-                        if (r2.matches() && r2.group(1).trim().equals(currentFilename)) {
-                            replaceIndex = i;
-                            break;
-                        } else if (divider2.matches() && divider2.group(1).trim().equals(currentFilename)) {
-                            // A second named divider => parse error
-                            parseErrors.append("Multiple named dividers found for ")
-                                    .append(currentFilename).append(" block.\n");
-
-                            // Revert everything
-                            revertLinesToLeftover(leftoverText,
-                                                  lines[searchLineIndex],
-                                                  beforeLines,
-                                                  afterLines);
-                            leftoverText.append(lines[i]).append("\n");
-                            i++;
-                            continue outerLoop;
-                        }
-
-                        afterLines.add(lines[i]);
-                        i++;
-                    }
-
-                    if (replaceIndex < 0) {
-                        // We never found "filename >>>>>>> REPLACE"
-                        parseErrors.append("Expected '")
-                                .append(currentFilename)
-                                .append(" >>>>>>> REPLACE' marker.\n");
-                        revertLinesToLeftover(leftoverText,
-                                              lines[searchLineIndex],
-                                              beforeLines,
-                                              afterLines);
-                        continue outerLoop;
-                    }
-
-                    // We found a valid block
-                    i++; // skip the REPLACE line
-                    String beforeJoined = String.join("\n", beforeLines);
-                    String afterJoined = String.join("\n", afterLines);
-                    if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
-                        beforeJoined += "\n";
-                    }
-                    if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
-                        afterJoined += "\n";
-                    }
-
-                    // flush leftover text so it becomes a separate plain block
-                    flushLeftoverText(leftoverText, outputBlocks);
-
-                    var block = new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined);
-                    outputBlocks.add(OutputBlock.edit(block));
-                    blockSuccess = true;
-                    break blockLoop;
-                }
-
-                // 2b) If we encounter "filename >>>>>>> REPLACE" *before* a divider,
-                // we do the single-line "======" fallback approach.
-                if (replaceMatcher.matches() && replaceMatcher.group(1).trim().equals(currentFilename)) {
-                    // Attempt the fallback approach
-                    int partialCount = 0;
-                    int partialIdx = -1;
-                    for (int idx = 0; idx < beforeLines.size(); idx++) {
-                        if (beforeLines.get(idx).matches("^\\s*={5,9}\\s*$")) {
-                            partialCount++;
-                            partialIdx = idx;
-                        }
-                    }
-                    if (partialCount == 1) {
-                        String beforeJoined = String.join("\n", beforeLines.subList(0, partialIdx));
-                        String afterJoined = String.join("\n", beforeLines.subList(partialIdx + 1, beforeLines.size()));
-                        if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
-                            beforeJoined += "\n";
-                        }
-                        if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
-                            afterJoined += "\n";
-                        }
-
-                        flushLeftoverText(leftoverText, outputBlocks);
-                        var srBlock = new SearchReplaceBlock(currentFilename, beforeJoined, afterJoined);
-                        outputBlocks.add(OutputBlock.edit(srBlock));
-
-                        blockSuccess = true;
-                        i++; // skip the REPLACE line
-                        break blockLoop;
-                    } else {
-                        parseErrors.append("Failed to parse block for '")
-                                .append(currentFilename)
-                                .append("': found ")
-                                .append(partialCount)
-                                .append(" standalone '=======' lines.\n");
-
-                        revertLinesToLeftover(leftoverText,
-                                              lines[searchLineIndex],
-                                              beforeLines,
-                                              lines[i]);
-                        i++;
-                        continue outerLoop;
-                    }
-                }
-
-                // If it's neither a recognized divider nor REPLACE => accumulate in beforeLines
-                beforeLines.add(lines[i]);
-                i++;
-            }
-
-            // If we exit the while loop normally, we never found a divider or fallback => parse error
-            if (!blockSuccess) {
-                parseErrors.append("Expected '")
-                        .append(currentFilename)
-                        .append(" =======' divider after '")
-                        .append(currentFilename)
-                        .append(" <<<<<<< SEARCH' but not found.\n");
-                revertLinesToLeftover(leftoverText, lines[searchLineIndex], beforeLines, (String) null);
-            }
-        }
-
-        // After processing all lines, flush leftover text
-        flushLeftoverText(leftoverText, outputBlocks);
-
-        String errorText = parseErrors.isEmpty() ? null : parseErrors.toString();
-        return new ExtendedParseResult(outputBlocks, errorText);
-    }
-
-    /**
-     * If leftover text is non-blank, add it as a plain-text block; then reset it.
-     */
-    private static void flushLeftoverText(StringBuilder leftover, List<OutputBlock> outputBlocks) {
-        var text = leftover.toString();
-        if (!text.isBlank()) {
-            outputBlocks.add(OutputBlock.plain(text));
-        }
-        leftover.setLength(0);
-    }
-
-    /**
-     * Reverts the lines belonging to a malformed block back into leftover text (as plain text),
-     * including the original "SEARCH filename" line, any collected lines, and an optional trailing line.
-     */
-    private static void revertLinesToLeftover(StringBuilder leftover,
-                                              String searchLine,
-                                              List<String> collectedLines,
-                                              String trailingLine) {
-        leftover.append(searchLine).append("\n");
-        for (var ln : collectedLines) {
-            leftover.append(ln).append("\n");
-        }
-        if (trailingLine != null) {
-            leftover.append(trailingLine).append("\n");
-        }
-    }
-
-    /**
-     * Reverts the lines belonging to a malformed block back into leftover text,
-     * including the original "SEARCH filename" line, any collected lines, and
-     * a list of "afterLines".
-     */
-    private static void revertLinesToLeftover(StringBuilder leftover,
-                                              String searchLine,
-                                              List<String> beforeLines,
-                                              List<String> afterLines)
-    {
-        leftover.append(searchLine).append("\n");
-        for (var ln : beforeLines) {
-            leftover.append(ln).append("\n");
-        }
-        if (afterLines != null) {
-            for (var ln : afterLines) {
-                leftover.append(ln).append("\n");
-            }
-        }
-    }
-
-    /**
-     * Parses the given content into ParseResult
-     */
-    public static ParseResult parseEditBlocks(String content) {
-        var all = parseAllBlocks(content);
-        var editBlocks = all.blocks.stream().filter(b -> b.block != null).map(b -> b.block).toList();
-        return new ParseResult(editBlocks, all.parseError);
     }
 
     /**

@@ -2,7 +2,7 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.prompts.EditBlockPrompts;
+import io.github.jbellis.brokk.prompts.EditBlockConflictsPrompts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class EditBlockTest {
+class EditBlockConflictsTest {
     static class TestContextManager implements IContextManager {
         private final Path root;
         private final Set<ProjectFile> validFiles;
@@ -69,40 +69,12 @@ class EditBlockTest {
         String edit = """
                 Here's the change:
 
-                ```
-                foo.txt
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 Two
-                =======
+                ======= foo.txt
                 Tooooo
-                >>>>>>> REPLACE
-                ```
-                
-                Hope you like it!
-                """;
+                >>>>>>> REPLACE foo.txt
 
-        EditBlock.SearchReplaceBlock[] blocks = parseBlocks(edit, Set.of("foo.txt"));
-        assertEquals(1, blocks.length);
-        assertEquals("foo.txt", blocks[0].filename().toString());
-        assertEquals("Two\n", blocks[0].beforeText());
-        assertEquals("Tooooo\n", blocks[0].afterText());
-    }
-
-    @Test
-    void testParseEditBlocksBackwardsFilename() {
-        // should be able to find the filename even when it's misplaced outside the blocks
-        String edit = """
-                Here's the change:
-
-                foo.txt
-                ```
-                <<<<<<< SEARCH
-                Two
-                =======
-                Tooooo
-                >>>>>>> REPLACE
-                ```
-                
                 Hope you like it!
                 """;
 
@@ -118,23 +90,17 @@ class EditBlockTest {
         String edit = """
                 Here's the change:
 
-                ```
-                foo.txt
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 one
-                =======
+                ======= foo.txt
                 two
-                >>>>>>> REPLACE
-                ```
-                
-                ```
-                foo.txt
-                <<<<<<< SEARCH
+                >>>>>>> REPLACE foo.txt
+
+                <<<<<<< SEARCH foo.txt
                 three
-                =======
+                ======= foo.txt
                 four
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE foo.txt
 
                 Hope you like it!
                 """;
@@ -154,23 +120,17 @@ class EditBlockTest {
     @Test
     void testParseEditBlocksNoFinalNewline() {
         String edit = """
-                ```
-                foo/coder.py
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH foo/coder.py
                 lineA
-                =======
+                ======= foo/coder.py
                 lineB
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE foo/coder.py
 
-                ```
-                foo/coder.py
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH foo/coder.py
                 lineC
-                =======
+                ======= foo/coder.py
                 lineD
-                >>>>>>> REPLACE
-                ```"""; // no final newline
+                >>>>>>> REPLACE foo/coder.py"""; // no newline at the end
 
         EditBlock.SearchReplaceBlock[] blocks = parseBlocks(edit, Set.of("foo/coder.py"));
         assertEquals(2, blocks.length);
@@ -185,24 +145,18 @@ class EditBlockTest {
         String edit = """
                 Here's the change:
 
-                ```
-                filename/to/a/file2.txt    
-                <<<<<<< SEARCH
-                =======
+                <<<<<<< SEARCH filename/to/a/file2.txt
+                ======= filename/to/a/file2.txt
                 three
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE filename/to/a/file2.txt
 
                 another change
 
-                ```
-                filename/to/a/file1.txt    
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH filename/to/a/file1.txt
                 one
-                =======
+                ======= filename/to/a/file1.txt
                 two
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE filename/to/a/file1.txt
 
                 Hope you like it!
                 """;
@@ -224,26 +178,20 @@ class EditBlockTest {
         Files.writeString(existingFile, "Original text\n");
 
         String response = """
-                ```
-                fileA.txt
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH fileA.txt
                 Original text
-                =======
+                ======= fileA.txt
                 Updated text
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE fileA.txt
 
-                ```
-                newFile.txt
-                <<<<<<< SEARCH
-                =======
+                <<<<<<< SEARCH newFile.txt
+                ======= newFile.txt
                 Created content
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE newFile.txt
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
         EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // existing filename
@@ -267,17 +215,15 @@ class EditBlockTest {
         Files.writeString(existingFile, "Line X\n");
 
         String response = """
-                ```
-                unknownFile.txt
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH unknownFile.txt
                 replacement
-                =======
+                ======= unknownFile.txt
                 replacement
-                >>>>>>> REPLACE
+                >>>>>>> REPLACE unknownFile.txt
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         assertNotEquals(List.of(), result.failedBlocks());
@@ -292,19 +238,16 @@ class EditBlockTest {
         String edit = """
                 Here's the change:
 
-                ```
-                foo.txt
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH foo.txt
                 Two
-                =======
+                ======= foo.txt
                 Tooooo
 
-                oops! no trailing >>>>>> REPLACE
-                ```
+                oops! no trailing >>>>>> REPLACE foo.txt
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
-        var result = EditBlockPrompts.instance.parseEditBlocks(edit, ctx.getEditableFiles());
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(edit, ctx.getEditableFiles());
         assertNotEquals(null, result.parseError());
     }
 
@@ -317,19 +260,17 @@ class EditBlockTest {
         String edit = """
                 Here's the change:
 
-                ```
-                <<<<<<< SEARCH
+                 <<<<<<< SEARCH
                 Two
-                =======
+                 =======
                 Tooooo
-                >>>>>>> REPLACE
-                ```
+                 >>>>>>> REPLACE
                 """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of());
-        var result = EditBlockPrompts.instance.parseEditBlocks(edit, ctx.getEditableFiles());
-        assertEquals(1, result.blocks().size());
-        assertNull(result.blocks().getFirst().filename());
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(edit, ctx.getEditableFiles());
+        // It should fail parsing because the filename is missing
+        assertEquals(0, result.blocks().size());
     }
 
     /**
@@ -350,18 +291,15 @@ class EditBlockTest {
 
         // The "beforeText" is too different from anything in the file
         String response = """
-            ```
-            fileA.txt
-            <<<<<<< SEARCH
+            <<<<<<< SEARCH fileA.txt
             replacement
-            =======
+            ======= fileA.txt
             replacement
-            >>>>>>> REPLACE
-            ```
+            >>>>>>> REPLACE fileA.txt
             """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // Assert exactly one failure with the correct reason
@@ -381,18 +319,15 @@ class EditBlockTest {
         Files.writeString(existingFile, originalContent);
 
         String response = """
-        ```
-        fileA.txt
-        <<<<<<< SEARCH
+        <<<<<<< SEARCH fileA.txt
         Original text
-        =======
+        ======= fileA.txt
         Updated text
-        >>>>>>> REPLACE
-        ```
+        >>>>>>> REPLACE fileA.txt
         """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // Verify original content is returned
@@ -413,17 +348,14 @@ class EditBlockTest {
 
         String replacementContent = "Replacement text.\n";
         String response = """
-        ```
-        replaceTest.txt
-        <<<<<<< SEARCH
-        =======
+        <<<<<<< SEARCH replaceTest.txt
+        ======= replaceTest.txt
         %s
-        >>>>>>> REPLACE
-        ```
+        >>>>>>> REPLACE replaceTest.txt
         """.formatted(replacementContent.trim()); // Use trim because EditBlock adds newline
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("replaceTest.txt"));
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
         assertEquals(1, blocks.size());
         assertTrue(blocks.getFirst().beforeText().isEmpty()); // Verify search block is empty
 
@@ -447,18 +379,15 @@ class EditBlockTest {
     @Test
     void testForgivingDividerSingleMatch(@TempDir Path tempDir) {
         String content = """
-        ```
-        foo.txt
-        <<<<<<< SEARCH
+        <<<<<<< SEARCH foo.txt
         old line
         =======
         new line
-        >>>>>>> REPLACE
-        ```
+        >>>>>>> REPLACE foo.txt
         """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
-        var result = EditBlockPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
         // Expect exactly one successfully parsed block, no parse errors
         assertEquals(1, result.blocks().size(), "Should parse a single block");
         assertNull(result.parseError(), "No parse errors expected");
@@ -470,21 +399,90 @@ class EditBlockTest {
     }
 
     @Test
-    void testmissingDivider(@TempDir Path tempDir) {
+    void testForgivingDividerMultipleMatches(@TempDir Path tempDir) {
         String content = """
-        ```
-        foo.txt
-        <<<<<<< SEARCH
+            <<<<<<< SEARCH foo.txt
+            line A
+            =======
+            line B
+            =======
+            line C
+            >>>>>>> REPLACE foo.txt
+            """;
+
+        TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
+        // Because we found more than one standalone "=======" line in the SEARCH->REPLACE block,
+        // the parser should treat it as an error for that block, producing zero blocks.
+        assertEquals(0, result.blocks().size(), "No successful blocks expected when multiple dividers found");
+        assertNotNull(result.parseError(), "Should report parse error on multiple matches");
+    }
+
+    @Test
+    void testRejectMultipleDividersWithFilenames(@TempDir Path tempDir) {
+        // believe it or not I saw GP2.5 do this in the wild
+        String content = """
+            <<<<<<< SEARCH foo.txt
+            line A
+            ======= foo.txt
+            line B
+            ======= foo.txt
+            line C
+            >>>>>>> REPLACE foo.txt
+            """;
+
+        TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
+        assertEquals(0, result.blocks().size(), "Should reject blocks with multiple named dividers");
+        assertNotNull(result.parseError(), "Should report parse error on multiple named dividers");
+    }
+
+    @Test
+    void testForgivingDividerZeroMatches(@TempDir Path tempDir) {
+        String content = """
+        <<<<<<< SEARCH foo.txt
         line A
         line B
-        >>>>>>> REPLACE
-        ```
+        >>>>>>> REPLACE foo.txt
         """;
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
-        var result = EditBlockPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
+        // Because there was no "foo.txt =======" nor a single standalone "=======" line,
+        // this block also fails to parse, yielding zero blocks and a parse error.
         assertEquals(0, result.blocks().size(), "No successful blocks expected without any divider line");
         assertNotNull(result.parseError(), "Should report parse error on zero matches");
+    }
+
+    /**
+     * Demonstrates that a malformed block can coexist with a well-formed one:
+     * the malformed block is skipped (recorded as an error) but the good block is parsed.
+     */
+    @Test
+    void testForgivingDividerPartialFailure(@TempDir Path tempDir) {
+        String content = """
+        <<<<<<< SEARCH foo.txt
+        line A
+        >>>>>>> REPLACE foo.txt
+
+        <<<<<<< SEARCH bar.txt
+        some
+        ======= bar.txt
+        other
+        >>>>>>> REPLACE bar.txt
+        """;
+
+        TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
+        var result = EditBlockConflictsPrompts.instance.parseEditBlocks(content, ctx.getEditableFiles());
+        // Expect 1 block to parse OK (the bar.txt block),
+        // and 1 parse error from the foo.txt block that has no divider.
+        assertEquals(1, result.blocks().size(), "One successfully parsed block");
+        assertNotNull(result.parseError(), "Expect parse error for the malformed block");
+
+        var goodBlock = result.blocks().getFirst();
+        assertEquals("bar.txt", goodBlock.filename());
+        assertEquals("some\n", goodBlock.beforeText());
+        assertEquals("other\n", goodBlock.afterText());
     }
 
     @Test
@@ -498,18 +496,15 @@ class EditBlockTest {
 
         // The "beforeText" will not match, but the "afterText" is already in the file
         String response = """
-            ```
-            fileA.txt
-            <<<<<<< SEARCH
+            <<<<<<< SEARCH fileA.txt
             NonExistentBeforeText
-            =======
+            ======= fileA.txt
             %s
-            >>>>>>> REPLACE
-            ```
+            >>>>>>> REPLACE fileA.txt
             """.formatted(alreadyPresentText);
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
         var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // Assert exactly one failure with NO_MATCH reason
@@ -534,19 +529,16 @@ class EditBlockTest {
 
             // The "beforeText" will not match, and contains diff-like lines
             String response = """
-                ```
-                fileB.txt
-                <<<<<<< SEARCH
+                <<<<<<< SEARCH fileB.txt
                 -Line 2
                 +Line Two
-                =======
+                ======= fileB.txt
                 Replacement Text
-                >>>>>>> REPLACE
-                ```
+                >>>>>>> REPLACE fileB.txt
                 """;
 
             TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileB.txt"));
-            var blocks = EditBlockPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+            var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
             var result = EditBlock.applyEditBlocks(ctx, io, blocks);
 
             // Assert exactly one failure with NO_MATCH reason
@@ -568,7 +560,7 @@ class EditBlockTest {
         // ----------------------------------------------------
     private EditBlock.SearchReplaceBlock[] parseBlocks(String fullResponse, Set<String> validFilenames) {
         var files = validFilenames.stream().map(f -> new ProjectFile(Path.of("/"), Path.of(f))).collect(Collectors.toSet());
-        var blocks = EditBlockPrompts.instance.parseEditBlocks(fullResponse, files).blocks();
+        var blocks = EditBlockConflictsPrompts.instance.parseEditBlocks(fullResponse, files).blocks();
         return blocks.toArray(new EditBlock.SearchReplaceBlock[0]);
     }
 }

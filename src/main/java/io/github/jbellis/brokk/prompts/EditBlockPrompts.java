@@ -1,79 +1,106 @@
 package io.github.jbellis.brokk.prompts;
 
+import com.google.common.annotations.VisibleForTesting;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import io.github.jbellis.brokk.EditBlock;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 
-import java.util.List;
+import java.io.File;
+import java.util.*;
+import java.util.regex.Pattern;
 
 public class EditBlockPrompts {
     public static EditBlockPrompts instance = new EditBlockPrompts();
 
-    private EditBlockPrompts() {}
+    protected EditBlockPrompts() {}
 
     public List<ChatMessage> exampleMessages() {
         return List.of(
                 new UserMessage("Change get_factorial() to use math.factorial"),
                 new AiMessage("""
-                  To make this change we need to modify `mathweb/flask/app.py` to:
-                  
-                  1. Import the math package.
-                  2. Remove the existing factorial() function.
-                  3. Update get_factorial() to call math.factorial instead.
-                  
-                  Here are the *SEARCH/REPLACE* blocks:
+            To make this change we need to modify `mathweb/flask/app.py` to:
 
-                  <<<<<<< SEARCH mathweb/flask/app.py
-                  from flask import Flask
-                  ======= mathweb/flask/app.py
-                  import math
-                  from flask import Flask
-                  >>>>>>> REPLACE mathweb/flask/app.py
+            1. Import the math package.
+            2. Remove the existing factorial() function.
+            3. Update get_factorial() to call math.factorial instead.
 
-                  <<<<<<< SEARCH mathweb/flask/app.py
-                  def factorial(n):
-                      "compute factorial"
-                      if n == 0:
-                          return 1
-                      else:
-                          return n * factorial(n-1)
-                  ======= mathweb/flask/app.py
-                  >>>>>>> REPLACE mathweb/flask/app.py
+            Here are the *SEARCH/REPLACE* blocks:
 
-                  <<<<<<< SEARCH mathweb/flask/app.py
-                      return str(factorial(n))
-                  ======= mathweb/flask/app.py
-                      return str(math.factorial(n))
-                  >>>>>>> REPLACE mathweb/flask/app.py
-                  """.stripIndent()),
-                new UserMessage("Refactor hello() into its own filename."),
+            ```
+            mathweb/flask/app.py
+            <<<<<<< SEARCH
+            from flask import Flask
+            =======
+            import math
+            from flask import Flask
+            >>>>>>> REPLACE
+            ```
+
+            ```
+            mathweb/flask/app.py
+            <<<<<<< SEARCH
+            def factorial(n):
+                "compute factorial"
+
+                if n == 0:
+                    return 1
+                else:
+                    return n * factorial(n-1)
+            =======
+            >>>>>>> REPLACE
+            ```
+
+            ```
+            mathweb/flask/app.py
+            <<<<<<< SEARCH
+                return str(factorial(n))
+            =======
+                return str(math.factorial(n))
+            >>>>>>> REPLACE
+            ```
+            """.stripIndent()),
+                new UserMessage("Refactor hello() into its own file."),
                 new AiMessage("""
-                  To make this change we need to modify `main.py` and make a new filename `hello.py`:
+            To make this change we need to modify `main.py` and make a new file `hello.py`:
 
-                  1. Make a new hello.py filename with hello() in it.
-                  2. Remove hello() from main.py and replace it with an import.
+            1. Make a new hello.py file with hello() in it.
+            2. Remove hello() from main.py and replace it with an import.
 
-                  Here are the *SEARCH/REPLACE* blocks:
-                  <<<<<<< SEARCH hello.py
-                  ======= hello.py
-                  def hello():
-                      "print a greeting"
-                      print("hello")
-                  >>>>>>> REPLACE hello.py
+            Here are the *SEARCH/REPLACE* blocks:
 
-                  <<<<<<< SEARCH main.py
-                  def hello():
-                      "print a greeting"
-                      print("hello")
-                  ======= main.py
-                  from hello import hello
-                  >>>>>>> REPLACE main.py
-                  """.stripIndent())
+            ```
+            hello.py
+            <<<<<<< SEARCH
+            =======
+            def hello():
+                "print a greeting"
+
+                print("hello")
+            >>>>>>> REPLACE
+            ```
+
+            ```
+            main.py
+            <<<<<<< SEARCH
+            def hello():
+                "print a greeting"
+
+                print("hello")
+            =======
+            from hello import hello
+            >>>>>>> REPLACE
+            ```
+            """.stripIndent())
         );
     }
 
-    protected String genericInstructions() {
+    protected String instructions(String reminder) {
         return """
+        <rules>
+        %s
+        
         Every *SEARCH* block must *EXACTLY MATCH* the existing filename content, character for character,
         including all comments, docstrings, indentation, etc.
         If the file contains code or other data wrapped in json/xml/quotes or other containers,
@@ -96,7 +123,7 @@ public class EditBlockPrompts {
         and one to insert in the new location.
 
         Pay attention to which filenames the user wants you to edit, especially if they are asking
-        you to create a new filename. To create a new file or replace an *entire* existing file, use a *SEARCH/REPLACE* 
+        you to create a new filename. To create a new file or replace an *entire* existing file, use a *SEARCH/REPLACE*
         block with nothing in between the search and divider marker lines, and the new file's full contents between
         the divider and replace marker lines.
  
@@ -112,38 +139,238 @@ public class EditBlockPrompts {
         Always write elegant, well-encapsulated code that is easy to maintain and use without mistakes.
        
         Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLACE BLOCK*!
+
+        %s
+        </rules>
+        """.stripIndent().formatted(diffFormatInstructions(), reminder);
+    }
+
+    public String diffFormatInstructions() {
+        return """
+        # *SEARCH/REPLACE block* Rules:
+        
+        Every *SEARCH/REPLACE block* must use this format:
+        1. The opening fence: ```
+        2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
+        3. The start of search block: <<<<<<< SEARCH
+        4. A contiguous chunk of lines to search for in the existing source code
+        5. The dividing line: =======
+        6. The lines to replace into the source code
+        7. The end of the replace block: >>>>>>> REPLACE
+        8. The closing fence: ```
+        
+        Use the *FULL* file path, as shown to you by the user. No other text should appear on the marker lines.
         """.stripIndent();
     }
 
-    public String instructions(String reminder) {
-        return """
-        <rules>
-        # *SEARCH/REPLACE blocks*
+    /**
+     * Parses the given content into ParseResult
+     */
+    public EditBlock.ParseResult parseEditBlocks(String content, Set<ProjectFile> projectFiles) {
+        var all = parse(content, projectFiles);
+        var editBlocks = all.blocks().stream().map(EditBlock.OutputBlock::block).filter(Objects::nonNull).toList();
+        return new EditBlock.ParseResult(editBlocks, all.parseError());
+    }
 
-        *SEARCH/REPLACE* blocks describe how to edit files. They are composed of
-        3 delimiting markers. Each marker repeats the FULL filename being edited.
-        For example,
-        <<<<<<<< SEARCH io/github/jbellis/Foo.java
-        ======== io/github/jbellis/Foo.java
-        >>>>>>>> REPLACE io/github/jbellis/Foo.java
-        
-        These markers (the hardcoded tokens, plus the filename) are referred to as the search, dividing,
-        and replace markers, respectively.
+    private static final Pattern HEAD = Pattern.compile("^<{5,9} SEARCH\\W*$", Pattern.MULTILINE);
+    private static final Pattern DIVIDER = Pattern.compile("^={5,9}\\s*$", Pattern.MULTILINE);
+    private static final Pattern UPDATED = Pattern.compile("^>{5,9} REPLACE\\W*$", Pattern.MULTILINE);
+    static final String[] DEFAULT_FENCE = {"```", "```"};
 
-        Every *SEARCH/REPLACE* block must use this format:
-        1. The search marker, followed by the full filename: <<<<<<< SEARCH $filename
-        2. A contiguous chunk of lines to search for in the existing source code
-        3. The dividing marker, followed by the full filename: ======= $filename
-        4. The lines to replace in the source code
-        5. The replace marker, followed by the full filename: >>>>>>> REPLACE $filename
+    /**
+     * Parses the given content into a sequence of OutputBlock records (plain text or edit blocks).
+     * Supports a "forgiving" divider approach if we do not see a standard "filename =======" line
+     * but do see exactly one line of "=======" in the lines between SEARCH and REPLACE.
+     * Malformed blocks do not prevent parsing subsequent blocks.
+     */
+    public EditBlock.ExtendedParseResult parse(String content, Set<ProjectFile> projectFiles) {
+        var blocks = new ArrayList<EditBlock.OutputBlock>();
+        var lines  = content.split("\n", -1);
+        var plain  = new StringBuilder();
+        int i = 0;
+        String currentFilename = null;
 
-        Use the *FULL* filename, as shown to you by the user. This appears on each of the three marker lines.
-        No other text should appear on the marker lines.
+        while (i < lines.length) {
+            var trimmed = lines[i].trim();
 
-        %s
-       
-        %s
-        </rules>
-        """.stripIndent().formatted(genericInstructions(), reminder);
+            // Beginning of a SEARCH/REPLACE block?
+            if (HEAD.matcher(trimmed).matches()) {
+                // Flush any plain text collected so far
+                if (!plain.toString().isBlank()) {
+                    blocks.add(EditBlock.OutputBlock.plain(plain.toString()));
+                    plain.setLength(0);
+                }
+
+                // Resolve the filename associated with this block
+                currentFilename = findFileNameNearby(lines, i, projectFiles, currentFilename);
+
+                // Collect the lines that belong to the SEARCH section
+                i++;
+                var beforeLines = new ArrayList<String>();
+                while (i < lines.length && !DIVIDER.matcher(lines[i].trim()).matches()) {
+                    beforeLines.add(lines[i]);
+                    i++;
+                }
+                if (i >= lines.length) {
+                    return new EditBlock.ExtendedParseResult(blocks, "Expected ======= divider after <<<<<<< SEARCH");
+                }
+
+                // Skip the ======= divider
+                i++;
+                var afterLines = new ArrayList<String>();
+                while (i < lines.length
+                        && !UPDATED.matcher(lines[i].trim()).matches()
+                        && !DIVIDER.matcher(lines[i].trim()).matches()) {
+                    afterLines.add(lines[i]);
+                    i++;
+                }
+                if (i >= lines.length) {
+                    return new EditBlock.ExtendedParseResult(blocks, "Expected >>>>>>> REPLACE or =======");
+                }
+
+                var beforeJoined = stripQuotedWrapping(String.join("\n", beforeLines),
+                                                       currentFilename
+                );
+                var afterJoined  = stripQuotedWrapping(String.join("\n", afterLines),
+                                                       currentFilename
+                );
+
+                if (!beforeJoined.isEmpty() && !beforeJoined.endsWith("\n")) {
+                    beforeJoined += "\n";
+                }
+                if (!afterJoined.isEmpty() && !afterJoined.endsWith("\n")) {
+                    afterJoined += "\n";
+                }
+
+                var srBlock = new EditBlock.SearchReplaceBlock(currentFilename, beforeJoined, afterJoined);
+                blocks.add(EditBlock.OutputBlock.edit(srBlock));
+
+                // Consume the >>>>>>> REPLACE marker (if present)
+                if (UPDATED.matcher(lines[i].trim()).matches()) {
+                    i++;
+                }
+
+                // Continue parsing (skip the increment at the end of the loop)
+                continue;
+            }
+
+            // Accumulate plain text that is not part of a block
+            plain.append(lines[i]);
+            if (i < lines.length - 1) {
+                plain.append("\n");
+            }
+            i++;
+        }
+
+        // Flush any trailing plain text
+        if (!plain.toString().isBlank()) {
+            blocks.add(EditBlock.OutputBlock.plain(plain.toString()));
+        }
+
+        return new EditBlock.ExtendedParseResult(blocks, null);
+    }
+
+    /**
+     * Removes any extra lines containing the filename or triple-backticks fences.
+     */
+    private static String stripQuotedWrapping(String block, String fname) {
+        if (block == null || block.isEmpty()) {
+            return block;
+        }
+        String[] lines = block.split("\n", -1);
+
+        // If first line ends with the filename’s filename
+        if (fname != null && lines.length > 0) {
+            String fn = new File(fname).getName();
+            if (lines[0].trim().endsWith(fn)) {
+                lines = Arrays.copyOfRange(lines, 1, lines.length);
+            }
+        }
+        // If triple-backtick block
+        if (lines.length >= 2
+                && lines[0].startsWith(EditBlockPrompts.DEFAULT_FENCE[0])
+                && lines[lines.length - 1].startsWith(EditBlockPrompts.DEFAULT_FENCE[1])) {
+            lines = Arrays.copyOfRange(lines, 1, lines.length - 1);
+        }
+        String result = String.join("\n", lines);
+        if (!result.isEmpty() && !result.endsWith("\n")) {
+            result += "\n";
+        }
+        return result;
+    }
+
+    /**
+     * Scanning for a filename up to 3 lines above the HEAD block index. If none found, fallback to
+     * currentFilename if it's not null.
+     */
+    @VisibleForTesting
+    static String findFileNameNearby(String[] lines,
+                                     int headIndex,
+                                     Set<ProjectFile> projectFiles,
+                                     String currentPath)
+    {
+        // Search up to 3 lines above headIndex
+        int start = Math.max(0, headIndex - 3);
+        var candidates = new ArrayList<String>();
+        for (int i = headIndex - 1; i >= start; i--) {
+            String s = lines[i].trim();
+            String possible = stripFilename(s);
+            if (possible != null && !possible.isBlank()) {
+                candidates.add(possible);
+            }
+            // If not a fence line, break.
+            if (!s.startsWith("```")) {
+                break;
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            return currentPath;
+        }
+
+        // 1) Exact match (including path) in validFilenames
+        for (var c : candidates) {
+            if (projectFiles.stream().anyMatch(f -> f.toString().equals(c))) {
+                return c;
+            }
+        }
+
+        // 2) Look for a matching filename
+        var matches = candidates.stream()
+                .flatMap(c -> projectFiles.stream()
+                        .filter(f -> f.getFileName().contains(c))
+                        .findFirst()
+                        .stream())
+                .map(ProjectFile::toString)
+                .toList();
+        if (!matches.isEmpty()) {
+            // TODO signal ambiguity?
+            return matches.getFirst();
+        }
+
+        // 3) If the candidate has an extension and no better match found, just return that.
+        for (var c : candidates) {
+            if (c.contains(".")) {
+                return c;
+            }
+        }
+
+        // 4) Fallback to the first raw candidate
+        return candidates.getFirst();
+    }
+
+    /**
+     * Ignores lines that are just ``` or ...
+     */
+    private static String stripFilename(String line) {
+        String s = line.trim();
+        if (s.equals("...") || s.equals(EditBlockPrompts.DEFAULT_FENCE[0])) {
+            return null;
+        }
+        // remove trailing colons, leading #, etc.
+        s = s.replaceAll(":$", "").replaceFirst("^#", "").trim();
+        s = s.replaceAll("^`+|`+$", "");
+        s = s.replaceAll("^\\*+|\\*+$", "");
+        return s.isBlank() ? null : s;
     }
 }
