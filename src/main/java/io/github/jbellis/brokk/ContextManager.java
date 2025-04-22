@@ -1160,8 +1160,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     private final ConcurrentMap<Callable<?>, String> taskDescriptions = new ConcurrentHashMap<>();
 
-    public SwingWorker<String, Void> submitSummarizePastedText(String pastedContent) {
-        SwingWorker<String, Void> worker = new SummarizeWorker(pastedContent, 12) {
+    public SummarizeWorker submitSummarizePastedText(String pastedContent) {
+        var worker = new SummarizeWorker(pastedContent, 12) {
             @Override
             protected void done() {
                 io.updateContextTable();
@@ -1173,8 +1173,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return worker;
     }
 
-    public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
-        SwingWorker<String, Void> worker = new SummarizeWorker(input, 5) {
+    public SummarizeWorker submitSummarizeTaskForConversation(String input) {
+        var worker = new SummarizeWorker(input, 5) {
             @Override
             protected void done() {
                 io.updateContextHistoryTable();
@@ -1581,7 +1581,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
-    private class SummarizeWorker extends SwingWorker<String, Void> {
+    public class SummarizeWorker extends SwingWorker<String, String> {
         private final String content;
         private final int words;
 

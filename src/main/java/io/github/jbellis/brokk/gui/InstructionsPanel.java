@@ -448,7 +448,7 @@ public class InstructionsPanel extends JPanel {
             var messages = CodePrompts.instance.askMessages(contextManager, question, model);
 
             // stream from coder using the provided model
-            var response = contextManager.getCoder(model, question).sendRequest(messages, true);
+            var response = contextManager.getCoder(model, "Ask: " + question).sendRequest(messages, true);
             if (response.error() != null) {
                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
             } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {

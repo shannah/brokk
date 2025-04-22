@@ -21,6 +21,7 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.LogDescription;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import scala.Option;
@@ -204,7 +205,7 @@ public class SearchAgent {
      * @return The final set of discovered code units
      */
     public SessionResult execute() throws InterruptedException {
-        io.systemOutput("Search Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(query)));
+        io.systemOutput("Search Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(query)));
 
         // If context exists, ask LLM to evaluate its relevance and kick off async summary
         var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {

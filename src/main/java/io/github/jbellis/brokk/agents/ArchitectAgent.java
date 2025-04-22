@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.LogDescription;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -174,7 +175,7 @@ public class ArchitectAgent {
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
     public void execute() throws ExecutionException, InterruptedException {
-        contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(goal)));
+        contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
         var coder = contextManager.getCoder(model, "Architect: " + goal);
 
         while (true) {
@@ -290,7 +291,7 @@ public class ArchitectAgent {
                     logger.debug("Finished SearchAgent task for request: {}", req.name());
                     return toolResult;
                 };
-                var taskDescription = "SearchAgent: " + SessionResult.getShortDescription(req.arguments());
+                var taskDescription = "SearchAgent: " + LogDescription.getShortDescription(req.arguments());
                 var future = contextManager.submitBackgroundTask(taskDescription, task);
                 searchAgentTasks.add(new SearchTask(req, future));
             }

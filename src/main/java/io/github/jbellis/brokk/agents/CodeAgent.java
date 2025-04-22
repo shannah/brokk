@@ -14,6 +14,7 @@ import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.util.LogDescription;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -71,7 +72,7 @@ public class CodeAgent {
         String buildError = "";
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
 
-        io.systemOutput("Code Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(userInput)));
+        io.systemOutput("Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput)));
         SessionResult.StopDetails stopDetails;
 
         var parser = contextManager.getParserForWorkspace();
@@ -219,7 +220,7 @@ public class CodeAgent {
         String finalActionDescription = (stopDetails.reason() == SessionResult.StopReason.SUCCESS)
                                         ? userInput
                                         : userInput + " [" + stopDetails.reason().name() + "]";
-        return new SessionResult(finalActionDescription,
+        return new SessionResult("Code: " + finalActionDescription,
                                  new ContextFragment.TaskFragment(parser, List.copyOf(io.getLlmRawMessages()), userInput),
                                  Map.copyOf(originalContents),
                                  stopDetails);

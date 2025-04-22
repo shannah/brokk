@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -32,17 +31,6 @@ public record SessionResult(String actionDescription,
              new ContextFragment.TaskFragment(uiMessages, actionDescription),
              originalContents,
              stopDetails);
-    }
-
-    public static String getShortDescription(String description) {
-        return getShortDescription(description, 5);
-    }
-
-    public static String getShortDescription(String description, int words) {
-        var cleaned = description.trim().replaceAll("[^a-zA-Z0-9\\s]", "");
-        return cleaned.split("\\s+").length <= words
-               ? cleaned
-               : String.join(" ", Arrays.asList(cleaned.split("\\s+")).subList(0, words));
     }
 
     /**

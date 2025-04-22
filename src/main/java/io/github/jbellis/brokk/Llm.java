@@ -24,6 +24,7 @@ import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
+import io.github.jbellis.brokk.util.LogDescription;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -43,8 +44,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static io.github.jbellis.brokk.SessionResult.getShortDescription;
 
 /**
  * The main orchestrator for sending requests to an LLM, possibly with tools, collecting
@@ -70,7 +69,7 @@ public class Llm {
         // Create session directory name
         var timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
         // Use the static method from CodeAgent.SessionResult for consistency
-        var sessionDesc = getShortDescription(taskDescription);
+        var sessionDesc = LogDescription.getShortDescription(taskDescription);
         var sessionDirName = String.format("%s %s", timestamp, sessionDesc);
         this.sessionHistoryDir = historyBaseDir.resolve(sessionDirName);
 
@@ -254,8 +253,9 @@ public class Llm {
         String modelName = contextManager.getModels().nameOf(model);
 
         while (attempt++ < maxAttempts) {
+            String description = Models.getText(messages.getLast());
             logger.debug("Sending request to {} attempt {}: {}",
-                         modelName, attempt, SessionResult.getShortDescription(Models.getText(messages.getLast()), 12));
+                         modelName, attempt, LogDescription.getShortDescription(description, 12));
 
             if (echo) {
                 io.showOutputSpinner("Thinking...");
@@ -910,7 +910,7 @@ public class Llm {
         try {
             var timestamp = LocalDateTime.now(); // timestamp finished, not started
 
-            String shortDesc = getShortDescription(getResultDescription(result));
+            String shortDesc = LogDescription.getShortDescription(getResultDescription(result));
             var formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
                                                                               contextManager.getModels().nameOf(model),
                                                                               TaskEntry.formatMessages(request.messages()));
