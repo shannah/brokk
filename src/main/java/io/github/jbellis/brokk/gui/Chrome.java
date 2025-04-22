@@ -884,7 +884,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
          * 
          * @param blocked true to prevent clear/reset operations, false to allow them
          */
-        public void setOutputPanelBlocking(boolean blocked) {
+        public void blockLlmOutput(boolean blocked) {
                 if (historyOutputPanel != null) {
                     historyOutputPanel.setMarkdownOutputPanelBlocking(blocked);
                 }

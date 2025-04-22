@@ -120,6 +120,7 @@ public class Llm {
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
+                        io.blockLlmOutput(true);
                         io.llmOutput(token, ChatMessageType.AI);
                         io.hideOutputSpinner();
                     }
@@ -129,6 +130,7 @@ public class Llm {
             @Override
             public void onCompleteResponse(ChatResponse response) {
                 ifNotCancelled.accept(() -> {
+                    io.blockLlmOutput(false);
                     io.hideOutputSpinner();
                     if (echo) {
                         io.llmOutput("\n", ChatMessageType.AI);
@@ -598,9 +600,6 @@ public class Llm {
                                                         ToolChoice toolChoice,
                                                         boolean echo) throws InterruptedException
     {
-        var instructionsPresent = emulatedToolInstructionsPresent(messages);
-        logger.debug("Tool emulation sending {} messages with {}", messages.size(), instructionsPresent);
-
         Function<Throwable, String> retryInstructionsProvider = e -> """
                 %s
                 Respond with a single JSON object containing a `tool_calls` array. Each entry in the array represents one invocation of a tool.
@@ -630,36 +629,36 @@ public class Llm {
                 }
                 """.stripIndent().formatted(e == null ? "" : "Your previous response was not valid: " + e.getMessage());
 
+        // Check if we've already added tool instructions to any message
+        boolean instructionsPresent = messages.stream().anyMatch(m -> 
+            Models.getText(m).contains("available tools:") && 
+            Models.getText(m).contains("tool_calls"));
+        
+        logger.debug("Tool emulation sending {} messages with instructionsPresent={}", messages.size(), instructionsPresent);
+
+        // Prepare messages, possibly adding instructions
         List<ChatMessage> initialMessages = new ArrayList<>(messages);
         if (!instructionsPresent) {
-            // Inject instructions for the model re how to format function calls
             var instructions = getInstructions(tools, retryInstructionsProvider);
-            var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
+            var lastMessage = messages.getLast();
+            var modified = new UserMessage(Models.getText(lastMessage) + "\n\n" + instructions);
             initialMessages.set(initialMessages.size() - 1, modified);
-            logger.trace("Modified messages are {}", initialMessages);
+            logger.trace("Added tool instructions to last message");
         }
 
-        // Build request creator function
-        Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages ->
-                ChatRequest.builder()
-                        .messages(attemptMessages)
-                        .parameters(ChatRequestParameters.builder()
-                                            .responseFormat(ResponseFormat.builder()
-                                                                    .type(ResponseFormatType.JSON)
-                                                                    .build())
-                                            .build())
-                        .build();
+        // Simple request builder for JSON output format
+        Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages -> ChatRequest.builder()
+                .messages(attemptMessages)
+                .parameters(ChatRequestParameters.builder()
+                        .responseFormat(ResponseFormat.builder()
+                                .type(ResponseFormatType.JSON)
+                                .build())
+                        .build())
+                .build();
 
         return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
     }
 
-    private static boolean emulatedToolInstructionsPresent(List<ChatMessage> messages) {
-        return messages.stream().anyMatch(m -> {
-            var t = Models.getText(m);
-            return t.matches("(?s).*\\d+ available tools:.*")
-                    && t.contains("Include all the tool calls");
-        });
-    }
 
     /**
      * Builds a JSON schema describing exactly:

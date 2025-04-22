@@ -26,7 +26,6 @@ import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -914,7 +913,6 @@ public class InstructionsPanel extends JPanel {
             stopButton.setEnabled(true);
             micButton.setEnabled(false);
             chrome.disableHistoryPanel();
-            chrome.setOutputPanelBlocking(true);
         });
     }
 
@@ -930,7 +928,6 @@ public class InstructionsPanel extends JPanel {
             stopButton.setEnabled(false);
             micButton.setEnabled(true);
             chrome.enableHistoryPanel();
-            chrome.setOutputPanelBlocking(false);
         });
     }
 }
