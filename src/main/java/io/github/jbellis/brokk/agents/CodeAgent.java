@@ -60,12 +60,6 @@ public class CodeAgent {
         // Track original contents of files before any changes
         var originalContents = new HashMap<ProjectFile, String>();
 
-        // We'll collect the conversation as ChatMessages to store in context history.
-        var sessionMessages = new ArrayList<ChatMessage>();
-
-        // The user's initial request
-        var nextRequest = new UserMessage("<goal>\n%s\n</goal>".formatted(userInput.trim()));
-
         // Start verification command inference concurrently
         var verificationCommandFuture = determineVerificationCommandAsync(contextManager);
 
@@ -82,22 +76,18 @@ public class CodeAgent {
 
         var parser = contextManager.getParserForWorkspace();
 
+        // initial messages including the Workspace
+        var allMessages = CodePrompts.instance.codeMessages(contextManager, userInput, model);
+
         while (true) {
             // Prepare and send request to LLM
-            var allMessages = CodePrompts.instance.collectMessages(contextManager,
-                                                                   parser,
-                                                                   sessionMessages,
-                                                                   CodePrompts.reminderForModel(contextManager.getModels(), model));
-            allMessages.add(nextRequest);
-
             StreamingResult streamingResult = coder.sendRequest(allMessages, true);
             stopDetails = checkLlmResult(streamingResult, io);
             if (stopDetails != null) break;
 
             // Append request/response to session history
             var llmResponse = streamingResult.chatResponse();
-            sessionMessages.add(nextRequest);
-            sessionMessages.add(llmResponse.aiMessage());
+            allMessages.add(llmResponse.aiMessage());
 
             String llmText = llmResponse.aiMessage().text();
             logger.debug("got response");
@@ -119,7 +109,7 @@ public class CodeAgent {
                         io.systemOutput("Parse error limit reached; ending session");
                         break;
                     }
-                    nextRequest = new UserMessage(parseResult.parseError());
+                    allMessages.add(new UserMessage(parseResult.parseError()));
                     io.systemOutput("Failed to parse LLM response; retrying");
                 } else {
                     // Partial parse => ask LLM to continue from last parsed block
@@ -133,7 +123,7 @@ public class CodeAgent {
                             
                             Please continue from there (WITHOUT repeating that one).
                             """.stripIndent().formatted(newlyParsedBlocks.getLast());
-                    nextRequest = new UserMessage(partialMsg);
+                    allMessages.add(new UserMessage(partialMsg));
                     io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()));
                 }
                 continue;
@@ -183,9 +173,10 @@ public class CodeAgent {
                 }
 
                 var parseRetryPrompt = getApplyFailureMessage(editResult.failedBlocks(),
+                                                              parser,
                                                               succeededCount,
-                                                              io);
-
+                                                              io,
+                                                              contextManager);
                 if (!parseRetryPrompt.isEmpty()) {
                     if (applyFailures >= MAX_PARSE_ATTEMPTS) {
                         io.systemOutput("Parse/Apply retry limit reached; ending session");
@@ -199,7 +190,7 @@ public class CodeAgent {
                         break;
                     }
                     io.systemOutput("Attempting to fix apply/match errors...");
-                    nextRequest = new UserMessage(parseRetryPrompt);
+                    allMessages.add(new UserMessage(parseRetryPrompt));
                     continue;
                 }
             } else {
@@ -219,7 +210,7 @@ public class CodeAgent {
             // If the build failed after applying edits, create the next request for the LLM
             // (formatBuildErrorsForLLM includes instructions to stop if not progressing)
             io.systemOutput("Attempting to fix build errors...");
-            nextRequest = new UserMessage(formatBuildErrorsForLLM(buildError));
+            allMessages.add(new UserMessage(formatBuildErrorsForLLM(buildError)));
         }
 
         // Conclude session
@@ -485,51 +476,105 @@ public class CodeAgent {
     }
 
     /**
-     * Generates a message based on parse/apply errors from failed edit blocks
+     * Generates a message based on parse/apply errors from failed edit blocks, including current file content.
      */
     private static String getApplyFailureMessage(List<EditBlock.FailedBlock> failedBlocks,
+                                                 EditBlockParser parser,
                                                  int succeededCount,
-                                                 IConsoleIO io)
-    {
-        if (failedBlocks.isEmpty()) {
-            return "";
+                                                 IConsoleIO io,
+                                                 ContextManager cm)
+        {
+            if (failedBlocks.isEmpty()) {
+                return "";
+            }
+    
+            // Group failed blocks by filename
+            var failuresByFile = failedBlocks.stream()
+                    .filter(fb -> fb.block().filename() != null) // Only include blocks with filenames
+                    .collect(Collectors.groupingBy(fb -> fb.block().filename()));
+    
+            int totalFailCount = failedBlocks.size();
+            boolean singularFail = (totalFailCount == 1);
+            var pluralizeFail = singularFail ? "" : "s";
+    
+            String fileDetails = failuresByFile.entrySet().stream()
+                    .map(entry -> {
+                        var filename = entry.getKey();
+                        var fileFailures = entry.getValue();
+                        var file = cm.toFile(filename);
+                        String currentContentBlock;
+                        try {
+                            var content = file.read();
+                            currentContentBlock = """
+                                    <current_content>
+                                    %s
+                                    </current_content>
+                                    """.formatted(content.isBlank() ? "[File is empty]" : content).stripIndent();
+                        } catch (java.io.IOException e) {
+                            logger.warn("Could not read file {} to include in failure message: {}", filename, e.getMessage());
+                            currentContentBlock = "<current_content>[Could not read current file content: %s]</current_content>"
+                                    .formatted(e.getMessage());
+                        }
+    
+                        String failedBlocksXml = fileFailures.stream()
+                                .map(f -> """
+                                        <failed_block reason="%s">
+                                          <block>
+                                          %s
+                                          </block>
+                                          <commentary>%s</commentary>
+                                        </failed_block>
+                                        """.formatted(f.reason(), parser.repr(f.block()), f.commentary()).stripIndent())
+                                .collect(Collectors.joining("\n"));
+    
+                        return """
+                               <file name="%s">
+                               %s
+                               
+                                 <failed_blocks>
+                                 %s
+                                 </failed_blocks>
+                               </file>
+                               """.formatted(filename, currentContentBlock, failedBlocksXml).stripIndent();
+                    })
+                    .collect(Collectors.joining("\n\n")); // Join details for different files
+    
+            // Instructions for the LLM
+            String instructions = """
+                    <instructions>
+                    # %d SEARCH/REPLACE block%s failed to match!
+                    
+                    Take a look at the CURRENT state of the relevant file%s provided above in the `<current_content>` tags.
+                    If the failed edits listed in the `<failed_blocks>` tags are still needed, please correct them based on the current content.
+                    Remember that the SEARCH text within a `<block>` must match EXACTLY the lines in the file.
+                    If the SEARCH text looks correct, double-check the filename and context (like line numbers if provided in commentary).
+                    
+                    Provide corrected SEARCH/REPLACE blocks for the failed edits only.
+                    </instructions>
+                    """.formatted(totalFailCount, pluralizeFail, pluralizeFail).stripIndent();
+    
+            // Add info about successful blocks, if any
+            String successNote = "";
+            if (succeededCount > 0) {
+                boolean singularSuccess = (succeededCount == 1);
+                var pluralizeSuccess = singularSuccess ? "" : "s";
+                successNote = """
+                        <note>
+                        The other %d SEARCH/REPLACE block%s applied successfully. Do not re-send them. Just fix the failing blocks detailed above.
+                        </note>
+                        """.formatted(succeededCount, pluralizeSuccess).stripIndent();
+            }
+    
+            String finalMessage = """
+                    %s
+                    
+                    %s
+                    %s
+                    """.formatted(instructions, fileDetails, successNote).stripIndent();
+    
+            io.llmOutput("\n" + finalMessage, ChatMessageType.USER); // Show the user what we're telling the LLM
+            return finalMessage; // Return the message to be sent to the LLM
         }
-
-        // Generate the message for the LLM
-        int count = failedBlocks.size();
-        boolean singular = (count == 1);
-        var failedText = failedBlocks.stream()
-                .map(f -> {
-                    return """
-                            ## Failed to match (%s)
-                            ```
-                            %s
-                            ```
-                            %s
-                            """.stripIndent().formatted(f.reason(),
-                                                        f.block().toString(),
-                                                        f.commentary());
-                })
-                .collect(Collectors.joining("\n\n"));
-        var successfulText = succeededCount > 0
-                             ? "\n# The other %d SEARCH/REPLACE block%s applied successfully. Don't re-send them. Just fix the failing blocks above.\n".formatted(succeededCount, succeededCount == 1 ? " was" : "s were")
-                             : "";
-        var pluralize = singular ? "" : "s";
-        var failedApplyMessage = """
-                # %d SEARCH/REPLACE block%s failed to match!
-                
-                %s
-                
-                Take a look at the CURRENT state of the relevant file%s in the workspace; if these edit%s are still needed,
-                please correct them. Remember that the SEARCH text must match EXACTLY the lines in the file. If the SEARCH text looks correct,
-                check the filename carefully.
-                
-                %s
-                """.stripIndent().formatted(count, pluralize, failedText, pluralize, pluralize, successfulText);
-
-        io.llmOutput("\n" + failedApplyMessage, ChatMessageType.USER); // Show the user what we're telling the LLM
-        return failedApplyMessage; // Return the message to be sent to the LLM
-    }
 
 
     /**

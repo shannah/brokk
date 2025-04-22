@@ -13,7 +13,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
-import io.github.jbellis.brokk.prompts.AskPrompts;
+import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -445,8 +445,7 @@ public class InstructionsPanel extends JPanel {
                 return;
             }
             // Provide the prompt messages
-            var messages = new LinkedList<>(AskPrompts.instance.collectMessages(contextManager));
-            messages.add(new UserMessage("<question>\n%s\n</question>".formatted(question.trim())));
+            var messages = CodePrompts.instance.askMessages(contextManager, question, model);
 
             // stream from coder using the provided model
             var response = contextManager.getCoder(model, question).sendRequest(messages, true);

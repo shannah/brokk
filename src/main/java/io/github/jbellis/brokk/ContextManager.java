@@ -859,16 +859,22 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         var taskHistory = selectedContext().getTaskHistory();
 
-        // Concatenate the string representation of each TaskHistory
-        String historyString = taskHistory.stream()
+        var messages = new ArrayList<ChatMessage>();
+        // TODO check that no compressed tasks are mixed in with the uncompressed?
+        var compressed = taskHistory.stream()
+                .filter(TaskEntry::isCompressed)
                 .map(TaskEntry::toString)
                 .collect(Collectors.joining("\n\n"));
+        if (!compressed.isEmpty()) {
+            messages.add(new UserMessage("<taskhistory>%s</taskhistory>".formatted(compressed)));
+            messages.add(new AiMessage("Ok, I see the history."));
+        }
 
-        // Create the UserMessage containing the history and the AI acknowledgment
-        var historyUserMessage = new UserMessage("Here is our work history so far:\n<history>\n%s\n</history>".formatted(historyString));
-        var historyAiMessage = new AiMessage("Ok, I see the history."); // Simple acknowledgment
+        taskHistory.stream()
+                .filter(e -> !e.isCompressed())
+                .forEach(e -> messages.addAll(e.log().messages()));
 
-        return List.of(historyUserMessage, historyAiMessage);
+        return messages;
     }
 
     /**

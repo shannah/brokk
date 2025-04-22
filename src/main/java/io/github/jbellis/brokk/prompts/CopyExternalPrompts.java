@@ -13,7 +13,7 @@ public abstract class CopyExternalPrompts extends CodePrompts {
     public static final CopyExternalPrompts instance = new CopyExternalPrompts() {};
 
     public List<ChatMessage> collectMessages(ContextManager cm) {
-        // like the default, but omits the edit instructions and examples
+        // omits edit instructions and examples
         return Streams.concat(Stream.of(new SystemMessage(formatIntro(cm, CodePrompts.LAZY_REMINDER))),
                               collectMessagesInternal(cm).stream())
                         .toList();

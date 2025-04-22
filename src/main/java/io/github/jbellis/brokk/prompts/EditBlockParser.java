@@ -97,7 +97,7 @@ public class EditBlockParser {
         );
     }
 
-    protected String instructions(String reminder) {
+    protected String instructions(String input, String reminder) {
         return """
         <rules>
         %s
@@ -124,7 +124,7 @@ public class EditBlockParser {
         and one to insert in the new location.
 
         Pay attention to which filenames the user wants you to edit, especially if they are asking
-        you to create a new filename. To create a new file or replace an *entire* existing file, use a *SEARCH/REPLACE*
+        you to create a new filename. To create a new file OR to replace an *entire* existing file, use a *SEARCH/REPLACE*
         block with nothing in between the search and divider marker lines, and the new file's full contents between
         the divider and replace marker lines.
  
@@ -143,7 +143,11 @@ public class EditBlockParser {
 
         %s
         </rules>
-        """.stripIndent().formatted(diffFormatInstructions(), reminder);
+        
+        <goal>
+        %s
+        </goal>
+        """.stripIndent().formatted(diffFormatInstructions(), reminder, input);
     }
 
     public String diffFormatInstructions() {
@@ -455,5 +459,24 @@ public class EditBlockParser {
         s = s.replaceAll("^`+|`+$", "");
         s = s.replaceAll("^\\*+|\\*+$", "");
         return s.isBlank() ? null : s;
+    }
+
+    public String repr(EditBlock.SearchReplaceBlock block) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(DEFAULT_FENCE[0]).append("\n");
+        sb.append(block.filename());;
+        sb.append("<<<<<<< SEARCH");
+        sb.append(block.beforeText());
+        if (!block.beforeText().endsWith("\n")) {
+            sb.append("\n");
+        }
+        sb.append("=======\n");
+        sb.append(block.afterText());
+        if (!block.afterText().endsWith("\n")) {
+            sb.append("\n");
+        }
+        sb.append(">>>>>>> REPLACE\n");
+
+        return sb.toString();
     }
 }
