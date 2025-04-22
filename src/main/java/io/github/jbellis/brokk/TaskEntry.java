@@ -21,13 +21,13 @@ import java.util.stream.Collectors;
  * @param log      The uncompressed list of chat messages for this task. Null if compressed.
  * @param summary  The compressed representation of the chat messages (summary). Null if uncompressed.
  */
-public record TaskMessages(int sequence, List<ChatMessage> log, String summary) implements Serializable {
+public record TaskEntry(int sequence, List<ChatMessage> log, String summary) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L; // Initial version
-    private static final System.Logger logger = System.getLogger(TaskMessages.class.getName());
+    private static final System.Logger logger = System.getLogger(TaskEntry.class.getName());
 
     /** Enforce that exactly one of log or summary is non-null */
-    public TaskMessages {
+    public TaskEntry {
         assert (log == null) != (summary == null) : "Exactly one of log or summary must be non-null";
         assert log == null || !log.isEmpty();
         assert summary == null || !summary.isEmpty();
@@ -40,13 +40,13 @@ public record TaskMessages(int sequence, List<ChatMessage> log, String summary) 
      * The remaining messages (AI responses, tool calls/results) are stored in the `log`.
      * The TaskEntry starts uncompressed.
      */
-    public static TaskMessages fromSession(int sequence, SessionResult result) {
+    public static TaskEntry fromSession(int sequence, SessionResult result) {
         assert result != null;
-        return new TaskMessages(sequence, result.output().messages(), null);
+        return new TaskEntry(sequence, result.output().messages(), null);
     }
 
-    public static TaskMessages fromCompressed(int sequence, String compressedLog) {
-        return new TaskMessages(sequence, null, compressedLog);
+    public static TaskEntry fromCompressed(int sequence, String compressedLog) {
+        return new TaskEntry(sequence, null, compressedLog);
     }
 
     /**
@@ -122,12 +122,12 @@ public record TaskMessages(int sequence, List<ChatMessage> log, String summary) 
         private final String serializedLog; // Store log as JSON string
         private final String summary;
 
-        SerializationProxy(TaskMessages taskMessages) {
-            this.sequence = taskMessages.sequence();
-            this.summary = taskMessages.summary();
+        SerializationProxy(TaskEntry taskEntry) {
+            this.sequence = taskEntry.sequence();
+            this.summary = taskEntry.summary();
             // Serialize the log to JSON if it exists
-            this.serializedLog = taskMessages.log() != null
-                    ? ChatMessageSerializer.messagesToJson(taskMessages.log())
+            this.serializedLog = taskEntry.log() != null
+                    ? ChatMessageSerializer.messagesToJson(taskEntry.log())
                     : null;
         }
 
@@ -139,10 +139,10 @@ public record TaskMessages(int sequence, List<ChatMessage> log, String summary) 
             if (serializedLog != null) {
                 // Deserialize log from JSON
                 List<ChatMessage> deserializedLog = ChatMessageDeserializer.messagesFromJson(serializedLog);
-                return new TaskMessages(sequence, deserializedLog, null);
+                return new TaskEntry(sequence, deserializedLog, null);
             } else {
                 // Entry was compressed or had no log originally
-                return new TaskMessages(sequence, null, summary);
+                return new TaskEntry(sequence, null, summary);
             }
         }
     }

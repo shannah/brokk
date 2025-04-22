@@ -163,7 +163,7 @@ public class ArchitectAgent {
                 
                 Full list of potentially relevant classes:
                 %s
-                """.stripIndent().formatted(TaskMessages.formatMessages(result.output().messages()), relevantClasses);
+                """.stripIndent().formatted(TaskEntry.formatMessages(result.output().messages()), relevantClasses);
         logger.debug(stringResult);
 
         return stringResult;

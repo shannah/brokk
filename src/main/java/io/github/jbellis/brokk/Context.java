@@ -50,7 +50,7 @@ public class Context implements Serializable {
     final AutoContext autoContext;
     final int autoContextFileCount;
     /** Task history list. Each entry represents a user request and the subsequent conversation */
-    final List<TaskMessages> taskHistory;
+    final List<TaskEntry> taskHistory;
 
     /** backup of original contents for /undo, does not carry forward to Context children */
     transient final Map<ProjectFile, String> originalContents;
@@ -103,7 +103,7 @@ public class Context implements Serializable {
                     List<ContextFragment.VirtualFragment> virtualFragments,
                     AutoContext autoContext,
                     int autoContextFileCount,
-                    List<TaskMessages> taskHistory,
+                    List<TaskEntry> taskHistory,
                     Map<ProjectFile, String> originalContents,
                     ContextFragment.TaskFragment parsedOutput,
                     Future<String> action)
@@ -499,22 +499,22 @@ public class Context implements Serializable {
      * Creates a new TaskEntry with the correct sequence number based on the current history.
      * @return A new TaskEntry.
      */
-    public TaskMessages createTaskEntry(SessionResult result) {
+    public TaskEntry createTaskEntry(SessionResult result) {
         int nextSequence = taskHistory.isEmpty() ? 1 : taskHistory.getLast().sequence() + 1;
-        return TaskMessages.fromSession(nextSequence, result);
+        return TaskEntry.fromSession(nextSequence, result);
     }
 
     /**
      * Adds a new TaskEntry to the history.
      *
-     * @param taskMessages        The pre-constructed TaskEntry to add.
+     * @param taskEntry        The pre-constructed TaskEntry to add.
      * @param originalContents Map of original file contents for undo purposes.
      * @param parsed           The parsed output associated with this task.
      * @param action           A future describing the action that created this history entry.
      * @return A new Context instance with the added task history.
      */
-    public Context addHistoryEntry(TaskMessages taskMessages, ContextFragment.TaskFragment parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
-        var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(taskMessages)).toList();
+    public Context addHistoryEntry(TaskEntry taskEntry, ContextFragment.TaskFragment parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
+        var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(taskEntry)).toList();
         return new Context(newId(),
                            contextManager,
                            editableFiles,
@@ -562,7 +562,7 @@ public class Context implements Serializable {
     /**
      * @return an immutable copy of the task history.
      */
-    public List<TaskMessages> getTaskHistory() {
+    public List<TaskEntry> getTaskHistory() {
         return taskHistory;
     }
 
@@ -637,7 +637,7 @@ public class Context implements Serializable {
      * @param newHistory The new list of TaskEntry objects.
      * @return A new Context instance with the updated history.
      */
-    public Context withCompressedHistory(List<TaskMessages> newHistory) {
+    public Context withCompressedHistory(List<TaskEntry> newHistory) {
         return new Context(newId(),
                            contextManager,
                            editableFiles,

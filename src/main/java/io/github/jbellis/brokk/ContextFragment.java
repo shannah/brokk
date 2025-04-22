@@ -767,7 +767,7 @@ public interface ContextFragment extends Serializable {
     }
 
     interface OutputFragment {
-        List<TaskMessages> entries();
+        List<TaskEntry> entries();
     }
 
     /**
@@ -775,15 +775,15 @@ public interface ContextFragment extends Serializable {
      */
     class HistoryFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 3L;
-        private final List<TaskMessages> history;
+        private final List<TaskEntry> history;
 
-        public HistoryFragment(List<TaskMessages> history) {
+        public HistoryFragment(List<TaskEntry> history) {
             super();
             assert history != null;
             this.history = List.copyOf(history);
         }
 
-        public List<TaskMessages> entries() {
+        public List<TaskEntry> entries() {
             return history;
         }
 
@@ -796,7 +796,7 @@ public interface ContextFragment extends Serializable {
         public String text() {
             // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
             // but lots of stuff breaks without text(), so I am putting that off for another refactor
-            return TaskMessages.formatMessages(history.stream().flatMap(e -> e.log().stream()).toList());
+            return TaskEntry.formatMessages(history.stream().flatMap(e -> e.log().stream()).toList());
         }
 
         @Override
@@ -871,7 +871,7 @@ public interface ContextFragment extends Serializable {
         public String text() {
             // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
             // but lots of stuff breaks without text(), so I am putting that off for another refactor
-            return TaskMessages.formatMessages(messages);
+            return TaskEntry.formatMessages(messages);
         }
 
         @Override
@@ -883,8 +883,8 @@ public interface ContextFragment extends Serializable {
             return messages;
         }
 
-        public List<TaskMessages> entries() {
-            return List.of(new TaskMessages(-1, messages, null));
+        public List<TaskEntry> entries() {
+            return List.of(new TaskEntry(-1, messages, null));
         }
 
         public EditBlockParser parser() {

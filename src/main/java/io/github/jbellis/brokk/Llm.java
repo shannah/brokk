@@ -913,7 +913,7 @@ public class Llm {
             String shortDesc = getShortDescription(getResultDescription(result));
             var formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
                                                                               contextManager.getModels().nameOf(model),
-                                                                              TaskMessages.formatMessages(request.messages()));
+                                                                              TaskEntry.formatMessages(request.messages()));
             var formattedTools = request.toolSpecifications() == null ? "" : "# Tools:\n\n" + request.toolSpecifications().stream().map(ToolSpecification::name).collect(Collectors.joining("\n"));
             var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());
             String fileTimestamp = timestamp.format(DateTimeFormatter.ofPattern("HH-mm-ss"));

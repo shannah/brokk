@@ -303,7 +303,7 @@ public class ContextSerializationTest {
 
         // Verify task history count
         assertEquals(1, deserialized.getTaskHistory().size(), "Deserialized context should have one task history entry.");
-        TaskMessages deserializedTask = deserialized.getTaskHistory().getFirst();
+        TaskEntry deserializedTask = deserialized.getTaskHistory().getFirst();
 
         // Verify TaskMessages content (log field contains the messages)
         assertNotNull(deserializedTask.log(), "Task log should not be null after deserialization.");
