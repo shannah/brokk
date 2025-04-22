@@ -526,6 +526,19 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     /**
+     * Sets the blocking state on the contained MarkdownOutputPanel.
+     *
+     * @param blocked true to prevent clear/reset, false otherwise.
+     */
+    public void setMarkdownOutputPanelBlocking(boolean blocked) {
+        if (llmStreamArea != null) {
+            llmStreamArea.setBlocking(blocked);
+        } else {
+            logger.warn("Attempted to set blocking state on null llmStreamArea");
+        }
+    }
+
+    /**
      * Inner class representing a detached window for viewing output text
      */
     private static class OutputWindow extends JFrame {
