@@ -342,7 +342,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         } catch (IllegalArgumentException e) {
             logger.error("Unknown action type: {}", action);
         }
-        io.setLlmOutput(List.of(new UserMessage(messageSubType.toString(), input)));
+        // need to set the correct parser here since we're going to append to the same fragment during the action
+        io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(messageSubType.toString(), input)), input));
         return submitUserTask(action, task);
     }
 

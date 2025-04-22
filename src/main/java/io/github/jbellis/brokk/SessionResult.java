@@ -29,7 +29,8 @@ public record SessionResult(String actionDescription,
                          StopDetails stopDetails)
     {
         this(actionDescription,
-             new ContextFragment.TaskFragment(uiMessages, actionDescription), originalContents,
+             new ContextFragment.TaskFragment(uiMessages, actionDescription),
+             originalContents,
              stopDetails);
     }
 

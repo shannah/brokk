@@ -81,11 +81,12 @@ public class CodeAgent {
         SessionResult.StopDetails stopDetails;
 
         var parser = contextManager.getParserForWorkspace();
-        contextManager.getIo().setLlmParser(parser);
 
         while (true) {
             // Prepare and send request to LLM
-            var allMessages = CodePrompts.instance.collectMessages(contextManager, sessionMessages,
+            var allMessages = CodePrompts.instance.collectMessages(contextManager,
+                                                                   parser,
+                                                                   sessionMessages,
                                                                    CodePrompts.reminderForModel(contextManager.getModels(), model));
             allMessages.add(nextRequest);
 
@@ -228,7 +229,7 @@ public class CodeAgent {
                                         ? userInput
                                         : userInput + " [" + stopDetails.reason().name() + "]";
         return new SessionResult(finalActionDescription,
-                                 new ContextFragment.TaskFragment(parser, io.getLlmRawMessages(), userInput),
+                                 new ContextFragment.TaskFragment(parser, List.copyOf(io.getLlmRawMessages()), userInput),
                                  Map.copyOf(originalContents),
                                  stopDetails);
     }

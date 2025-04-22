@@ -478,9 +478,9 @@ public class InstructionsPanel extends JPanel {
     private void maybeAddInterruptedResult(String action, String input) {
         if (chrome.getLlmRawMessages().stream().anyMatch(m -> m instanceof AiMessage)) {
             logger.debug("Ask command cancelled with partial results");
-            // FIXME the parser is wrong here
+            var parser = chrome.getContextManager().getParserForWorkspace(); // one more ugly hack won't hurt!
             var sessionResult = new SessionResult("%s (Cancelled): %s".formatted(action, input),
-                                                  List.copyOf(chrome.getLlmRawMessages()),
+                                                  new TaskFragment(parser, List.copyOf(chrome.getLlmRawMessages()), input),
                                                   Map.of(),
                                                   new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED));
             chrome.getContextManager().addToHistory(sessionResult, false);
@@ -522,7 +522,7 @@ public class InstructionsPanel extends JPanel {
             var result = agent.execute();
             assert result != null;
             // Search does not stream to llmOutput, so set the final answer here
-            chrome.setLlmOutput(result.output().messages());
+            chrome.setLlmOutput(result.output());
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
             chrome.toolErrorRaw("Search agent interrupted without answering");

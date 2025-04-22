@@ -21,7 +21,7 @@ public class AIMessageRenderer implements MessageComponentRenderer {
     public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
         String content = MarkdownRenderUtil.getMessageContent(message);
         // For AI messages, try to parse edit blocks first
-        var parseResult = EditBlockParser.instance.parse(content, Set.of()); // FIXME
+        var parseResult = parser.parse(content, Set.of());
 
         // Create content panel for AI message
         JPanel contentPanel = new JPanel();

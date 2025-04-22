@@ -2,17 +2,23 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageDeserializer;
+import dev.langchain4j.data.message.ChatMessageSerializer;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.prompts.EditBlockConflictsParser;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.awt.*;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Path;
 import java.util.List;
@@ -26,14 +32,14 @@ public interface ContextFragment extends Serializable {
     // Static counter for all fragments
     // TODO reset this on new session (when we have sessions)
     AtomicInteger NEXT_ID = new AtomicInteger(1);
-    
-    /** 
+
+    /**
      * Gets the current max fragment ID for serialization purposes
      */
     static int getCurrentMaxId() {
         return NEXT_ID.get();
     }
-    
+
     /**
      * Sets the next fragment ID value (used during deserialization)
      */
@@ -42,20 +48,36 @@ public interface ContextFragment extends Serializable {
             NEXT_ID.set(value);
         }
     }
-    
-    /** Unique identifier for this fragment */
+
+    /**
+     * Unique identifier for this fragment
+     */
     int id();
-    /** short description in history */
+
+    /**
+     * short description in history
+     */
     String shortDescription();
-    /** longer description displayed in context table */
+
+    /**
+     * longer description displayed in context table
+     */
     String description();
-    /** raw content for preview */
+
+    /**
+     * raw content for preview
+     */
     String text() throws IOException;
-    /** content formatted for LLM */
+
+    /**
+     * content formatted for LLM
+     */
     String format() throws IOException;
+
     default boolean isText() {
         return true;
     }
+
     default Image image() throws IOException {
         throw new UnsupportedOperationException();
     }
@@ -95,7 +117,8 @@ public interface ContextFragment extends Serializable {
     }
 
     sealed interface PathFragment extends ContextFragment
-            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment, ImageFileFragment {
+            permits ProjectPathFragment, GitFileFragment, ExternalPathFragment, ImageFileFragment
+    {
         BrokkFile file();
 
         @Override
@@ -116,10 +139,10 @@ public interface ContextFragment extends Serializable {
         @Override
         default String format() throws IOException {
             return """
-            <file path="%s" fragmentid="%d">
-            %s
-            </file>
-            """.stripIndent().formatted(file().toString(), id(), text());
+                    <file path="%s" fragmentid="%d">
+                    %s
+                    </file>
+                    """.stripIndent().formatted(file().toString(), id(), text());
         }
     }
 
@@ -180,10 +203,10 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-             String parentDir = file.getParent();
-             return parentDir.isEmpty()
-                    ? shortDescription()
-                    : "%s [%s]".formatted(shortDescription(), parentDir);
+            String parentDir = file.getParent();
+            return parentDir.isEmpty()
+                   ? shortDescription()
+                   : "%s [%s]".formatted(shortDescription(), parentDir);
         }
 
         @Override
@@ -200,11 +223,11 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String format() throws IOException {
-             return """
-               <file path="%s" revision="%s">
-               %s
-               </file>
-               """.stripIndent().formatted(file().toString(), revision(), text());
+            return """
+                    <file path="%s" revision="%s">
+                    %s
+                    </file>
+                    """.stripIndent().formatted(file().toString(), revision(), text());
         }
 
         @Override
@@ -240,87 +263,87 @@ public interface ContextFragment extends Serializable {
         public boolean isEligibleForAutoContext() {
             return false;
         }
+    }
+
+    /**
+     * Represents an image file, either from the project or external.
+     */
+    record ImageFileFragment(BrokkFile file, int id) implements PathFragment {
+        private static final long serialVersionUID = 1L;
+
+        public ImageFileFragment(BrokkFile file) {
+            this(file, NEXT_ID.getAndIncrement());
+            assert !file.isText() : "ImageFileFragment should only be used for non-text files";
         }
-    
-        /**
-         * Represents an image file, either from the project or external.
-         */
-        record ImageFileFragment(BrokkFile file, int id) implements PathFragment {
-            private static final long serialVersionUID = 1L;
-    
-            public ImageFileFragment(BrokkFile file) {
-                this(file, NEXT_ID.getAndIncrement());
-                assert !file.isText() : "ImageFileFragment should only be used for non-text files";
-            }
-    
-            @Override
-            public String shortDescription() {
-                return file().getFileName();
-            }
-    
-            @Override
-            public String description() {
-                 if (file instanceof ProjectFile pf && !pf.getParent().isEmpty()) {
-                    return "%s [%s]".formatted(file.getFileName(), pf.getParent());
-                 }
-                 return file.toString(); // For ExternalFile or root ProjectFile
-            }
-    
-            @Override
-            public boolean isText() {
-                return false;
-            }
-    
-            @Override
-            public String text() {
-                throw new UnsupportedOperationException();
-            }
-    
-            @Override
-            public Image image() throws IOException {
-                return javax.imageio.ImageIO.read(file.absPath().toFile());
-            }
-    
-            @Override
-            public Set<CodeUnit> sources(IProject project) {
-                return Set.of();
-            }
-    
-             @Override
-            public Set<ProjectFile> files(IProject project) {
-                return (file instanceof ProjectFile pf) ? Set.of(pf) : Set.of();
-            }
-    
-            @Override
-            public String format() {
-                // Format for LLM, indicating image content (similar to PasteImageFragment)
-                return """
-                  <file path="%s" fragmentid="%d">
-                  [Image content provided out of band]
-                  </file>
-                  """.stripIndent().formatted(file().toString(), id());
-            }
-    
-            @Override
-            public String toString() {
-                return "ImageFileFragment('%s')".formatted(file);
-            }
+
+        @Override
+        public String shortDescription() {
+            return file().getFileName();
         }
-    
-        static PathFragment toPathFragment(BrokkFile bf) {
-            if (bf.isText()) {
-                if (bf instanceof ProjectFile repo) {
-                    return new ProjectPathFragment(repo);
-                } else if (bf instanceof ExternalFile ext) {
-                    return new ExternalPathFragment(ext);
-                }
-            } else {
-                // If it's not text, treat it as an image
-                return new ImageFileFragment(bf);
+
+        @Override
+        public String description() {
+            if (file instanceof ProjectFile pf && !pf.getParent().isEmpty()) {
+                return "%s [%s]".formatted(file.getFileName(), pf.getParent());
             }
-            // Should not happen if bf is ProjectFile or ExternalFile
-            throw new IllegalArgumentException("Unsupported BrokkFile subtype: " + bf.getClass().getName());
+            return file.toString(); // For ExternalFile or root ProjectFile
         }
+
+        @Override
+        public boolean isText() {
+            return false;
+        }
+
+        @Override
+        public String text() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Image image() throws IOException {
+            return javax.imageio.ImageIO.read(file.absPath().toFile());
+        }
+
+        @Override
+        public Set<CodeUnit> sources(IProject project) {
+            return Set.of();
+        }
+
+        @Override
+        public Set<ProjectFile> files(IProject project) {
+            return (file instanceof ProjectFile pf) ? Set.of(pf) : Set.of();
+        }
+
+        @Override
+        public String format() {
+            // Format for LLM, indicating image content (similar to PasteImageFragment)
+            return """
+                    <file path="%s" fragmentid="%d">
+                    [Image content provided out of band]
+                    </file>
+                    """.stripIndent().formatted(file().toString(), id());
+        }
+
+        @Override
+        public String toString() {
+            return "ImageFileFragment('%s')".formatted(file);
+        }
+    }
+
+    static PathFragment toPathFragment(BrokkFile bf) {
+        if (bf.isText()) {
+            if (bf instanceof ProjectFile repo) {
+                return new ProjectPathFragment(repo);
+            } else if (bf instanceof ExternalFile ext) {
+                return new ExternalPathFragment(ext);
+            }
+        } else {
+            // If it's not text, treat it as an image
+            return new ImageFileFragment(bf);
+        }
+        // Should not happen if bf is ProjectFile or ExternalFile
+        throw new IllegalArgumentException("Unsupported BrokkFile subtype: " + bf.getClass().getName());
+    }
 
     abstract class VirtualFragment implements ContextFragment {
         private static final long serialVersionUID = 2L;
@@ -338,10 +361,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() throws IOException {
             return """
-            <fragment description="%s" fragmentid="%d">
-            %s
-            </fragment>
-            """.stripIndent().formatted(description(), id(), text());
+                    <fragment description="%s" fragmentid="%d">
+                    %s
+                    </fragment>
+                    """.stripIndent().formatted(description(), id(), text());
         }
 
         @Override
@@ -557,10 +580,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() throws IOException {
             return """
-              <fragment description="%s" fragmentid="%d">
-              [Image content provided out of band]
-              </fragment>
-              """.stripIndent().formatted(description(), id(), text());
+                    <fragment description="%s" fragmentid="%d">
+                    [Image content provided out of band]
+                    </fragment>
+                    """.stripIndent().formatted(description(), id(), text());
         }
 
         @Override
@@ -742,17 +765,17 @@ public interface ContextFragment extends Serializable {
         public String format() {
             assert !isEmpty();
             return """
-              <summary classes="%s" fragmentid="%d">
-              %s
-              </summary>
-              """.stripIndent().formatted(
+                    <summary classes="%s" fragmentid="%d">
+                    %s
+                    </summary>
+                    """.stripIndent().formatted(
                     skeletons.keySet().stream()
-                              .map(CodeUnit::fqName)
-                              .sorted()
-                              .collect(Collectors.joining(", ")),
+                            .map(CodeUnit::fqName)
+                            .sorted()
+                            .collect(Collectors.joining(", ")),
                     id(),
                     text()
-              );
+            );
         }
 
         @Override
@@ -796,7 +819,7 @@ public interface ContextFragment extends Serializable {
         public String text() {
             // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
             // but lots of stuff breaks without text(), so I am putting that off for another refactor
-            return TaskEntry.formatMessages(history.stream().flatMap(e -> e.log().stream()).toList());
+            return TaskEntry.formatMessages(history.stream().flatMap(e -> e.log().messages().stream()).toList());
         }
 
         @Override
@@ -822,10 +845,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() {
             return """
-              <taskhistory fragmentid="%d">
-              %s
-              </taskhistory>
-              """.stripIndent().formatted(id(), text());
+                    <taskhistory fragmentid="%d">
+                    %s
+                    </taskhistory>
+                    """.stripIndent().formatted(id(), text());
         }
 
         @Override
@@ -839,7 +862,9 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    /** represents a single session's Task History */
+    /**
+     * represents a single session's Task History
+     */
     class TaskFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 5L;
         private final EditBlockParser parser;
@@ -884,11 +909,69 @@ public interface ContextFragment extends Serializable {
         }
 
         public List<TaskEntry> entries() {
-            return List.of(new TaskEntry(-1, messages, null));
+            return List.of(new TaskEntry(-1, this, null));
         }
 
         public EditBlockParser parser() {
             return parser;
+        }
+
+        // --- Custom Serialization using Proxy Pattern ---
+
+        /**
+         * Replace this TaskFragment instance with a SerializationProxy during serialization.
+         * This allows us to convert the non-serializable ChatMessage list to JSON.
+         */
+        @Serial
+        private Object writeReplace() {
+            return new SerializationProxy(this);
+        }
+
+        /**
+         * Prevent direct deserialization of TaskFragment; must go through the proxy.
+         */
+        @Serial
+        private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+            throw new java.io.NotSerializableException("TaskFragment must be serialized via SerializationProxy");
+        }
+
+        /**
+         * A helper class to handle the serialization and deserialization of TaskFragment.
+         * It stores the ChatMessage list as a JSON string.
+         */
+        private static class SerializationProxy implements Serializable {
+            @Serial
+                private static final long serialVersionUID = 1L;
+
+                private final String parserClassName; // Store parser class name
+                private final String serializedMessages; // Store messages as JSON string
+                private final String sessionName;
+
+                SerializationProxy(TaskFragment fragment) {
+                    // Store the class name of the parser
+                    this.parserClassName = fragment.parser().getClass().getName();
+                    this.sessionName = fragment.sessionName;
+                    this.serializedMessages = ChatMessageSerializer.messagesToJson(fragment.messages());
+                }
+
+                /**
+                 * Reconstruct the TaskFragment instance after the SerializationProxy is deserialized.
+                 */
+                @Serial
+                private Object readResolve() throws java.io.ObjectStreamException {
+                    List<ChatMessage> deserializedMessages = ChatMessageDeserializer.messagesFromJson(serializedMessages);
+                    EditBlockParser resolvedParser;
+                    // Reconstruct the correct parser instance based on the stored class name
+                    if (EditBlockConflictsParser.class.getName().equals(parserClassName)) {
+                        resolvedParser = EditBlockConflictsParser.instance;
+                    } else if (EditBlockParser.class.getName().equals(parserClassName)) {
+                        resolvedParser = EditBlockParser.instance;
+                    } else {
+                        // Handle unexpected parser class name, perhaps default or throw an error
+                        throw new java.io.InvalidObjectException("Unknown parser class name during deserialization: " + parserClassName);
+                    }
+                    return new TaskFragment(resolvedParser, deserializedMessages, sessionName);
+                }
         }
     }
 
@@ -898,12 +981,13 @@ public interface ContextFragment extends Serializable {
         public AutoContext(SkeletonFragment fragment) {
             this(fragment, NEXT_ID.getAndIncrement());
         }
+
         private static final ProjectFile DUMMY = new ProjectFile(Path.of("//dummy/share"), Path.of("dummy"));
         // Use constants for these special values
         private static final int EMPTY_ID = -1;
         private static final int DISABLED_ID = -2;
         private static final int REBUILDING_ID = -3;
-        
+
         public static final AutoContext EMPTY =
                 new AutoContext(new SkeletonFragment(Map.of(CodeUnit.cls(DUMMY, "Enabled, but no references found"), "")), EMPTY_ID);
         public static final AutoContext DISABLED =
@@ -964,7 +1048,7 @@ public interface ContextFragment extends Serializable {
             }
             return fragment.format();
         }
-        
+
         @Override
         public int id() {
             return id;

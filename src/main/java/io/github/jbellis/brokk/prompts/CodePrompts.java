@@ -41,15 +41,15 @@ public abstract class CodePrompts {
                 : OVEREAGER_REMINDER;
     }
 
-    public final List<ChatMessage> collectMessages(ContextManager cm, List<ChatMessage> sessionMessages, String reminder) {
+    public final List<ChatMessage> collectMessages(ContextManager cm, EditBlockParser parser, List<ChatMessage> sessionMessages, String reminder) {
         var messages = new ArrayList<ChatMessage>();
 
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
-        messages.addAll(EditBlockParser.instance.exampleMessages());
+        messages.addAll(parser.exampleMessages());
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(sessionMessages);
         messages.addAll(cm.getWorkspaceContentsMessages(false));
-        messages.add(new UserMessage(EditBlockParser.instance.instructions(reminder)));
+        messages.add(new UserMessage(parser.instructions(reminder)));
         messages.add(new AiMessage("I will format my edits accordingly."));
 
         return messages;

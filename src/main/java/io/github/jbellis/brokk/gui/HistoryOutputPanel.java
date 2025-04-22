@@ -454,21 +454,21 @@ public class HistoryOutputPanel extends JPanel {
         llmStreamArea.setText(taskEntry);
     }
 
-    public void setLlmOutput(List<ChatMessage> newMessages) {
-        llmStreamArea.setText(newMessages);
+    public void setLlmOutput(ContextFragment.TaskFragment newOutput) {
+        llmStreamArea.setText(newOutput);
     }
     
     /**
      * Sets the text in the LLM output area
      */
-    public void resetLlmOutput(List<ChatMessage> messages) {
+    public void resetLlmOutput(ContextFragment.TaskFragment output) {
         // this is called by the context selection listener, but when we just finished streaming a response
         // we don't want scroll-to-top behavior
-        if (llmStreamArea.getRawMessages().equals(messages)) {
+        if (llmStreamArea.getRawMessages().equals(output.messages())) {
             return;
         }
 
-        setLlmOutput(messages);
+        setLlmOutput(output);
         // Scroll to the top
         SwingUtilities.invokeLater(() -> {
             llmScrollPane.getVerticalScrollBar().setValue(0);
@@ -525,10 +525,6 @@ public class HistoryOutputPanel extends JPanel {
         llmStreamArea.clear();
     }
 
-    public void setLlmParser(EditBlockParser parser) {
-        llmStreamArea.setParser(parser);
-    }
-
     /**
      * Inner class representing a detached window for viewing output text
      */
@@ -563,8 +559,7 @@ public class HistoryOutputPanel extends JPanel {
             // Create markdown panel with the text
             var outputPanel = new MarkdownOutputPanel();
             outputPanel.updateTheme(isDark);
-            outputPanel.setParser(output.parser());
-            outputPanel.setText(output.messages());
+            outputPanel.setText(output);
 
             // Add to a scroll pane
             var scrollPane = new JScrollPane(outputPanel);

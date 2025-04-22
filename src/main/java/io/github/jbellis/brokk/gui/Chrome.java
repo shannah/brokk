@@ -315,7 +315,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
             if (resetOutput) {
                 if (ctx.getParsedOutput() != null) {
-                    historyOutputPanel.resetLlmOutput(ctx.getParsedOutput().messages());
+                    historyOutputPanel.resetLlmOutput(ctx.getParsedOutput());
                 } else {
                     historyOutputPanel.clearLlmOutput();
                 }
@@ -351,11 +351,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     @Override
     public List<ChatMessage> getLlmRawMessages() {
         return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmRawMessages(), null);
-    }
-
-    @Override
-    public void setLlmParser(EditBlockParser parser) {
-        historyOutputPanel.setLlmParser(parser);
     }
 
     private JComponent buildBackgroundStatusLabel() {
@@ -459,8 +454,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         llmOutput(token, type, null);
     }
 
-    public void setLlmOutput(List<ChatMessage> newMessages) {
-        SwingUtilities.invokeLater(() -> historyOutputPanel.setLlmOutput(newMessages));
+    public void setLlmOutput(ContextFragment.TaskFragment newOutput) {
+        SwingUtilities.invokeLater(() -> historyOutputPanel.setLlmOutput(newOutput));
     }
 
     @Override

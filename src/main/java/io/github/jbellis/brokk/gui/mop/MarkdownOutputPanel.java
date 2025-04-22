@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.*;
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
@@ -90,7 +91,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         }
 
         // Re-render all components with new theme
-        setText(new ArrayList<>(messages));
+        setText(messages);
 
         revalidate();
         repaint();
@@ -231,16 +232,22 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     /**
      * Sets the content from a list of ChatMessages
      */
-    public void setText(List<ChatMessage> newMessages) {
+    public void setText(ContextFragment.TaskFragment newOutput) {
         internalClear();
 
-        if (newMessages == null || newMessages.isEmpty()) {
+        if (newOutput == null) {
             return;
         }
 
-        for (var message : newMessages) {
+        setParser(newOutput.parser());
+        setText(newOutput.messages());
+    }
+
+    // private for changing theme -- parser doesn't need to change
+    private void setText(List<ChatMessage> messages) {
+        for (var message : messages) {
             Component component = renderMessageComponent(message);
-            messages.add(message);
+            this.messages.add(message);
             messageComponents.add(component);
             add(component);
         }

@@ -18,10 +18,6 @@ public interface IConsoleIO {
 
     void toolErrorRaw(String msg);
 
-    default void setLlmParser(EditBlockParser parser) {
-        throw new UnsupportedOperationException();
-    }
-
     public enum MessageSubType {
         Run,
         Ask,
