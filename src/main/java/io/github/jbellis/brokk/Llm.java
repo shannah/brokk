@@ -153,7 +153,6 @@ public class Llm {
             @Override
             public void onError(Throwable th) {
                 ifNotCancelled.accept(() -> {
-                    logger.debug("LLM error", th);
                     io.hideOutputSpinner();
                     io.toolErrorRaw("LLM error: " + th.getMessage());
                     // Instead of interrupting, just record it so we can retry from the caller
@@ -176,12 +175,14 @@ public class Llm {
         var outputTokenCount = outputTokenCountRef.get();
         if (streamingError != null) {
             // Return an error result
+            logger.debug(streamingError);
             return new StreamingResult(null, outputTokenCount, streamingError);
         }
 
         var cr = atomicResponse.get();
         if (cr == null) {
             // also an error
+            logger.warn("Null response from LLM");
             return new StreamingResult(null, outputTokenCount, new IllegalStateException("No ChatResponse from model"));
         }
         return new StreamingResult(cr, outputTokenCount, null);
