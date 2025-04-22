@@ -477,9 +477,9 @@ public class InstructionsPanel extends JPanel {
     private void maybeAddInterruptedResult(String action, String input) {
         if (chrome.getLlmRawMessages().stream().anyMatch(m -> m instanceof AiMessage)) {
             logger.debug("Ask command cancelled with partial results");
-            var parser = chrome.getContextManager().getParserForWorkspace(); // one more ugly hack won't hurt!
+            // FIXME interrupted code session result
             var sessionResult = new SessionResult("%s (Cancelled): %s".formatted(action, input),
-                                                  new TaskFragment(parser, List.copyOf(chrome.getLlmRawMessages()), input),
+                                                  new TaskFragment(List.copyOf(chrome.getLlmRawMessages()), input),
                                                   Map.of(),
                                                   new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED));
             chrome.getContextManager().addToHistory(sessionResult, false);

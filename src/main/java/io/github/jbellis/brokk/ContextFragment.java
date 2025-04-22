@@ -867,7 +867,7 @@ public interface ContextFragment extends Serializable {
      */
     class TaskFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 5L;
-        private final EditBlockParser parser;
+        private final EditBlockParser parser; // TODO this doesn't belong in TaskFragment anymore
         private final List<ChatMessage> messages;
         private final String sessionName;
 
@@ -943,13 +943,11 @@ public interface ContextFragment extends Serializable {
             @Serial
             private static final long serialVersionUID = 1L;
 
-            private final String parserClassName; // Store parser class name
             private final String serializedMessages; // Store messages as JSON string
             private final String sessionName;
 
             SerializationProxy(TaskFragment fragment) {
                 // Store the class name of the parser
-                this.parserClassName = fragment.parser().getClass().getName();
                 this.sessionName = fragment.sessionName;
                 this.serializedMessages = ChatMessageSerializer.messagesToJson(fragment.messages());
             }
@@ -960,17 +958,7 @@ public interface ContextFragment extends Serializable {
             @Serial
             private Object readResolve() throws java.io.ObjectStreamException {
                 List<ChatMessage> deserializedMessages = ChatMessageDeserializer.messagesFromJson(serializedMessages);
-                EditBlockParser resolvedParser;
-                // Reconstruct the correct parser instance based on the stored class name
-                if (EditBlockConflictsParser.class.getName().equals(parserClassName)) {
-                    resolvedParser = EditBlockConflictsParser.instance;
-                } else if (EditBlockParser.class.getName().equals(parserClassName)) {
-                    resolvedParser = EditBlockParser.instance;
-                } else {
-                    // Handle unexpected parser class name, perhaps default or throw an error
-                    throw new java.io.InvalidObjectException("Unknown parser class name during deserialization: " + parserClassName);
-                }
-                return new TaskFragment(resolvedParser, deserializedMessages, sessionName);
+                return new TaskFragment(deserializedMessages, sessionName);
             }
         }
     }

@@ -22,12 +22,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -52,7 +48,7 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents
      */
-    public SessionResult runSession(String userInput, boolean rejectReadonlyEdits) throws InterruptedException
+    public SessionResult runSession(String userInput, boolean forArchitect) throws InterruptedException
     {
         var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
@@ -145,7 +141,7 @@ public class CodeAgent {
             }
 
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-            var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, rejectReadonlyEdits);
+            var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, !forArchitect);
             if (!readOnlyFiles.isEmpty()) {
                 var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
                 stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.READ_ONLY_EDIT, filenames);
@@ -224,10 +220,98 @@ public class CodeAgent {
         String finalActionDescription = (stopDetails.reason() == SessionResult.StopReason.SUCCESS)
                                         ? userInput
                                         : userInput + " [" + stopDetails.reason().name() + "]";
+        // architect auto-compresses the task entry so let's give it the full history to work with, quickModel is cheap
+        var finalMessages = forArchitect ? List.copyOf(io.getLlmRawMessages()) : getMessagesForHistory(parser);
         return new SessionResult("Code: " + finalActionDescription,
-                                 new ContextFragment.TaskFragment(parser, List.copyOf(io.getLlmRawMessages()), userInput),
+                                 new ContextFragment.TaskFragment(finalMessages, userInput),
                                  Map.copyOf(originalContents),
                                  stopDetails);
+    }
+
+    private List<ChatMessage> getMessagesForHistory(EditBlockParser parser) {
+        var rawMessages = io.getLlmRawMessages();
+        var trackedFiles = contextManager.getRepo().getTrackedFiles();
+
+        // Identify messages needing summarization (because they have no plaintext) and submit tasks
+        var summarizationFutures = new HashMap<AiMessage, Future<String>>();
+        for (var message : rawMessages) {
+            if (message.type() == ChatMessageType.AI) {
+                var aiMessage = (AiMessage) message;
+                var parseResult = parser.parse(aiMessage.text(), trackedFiles);
+                boolean hasNonBlankText = parseResult.blocks().stream()
+                        .anyMatch(outputBlock -> outputBlock.block() == null && !outputBlock.text().strip().isBlank());
+
+                if (!hasNonBlankText && !parseResult.blocks().isEmpty()) { // Has blocks, but no actual text
+                    logger.debug("Submitting message for summarization as it contains only edit blocks/whitespace.");
+                    // Use get() for now, consider async handling if performance becomes an issue
+                    var worker = contextManager.submitSummarizeTaskForConversation(aiMessage.text());
+                    summarizationFutures.put(aiMessage, worker);
+                }
+            }
+        }
+        // Wait for summaries and collect results
+        var summaries = new HashMap<AiMessage, String>();
+        summarizationFutures.forEach((message, future) -> {
+            try {
+                // Use a reasonable timeout
+                String summary = future.get(30, TimeUnit.SECONDS);
+                summaries.put(message, summary);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.debug("Summarization interrupted for message.", e);
+            } catch (TimeoutException e) {
+                logger.warn("Summarization timed out for message.", e);
+                future.cancel(true);
+            } catch (ExecutionException e) {
+                logger.error("Summarization failed for message.", e.getCause());
+            }
+        });
+
+        // Process messages, using summaries or inserting placeholders ---
+        return rawMessages.stream()
+                .flatMap(message -> {
+                    switch (message.type()) {
+                        case USER, CUSTOM:
+                            return Stream.of(message);
+                        case AI:
+                            var aiMessage = (AiMessage) message;
+                            // Check if we have a summary for this message
+                            if (summaries.containsKey(aiMessage)) {
+                                return Stream.of(new AiMessage(summaries.get(aiMessage)));
+                            }
+
+                            // No summary needed/available, process normally with placeholders
+                            var parseResult = parser.parse(aiMessage.text(), trackedFiles);
+                            var outputTexts = new ArrayList<String>();
+                            boolean lastBlockWasEdit = false; // Track if the immediately preceding block was an edit block
+
+                            for (var outputBlock : parseResult.blocks()) {
+                                if (outputBlock.block() != null) { // It's an edit block
+                                    if (!outputTexts.isEmpty() && !lastBlockWasEdit) {
+                                        // Append placeholder to the last text block added
+                                        int lastIndex = outputTexts.size() - 1;
+                                        outputTexts.set(lastIndex, outputTexts.get(lastIndex) + " [elided SEARCH/REPLACE block]");
+                                    } else {
+                                        // Insert a new placeholder text block if last was edit or list is empty
+                                        outputTexts.add("[elided SEARCH/REPLACE block]");
+                                    }
+                                    lastBlockWasEdit = true; // Mark that this block was an edit block
+                                } else { // It's a text block
+                                    outputTexts.add(outputBlock.text());
+                                    lastBlockWasEdit = false; // Mark that this block was a text block
+                                }
+                            }
+                            // Join text, strip ends, and filter out blank results
+                            var joinedText = String.join("", outputTexts).strip();
+                            return joinedText.isBlank() ? Stream.empty() : Stream.of(new AiMessage(joinedText));
+
+                        // Ignore SYSTEM/TOOL messages for history purposes
+                        case SYSTEM, TOOL_EXECUTION_RESULT:
+                        default:
+                            return Stream.empty();
+                    }
+                })
+                .toList(); // Collect the filtered messages into an immutable list
     }
 
     /**

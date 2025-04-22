@@ -316,48 +316,6 @@ public class ContextSerializationTest {
         assertTrue(deserializedTask.log().messages().getFirst() instanceof dev.langchain4j.data.message.UserMessage, "First message should be a UserMessage.");
         assertEquals("What is the capital of France?", ((dev.langchain4j.data.message.UserMessage) deserializedTask.log().messages().getFirst()).singleText(), "First message content should match.");
             assertNull(deserializedTask.summary(), "Task should not be summarized (summary field should be null).");
-
-            // Verify the parser instance (should be the default EditBlockParser.instance)
             assertInstanceOf(ContextFragment.TaskFragment.class, deserializedTask.log());
-            assertSame(EditBlockParser.instance, ((ContextFragment.TaskFragment) deserializedTask.log()).parser(), "Parser should be EditBlockParser.instance after deserialization");
         }
-
-        @Test
-        void testTaskFragmentWithConflictsParserSerialization() throws Exception {
-            // Create context
-            Context context = new Context(mockContextManager, 5);
-
-            // Sample messages
-            List<ChatMessage> sessionMessages = List.of(
-                    dev.langchain4j.data.message.UserMessage.from("Request needing conflict parser"),
-                    dev.langchain4j.data.message.AiMessage.from("Response with conflict markers")
-            );
-
-            // Create TaskFragment using EditBlockConflictsParser
-            var conflictParser = EditBlockConflictsParser.instance;
-            var taskFragment = new ContextFragment.TaskFragment(conflictParser, sessionMessages, "Conflict Task");
-
-            // Add history entry
-            Future<String> action = CompletableFuture.completedFuture("Conflict Task");
-            var result = new SessionResult("Request needing conflict parser", taskFragment, Map.of(), new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
-            var taskEntry = context.createTaskEntry(result);
-            context = context.addHistoryEntry(taskEntry, taskFragment, action, Map.of());
-
-            // Serialize and deserialize
-            byte[] serialized = Context.serialize(context);
-            Context deserialized = Context.deserialize(serialized, "stub");
-
-            // Verify task history count
-            assertEquals(1, deserialized.getTaskHistory().size(), "Deserialized context should have one task history entry.");
-            TaskEntry deserializedTask = deserialized.getTaskHistory().getFirst();
-
-            // Verify the parser instance (should be EditBlockConflictsParser.instance)
-            assertNotNull(deserializedTask.log(), "Task log (TaskFragment) should not be null.");
-            assertInstanceOf(ContextFragment.TaskFragment.class, deserializedTask.log());
-            assertSame(EditBlockConflictsParser.instance, ((ContextFragment.TaskFragment) deserializedTask.log()).parser(), "Parser should be EditBlockConflictsParser.instance after deserialization");
-
-            // Verify other TaskFragment details
-            assertEquals(sessionMessages, deserializedTask.log().messages(), "Task log messages should match.");
-            assertEquals("Conflict Task", ((ContextFragment.TaskFragment) deserializedTask.log()).description(), "Session name should match.");
-        }
-    }
+ }
