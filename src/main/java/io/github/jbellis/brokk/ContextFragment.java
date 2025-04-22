@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public interface ContextFragment extends Serializable {
     // Static counter for all fragments
@@ -816,7 +817,9 @@ public interface ContextFragment extends Serializable {
         public String text() {
             // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
             // but lots of stuff breaks without text(), so I am putting that off for another refactor
-            return TaskEntry.formatMessages(history.stream().flatMap(e -> e.log().messages().stream()).toList());
+            return TaskEntry.formatMessages(history.stream().flatMap(e -> e.isCompressed()
+                                                                          ? Stream.of(new CustomMessage(Map.of("text", e.summary())))
+                                                                          : e.log().messages().stream()).toList());
         }
 
         @Override
