@@ -272,7 +272,9 @@ public interface ContextFragment extends Serializable {
     
             @Override
             public String text() {
-                throw new UnsupportedOperationException();
+
+                // return this text tu support ContextMenu Fragment > Copy
+                return "[Image content provided out of band]";
             }
     
             @Override
@@ -540,7 +542,8 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String text() {
-            throw new UnsupportedOperationException();
+            // return this text tu support ContextMenu Fragment > Copy
+            return "[Image content provided out of band]";
         }
 
         @Override
@@ -557,7 +560,7 @@ public interface ContextFragment extends Serializable {
         public String format() throws IOException {
             return """
               <fragment description="%s" fragmentid="%d">
-              [Image content provided out of band]
+              %s
               </fragment>
               """.stripIndent().formatted(description(), id(), text());
         }
