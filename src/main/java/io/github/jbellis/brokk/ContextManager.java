@@ -1161,24 +1161,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private final ConcurrentMap<Callable<?>, String> taskDescriptions = new ConcurrentHashMap<>();
 
     public SwingWorker<String, Void> submitSummarizePastedText(String pastedContent) {
-        SwingWorker<String, Void> worker = new SwingWorker<>() {
-            @Override
-            protected String doInBackground() {
-                var msgs = SummarizerPrompts.instance.collectMessages(pastedContent, 12);
-                // Use quickModel for summarization
-                Llm.StreamingResult result = null; // Use instance field
-                try {
-                    result = getCoder(models.quickestModel(), "Summarize paste").sendRequest(msgs);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                if (result.error() != null || result.chatResponse() == null) {
-                    logger.warn("Summarization failed or was cancelled.");
-                    return "Summarization failed.";
-                }
-                return result.chatResponse().aiMessage().text();
-            }
-
+        SwingWorker<String, Void> worker = new SummarizeWorker(pastedContent, 12) {
             @Override
             protected void done() {
                 io.updateContextTable();
@@ -1191,24 +1174,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public SwingWorker<String, Void> submitSummarizeTaskForConversation(String input) {
-        SwingWorker<String, Void> worker = new SwingWorker<>() {
-            @Override
-            protected String doInBackground() {
-                var msgs = SummarizerPrompts.instance.collectMessages(input, 5);
-                // Use quickModel for summarization
-                Llm.StreamingResult result = null; // Use instance field
-                try {
-                    result = getCoder(models.quickestModel(), input).sendRequest(msgs);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                if (result.error() != null || result.chatResponse() == null) {
-                    logger.warn("Summarization failed or was cancelled.");
-                    return "Summarization failed.";
-                }
-                return result.chatResponse().aiMessage().text();
-            }
-
+        SwingWorker<String, Void> worker = new SummarizeWorker(input, 5) {
             @Override
             protected void done() {
                 io.updateContextHistoryTable();
@@ -1613,5 +1579,32 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 // enableUserActionButtons is handled by submitUserTask
             }
         });
+    }
+
+    private class SummarizeWorker extends SwingWorker<String, Void> {
+        private final String content;
+        private final int words;
+
+        public SummarizeWorker(String content, int words) {
+            this.content = content;
+            this.words = words;
+        }
+
+        @Override
+        protected String doInBackground() {
+            var msgs = SummarizerPrompts.instance.collectMessages(content, words);
+            // Use quickModel for summarization
+            Llm.StreamingResult result;
+            try {
+                result = getCoder(models.quickestModel(), "Summarize: " + content).sendRequest(msgs);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            if (result.error() != null || result.chatResponse() == null) {
+                logger.warn("Summarization failed or was cancelled.");
+                return "Summarization failed.";
+            }
+            return result.chatResponse().aiMessage().text();
+        }
     }
 }
