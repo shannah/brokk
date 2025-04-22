@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 import static java.lang.Math.min;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class CoderTest {
+public class LlmTest {
 
     // Dummy ConsoleIO for testing purposes
     static class NoOpConsoleIO implements IConsoleIO {
