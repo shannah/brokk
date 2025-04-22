@@ -858,9 +858,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public List<ChatMessage> getHistoryMessages()
     {
         var taskHistory = selectedContext().getTaskHistory();
-        if (taskHistory.isEmpty()) {
-            return List.of();
-        }
 
         // Concatenate the string representation of each TaskHistory
         String historyString = taskHistory.stream()
