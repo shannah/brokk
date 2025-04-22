@@ -40,9 +40,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     final JFrame frame;
     private JLabel backgroundStatusLabel;
     private Dimension backgroundLabelPreferredSize;
-    private JPanel bottomPanel;
+        private JPanel bottomPanel;
 
-    private JSplitPane topSplitPane;
+        private JSplitPane topSplitPane;
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
     private HistoryOutputPanel historyOutputPanel;
@@ -878,4 +878,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             historyOutputPanel.enableHistory();
         }
     }
+    
+    /**
+         * Sets the blocking state on the MarkdownOutputPanel to prevent clearing/resetting during operations.
+         * 
+         * @param blocked true to prevent clear/reset operations, false to allow them
+         */
+        public void setOutputPanelBlocking(boolean blocked) {
+                if (historyOutputPanel != null) {
+                    historyOutputPanel.setMarkdownOutputPanelBlocking(blocked);
+                }
+            }
 }

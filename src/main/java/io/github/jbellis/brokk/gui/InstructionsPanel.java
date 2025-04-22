@@ -915,6 +915,7 @@ public class InstructionsPanel extends JPanel {
             stopButton.setEnabled(true);
             micButton.setEnabled(false);
             chrome.disableHistoryPanel();
+            chrome.setOutputPanelBlocking(true);
         });
     }
 
@@ -930,6 +931,7 @@ public class InstructionsPanel extends JPanel {
             stopButton.setEnabled(false);
             micButton.setEnabled(true);
             chrome.enableHistoryPanel();
+            chrome.setOutputPanelBlocking(false);
         });
     }
 }
