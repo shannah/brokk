@@ -1,10 +1,6 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ChatMessageDeserializer;
-import dev.langchain4j.data.message.ChatMessageSerializer;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
@@ -17,7 +13,6 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import java.awt.*;
 import java.io.IOException;
 import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Path;
@@ -296,7 +291,8 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String text() {
-            throw new UnsupportedOperationException();
+            // return this text to support ContextMenu Fragment > Copy
+            return "[Image content provided out of band]";
         }
 
         @Override
@@ -564,7 +560,8 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String text() {
-            throw new UnsupportedOperationException();
+            // return this text tu support ContextMenu Fragment > Copy
+            return "[Image content provided out of band]";
         }
 
         @Override
@@ -580,10 +577,10 @@ public interface ContextFragment extends Serializable {
         @Override
         public String format() throws IOException {
             return """
-                    <fragment description="%s" fragmentid="%d">
-                    [Image content provided out of band]
-                    </fragment>
-                    """.stripIndent().formatted(description(), id(), text());
+              <fragment description="%s" fragmentid="%d">
+              %s
+              </fragment>
+              """.stripIndent().formatted(description(), id(), text());
         }
 
         @Override
@@ -941,37 +938,37 @@ public interface ContextFragment extends Serializable {
          */
         private static class SerializationProxy implements Serializable {
             @Serial
-                private static final long serialVersionUID = 1L;
+            private static final long serialVersionUID = 1L;
 
-                private final String parserClassName; // Store parser class name
-                private final String serializedMessages; // Store messages as JSON string
-                private final String sessionName;
+            private final String parserClassName; // Store parser class name
+            private final String serializedMessages; // Store messages as JSON string
+            private final String sessionName;
 
-                SerializationProxy(TaskFragment fragment) {
-                    // Store the class name of the parser
-                    this.parserClassName = fragment.parser().getClass().getName();
-                    this.sessionName = fragment.sessionName;
-                    this.serializedMessages = ChatMessageSerializer.messagesToJson(fragment.messages());
+            SerializationProxy(TaskFragment fragment) {
+                // Store the class name of the parser
+                this.parserClassName = fragment.parser().getClass().getName();
+                this.sessionName = fragment.sessionName;
+                this.serializedMessages = ChatMessageSerializer.messagesToJson(fragment.messages());
+            }
+
+            /**
+             * Reconstruct the TaskFragment instance after the SerializationProxy is deserialized.
+             */
+            @Serial
+            private Object readResolve() throws java.io.ObjectStreamException {
+                List<ChatMessage> deserializedMessages = ChatMessageDeserializer.messagesFromJson(serializedMessages);
+                EditBlockParser resolvedParser;
+                // Reconstruct the correct parser instance based on the stored class name
+                if (EditBlockConflictsParser.class.getName().equals(parserClassName)) {
+                    resolvedParser = EditBlockConflictsParser.instance;
+                } else if (EditBlockParser.class.getName().equals(parserClassName)) {
+                    resolvedParser = EditBlockParser.instance;
+                } else {
+                    // Handle unexpected parser class name, perhaps default or throw an error
+                    throw new java.io.InvalidObjectException("Unknown parser class name during deserialization: " + parserClassName);
                 }
-
-                /**
-                 * Reconstruct the TaskFragment instance after the SerializationProxy is deserialized.
-                 */
-                @Serial
-                private Object readResolve() throws java.io.ObjectStreamException {
-                    List<ChatMessage> deserializedMessages = ChatMessageDeserializer.messagesFromJson(serializedMessages);
-                    EditBlockParser resolvedParser;
-                    // Reconstruct the correct parser instance based on the stored class name
-                    if (EditBlockConflictsParser.class.getName().equals(parserClassName)) {
-                        resolvedParser = EditBlockConflictsParser.instance;
-                    } else if (EditBlockParser.class.getName().equals(parserClassName)) {
-                        resolvedParser = EditBlockParser.instance;
-                    } else {
-                        // Handle unexpected parser class name, perhaps default or throw an error
-                        throw new java.io.InvalidObjectException("Unknown parser class name during deserialization: " + parserClassName);
-                    }
-                    return new TaskFragment(resolvedParser, deserializedMessages, sessionName);
-                }
+                return new TaskFragment(resolvedParser, deserializedMessages, sessionName);
+            }
         }
     }
 
