@@ -383,7 +383,7 @@ public class SearchAgent {
     private SessionResult errorResult(SessionResult.StopDetails details, String explanation) {
         return new SessionResult("Search: " + query,
                                  Map.of(),
-                                 new ContextFragment.SessionFragment(List.of(new UserMessage(query), new AiMessage(explanation)), query),
+                                 new ContextFragment.TaskFragment(List.of(new UserMessage(query), new AiMessage(explanation)), query),
                                  details);
     }
 

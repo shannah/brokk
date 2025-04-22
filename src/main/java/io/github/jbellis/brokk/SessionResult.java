@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.util.Arrays;
 import java.util.List;
@@ -14,7 +13,7 @@ import java.util.Map;
  */
 public record SessionResult(String actionDescription,
                             Map<ProjectFile, String> originalContents, // for undo
-                            ContextFragment.SessionFragment output,
+                            ContextFragment.TaskFragment output,
                             StopDetails stopDetails)
 {
     public SessionResult {
@@ -31,7 +30,7 @@ public record SessionResult(String actionDescription,
     {
         this(actionDescription,
              originalContents,
-             new ContextFragment.SessionFragment(uiMessages, actionDescription),
+             new ContextFragment.TaskFragment(uiMessages, actionDescription),
              stopDetails);
     }
 

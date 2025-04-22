@@ -291,7 +291,7 @@ public class ContextSerializationTest {
         // Add history using fromSession, which extracts the first UserMessage as description
         // Provide dummy original contents and parsed output as they are not the focus here
         var originalContents = Map.<ProjectFile, String>of();
-        var parsedOutput = new ContextFragment.SessionFragment(sessionMessages, "Test Task");
+        var parsedOutput = new ContextFragment.TaskFragment(sessionMessages, "Test Task");
         Future<String> action = CompletableFuture.completedFuture("Test Task");
         var result = new SessionResult("What is the capital of France?", Map.of(), parsedOutput, new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
         var taskEntry = context.createTaskEntry(result);

@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.CustomMessage;
-import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
@@ -57,7 +56,7 @@ public class Context implements Serializable {
     transient final Map<ProjectFile, String> originalContents;
 
     /** LLM output or other parsed content, with optional fragment. May be null */
-    transient final ContextFragment.SessionFragment parsedOutput;
+    transient final ContextFragment.TaskFragment parsedOutput;
 
     /** description of the action that created this context, can be a future (like PasteFragment) */
     transient final Future<String> action;
@@ -85,9 +84,9 @@ public class Context implements Serializable {
              CompletableFuture.completedFuture(WELCOME_ACTION));
     }
 
-    private static @NotNull ContextFragment.SessionFragment getWelcomeOutput(String initialOutputText) {
+    private static @NotNull ContextFragment.TaskFragment getWelcomeOutput(String initialOutputText) {
         var messages = List.<ChatMessage>of(new CustomMessage(Map.of("text", initialOutputText)));
-        return new ContextFragment.SessionFragment(messages, "Welcome");
+        return new ContextFragment.TaskFragment(messages, "Welcome");
     }
 
     /**
@@ -106,7 +105,7 @@ public class Context implements Serializable {
                     int autoContextFileCount,
                     List<TaskMessages> taskHistory,
                     Map<ProjectFile, String> originalContents,
-                    ContextFragment.SessionFragment parsedOutput,
+                    ContextFragment.TaskFragment parsedOutput,
                     Future<String> action)
     {
         assert id > 0;
@@ -514,7 +513,7 @@ public class Context implements Serializable {
      * @param action           A future describing the action that created this history entry.
      * @return A new Context instance with the added task history.
      */
-    public Context addHistoryEntry(TaskMessages taskMessages, ContextFragment.SessionFragment parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
+    public Context addHistoryEntry(TaskMessages taskMessages, ContextFragment.TaskFragment parsed, Future<String> action, Map<ProjectFile, String> originalContents) {
         var newTaskHistory = Streams.concat(taskHistory.stream(), Stream.of(taskMessages)).toList();
         return new Context(newId(),
                            contextManager,
@@ -617,7 +616,7 @@ public class Context implements Serializable {
         return result;
     }
 
-    public Context withParsedOutput(ContextFragment.SessionFragment parsedOutput, Future<String> action) {
+    public Context withParsedOutput(ContextFragment.TaskFragment parsedOutput, Future<String> action) {
         return new Context(newId(),
                            contextManager,
                            editableFiles,
@@ -653,7 +652,7 @@ public class Context implements Serializable {
                            CompletableFuture.completedFuture("Compressed History")).refresh(); // Call refresh to potentially update autoContext
     }
 
-    public ContextFragment.SessionFragment getParsedOutput() {
+    public ContextFragment.TaskFragment getParsedOutput() {
         return parsedOutput;
     }
 

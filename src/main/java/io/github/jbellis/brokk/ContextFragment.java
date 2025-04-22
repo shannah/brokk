@@ -422,7 +422,7 @@ public interface ContextFragment extends Serializable {
         }
     }
 
-    class SearchFragment extends SessionFragment {
+    class SearchFragment extends TaskFragment {
         private static final long serialVersionUID = 4L;
         private final String query;
         private final String explanation;
@@ -834,12 +834,12 @@ public interface ContextFragment extends Serializable {
     }
 
     /** represents a single session's Task History */
-    class SessionFragment extends VirtualFragment implements OutputFragment {
+    class TaskFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 5L;
         private final List<ChatMessage> messages;
         private final String sessionName;
 
-        public SessionFragment(List<ChatMessage> messages, String sessionName) {
+        public TaskFragment(List<ChatMessage> messages, String sessionName) {
             super();
             this.messages = messages;
             this.sessionName = sessionName;

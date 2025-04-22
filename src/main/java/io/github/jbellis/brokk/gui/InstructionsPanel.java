@@ -4,8 +4,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.ContextFragment.SessionFragment;
-import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.ContextFragment.TaskFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.SessionResult;
@@ -549,7 +548,7 @@ public class InstructionsPanel extends JPanel {
         // Add to context history with the output text
         var llmOutputText = chrome.getLlmOutputText();
         contextManager.pushContext(ctx -> {
-            var parsed = new ContextFragment.SessionFragment(List.of(new UserMessage(input), new AiMessage(llmOutputText)), wrappedOutput);
+            var parsed = new TaskFragment(List.of(new UserMessage(input), new AiMessage(llmOutputText)), wrappedOutput);
             return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
         });
     }
