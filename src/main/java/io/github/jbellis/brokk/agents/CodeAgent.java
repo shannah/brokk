@@ -640,7 +640,7 @@ public class CodeAgent {
                     
                     Provide corrected SEARCH/REPLACE blocks for the failed edits only.
                     </instructions>
-                    """.formatted(totalFailCount, failuresByFile.size(), pluralizeFail, pluralizeFail).stripIndent();
+                    """.formatted(totalFailCount, pluralizeFail, failuresByFile.size(), pluralizeFail).stripIndent();
     
             // Add info about successful blocks, if any
             String successNote = "";
