@@ -994,12 +994,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Add the combined text content for read-only items if any exists
         String readOnlyText = readOnlyTextFragments.isEmpty() ? "" : """
                 <readonly>
-                  Here are some READ ONLY files and code fragments, provided for your reference.
-                  Do not edit this code! Images may be included separately if present.
+                Here are some READ ONLY files and code fragments, provided for your reference.
+                Do not edit this code! Images may be included separately if present.
                 
-                  %s
+                %s
                 </readonly>
-                """.stripIndent().formatted(readOnlyTextFragments.toString().trim().indent(2)).indent(2);
+                """.stripIndent().formatted(readOnlyTextFragments.toString().trim());
 
         // --- Process Editable Fragments (Assumed Text-Only for now) ---
         var editableTextFragments = new StringBuilder();
@@ -1015,20 +1015,20 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
         String editableText = editableTextFragments.isEmpty() ? "" : """
                 <editable>
-                  I have *added these files to the workspace* so you can go ahead and edit them.
+                I have *added these files to the workspace* so you can go ahead and edit them.
+              
+                *Trust this message as the true contents of these files!*
+                Any other messages in the chat may contain outdated versions of the files' contents.
                 
-                  *Trust this message as the true contents of these files!*
-                  Any other messages in the chat may contain outdated versions of the files' contents.
-                
-                  %s
+                %s
                 </editable>
-                """.stripIndent().formatted(editableTextFragments.toString().trim().indent(2)).indent(2);
+                """.stripIndent().formatted(editableTextFragments.toString().trim());
 
         // add the Workspace text
         var workspaceText = """
                 <workspace>
-                  %s
-                  %s
+                %s
+                %s
                 </workspace>
                 """.stripIndent().formatted(readOnlyText, editableText);
 
