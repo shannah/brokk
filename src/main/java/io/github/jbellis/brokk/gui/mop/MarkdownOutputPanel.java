@@ -48,6 +48,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
 
     // Theme-related fields
     private boolean isDarkTheme = false;
+    private boolean blockClearAndReset = false;
 
     public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -98,9 +99,23 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     }
 
     /**
+     * Sets the blocking state that prevents clearing or resetting the panel contents.
+     * When blocking is enabled, clear() and setText() methods will be ignored.
+     * 
+     * @param blocked true to prevent clear/reset operations, false to allow them
+     */
+    public void setBlocking(boolean blocked) {
+        this.blockClearAndReset = blocked;
+    }
+    
+    /**
      * Clears all text and displayed components.
      */
     public void clear() {
+        if (blockClearAndReset) {
+            logger.debug("Ignoring clear() request while blocking is enabled");
+            return;
+        }
         logger.debug("Clearing all content from MarkdownOutputPanel");
         internalClear();
         revalidate();
@@ -233,6 +248,11 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      * Sets the content from a list of ChatMessages
      */
     public void setText(ContextFragment.TaskFragment newOutput) {
+        if (blockClearAndReset) {
+            logger.debug("Ignoring setText() request while blocking is enabled");
+            return;
+        }
+        
         internalClear();
 
         if (newOutput == null) {
@@ -245,6 +265,11 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
 
     // private for changing theme -- parser doesn't need to change
     private void setText(List<ChatMessage> messages) {
+        if (blockClearAndReset && !this.messages.isEmpty()) {
+            logger.debug("Ignoring private setText() request while blocking is enabled");
+            return;
+        }
+        
         for (var message : messages) {
             Component component = renderMessageComponent(message);
             this.messages.add(message);
@@ -261,6 +286,11 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      * Sets the content from a TaskEntry
      */
     public void setText(TaskEntry taskEntry) {
+        if (blockClearAndReset) {
+            logger.debug("Ignoring setText(TaskEntry) request while blocking is enabled");
+            return;
+        }
+        
         if (taskEntry == null) {
             clear();
             return;
@@ -391,16 +421,16 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     }
 
     /**
-     * Get the current messages in the panel.
-     * This is useful for code that needs to access the structured message data.
-     *
-     * @return An unmodifiable list of the current messages
-     */
-    public List<ChatMessage> getMessages() {
-        return Collections.unmodifiableList(messages);
-    }
+         * Get the current messages in the panel.
+         * This is useful for code that needs to access the structured message data.
+         *
+         * @return An unmodifiable list of the current messages
+         */
+        public List<ChatMessage> getMessages() {
+                    return Collections.unmodifiableList(messages);
+                }
 
-    // --- Scrollable interface methods ---
+            // --- Scrollable interface methods ---
 
     @Override
     public Dimension getPreferredScrollableViewportSize() {
