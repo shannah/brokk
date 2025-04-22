@@ -55,6 +55,9 @@ class EditBlockTest {
             // not needed for these tests
         }
 
+        @Override
+        public void blockLlmOutput(boolean blocked) {}
+
         public String getOutputLog() {
             return outputLog.toString();
         }

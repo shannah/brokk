@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
 
 import java.util.List;
 
@@ -49,4 +48,6 @@ public interface IConsoleIO {
     default public List<ChatMessage> getLlmRawMessages() {
         throw new UnsupportedOperationException();
     }
+
+    public void blockLlmOutput(boolean blocked);
 }
