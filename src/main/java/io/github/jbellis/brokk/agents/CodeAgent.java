@@ -154,6 +154,10 @@ public class CodeAgent {
 
             // Apply all accumulated blocks
             var editResult = EditBlock.applyEditBlocks(contextManager, io, blocks);
+            if (editResult.hadSuccessfulEdits()) {
+                int succeeded = blocks.size() - editResult.failedBlocks().size();
+                io.llmOutput("\n" + succeeded + " SEARCH/REPLACE blocks applied.", ChatMessageType.SYSTEM);
+            }
             editResult.originalContents().forEach(originalContents::putIfAbsent);
             int succeededCount = (blocks.size() - editResult.failedBlocks().size());
             blocksAppliedWithoutBuild += succeededCount;
@@ -543,7 +547,7 @@ public class CodeAgent {
             // Instructions for the LLM
             String instructions = """
                     <instructions>
-                    # %d SEARCH/REPLACE block%s failed to match!
+                    # %d SEARCH/REPLACE block%s failed to match in %d files!
                     
                     Take a look at the CURRENT state of the relevant file%s provided above in the `<current_content>` tags.
                     If the failed edits listed in the `<failed_blocks>` tags are still needed, please correct them based on the current content.
@@ -552,7 +556,7 @@ public class CodeAgent {
                     
                     Provide corrected SEARCH/REPLACE blocks for the failed edits only.
                     </instructions>
-                    """.formatted(totalFailCount, pluralizeFail, pluralizeFail).stripIndent();
+                    """.formatted(totalFailCount, failuresByFile.size(), pluralizeFail, pluralizeFail).stripIndent();
     
             // Add info about successful blocks, if any
             String successNote = "";
@@ -565,16 +569,21 @@ public class CodeAgent {
                         </note>
                         """.formatted(succeededCount, pluralizeSuccess).stripIndent();
             }
-    
-            String finalMessage = """
+
+            // we don't send file details to the output
+            var summary = """
+                    %s
+                    %s
+                    """.stripIndent().formatted(instructions, successNote);
+            io.llmOutput(summary, ChatMessageType.SYSTEM);
+
+            // Construct the full message for the LLM
+            return """
                     %s
                     
                     %s
                     %s
                     """.formatted(instructions, fileDetails, successNote).stripIndent();
-    
-            io.llmOutput("\n" + finalMessage, ChatMessageType.USER); // Show the user what we're telling the LLM
-            return finalMessage; // Return the message to be sent to the LLM
         }
 
 
@@ -604,7 +613,7 @@ public class CodeAgent {
                              ```
                              %s
                              ```
-                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.USER, IConsoleIO.MessageSubType.BuildError);
+                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.SYSTEM, IConsoleIO.MessageSubType.BuildError);
         io.systemOutput("Verification failed (details above)");
         // Add the combined error and output to the history for the next request
         return result.error() + "\n\n" + result.output();

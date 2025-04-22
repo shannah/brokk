@@ -182,9 +182,6 @@ public class EditBlock {
              }
          } // End of for loop
 
-        if (!succeeded.isEmpty()) {
-            io.llmOutput("\n" + succeeded.size() + " SEARCH/REPLACE blocks applied.", ChatMessageType.USER);
-        }
         changedFiles.keySet().retainAll(succeeded.values());
         return new EditResult(changedFiles, failed);
     }
