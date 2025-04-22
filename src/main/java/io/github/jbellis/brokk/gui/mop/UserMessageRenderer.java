@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui.mop;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.IConsoleIO;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

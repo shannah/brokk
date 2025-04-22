@@ -293,7 +293,7 @@ public class ContextSerializationTest {
         var originalContents = Map.<ProjectFile, String>of();
         var parsedOutput = new ContextFragment.TaskFragment(sessionMessages, "Test Task");
         Future<String> action = CompletableFuture.completedFuture("Test Task");
-        var result = new SessionResult("What is the capital of France?", Map.of(), parsedOutput, new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
+        var result = new SessionResult("What is the capital of France?", parsedOutput, Map.of(), new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
         var taskEntry = context.createTaskEntry(result);
         context = context.addHistoryEntry(taskEntry, parsedOutput, action, originalContents);
 

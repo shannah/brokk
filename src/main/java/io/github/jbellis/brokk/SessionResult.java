@@ -12,8 +12,8 @@ import java.util.Map;
  * to update the context history.
  */
 public record SessionResult(String actionDescription,
-                            Map<ProjectFile, String> originalContents, // for undo
                             ContextFragment.TaskFragment output,
+                            Map<ProjectFile, String> originalContents, // for undo
                             StopDetails stopDetails)
 {
     public SessionResult {
@@ -29,8 +29,7 @@ public record SessionResult(String actionDescription,
                          StopDetails stopDetails)
     {
         this(actionDescription,
-             originalContents,
-             new ContextFragment.TaskFragment(uiMessages, actionDescription),
+             new ContextFragment.TaskFragment(uiMessages, actionDescription), originalContents,
              stopDetails);
     }
 

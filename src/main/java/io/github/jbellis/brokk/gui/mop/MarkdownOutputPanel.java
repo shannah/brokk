@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui.mop;
 import dev.langchain4j.data.message.*;
 import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.TaskMessages;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -44,7 +45,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     // Listeners to notify whenever text changes
     private final List<Runnable> textChangeListeners = new ArrayList<>();
 
-
     // Theme-related fields
     private boolean isDarkTheme = false;
 
@@ -56,6 +56,10 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         aiRenderer = new io.github.jbellis.brokk.gui.mop.AIMessageRenderer();
         userRenderer = new io.github.jbellis.brokk.gui.mop.UserMessageRenderer();
         customRenderer = new io.github.jbellis.brokk.gui.mop.CustomMessageRenderer();
+    }
+
+    public void setParser(EditBlockParser parser) {
+        aiRenderer.setParser(parser);
     }
 
     /**
@@ -289,7 +293,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     private final AIMessageRenderer aiRenderer;
     private final UserMessageRenderer userRenderer;
     private final CustomMessageRenderer customRenderer;
-    
+
     /**
          * Renders a single message component based on its type
          */

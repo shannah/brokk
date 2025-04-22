@@ -15,6 +15,7 @@ import java.util.Set;
  */
 public class AIMessageRenderer implements MessageComponentRenderer {
     private static final Logger logger = LogManager.getLogger(AIMessageRenderer.class);
+    private EditBlockParser parser;
 
     @Override
     public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
@@ -49,36 +50,36 @@ public class AIMessageRenderer implements MessageComponentRenderer {
             var markdownPanel = MarkdownRenderUtil.renderMarkdownContent(content, isDarkTheme);
             contentPanel.add(markdownPanel);
         }
-        
+
         // Create base panel with AI message styling
-            return new BaseChatMessagePanel(
+        return new BaseChatMessagePanel(
                 "Brokk",
                 "\uD83D\uDCBB", // Unicode for computer emoji
                 contentPanel,
                 isDarkTheme,
                 ThemeColors.getColor(isDarkTheme, "message_border_ai")
-            );
+        );
     }
 
     /**
-         * Creates a JPanel visually representing a single SEARCH/REPLACE block.
-         *
-         * @param block The SearchReplaceBlock to render.
-         * @param isDarkTheme Whether dark theme is active
-         * @return A JPanel containing components for the block.
-         */
-        private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block, boolean isDarkTheme) {
-            Color codeBackgroundColor = ThemeColors.getColor(isDarkTheme, "code_block_background");
-            Color codeBorderColor = ThemeColors.getColor(isDarkTheme, "code_block_border");
-            
-            var blockPanel = new JPanel();
-            blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
-            blockPanel.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
-                    BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
-            ));
-            blockPanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background")); // Match overall background
-            blockPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align components to the left
+     * Creates a JPanel visually representing a single SEARCH/REPLACE block.
+     *
+     * @param block       The SearchReplaceBlock to render.
+     * @param isDarkTheme Whether dark theme is active
+     * @return A JPanel containing components for the block.
+     */
+    private JPanel renderEditBlockComponent(EditBlock.SearchReplaceBlock block, boolean isDarkTheme) {
+        Color codeBackgroundColor = ThemeColors.getColor(isDarkTheme, "code_block_background");
+        Color codeBorderColor = ThemeColors.getColor(isDarkTheme, "code_block_border");
+
+        var blockPanel = new JPanel();
+        blockPanel.setLayout(new BoxLayout(blockPanel, BoxLayout.Y_AXIS));
+        blockPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(5, 0, 5, 0), // Outer margin
+                BorderFactory.createLineBorder(isDarkTheme ? Color.DARK_GRAY : Color.LIGHT_GRAY, 1) // Border
+        ));
+        blockPanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background")); // Match overall background
+        blockPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align components to the left
 
         // Header label (Filename)
         var headerLabel = new JLabel(String.format("File: %s", block.filename()));
@@ -109,5 +110,9 @@ public class AIMessageRenderer implements MessageComponentRenderer {
         blockPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, blockPanel.getPreferredSize().height));
 
         return blockPanel;
+    }
+
+    public void setParser(EditBlockParser parser) {
+        this.parser = parser;
     }
 }

@@ -561,7 +561,7 @@ public class ContextPanel extends JPanel {
         StringBuilder fullText = new StringBuilder();
         for (var frag : allFragments) {
             String locText;
-            if (frag.isText()) {
+            if (frag.isText() || frag instanceof ContextFragment.OutputFragment) {
                 var text = getTextSafe(frag);
                 fullText.append(text).append("\n");
                 int loc = text.split("\\r?\\n", -1).length;

@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
@@ -787,6 +788,11 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
+        public boolean isText() {
+            return false;
+        }
+
+        @Override
         public String text() {
             // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
             // but lots of stuff breaks without text(), so I am putting that off for another refactor
@@ -836,13 +842,24 @@ public interface ContextFragment extends Serializable {
     /** represents a single session's Task History */
     class TaskFragment extends VirtualFragment implements OutputFragment {
         private static final long serialVersionUID = 5L;
+        private final EditBlockParser parser;
         private final List<ChatMessage> messages;
         private final String sessionName;
 
-        public TaskFragment(List<ChatMessage> messages, String sessionName) {
+        public TaskFragment(EditBlockParser parser, List<ChatMessage> messages, String sessionName) {
             super();
+            this.parser = parser;
             this.messages = messages;
             this.sessionName = sessionName;
+        }
+
+        public TaskFragment(List<ChatMessage> messages, String sessionName) {
+            this(EditBlockParser.instance, messages, sessionName);
+        }
+
+        @Override
+        public boolean isText() {
+            return false;
         }
 
         @Override
@@ -868,6 +885,10 @@ public interface ContextFragment extends Serializable {
 
         public List<TaskMessages> entries() {
             return List.of(new TaskMessages(-1, messages, null));
+        }
+
+        public EditBlockParser parser() {
+            return parser;
         }
     }
 

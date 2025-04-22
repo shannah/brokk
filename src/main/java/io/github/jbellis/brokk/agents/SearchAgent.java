@@ -382,8 +382,7 @@ public class SearchAgent {
 
     private SessionResult errorResult(SessionResult.StopDetails details, String explanation) {
         return new SessionResult("Search: " + query,
-                                 Map.of(),
-                                 new ContextFragment.TaskFragment(List.of(new UserMessage(query), new AiMessage(explanation)), query),
+                                 new ContextFragment.TaskFragment(List.of(new UserMessage(query), new AiMessage(explanation)), query), Map.of(),
                                  details);
     }
 
@@ -1182,8 +1181,7 @@ public class SearchAgent {
         logger.debug("Final sources identified (files): {}", sources.stream().map(CodeUnit::source).toList());
         var fragment = new ContextFragment.SearchFragment(query, explanationText, sources);
         return new SessionResult("Search: " + query,
-                                 Map.of(),
-                                 fragment,
+                                 fragment, Map.of(),
                                  new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
     }
 

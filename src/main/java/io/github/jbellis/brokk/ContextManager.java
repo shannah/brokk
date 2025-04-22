@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextHistory.UndoResult;
 import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.tools.SearchTools;
@@ -1347,6 +1348,20 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
             return inferredDetails; // Return details for potential chaining, though not used here
         });
+    }
+
+    public EditBlockParser getParserForWorkspace() {
+        var allText = topContext().allFragments()
+                .filter(ContextFragment::isText)
+                .map(f -> {
+                    try {
+                        return f.text();
+                    } catch (IOException e) {
+                        return "";
+                    }
+                })
+                .collect(Collectors.joining("\n"));
+        return EditBlockParser.getParserFor(allText);
     }
 
 

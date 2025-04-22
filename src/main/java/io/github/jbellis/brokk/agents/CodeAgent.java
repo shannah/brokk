@@ -80,6 +80,9 @@ public class CodeAgent {
         io.systemOutput("Code Agent engaged: `%s...`".formatted(SessionResult.getShortDescription(userInput)));
         SessionResult.StopDetails stopDetails;
 
+        var parser = contextManager.getParserForWorkspace();
+        contextManager.getIo().setLlmParser(parser);
+
         while (true) {
             // Prepare and send request to LLM
             var allMessages = CodePrompts.instance.collectMessages(contextManager, sessionMessages,
@@ -99,7 +102,7 @@ public class CodeAgent {
             logger.debug("got response");
 
             // Parse any edit blocks from LLM response
-            var parseResult = EditBlockParser.instance.parseEditBlocks(llmText, contextManager.getRepo().getTrackedFiles());
+            var parseResult = parser.parseEditBlocks(llmText, contextManager.getRepo().getTrackedFiles());
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks);
 
@@ -225,7 +228,7 @@ public class CodeAgent {
                                         ? userInput
                                         : userInput + " [" + stopDetails.reason().name() + "]";
         return new SessionResult(finalActionDescription,
-                                 List.copyOf(io.getLlmRawMessages()),
+                                 new ContextFragment.TaskFragment(parser, io.getLlmRawMessages(), userInput),
                                  Map.copyOf(originalContents),
                                  stopDetails);
     }

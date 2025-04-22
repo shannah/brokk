@@ -4,6 +4,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -17,7 +18,6 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * A component that combines the context history panel with the output panel using BorderLayout.
@@ -424,9 +424,9 @@ public class HistoryOutputPanel extends JPanel {
         openWindowButton.setMnemonic(KeyEvent.VK_W);
         openWindowButton.setToolTipText("Open the output in a new window");
         openWindowButton.addActionListener(e -> {
-            var messages = llmStreamArea.getRawMessages();
-            if (messages != null && !messages.isEmpty()) { 
-                new OutputWindow(this, messages, chrome.themeManager != null && chrome.themeManager.isDarkTheme());
+            var output = contextManager.topContext().getParsedOutput();
+            if (output != null) {
+                new OutputWindow(this, output, chrome.themeManager != null && chrome.themeManager.isDarkTheme());
             }
         });
         // Set minimum size
@@ -525,6 +525,10 @@ public class HistoryOutputPanel extends JPanel {
         llmStreamArea.clear();
     }
 
+    public void setLlmParser(EditBlockParser parser) {
+        llmStreamArea.setParser(parser);
+    }
+
     /**
      * Inner class representing a detached window for viewing output text
      */
@@ -535,10 +539,10 @@ public class HistoryOutputPanel extends JPanel {
          * Creates a new output window with the given text content
          *
          * @param parentPanel The parent HistoryOutputPanel
-         * @param messages The messages (ai, user, ...) to display
+         * @param output The messages (ai, user, ...) to display
          * @param isDark Whether to use dark theme
          */
-        public OutputWindow(HistoryOutputPanel parentPanel, List<ChatMessage> messages, boolean isDark) {
+        public OutputWindow(HistoryOutputPanel parentPanel, ContextFragment.TaskFragment output, boolean isDark) {
             super("Output"); // Call superclass constructor first
                 
                 // Set icon from Chrome.newFrame
@@ -559,7 +563,8 @@ public class HistoryOutputPanel extends JPanel {
             // Create markdown panel with the text
             var outputPanel = new MarkdownOutputPanel();
             outputPanel.updateTheme(isDark);
-            outputPanel.setText(messages);
+            outputPanel.setParser(output.parser());
+            outputPanel.setText(output.messages());
 
             // Add to a scroll pane
             var scrollPane = new JScrollPane(outputPanel);

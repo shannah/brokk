@@ -41,4 +41,5 @@ public class CustomMessageRenderer implements MessageComponentRenderer {
                 ThemeColors.getColor(isDarkTheme, "message_border_custom")
             );
     }
+
 }

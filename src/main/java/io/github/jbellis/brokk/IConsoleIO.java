@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 
 import java.util.List;
 
@@ -16,6 +17,10 @@ public interface IConsoleIO {
     }
 
     void toolErrorRaw(String msg);
+
+    default void setLlmParser(EditBlockParser parser) {
+        throw new UnsupportedOperationException();
+    }
 
     public enum MessageSubType {
         Run,

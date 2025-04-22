@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.ChatMessage;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 
 import java.awt.*;
 

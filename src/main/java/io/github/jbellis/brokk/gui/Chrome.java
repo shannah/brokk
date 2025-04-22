@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -351,7 +352,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public List<ChatMessage> getLlmRawMessages() {
         return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmRawMessages(), null);
     }
-    
+
+    @Override
+    public void setLlmParser(EditBlockParser parser) {
+        historyOutputPanel.setLlmParser(parser);
+    }
+
     private JComponent buildBackgroundStatusLabel() {
         backgroundStatusLabel = new JLabel(BGTASK_EMPTY);
         backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -552,28 +558,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         try {
             String title = "Preview: " + fragment.description();
 
-            if (!fragment.isText()) {
-                // Handle image fragments
-                if (fragment instanceof ContextFragment.PasteImageFragment pif) {
-                    var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
-                    imagePanel.setImage(pif.image());
-                    showPreviewFrame(contextManager, title, imagePanel); // Use helper
-                } else if (fragment instanceof ContextFragment.ImageFileFragment iff) {
-                    // PreviewImagePanel has its own static showInFrame that uses showPreviewFrame
-                    PreviewImagePanel.showInFrame(frame, contextManager, iff.file(), themeManager);
-                }
-                return;
-            }
-
-            // Handle text fragments
-            String content = fragment.text();
-            if (fragment instanceof ContextFragment.GitFileFragment ghf) {
-                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, fragment.syntaxStyle(), themeManager, ghf);
-                showPreviewFrame(contextManager, title, previewPanel); // Use helper
-            } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
-                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
-                showPreviewFrame(contextManager, title, previewPanel); // Use helper
-            } else if (fragment instanceof ContextFragment.OutputFragment outputFragment) {
+            if (fragment instanceof ContextFragment.OutputFragment outputFragment) {
                 // Create a panel to hold all message panels
                 JPanel messagesContainer = new JPanel();
                 messagesContainer.setLayout(new BoxLayout(messagesContainer, BoxLayout.Y_AXIS));
@@ -596,6 +581,30 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
                 showPreviewFrame(contextManager, title, scrollPane); // Use helper
+                return;
+            }
+
+            if (!fragment.isText()) {
+                // Handle image fragments
+                if (fragment instanceof ContextFragment.PasteImageFragment pif) {
+                    var imagePanel = new PreviewImagePanel(contextManager, null, themeManager);
+                    imagePanel.setImage(pif.image());
+                    showPreviewFrame(contextManager, title, imagePanel); // Use helper
+                } else if (fragment instanceof ContextFragment.ImageFileFragment iff) {
+                    // PreviewImagePanel has its own static showInFrame that uses showPreviewFrame
+                    PreviewImagePanel.showInFrame(frame, contextManager, iff.file(), themeManager);
+                }
+                return;
+            }
+
+            // Handle text fragments
+            String content = fragment.text();
+            if (fragment instanceof ContextFragment.GitFileFragment ghf) {
+                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, fragment.syntaxStyle(), themeManager, ghf);
+                showPreviewFrame(contextManager, title, previewPanel); // Use helper
+            } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
+                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
+                showPreviewFrame(contextManager, title, previewPanel); // Use helper
             } else {
                 // Use PreviewTextPanel for other virtual/plain text fragments
                 var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);

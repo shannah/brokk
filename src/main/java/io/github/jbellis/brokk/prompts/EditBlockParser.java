@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import java.io.File;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public class EditBlockParser {
     public static EditBlockParser instance = new EditBlockParser();
@@ -176,6 +177,17 @@ public class EditBlockParser {
     private static final Pattern DIVIDER = Pattern.compile("^={5,9}\\s*$", Pattern.MULTILINE);
     private static final Pattern UPDATED = Pattern.compile("^>{5,9} REPLACE\\W*$", Pattern.MULTILINE);
     static final String[] DEFAULT_FENCE = {"```", "```"};
+
+    /**
+     * Return vanilla EditBlockParser if `text` doesn't contain anything that looks like one of our markers;
+     * if it does, return EditBlockConflictsParser instead.
+     */
+    public static EditBlockParser getParserFor(String text) {
+        return Stream.of("<<<<<", "=====", ">>>>>")
+                       .anyMatch(text::contains)
+               ? EditBlockConflictsParser.instance
+               : EditBlockParser.instance;
+    }
 
     /**
      * Parses the given content into a sequence of OutputBlock records (plain text or edit blocks).
