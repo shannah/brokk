@@ -11,6 +11,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.net.URI;
 
 public class SettingsDialog extends JDialog {
     private static final Logger logger = LogManager.getLogger(SettingsDialog.class);
@@ -20,6 +23,9 @@ public class SettingsDialog extends JDialog {
     private final JPanel projectPanel; // Keep a reference to enable/disable
     // Brokk Key field (Global)
     private JTextField brokkKeyField;
+    // Global proxy selection
+    private JRadioButton brokkProxyRadio;
+    private JRadioButton localhostProxyRadio;
     // Project fields
     private JComboBox<Project.CpgRefresh> cpgRefreshComboBox; // ComboBox for CPG refresh
     private JTextField buildCleanCommandField;
@@ -118,10 +124,98 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL; // Make field expand horizontally
         panel.add(brokkKeyField, gbc);
 
-        // Reset fill for the label
+        // Sign-up/login info
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        var url = "https://brokk.ai";
+        var loginLabel = new JLabel(
+            "<html><i>Sign up or login at <a href=\"" + url + "\">" + url + "</a></i></html>"
+        );
+        loginLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        loginLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                try {
+                        Desktop.getDesktop().browse(new URI(url));
+                    } catch (UnsupportedOperationException ex) {
+                        logger.error("Browser not supported: {}", url, ex);
+                        JOptionPane.showMessageDialog(
+                            SettingsDialog.this,
+                            "Sorry, unable to open browser automatically. This is a known problem on WSL.",
+                            "Browser Unsupported",
+                            JOptionPane.WARNING_MESSAGE
+                        );
+                    } catch (Exception ex) {
+                        logger.error("Failed to open URL: {}", url, ex);
+                    }
+            }
+        });
+        panel.add(loginLabel, gbc);
+
+        // Reset fill after Brokk Key
         gbc.fill = GridBagConstraints.NONE;
 
-        // Theme Selection (now on one line)
+        // --- LLM Proxy Setting ---
+        row++;
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        panel.add(new JLabel("LLM Proxy:"), gbc);
+
+        // Brokk vs localhost selection
+        brokkProxyRadio = new JRadioButton("Brokk");
+        // Removed italic on proxy radio label to keep standard font
+        localhostProxyRadio = new JRadioButton("Localhost");
+        // Removed italic on proxy radio label to keep standard font
+        var proxyGroup = new ButtonGroup();
+        proxyGroup.add(brokkProxyRadio);
+        proxyGroup.add(localhostProxyRadio);
+
+        // Brokk radio on this row
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(brokkProxyRadio, gbc);
+
+        // Localhost radio on next line
+        gbc.gridy = row++;
+        panel.add(localhostProxyRadio, gbc);
+
+        // Informational label under localhost
+        gbc.insets = new Insets(0, 25, 2, 2);
+        gbc.gridy = row++;
+        var proxyInfoLabel = new JLabel("Brokk will look for a litellm proxy on localhost:4000");
+        proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
+        panel.add(proxyInfoLabel, gbc);
+        
+        // Add restart requirement note
+        gbc.gridy = row++;
+        var restartLabel = new JLabel("Restart required after changing proxy settings");
+        restartLabel.setFont(restartLabel.getFont().deriveFont(Font.ITALIC));
+        panel.add(restartLabel, gbc);
+        
+        gbc.insets = new Insets(2, 2, 2, 2);
+
+        // Load initial proxy setting via enum
+        if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+            brokkProxyRadio.setSelected(true);
+        } else {
+            localhostProxyRadio.setSelected(true);
+        }
+        // -- Apply LLM Proxy Setting --
+        if (brokkProxyRadio.isSelected()) {
+            Project.setLlmProxySetting(Project.LlmProxySetting.BROKK);
+        } else {
+            Project.setLlmProxySetting(Project.LlmProxySetting.LOCALHOST);
+        }
+
+        // Reset fill for the next label
+        gbc.fill = GridBagConstraints.NONE;
+
+
+        // --- Theme Selection ---
+        row++; // Move to next row for theme
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0.0;
@@ -660,17 +754,48 @@ public class SettingsDialog extends JDialog {
         String currentBrokkKey = Project.getBrokkKey();
         String newBrokkKey = brokkKeyField.getText().trim(); // Read from the new field
         if (!newBrokkKey.equals(currentBrokkKey)) {
+            if (!newBrokkKey.isEmpty()) {
+                try {
+                    io.github.jbellis.brokk.Models.KeyParts kp = io.github.jbellis.brokk.Models.parseKey(newBrokkKey);
+                } catch (IllegalArgumentException ex) {
+                    JOptionPane.showMessageDialog(this,
+                                                  "Invalid Brokk Key: " + ex.getMessage(),
+                                                  "Invalid Key",
+                                                  JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
             Project.setBrokkKey(newBrokkKey);
+            logger.debug("Applied Brokk Key: {}", newBrokkKey.isEmpty() ? "<empty>" : "****");
         }
 
+        // -- Apply LLM Proxy Setting --
+        Project.LlmProxySetting proxySetting = brokkProxyRadio.isSelected()
+                                                ? Project.LlmProxySetting.BROKK
+                                                : Project.LlmProxySetting.LOCALHOST;
+        Project.setLlmProxySetting(proxySetting);
+        logger.debug("Applied LLM Proxy Setting: {}", proxySetting);
+
+
         // -- Apply Theme --
-        // Find the themeRadioPanel (it's the component at gridx=1, gridy=1 based on GridBagLayout)
+        // Find the themeRadioPanel (it's the component holding theme radio buttons)
         Component themeComponent = null;
+        // Locate the panel holding the theme radio buttons based on content, not fixed grid coordinates
         for (Component comp : globalPanel.getComponents()) {
-            var constraints = ((GridBagLayout) globalPanel.getLayout()).getConstraints(comp);
-            if (constraints.gridx == 1 && constraints.gridy == 1 && comp instanceof JPanel) { // Find the panel holding radio buttons
-                themeComponent = comp;
-                break;
+            if (comp instanceof JPanel panel) {
+                // Check if the panel contains the light/dark radio buttons we created
+                boolean hasLight = false;
+                boolean hasDark = false;
+                for(Component child : panel.getComponents()) {
+                    if (child instanceof JRadioButton radio) {
+                        if ("Light".equals(radio.getText())) hasLight = true;
+                        if ("Dark".equals(radio.getText())) hasDark = true;
+                    }
+                }
+                if (hasLight && hasDark) {
+                    themeComponent = comp;
+                    break;
+                }
             }
         }
 
@@ -679,17 +804,20 @@ public class SettingsDialog extends JDialog {
                 if (radioComp instanceof JRadioButton radio && radio.isSelected()) {
                     boolean useDark = (Boolean) radio.getClientProperty("theme");
                     // Only switch theme if it actually changed
-                    if (useDark != Project.getTheme().equals("dark")) {
-                        chrome.switchTheme(useDark); // switchTheme calls Project.setTheme internally
+                    boolean newIsDark = (Boolean) radio.getClientProperty("theme");
+                    String newTheme = newIsDark ? "dark" : "light";
+                    // Only switch theme if it actually changed
+                    if (!newTheme.equals(Project.getTheme())) {
+                        chrome.switchTheme(newIsDark); // switchTheme calls Project.setTheme internally
+                        logger.debug("Applied Theme: {}", newTheme);
                     }
                     break;
                 }
             }
         } else {
             // Log error or handle case where theme panel wasn't found as expected
-            System.err.println("Could not find theme radio button panel in SettingsDialog.");
+            logger.error("Could not find theme radio button panel in SettingsDialog.");
         }
-
 
         // Apply Project Settings (if project is open and tab is enabled)
         var project = chrome.getProject();

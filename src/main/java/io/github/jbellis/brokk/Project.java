@@ -60,6 +60,38 @@ public class Project implements IProject, AutoCloseable {
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
     private static final Path PROJECTS_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("projects.properties");
     private static final Path GLOBAL_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("brokk.properties");
+    private static final String LLM_PROXY_KEY = "llmProxyUrl";
+
+    // New enum to represent just which proxy to use
+    public enum LlmProxySetting { BROKK, LOCALHOST }
+
+private static final String LLM_PROXY_SETTING_KEY = "llmProxySetting";
+
+/** 
+ * Gets the stored LLM proxy setting (BROKK or LOCALHOST). 
+ */
+public static LlmProxySetting getLlmProxySetting() {
+    var props = loadGlobalProperties();
+    String val = props.getProperty(LLM_PROXY_SETTING_KEY, LlmProxySetting.BROKK.name());
+    try {
+        return LlmProxySetting.valueOf(val);
+    } catch (IllegalArgumentException e) {
+        return LlmProxySetting.BROKK;
+    }
+}
+
+/** 
+ * Sets the global LLM proxy setting (BROKK or LOCALHOST). 
+ */
+public static void setLlmProxySetting(LlmProxySetting setting) {
+    var props = loadGlobalProperties();
+    props.setProperty(LLM_PROXY_SETTING_KEY, setting.name());
+    saveGlobalProperties(props);
+}
+
+    // The actual endpoint URLs for each proxy
+    public static final String BROKK_PROXY_URL     = "https://proxy.brokk.ai";
+    public static final String LOCALHOST_PROXY_URL = "http://localhost:4000";
 
     public Project(Path root, ContextManager.TaskRunner runner, AnalyzerListener analyzerListener) {
         this.repo = GitRepo.hasGitRepo(root) ? new GitRepo(root) : new LocalFileRepo(root);
@@ -927,6 +959,38 @@ public class Project implements IProject, AutoCloseable {
         }
         saveGlobalProperties(props);
     }
+
+    /**
+     * Gets the configured LLM proxy URL (including scheme, e.g., "https://...") from global settings.
+     *
+     * @return The configured proxy URL, defaulting to DEFAULT_LLM_PROXY if not set or blank.
+     */
+    public static String getLlmProxy() {
+    // Return the actual endpoint URL based on the enum setting
+    return getLlmProxySetting() == LlmProxySetting.BROKK
+            ? BROKK_PROXY_URL
+            : LOCALHOST_PROXY_URL;
+}
+
+    /**
+     * Sets the global LLM proxy URL (including scheme, e.g., "https://...").
+     * If the provided URL is null, blank, or matches the default, the setting is
+     * removed from the properties file, effectively reverting to the default.
+     *
+     * @param proxyUrl The proxy URL (including scheme) to save, or null/blank/default to revert to default.
+     */
+    public static void setLlmProxy(String proxyUrl) {
+        var props = loadGlobalProperties();
+        if (proxyUrl == null || proxyUrl.isBlank() || proxyUrl.trim().equals(BROKK_PROXY_URL)) {
+            props.remove(LLM_PROXY_KEY);
+            logger.debug("Removing LLM proxy setting, reverting to default: {}", BROKK_PROXY_URL);
+        } else {
+            props.setProperty(LLM_PROXY_KEY, proxyUrl.trim());
+            logger.debug("Setting LLM proxy to: {}", proxyUrl.trim());
+        }
+        saveGlobalProperties(props);
+    }
+
 
     /**
      * Sets the global UI theme

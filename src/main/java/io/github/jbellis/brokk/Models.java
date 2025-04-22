@@ -26,6 +26,40 @@ import java.util.stream.Collectors;
  * Manages dynamically loaded models via LiteLLM.
  */
 public final class Models {
+    /**
+     * Represents the parsed Brokk API key components.
+     */
+    public record KeyParts(String token, java.util.UUID userId) {}
+
+    /**
+     * Parses a Brokk API key of the form 'brk+<token>+<userId>'.
+     * The token must start with 'sk-' and userId must be a valid UUID.
+     *
+     * @param key the raw key string
+     * @return KeyParts containing token and userId
+     * @throws IllegalArgumentException if the key is invalid
+     */
+    public static KeyParts parseKey(String key) {
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException("Key cannot be empty");
+        }
+        var parts = key.split("\\+");
+        if (parts.length != 3 || !"brk".equals(parts[0])) {
+            throw new IllegalArgumentException("Key must have format 'brk+<token>+<userId>'");
+        }
+        var token = parts[1];
+        if (!token.startsWith("sk-")) {
+            throw new IllegalArgumentException("Token must start with 'sk-'");
+        }
+        java.util.UUID userId;
+        try {
+            userId = java.util.UUID.fromString(parts[2]);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("User ID must be a valid UUID", e);
+        }
+        return new KeyParts(token, userId);
+    }
+
     private final Logger logger = LogManager.getLogger(Models.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     // Share OkHttpClient across instances for efficiency
@@ -39,7 +73,6 @@ public final class Models {
             .writeTimeout(10, TimeUnit.SECONDS)
             .build();
 
-    public static final String LITELLM_BASE_URL = "http://localhost:4000";
     public static final String UNAVAILABLE = "AI is unavailable";
 
     // Core model storage - now instance fields
@@ -70,12 +103,13 @@ public final class Models {
      * @param policy The data retention policy to apply when selecting models.
      */
     public void reinit(Project.DataRetentionPolicy policy) {
-        logger.info("Initializing models using policy: {}", policy);
+        String proxyUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project setting
+        logger.info("Initializing models using policy: {} and proxy: {}", policy, proxyUrl);
         try {
             fetchAvailableModels(policy);
         } catch (IOException e) {
             logger.error("Failed to connect to LiteLLM at {} or parse response: {}",
-                         LITELLM_BASE_URL, e.getMessage());
+                         proxyUrl, e.getMessage(), e); // Log the exception details
             modelLocations.clear();
             modelInfoMap.clear();
         }
@@ -102,8 +136,16 @@ public final class Models {
     }
 
     private void fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
+        String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
+        // Pick correct Authorization header for model/info
+        var authHeader = "Bearer dummy-key";
+        if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+            var kp = parseKey(Project.getBrokkKey());
+            authHeader = "Bearer " + kp.token();
+        }
         Request request = new Request.Builder()
-                .url(LITELLM_BASE_URL + "/model/info")
+                .url(baseUrl + "/model/info") // Use dynamic base URL
+                .header("Authorization", authHeader)
                 .get()
                 .build();
 
@@ -279,15 +321,26 @@ public final class Models {
 
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
+            String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
             var builder = OpenAiStreamingChatModel.builder()
-                    .logRequests(true) // Not visible unless you turn down the threshold for dev.langchain4j in log4j2.xml
-                    .logResponses(true) // ditto
+                    .logRequests(true)
+                    .logResponses(true)
                     .strictJsonSchema(true)
                     .maxTokens(getMaxOutputTokens(modelName))
-                    .baseUrl(LITELLM_BASE_URL)
-                    .timeout(Duration.ofMinutes(3)) // default 60s is not enough in practice
-                    .apiKey("litellm") // placeholder, LiteLLM manages actual keys
-                    .modelName(location); // Use the resolved location
+                    .baseUrl(baseUrl)
+                    .timeout(Duration.ofMinutes(3)); // default 60s is not enough
+
+            if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+                var kp = parseKey(Project.getBrokkKey());
+                builder = builder
+                        .apiKey(kp.token())
+                        .customHeaders(Map.of("Authorization", "Bearer " + kp.token()))
+                        .user(kp.userId().toString());
+            } else {
+                builder = builder.apiKey("dummy-key");
+            }
+
+            builder = builder.modelName(location); // Use the resolved location
 
             // Apply reasoning effort if not default and supported
             logger.debug("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
@@ -526,11 +579,17 @@ public final class Models {
                     }
                     """.stripIndent().formatted(modelLocation, buildPromptText(symbols), encodedString, audioFormat);
 
+            String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
             RequestBody body = RequestBody.create(jsonBody, JSON);
+            // Pick correct Authorization header
+            var authHeader = "Bearer dummy-key";
+            if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+                var kp = parseKey(Project.getBrokkKey());
+                authHeader = "Bearer " + kp.token();
+            }
             Request request = new Request.Builder()
-                    .url(LITELLM_BASE_URL + "/chat/completions")
-                    // LiteLLM requires a dummy API key here for the OpenAI compatible endpoint
-                    .header("Authorization", "Bearer dummy-key")
+                    .url(baseUrl + "/chat/completions")
+                    .header("Authorization", authHeader)
                     .post(body)
                     .build();
 
