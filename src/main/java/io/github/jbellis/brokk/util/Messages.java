@@ -40,7 +40,7 @@ public class Messages {
     public static String getText(ChatMessage message) {
         return switch (message) {
             case SystemMessage sm -> sm.text();
-            case AiMessage am -> am.text() == null ? am.text() : "";
+            case AiMessage am -> am.text() == null ? "" : am.text();
             case UserMessage um -> um.contents().stream()
                     .filter(c -> c instanceof TextContent)
                     .map(c -> ((TextContent) c).text())
