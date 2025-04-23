@@ -91,6 +91,27 @@ public class AnalyzerUtil {
                 .toList();
     }
 
+    @NotNull
+    public static Set<CodeUnit> coalesceInnerClasses(Set<CodeUnit> classes)
+    {
+        return classes.stream()
+                .filter(cu -> {
+                    var name = cu.fqName();
+                    if (!name.contains("$")) return true;
+                    var parent = name.substring(0, name.indexOf('$'));
+                    return classes.stream().noneMatch(other -> other.fqName().equals(parent));
+                })
+                .collect(Collectors.toSet());
+    }
+
+    public static @NotNull Map<CodeUnit, String> getSkeletonStrings(IAnalyzer analyzer, Set<CodeUnit> classes) {
+        var coalescedUnits = coalesceInnerClasses(classes);
+        return coalescedUnits.stream()
+                .map(cu -> Map.entry(cu, analyzer.getSkeleton(cu.fqName())))
+                .filter(entry -> entry.getValue().isDefined())
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get()));
+    }
+
     private record StackEntry(String method, int depth) {}
 
     /**

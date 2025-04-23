@@ -14,10 +14,12 @@ import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.LogDescription;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,6 +31,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static java.lang.Math.min;
 
 public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
@@ -152,15 +156,15 @@ public class ArchitectAgent {
 
         // For other failures (PARSE_ERROR, APPLY_ERROR, BUILD_ERROR, etc.), return the summary with failure details
         String summary = """
-                        CodeAgent was not successful; changes have been reverted.
-                        <summary>
-                        %s
-                        </summary>
-                        
-                        <stop-details>
-                        %s
-                        </stop-details>
-                        """.stripIndent().formatted(entry.summary(), stopDetails);
+                CodeAgent was not successful; changes have been reverted.
+                <summary>
+                %s
+                </summary>
+                
+                <stop-details>
+                %s
+                </stop-details>
+                """.stripIndent().formatted(entry.summary(), stopDetails);
         logger.debug("Summary for failed callCodeAgent (changes reverted): {}", summary);
         return summary;
     }
@@ -210,10 +214,14 @@ public class ArchitectAgent {
      */
     public void execute() throws ExecutionException, InterruptedException {
         contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
+
+        // Attempt to pre-populate context based on project size
+        populateInitialContext();
+
         var coder = contextManager.getCoder(model, "Architect: " + goal);
 
         while (true) {
-            // 3) Build the prompt messages, including history
+            // Build the prompt messages, including history
             var messages = buildPrompt();
 
             // 4) Figure out which tools are allowed in this step
@@ -397,5 +405,69 @@ public class ArchitectAgent {
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
                               Stream.of(new UserMessage(ArchitectPrompts.instance.getFinalInstructions(goal)))).toList();
+    }
+
+    /**
+     * Populates the initial workspace context based on project size and a token budget.
+     * Tries raw files first for small projects, then summaries for medium projects.
+     */
+    private void populateInitialContext() throws InterruptedException {
+        // Budget: Use a fixed proxy (25k tokens) for 1/4 of a large model's input capacity,
+        // as max input tokens are not directly available via the API.
+        var models = contextManager.getModels();
+        int budget = min(128_000, models.getMaxInputTokens(models.nameOf(model)) / 4);
+        logger.debug("Initial context budget set to {} tokens", budget);
+
+        var analyzer = contextManager.getAnalyzer();
+        var allFiles = contextManager.getProject().getFiles();
+        int fileCount = allFiles.size();
+        logger.debug("Project contains {} files.", fileCount);
+
+        // Condition 1: Small project (<= 10 files, or <= 100 with no analyzer), try adding raw content
+        if (fileCount <= 10 || (analyzer.isEmpty() && fileCount <= 100)) {
+            var allContents = allFiles.stream()
+                    .map(f -> {
+                        try {
+                            return f.read();
+                        } catch (IOException e) {
+                            return "";
+                        }
+                    })
+                    .collect(Collectors.joining());
+            int rawTokens = Messages.getApproximateTokens(allContents);
+            logger.debug("Estimated tokens for raw content: {}", rawTokens);
+
+            if (rawTokens <= budget) {
+                contextManager.addReadOnlyFiles(allFiles);
+                logger.debug("Added all {} raw files to initial workspace context ({} tokens).", fileCount, rawTokens);
+                contextManager.getIo().systemOutput("Added content of all %d project files to workspace.".formatted(fileCount));
+                return;
+            } else {
+                logger.debug("Raw content ({}} tokens) exceeds budget ({}}).", rawTokens, budget);
+            }
+        }
+
+        // Condition 2: Medium project (<= 1000 files), try adding summaries
+        if (!analyzer.isEmpty() && fileCount <= 1000) {
+            // analyzer.getAllClasses() would include dependencies, which we don't want
+            var allClasses = allFiles.stream()
+                    .flatMap(f -> analyzer.getClassesInFile(f).stream())
+                    .collect(Collectors.toSet());
+            var classes = AnalyzerUtil.coalesceInnerClasses(allClasses);
+            var skeletons = classes.stream().parallel()
+                    .map(cu -> Map.entry(cu, analyzer.getSkeleton(cu.fqName())))
+                    .filter(entry -> !entry.getValue().isEmpty()) // Filter out empty Options
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> entry.getValue().get() // Safe to call get() now
+                    ));
+            int rawTokens = Messages.getApproximateTokens(String.join("", skeletons.values()));
+            logger.debug("Estimated tokens for summarized content: {}", rawTokens);
+            if (rawTokens <= budget) {
+                contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(skeletons));
+                logger.debug("Added summaries of all {} raw files to initial workspace context ({} tokens).", fileCount, rawTokens);
+                contextManager.getIo().systemOutput("Added summaries of all %d project files to workspace.".formatted(fileCount));
+            }
+        }
     }
 }

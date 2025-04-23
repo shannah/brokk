@@ -50,7 +50,6 @@ public final class Models {
     // Core model storage - now instance fields
     private final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Integer> modelMaxOutputTokens = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Map<String, Object>> modelInfoMap = new ConcurrentHashMap<>();
 
     // Default models - now instance fields
@@ -145,7 +144,6 @@ public final class Models {
 
             if (dataNode.isArray()) {
                 modelLocations.clear();
-                modelMaxOutputTokens.clear();
                 modelInfoMap.clear();
 
                 for (JsonNode modelInfoNode : dataNode) {
@@ -203,7 +201,6 @@ public final class Models {
 
                         // Store the complete model info
                         modelLocations.put(modelName, modelLocation);
-                        modelMaxOutputTokens.put(modelName, maxOutputTokens);
                         modelInfoMap.put(modelName, modelInfo);
 
                         logger.debug("Discovered model: {} -> {} (Max output tokens: {})",
@@ -235,7 +232,29 @@ public final class Models {
      * Returns -1 if the information is not available.
      */
     public int getMaxOutputTokens(String modelName) {
-        return modelMaxOutputTokens.getOrDefault(modelName, -1);
+        var info = modelInfoMap.get(modelName);
+        if (info == null || !info.containsKey("max_output_tokens")) {
+            logger.warn("max_output_tokens not found for model: {}", modelName);
+            return 8192;
+        }
+        var value = info.get("max_output_tokens");
+        assert value instanceof Integer;
+        return (Integer) value;
+    }
+
+    /**
+     * Retrieves the maximum input tokens for the given model name.
+     * Returns -1 if the information is not available.
+     */
+    public int getMaxInputTokens(String modelName) {
+        var info = modelInfoMap.get(modelName);
+        if (info == null || !info.containsKey("max_input_tokens")) {
+            logger.warn("max_input_tokens not found for model: {}", modelName);
+            return 65536;
+        }
+        var value = info.get("max_input_tokens");
+        assert value instanceof Integer;
+        return (Integer) value;
     }
 
     /**

@@ -802,30 +802,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return false;
         }
 
-        var coalescedUnits = coalesceInnerClasses(classes);
-        var skeletons = coalescedUnits.stream()
-                .map(cu -> Map.entry(cu, analyzer.getSkeleton(cu.fqName())))
-                .filter(entry -> entry.getValue().isDefined())
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get())); // Rely on type inference
+        var skeletons = AnalyzerUtil.getSkeletonStrings(analyzer, classes);
         if (skeletons.isEmpty()) {
             return false;
         }
         var skeletonFragment = new ContextFragment.SkeletonFragment(skeletons);
         addVirtualFragment(skeletonFragment);
         return true;
-    }
-
-    @NotNull
-    private static Set<CodeUnit> coalesceInnerClasses(Set<CodeUnit> classes)
-    {
-        return classes.stream()
-                .filter(cu -> {
-                    var name = cu.fqName();
-                    if (!name.contains("$")) return true;
-                    var parent = name.substring(0, name.indexOf('$'));
-                    return classes.stream().noneMatch(other -> other.fqName().equals(parent));
-                })
-                .collect(Collectors.toSet());
     }
 
     /**
