@@ -55,8 +55,7 @@ public class CodeAgent {
      * @param userInput The user's goal/instructions.
      * @return A SessionResult containing the conversation history and original file contents
      */
-    public SessionResult runSession(String userInput, boolean forArchitect) throws InterruptedException
-    {
+    public SessionResult runSession(String userInput, boolean forArchitect) {
         var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
         var coder = contextManager.getCoder(model, "Code: " + userInput);
@@ -85,8 +84,14 @@ public class CodeAgent {
 
         while (true) {
             // Prepare and send request to LLM
-            StreamingResult streamingResult = coder.sendRequest(allMessages, true);
-            stopDetails = checkLlmResult(streamingResult, io);
+            StreamingResult streamingResult = null;
+            try {
+                streamingResult = coder.sendRequest(allMessages, true);
+                stopDetails = checkLlmResult(streamingResult, io);
+            } catch (InterruptedException e) {
+                logger.debug("CodeAgent interrupted during sendRequest");
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
+            }
             if (stopDetails != null) break;
 
             // Append request/response to session history
@@ -166,9 +171,11 @@ public class CodeAgent {
             blocksAppliedWithoutBuild += succeededCount;
             blocks.clear(); // Clear them out: either successful or moved to editResult.failed
 
-            // the above is our largest block of logic so check for interruption now
-            if (Thread.interrupted()) {
-                throw new InterruptedException();
+            // Check for interruption before potentially blocking build verification
+            if (Thread.currentThread().isInterrupted()) {
+                logger.debug("CodeAgent interrupted after applying edits.");
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
+                break;
             }
 
             // Handle any failed blocks
@@ -207,8 +214,14 @@ public class CodeAgent {
             }
 
             // Attempt build/verification
-            buildError = attemptBuildVerification(verificationCommandFuture, contextManager, io);
-            blocksAppliedWithoutBuild = 0; // reset after each build attempt
+            try {
+                buildError = attemptBuildVerification(verificationCommandFuture, contextManager, io);
+                blocksAppliedWithoutBuild = 0; // reset after each build attempt
+            } catch (InterruptedException e) {
+                logger.debug("CodeAgent interrupted during build verification.");
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
+                break;
+            }
 
             if (buildError.isEmpty()) {
                 stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);

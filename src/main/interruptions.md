@@ -15,15 +15,16 @@ Here's how Brokk wires this up to the Stop button:
 
 ### **Agent-Specific Handling**
 
+* **`CodeAgent`:**
+    * This is a special pony! The main `runSession` method DOES NOT throw `InterruptedException`. Instead, it supplies a `StopReason` of `INTERRUPTED`.
+    * This allows capturing changes to files in the SessionResult for undo/redo.
+
 * **`SearchAgent`:**  
   * Checks `Thread.interrupted()` at the start of its main loop.  
   * If running interactively, the first interruption triggers "Beast Mode" to attempt a final answer. A second interruption (or any interruption in non-interactive mode) causes it to throw `InterruptedException`.  
   * Calls to `determineNextActions` and `executeToolCalls` now propagate `InterruptedException`. The main loop catches this, re-interrupts, and relies on the check at the top of the next iteration.  
 * **`ArchitectAgent`:**  
   * Catches `InterruptedException` when waiting for `SearchAgent` results (`future.get()`). It cancels all outstanding `Future`s and sets a flag to terminate gracefully.  
-* **`CodeAgent`:**  
-  * The main `runSession` method now throws `InterruptedException`. The caller (`InstructionsPanel`) catches this to provide user feedback.  
-  * Internal loops check `Thread.currentThread().isInterrupted()`.
 
 ### **Background Tasks**
 

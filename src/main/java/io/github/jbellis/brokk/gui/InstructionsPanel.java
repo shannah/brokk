@@ -419,14 +419,19 @@ public class InstructionsPanel extends JPanel {
         project.pauseAnalyzerRebuilds();
         try {
             var result = new CodeAgent(contextManager, model).runSession(input, false);
-            if (result.stopDetails().reason() == SessionResult.StopReason.SUCCESS) {
-                chrome.systemOutput("Code Agent complete!");
-            } // else we should have details explaining the problem output already
-            contextManager.addToHistory(result, false);
-        } catch (InterruptedException e) {
-            chrome.systemOutput("Code Agent cancelled!");
-            // Check if we have any partial output to save
-            maybeAddInterruptedResult("Code", input);
+            if (result.stopDetails().reason() == SessionResult.StopReason.INTERRUPTED) {
+                chrome.systemOutput("Code Agent cancelled!");
+                // Save the partial result (if we didn't interrupt before we got any replies)
+                if (result.output().messages().stream().anyMatch(m -> m instanceof AiMessage)) {
+                    contextManager.addToHistory(result, false);
+                }
+            } else {
+                if (result.stopDetails().reason() == SessionResult.StopReason.SUCCESS) {
+                    chrome.systemOutput("Code Agent complete!");
+                }
+                // Code agent has logged error to console already
+                contextManager.addToHistory(result, false);
+            }
         } finally {
             project.resumeAnalyzerRebuilds();
         }
@@ -475,8 +480,7 @@ public class InstructionsPanel extends JPanel {
 
     private void maybeAddInterruptedResult(String action, String input) {
         if (chrome.getLlmRawMessages().stream().anyMatch(m -> m instanceof AiMessage)) {
-            logger.debug("Ask command cancelled with partial results");
-            // FIXME interrupted code session result
+            logger.debug(action + " command cancelled with partial results");
             var sessionResult = new SessionResult("%s (Cancelled): %s".formatted(action, input),
                                                   new TaskFragment(List.copyOf(chrome.getLlmRawMessages()), input),
                                                   Map.of(),
