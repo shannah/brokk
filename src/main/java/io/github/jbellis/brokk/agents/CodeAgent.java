@@ -28,6 +28,13 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 
+/**
+ * Manages interactions with a Language Model (LLM) to generate and apply code modifications
+ * based on user instructions. It handles parsing LLM responses, applying edits to files,
+ * verifying changes through build/test commands, and managing the conversation history.
+ * It supports both iterative coding sessions (potentially involving multiple LLM interactions
+ * and build attempts) and quick, single-shot edits.
+ */
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
@@ -666,7 +673,7 @@ public class CodeAgent {
                     %s
                     %s
                     """.stripIndent().formatted(instructions, successNote);
-            io.llmOutput(summary, ChatMessageType.SYSTEM);
+            io.llmOutput(summary, ChatMessageType.CUSTOM);
 
             // Construct the full message for the LLM
             return """
@@ -676,7 +683,6 @@ public class CodeAgent {
                     %s
                     """.formatted(instructions, fileDetails, successNote).stripIndent();
         }
-
 
     /**
      * Executes the verification command and updates build error history.
@@ -704,7 +710,7 @@ public class CodeAgent {
                              ```
                              %s
                              ```
-                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.SYSTEM, IConsoleIO.MessageSubType.BuildError);
+                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM, IConsoleIO.MessageSubType.BuildError);
         io.systemOutput("Verification failed (details above)");
         // Add the combined error and output to the history for the next request
         return result.error() + "\n\n" + result.output();
