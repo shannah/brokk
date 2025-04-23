@@ -500,6 +500,7 @@ public class InstructionsPanel extends JPanel {
         try {
             var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
             agent.execute();
+            chrome.systemOutput("Architect complete!");
         } catch (InterruptedException e) {
             chrome.systemOutput("Architect Agent cancelled!");
             maybeAddInterruptedResult("Architect", goal);

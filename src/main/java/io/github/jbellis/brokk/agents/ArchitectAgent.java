@@ -22,6 +22,8 @@ import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -36,6 +38,7 @@ import static java.lang.Math.min;
 
 public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
+    private final IConsoleIO io;
 
     // Helper record to associate a SearchAgent task Future with its request
     private record SearchTask(ToolExecutionRequest request, Future<ToolExecutionResult> future) {
@@ -60,6 +63,7 @@ public class ArchitectAgent {
         this.model = Objects.requireNonNull(model, "model cannot be null");
         this.toolRegistry = Objects.requireNonNull(toolRegistry, "toolRegistry cannot be null");
         this.goal = Objects.requireNonNull(goal, "goal cannot be null");
+        io = contextManager.getIo();
     }
 
     /**
@@ -71,9 +75,8 @@ public class ArchitectAgent {
             String finalExplanation
     )
     {
-        var msg = "Architect Agent project complete: %s".formatted(finalExplanation);
-        logger.debug(msg);
-        contextManager.getIo().systemOutput(msg);
+        logger.debug("Architect complete: %s".formatted(finalExplanation));
+        io.llmOutput(finalExplanation, ChatMessageType.AI);
     }
 
     /**
@@ -87,7 +90,7 @@ public class ArchitectAgent {
     {
         var msg = "Architect Agent project aborted: %s".formatted(reason);
         logger.debug(msg);
-        contextManager.getIo().systemOutput(msg);
+        io.systemOutput(msg);
     }
 
     private class FatalLlmException extends RuntimeException {
@@ -108,14 +111,14 @@ public class ArchitectAgent {
     {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
-        logger.debug("Invoking ValidationAgent to find relevant tests...");
+        logger.debug("Invoking ValidationAgent to find relevant tests..");
         var testAgent = new ValidationAgent(contextManager, contextManager.getModels().quickModel());
         var relevantTests = testAgent.execute(instructions);
         if (!relevantTests.isEmpty()) {
-            logger.debug("Adding relevant test files found by TestAgent to workspace: {}", relevantTests);
+            logger.debug("Adding relevant test files found by ValidationAgent to workspace: {}", relevantTests);
             contextManager.editFiles(relevantTests);
         } else {
-            logger.debug("ValidationAgent found no relevant test files to add.");
+            logger.debug("ValidationAgent found no relevant test files to add");
         }
 
         var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, true);
@@ -213,10 +216,14 @@ public class ArchitectAgent {
      * This uses an iterative approach, letting the LLM decide which tool to call each time.
      */
     public void execute() throws ExecutionException, InterruptedException {
-        contextManager.getIo().systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
+        io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
         // Attempt to pre-populate context based on project size
-        populateInitialContext();
+        if (contextManager.topContext().allFragments().findAny().isEmpty()) {
+            populateInitialContext();
+        } else {
+            io.llmOutput("Architect engaged with non-empty Workspace; skipping initial context hints", ChatMessageType.CUSTOM);
+        }
 
         var coder = contextManager.getCoder(model, "Architect: " + goal);
 
@@ -248,18 +255,18 @@ public class ArchitectAgent {
 
             if (result.error() != null) {
                 logger.debug("Error from LLM while deciding next action: {}", result.error().getMessage());
-                contextManager.getIo().systemOutput("Error from LLM while deciding next action (see debug log for details)");
+                io.systemOutput("Error from LLM while deciding next action (see debug log for details)");
                 return;
             }
             if (result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
-                var msg = "Empty LLM response. Stopping project now.";
+                var msg = "Empty LLM response. Stopping project now";
                 logger.debug(msg);
-                contextManager.getIo().systemOutput(msg);
+                io.systemOutput(msg);
                 return;
             }
             // show thinking
             if (!result.chatResponse().aiMessage().text().isBlank()) {
-                contextManager.getIo().llmOutput("\n" + result.chatResponse().aiMessage().text(), ChatMessageType.AI);
+                io.llmOutput("\n" + result.chatResponse().aiMessage().text(), ChatMessageType.AI);
             }
 
             totalUsage = TokenUsage.sum(totalUsage, result.chatResponse().tokenUsage());
@@ -297,13 +304,13 @@ public class ArchitectAgent {
 
             // 6) If we see "projectFinished" or "abortProject", handle it and then exit
             if (answerReq != null) {
-                logger.debug("LLM decided to projectFinished. We'll finalize and stop.");
+                logger.debug("LLM decided to projectFinished. We'll finalize and stop");
                 var toolResult = toolRegistry.executeTool(this, answerReq);
                 logger.debug("Project final answer: {}", toolResult.resultText());
                 return;
             }
             if (abortReq != null) {
-                logger.debug("LLM decided to abortProject. We'll finalize and stop.");
+                logger.debug("LLM decided to abortProject. We'll finalize and stop");
                 var toolResult = toolRegistry.executeTool(this, abortReq);
                 logger.debug("Project aborted: {}", toolResult.resultText());
                 return;
@@ -349,14 +356,14 @@ public class ArchitectAgent {
                     architectMessages.add(ToolExecutionResultMessage.from(toolResult.request(), toolResult.resultText()));
                     logger.debug("Collected result for tool '{}' => result: {}", toolResult.request().name(), toolResult.resultText());
                 } catch (InterruptedException e) {
-                    logger.warn("SearchAgent task for request '{}' was cancelled.", request.name());
+                    logger.warn("SearchAgent task for request '{}' was cancelled", request.name());
                     future.cancel(true);
                     interrupted = true;
                 } catch (ExecutionException e) {
                     logger.warn("Error executing SearchAgent task '{}'", request.name(), e.getCause());
                     if (e.getCause() instanceof FatalLlmException) {
                         var errorMessage = "Fatal LLM error executing Search Agent: %s".formatted(e.getCause().getMessage());
-                        contextManager.getIo().systemOutput(errorMessage);
+                        io.systemOutput(errorMessage);
                         break;
                     }
                     var errorMessage = "Error executing Search Agent: %s".formatted(e.getCause().getMessage());
@@ -374,7 +381,7 @@ public class ArchitectAgent {
                     toolResult = toolRegistry.executeTool(this, req);
                 } catch (FatalLlmException e) {
                     var errorMessage = "Fatal LLM error executing Code Agent: %s".formatted(e.getMessage());
-                    contextManager.getIo().systemOutput(errorMessage);
+                    io.systemOutput(errorMessage);
                     return;
                 }
 
@@ -421,7 +428,7 @@ public class ArchitectAgent {
         var analyzer = contextManager.getAnalyzer();
         var allFiles = contextManager.getRepo().getTrackedFiles();
         int fileCount = allFiles.size();
-        logger.debug("Project contains {} files.", fileCount);
+        logger.debug("Project contains {} files", fileCount);
 
         // Condition 1: Small project (<= 10 files, or <= 100 with no analyzer), try adding raw content
         if (fileCount <= 10 || (analyzer.isEmpty() && fileCount <= 100)) {
@@ -439,11 +446,11 @@ public class ArchitectAgent {
 
             if (rawTokens <= budget) {
                 contextManager.addReadOnlyFiles(allFiles);
-                logger.debug("Added all {} raw files to initial workspace context ({} tokens).", fileCount, rawTokens);
-                contextManager.getIo().systemOutput("Added content of all %d project files to workspace.".formatted(fileCount));
+                logger.debug("Added all {} raw files to initial workspace context ({} tokens)", fileCount, rawTokens);
+                io.systemOutput("Added content of all %d project files to workspace".formatted(fileCount));
                 return;
             } else {
-                logger.debug("Raw content ({}} tokens) exceeds budget ({}}).", rawTokens, budget);
+                logger.debug("Raw content ({}} tokens) exceeds budget ({}})", rawTokens, budget);
             }
         }
 
@@ -465,9 +472,23 @@ public class ArchitectAgent {
             logger.debug("Estimated tokens for summarized content: {}", rawTokens);
             if (rawTokens <= budget) {
                 contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(skeletons));
-                logger.debug("Added summaries of all {} raw files to initial workspace context ({} tokens).", fileCount, rawTokens);
-                contextManager.getIo().systemOutput("Added summaries of all %d project files to workspace.".formatted(fileCount));
+                logger.debug("Added summaries of all {} raw files to initial workspace context ({} tokens)", fileCount, rawTokens);
+                io.systemOutput("Added summaries of all %d project files to workspace".formatted(fileCount));
             }
+            return;
+        }
+
+        // Condition 3: Large project, just give it a file list
+        var fileString = allFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"));
+        int rawTokens = Messages.getApproximateTokens(fileString);
+        // reduce budget because this isn't as useful
+        if (rawTokens <= budget / 4) {
+            var fragment = new ContextFragment.StringFragment(fileString, "Project file list", SyntaxConstants.SYNTAX_STYLE_NONE);
+            contextManager.addVirtualFragment(fragment);
+            logger.debug("Added file list to initial workspace context ({} tokens)", rawTokens);
+            io.systemOutput("Added list of all %d project files to workspace".formatted(fileCount));
+        } else {
+            logger.debug("Raw content ({}} tokens) exceeds budget ({}})", rawTokens, budget);
         }
     }
 }
