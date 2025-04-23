@@ -345,15 +345,27 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
         // need to set the correct parser here since we're going to append to the same fragment during the action
         io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(messageSubType.toString(), input)), input));
-        return submitUserTask(action, task);
+        
+        return submitLlmTask(action, task);
+    }
+
+    public Future<?> submitLlmTask(String description, Runnable task) {
+        return submitUserTask(description, task, true);
     }
 
     public Future<?> submitUserTask(String description, Runnable task) {
+        return submitUserTask(description, task, false);
+    }
+    
+    private Future<?> submitUserTask(String description, Runnable task, boolean isLlmTask) {
         return userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
 
             try {
                 io.actionOutput(description);
+                if (isLlmTask) {
+                    io.blockLlmOutput(true);
+                }
                 task.run();
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
@@ -363,6 +375,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } finally {
                 io.actionComplete();
                 io.enableUserActionButtons();
+                // Unblock LLM output if this was an LLM task
+                if (isLlmTask) {
+                    io.blockLlmOutput(false);
+                }
             }
         });
     }

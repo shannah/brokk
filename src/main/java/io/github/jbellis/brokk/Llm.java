@@ -121,7 +121,6 @@ public class Llm {
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
                     if (echo) {
-                        io.blockLlmOutput(true);
                         io.llmOutput(token, ChatMessageType.AI);
                         io.hideOutputSpinner();
                     }
@@ -131,7 +130,6 @@ public class Llm {
             @Override
             public void onCompleteResponse(ChatResponse response) {
                 ifNotCancelled.accept(() -> {
-                    io.blockLlmOutput(false);
                     io.hideOutputSpinner();
                     if (echo) {
                         io.llmOutput("\n", ChatMessageType.AI);

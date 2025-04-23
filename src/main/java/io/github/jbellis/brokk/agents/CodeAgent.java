@@ -301,8 +301,8 @@ public class CodeAgent {
                             }
 
                             // No summary needed/available, process normally with placeholders
-                            var parseResult = parser.parse(aiMessage.text(), trackedFiles);
                             var outputTexts = new ArrayList<String>();
+                            var parseResult = parser.parse(aiMessage.text(), trackedFiles);
                             boolean lastBlockWasEdit = false; // Track if the immediately preceding block was an edit block
 
                             for (var outputBlock : parseResult.blocks()) {
