@@ -91,16 +91,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     @Override
     public List<ProjectFile> getTestFiles() {
-        // Assuming cm.getProject().getFiles() returns Set<ProjectFile> based on other CM APIs.
-        // If it returns Set<BrokkFile>, a conversion/cast might be needed depending on their relationship.
-        Set<ProjectFile> allProjectFiles = getProject().getAllFiles();
-        if (allProjectFiles.isEmpty()) {
-            logger.debug("No files found in project to identify test files.");
-            return List.of();
-        }
+        Set<ProjectFile> allFiles = getRepo().getTrackedFiles();
 
         // Filter files based on the regex pattern matching their path string
-        var testFiles = allProjectFiles.stream()
+        var testFiles = allFiles.stream()
                 .filter(file -> TEST_FILE_PATTERN.matcher(file.toString()).matches())
                 .toList();
 

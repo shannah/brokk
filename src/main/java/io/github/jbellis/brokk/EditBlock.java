@@ -609,23 +609,7 @@ public class EditBlock {
             }
         }
 
-        // 4. Check all project files (case-insensitive basename match) - last resort
-        var project = cm.getProject();
-        if (project != null) {
-            var projectFileMatches = project.getAllFiles().stream()
-                    .filter(Objects::nonNull)
-                    .filter(f -> f.getFileName().equalsIgnoreCase(file.getFileName()))
-                    .toList();
-            if (projectFileMatches.size() == 1) {
-                logger.debug("Resolved partial filename [{}] to project file [{}]", filename, projectFileMatches.getFirst());
-                return projectFileMatches.getFirst();
-            }
-            if (projectFileMatches.size() > 1) {
-                throw new SymbolAmbiguousException("Filename '%s' matches multiple project files: %s".formatted(filename, projectFileMatches));
-            }
-        }
-
-        // 5. Not found anywhere
+        // 4. Not found anywhere
         throw new SymbolNotFoundException("Filename '%s' could not be resolved to an existing file.".formatted(filename));
     }
 }
