@@ -610,7 +610,7 @@ public class InstructionsPanel extends JPanel {
                 return; // Abort if model doesn't support vision and context has images
             }
 
-            chrome.getProject().addToInstructionsHistory(input, 20);
+        chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
 
