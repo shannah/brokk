@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.agents.CodeAgent;
@@ -13,6 +14,7 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.github.difflib.DiffUtils;
@@ -774,7 +776,9 @@ public class PreviewTextPanel extends JPanel {
         }
 
         // LLM call succeeded; try to parse a snippet
-        var responseText = sessionResult.output().toString();
+        var response = sessionResult.output().messages().getLast();
+        assert response instanceof AiMessage;
+        var responseText = Messages.getText(response);
         var snippet = EditBlock.extractCodeFromTripleBackticks(responseText).trim();
         if (snippet.isEmpty()) {
             logger.debug("Could not parse a fenced code snippet from LLM response {}", responseText);

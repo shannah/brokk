@@ -553,7 +553,6 @@ public class CodeAgent {
 
         // Determine stop reason based on LLM response
         SessionResult.StopDetails stopDetails;
-        String responseText = "";
         if (result.error() != null) {
             stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, result.error().getMessage());
             io.toolErrorRaw("Quick edit failed: " + result.error().getMessage());
@@ -562,12 +561,12 @@ public class CodeAgent {
             io.toolErrorRaw("LLM returned empty response for quick edit.");
         } else {
             // Success from LLM perspective
-            responseText = result.chatResponse().aiMessage().text();
-            pendingHistory.add(new AiMessage(responseText)); // Add successful response to history
-            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS); // SUCCESS here means LLM responded
+            String responseText = result.chatResponse().aiMessage().text();
+            pendingHistory.add(new AiMessage(responseText));
+            stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
         }
 
-        // Return SessionResult containing conversation, original content, and LLM response string
+        // Return SessionResult containing conversation and original content
         return new SessionResult("Quick Edit: " + file.getFileName(),
                                  pendingHistory,
                                  originalContents,

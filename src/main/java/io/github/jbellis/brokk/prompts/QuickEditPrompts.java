@@ -64,6 +64,7 @@ public final class QuickEditPrompts {
         %s
         </goal>
         Think about how to implement the goal, then return the replacement code fenced with triple backticks. Omit language or other markdown options.
+        You MUST include the backtick fences, even if you want to replace the entire code with the empty string.
         """.stripIndent().formatted(target, instructions);
     }
 
