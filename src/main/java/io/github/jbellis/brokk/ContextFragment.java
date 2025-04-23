@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.prompts.EditBlockConflictsParser;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
+import io.github.jbellis.brokk.util.Messages;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
@@ -818,7 +819,7 @@ public interface ContextFragment extends Serializable {
             // FIXME the right thing to do here is probably to throw UnsupportedOperationException,
             // but lots of stuff breaks without text(), so I am putting that off for another refactor
             return TaskEntry.formatMessages(history.stream().flatMap(e -> e.isCompressed()
-                                                                          ? Stream.of(new CustomMessage(Map.of("text", e.summary())))
+                                                                          ? Stream.of(Messages.customSystem(e.summary()))
                                                                           : e.log().messages().stream()).toList());
         }
 

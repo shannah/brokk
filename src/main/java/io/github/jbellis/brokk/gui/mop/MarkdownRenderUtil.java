@@ -3,7 +3,7 @@ package io.github.jbellis.brokk.gui.mop;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import dev.langchain4j.data.message.ChatMessage;
-import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -269,7 +269,7 @@ public class MarkdownRenderUtil {
         if (message == null) {
             return "";
         }
-        return Models.getRepr(message);
+        return Messages.getRepr(message);
     }
 
 }

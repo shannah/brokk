@@ -22,6 +22,7 @@ import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.LogDescription;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import scala.Option;
@@ -426,7 +427,7 @@ public class SearchAgent {
                 .mapToObj(actionHistory::get)
                 .map(h -> formatHistory(h, -1))
                 .collect(Collectors.joining());
-        return Models.getApproximateTokens(historyString); // Static method
+        return Messages.getApproximateTokens(historyString); // Static method
     }
 
     /**
@@ -976,7 +977,7 @@ public class SearchAgent {
         String resultText = execResult.resultText(); // Null check done in factory/constructor
         var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings", "searchFilenames", "getFileContents", "getRelatedClasses");
 
-        if (toolsRequiringSummaries.contains(toolName) && Models.getApproximateTokens(resultText) > SUMMARIZE_THRESHOLD) {
+        if (toolsRequiringSummaries.contains(toolName) && Messages.getApproximateTokens(resultText) > SUMMARIZE_THRESHOLD) {
             logger.debug("Queueing summarization for tool {}", toolName);
             historyEntry.summarizeFuture = summarizeResultAsync(query, historyEntry);
         } else if (toolName.equals("searchSymbols") || toolName.equals("getRelatedClasses")) {

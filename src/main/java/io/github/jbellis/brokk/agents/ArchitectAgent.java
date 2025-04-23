@@ -97,26 +97,43 @@ public class ArchitectAgent {
     public String callCodeAgent(
             @P("Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
             String instructions
-    ) throws FatalLlmException, InterruptedException
+    ) throws FatalLlmException
     {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
-        logger.debug("Invoking TestAgent to find relevant tests...");
+        logger.debug("Invoking ValidationAgent to find relevant tests...");
         var testAgent = new ValidationAgent(contextManager, contextManager.getModels().quickModel());
-        var relevantTests = testAgent.execute(instructions);
-        if (!relevantTests.isEmpty()) {
-            logger.debug("Adding relevant test files found by TestAgent to workspace: {}", relevantTests);
-            contextManager.editFiles(relevantTests); // Add tests to workspace
-        } else {
-            logger.debug("TestAgent found no relevant test files to add.");
+        try {
+            var relevantTests = testAgent.execute(instructions);
+            if (!relevantTests.isEmpty()) {
+                logger.debug("Adding relevant test files found by TestAgent to workspace: {}", relevantTests);
+                contextManager.editFiles(relevantTests); // Add tests to workspace
+            } else {
+                logger.debug("ValidationAgent found no relevant test files to add.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // Re-interrupt the architect thread
+            logger.debug("ValidationAgent was interrupted. ArchitectAgent re-interrupting.");
+            return "ValidationAgent session was interrupted by the user.";
         }
 
         var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, true);
-        if (result.stopDetails().reason() == SessionResult.StopReason.LLM_ERROR) {
-            throw new FatalLlmException(result.stopDetails().explanation());
-        }
-        var entry = contextManager.addToHistory(result, true);
         var stopDetails = result.stopDetails();
+
+        // Handle different stop reasons
+        if (stopDetails.reason() == SessionResult.StopReason.LLM_ERROR) {
+            // Propagate fatal LLM errors
+            throw new FatalLlmException(stopDetails.explanation());
+        } else if (stopDetails.reason() == SessionResult.StopReason.INTERRUPTED) {
+            // Add interrupted result to history and signal interruption upwards
+            contextManager.addToHistory(result, true);
+            Thread.currentThread().interrupt(); // Re-interrupt the architect thread
+            logger.debug("CodeAgent was interrupted. ArchitectAgent re-interrupting.");
+            return "CodeAgent session was interrupted by the user.";
+        }
+        // For other stop reasons (SUCCESS, PARSE_ERROR, APPLY_ERROR, etc.), add to history and return summary
+
+        var entry = contextManager.addToHistory(result, true);
         String summary = """
                 CodeAgent concluded.
                 <summary>
@@ -334,7 +351,8 @@ public class ArchitectAgent {
                 return;
             }
 
-            // code agent calls are done serially so they don't stomp on each others' feet
+            // code agent calls are done serially
+            boolean codeAgentInterrupted = false;
             for (var req : codeAgentReqs) {
                 ToolExecutionResult toolResult;
                 try {
@@ -342,10 +360,26 @@ public class ArchitectAgent {
                 } catch (FatalLlmException e) {
                     var errorMessage = "Fatal LLM error executing Code Agent: %s".formatted(e.getMessage());
                     contextManager.getIo().systemOutput(errorMessage);
-                    break;
+                    codeAgentInterrupted = true; // Treat fatal LLM errors like interruptions here
+                    break; // Stop processing further CodeAgent requests
                 }
+
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
+
+                // Check if the tool execution (callCodeAgent) resulted in an interruption
+                if (Thread.currentThread().isInterrupted()) {
+                    logger.debug("ArchitectAgent detected interruption after callCodeAgent.");
+                    codeAgentInterrupted = true;
+                    break; // Stop processing further CodeAgent requests
+                }
+            }
+
+            // If CodeAgent was interrupted (or had fatal error), exit the main execute loop.
+            if (codeAgentInterrupted) {
+                logger.debug("ArchitectAgent execution interrupted during or after CodeAgent task.");
+                contextManager.getIo().systemOutput("ArchitectAgent cancelled by user or error");
+                return; // Exit execute()
             }
         }
     }

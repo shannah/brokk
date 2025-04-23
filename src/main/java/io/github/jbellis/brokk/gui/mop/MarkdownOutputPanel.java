@@ -2,9 +2,9 @@ package io.github.jbellis.brokk.gui.mop;
 
 import dev.langchain4j.data.message.*;
 import io.github.jbellis.brokk.ContextFragment;
-import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,7 +14,6 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -152,7 +151,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             updateLastMessage(text);
         } else {
             // Create a new message
-            ChatMessage newMessage = createChatMessage(text, type);
+            ChatMessage newMessage = Messages.create(text, type);
             addNewMessage(newMessage);
         }
 
@@ -166,11 +165,11 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         if (messages.isEmpty()) return;
 
         var lastMessage = messages.getLast();
-        var newText = Models.getRepr(lastMessage) + additionalText;
+        var newText = Messages.getRepr(lastMessage) + additionalText;
         var type = lastMessage.type();
 
         // Create a new message with the combined text
-        ChatMessage updatedMessage = createChatMessage(newText, type);
+        ChatMessage updatedMessage = Messages.create(newText, type);
 
         // Replace the last message
         messages.set(messages.size() - 1, updatedMessage);
@@ -226,22 +225,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
 
         revalidate();
         repaint();
-    }
-
-    /**
-     * Helper method to create a ChatMessage of the specified type
-     */
-    private ChatMessage createChatMessage(String text, ChatMessageType type) {
-        return switch (type) {
-            case USER -> new UserMessage(text);
-            case AI -> new AiMessage(text);
-            case CUSTOM -> new CustomMessage(Map.of("text", text));
-            // Add other cases as needed with appropriate implementations
-            default -> {
-                logger.warn("Unsupported message type: {}, using AiMessage as fallback", type);
-                yield new AiMessage(text);
-            }
-        };
     }
 
     /**
@@ -305,7 +288,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      */
     public String getText() {
         return messages.stream()
-                .map(Models::getRepr)
+                .map(Messages::getRepr)
                 .collect(Collectors.joining("\n\n"));
     }
 
@@ -345,7 +328,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
                         messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
                         messagePanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background"));
                         messagePanel.setAlignmentX(LEFT_ALIGNMENT);
-                        messagePanel.add(createPlainTextPane(Models.getRepr(message)));
+                        messagePanel.add(createPlainTextPane(Messages.getRepr(message)));
                         messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
                         yield messagePanel;
                 }

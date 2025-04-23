@@ -25,6 +25,7 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import io.github.jbellis.brokk.util.LogDescription;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -243,7 +244,7 @@ public class Llm {
      * Retries a request up to maxAttempts times on connectivity or empty-result errors,
      * using exponential backoff. Responsible for writeToHistory.
      */
-    private StreamingResult sendMessageWithRetry(List<ChatMessage> messages,
+    private StreamingResult sendMessageWithRetry(List<ChatMessage> rawMessages,
                                                  List<ToolSpecification> tools,
                                                  ToolChoice toolChoice,
                                                  boolean echo,
@@ -253,9 +254,10 @@ public class Llm {
         int attempt = 0;
         // Get model name once using instance field
         String modelName = contextManager.getModels().nameOf(model);
+        var messages = Messages.forLlm(rawMessages);
 
         while (attempt++ < maxAttempts) {
-            String description = Models.getText(messages.getLast());
+            String description = Messages.getText(messages.getLast());
             logger.debug("Sending request to {} attempt {}: {}",
                          modelName, attempt, LogDescription.getShortDescription(description, 12));
 
@@ -493,7 +495,7 @@ public class Llm {
                 String formattedResults = formatToolResults(pendingTerms);
                 if (msg instanceof UserMessage userMessage) {
                     // Combine pending results with this user message
-                    String combinedContent = formattedResults + "\n" + Models.getText(userMessage);
+                    String combinedContent = formattedResults + "\n" + Messages.getText(userMessage);
                     // Preserve name if any
                     UserMessage updatedUserMessage = new UserMessage(userMessage.name(), combinedContent);
                     processedMessages.add(updatedUserMessage);
@@ -511,7 +513,7 @@ public class Llm {
             if (msg instanceof AiMessage) {
                 // pull the tool requests into plaintext, OpenAi is fine with it but it confuses Anthropic and Gemini
                 // to see tool requests in the history if there are no tools defined for the current request
-                processedMessages.add(new AiMessage(Models.getRepr(msg)));
+                processedMessages.add(new AiMessage(Messages.getRepr(msg)));
                 continue;
             }
 
@@ -577,7 +579,7 @@ public class Llm {
 
         // We'll add a user reminder to produce a JSON that matches the schema
         var instructions = getInstructions(tools, retryInstructionsProvider);
-        var modified = new UserMessage(Models.getText(messages.getLast()) + "\n\n" + instructions);
+        var modified = new UserMessage(Messages.getText(messages.getLast()) + "\n\n" + instructions);
         var initialMessages = new ArrayList<>(messages);
         initialMessages.set(initialMessages.size() - 1, modified);
         logger.trace("Modified messages are {}", initialMessages);
@@ -631,8 +633,8 @@ public class Llm {
 
         // Check if we've already added tool instructions to any message
         boolean instructionsPresent = messages.stream().anyMatch(m -> 
-            Models.getText(m).contains("available tools:") && 
-            Models.getText(m).contains("tool_calls"));
+            Messages.getText(m).contains("available tools:") &&
+            Messages.getText(m).contains("tool_calls"));
         
         logger.debug("Tool emulation sending {} messages with instructionsPresent={}", messages.size(), instructionsPresent);
 
@@ -641,7 +643,7 @@ public class Llm {
         if (!instructionsPresent) {
             var instructions = getInstructions(tools, retryInstructionsProvider);
             var lastMessage = messages.getLast();
-            var modified = new UserMessage(Models.getText(lastMessage) + "\n\n" + instructions);
+            var modified = new UserMessage(Messages.getText(lastMessage) + "\n\n" + instructions);
             initialMessages.set(initialMessages.size() - 1, modified);
             logger.trace("Added tool instructions to last message");
         }

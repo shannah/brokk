@@ -23,6 +23,7 @@ import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.ImageUtil;
 import io.github.jbellis.brokk.util.LoggingExecutorService;
+import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1108,7 +1109,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         var cf = new ContextFragment.HistoryFragment(newContext.getTaskHistory());
-        int tokenCount = Models.getApproximateTokens(cf.format());
+        int tokenCount = Messages.getApproximateTokens(cf.format());
         if (tokenCount > 32 * 1024) {
             // Show a dialog asking if we should compress the history
             SwingUtilities.invokeLater(() -> {
@@ -1384,7 +1385,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     try {
                         chunk = "<file path=\"%s\">\n%s\n</file>\n".formatted(relativePath, file.read());
                         // Calculate tokens and check limits *inside* the try block, only if read succeeds
-                        var chunkTokens = Models.getApproximateTokens(chunk);
+                        var chunkTokens = Messages.getApproximateTokens(chunk);
                         if (tokens > 0 && tokens + chunkTokens > MAX_STYLE_TOKENS) { // Check if adding exceeds limit
                             logger.debug("Style guide context limit ({}) reached after {} tokens.", MAX_STYLE_TOKENS, tokens);
                             break; // Exit the loop if limit reached

@@ -6,6 +6,7 @@ import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import io.github.jbellis.brokk.util.Messages;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.io.TempDir;
@@ -231,7 +232,7 @@ public class LlmTest {
         assertEquals(2, result1.size());
         assertEquals(user1, result1.get(0));
         assertTrue(result1.get(1) instanceof UserMessage);
-        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nFollow-up based on results", Models.getText(result1.get(1)).stripIndent());
+        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nFollow-up based on results", Messages.getText(result1.get(1)).stripIndent());
         assertEquals(user2.name(), ((UserMessage) result1.get(1)).name()); // Name preserved
 
         // Case 2: Multiple TERMs followed by UserMessage
@@ -240,7 +241,7 @@ public class LlmTest {
         assertEquals(2, result2.size());
         assertEquals(user1, result2.get(0));
         assertTrue(result2.get(1) instanceof UserMessage);
-        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\n<toolcall id=\"t2\" name=\"toolB\">\nResult B\n</toolcall>\n\nFollow-up based on results", Models.getText(result2.get(1)).stripIndent());
+        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\n<toolcall id=\"t2\" name=\"toolB\">\nResult B\n</toolcall>\n\nFollow-up based on results", Messages.getText(result2.get(1)).stripIndent());
 
         // Case 3: TERM followed by non-UserMessage (AiMessage)
         var messages3 = List.of(user1, term1, ai1, user2);
@@ -248,7 +249,7 @@ public class LlmTest {
         assertEquals(4, result3.size());
         assertEquals(user1, result3.get(0));
         assertTrue(result3.get(1) instanceof UserMessage);
-        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n", Models.getText(result3.get(1)).stripIndent());
+        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n", Messages.getText(result3.get(1)).stripIndent());
         assertEquals(ai1, result3.get(2));
         assertEquals(user2, result3.get(3));
 
@@ -257,8 +258,8 @@ public class LlmTest {
         var result4 = llm.emulateToolExecutionResults(messages4);
         assertEquals(3, result4.size());
         assertEquals(user1, result4.get(0));
-        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nFollow-up based on results", Models.getText(result4.get(1)).stripIndent());
-        assertEquals("<toolcall id=\"t4\" name=\"toolD\">\nResult D\n</toolcall>\n", Models.getText(result4.get(2)).stripIndent());
+        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nFollow-up based on results", Messages.getText(result4.get(1)).stripIndent());
+        assertEquals("<toolcall id=\"t4\" name=\"toolD\">\nResult D\n</toolcall>\n", Messages.getText(result4.get(2)).stripIndent());
 
         // Case 5: Multiple combinations and other messages, including combining multiple terms
         var messages5 = List.of(user1, term1, term2, user2, ai1, term3, term4, user3);
@@ -276,7 +277,7 @@ public class LlmTest {
                 </toolcall>
                 
                 Follow-up based on results""".stripIndent();
-        assertEquals(expectedText5_1, Models.getText(result5.get(1)));
+        assertEquals(expectedText5_1, Messages.getText(result5.get(1)));
         assertEquals(ai1, result5.get(2));
         var expectedText5_3 = """
                 <toolcall id="t3" name="toolC">
@@ -288,7 +289,7 @@ public class LlmTest {
                 </toolcall>
                 
                 Another follow-up""".stripIndent();
-        assertEquals(expectedText5_3, Models.getText(result5.get(3)));
+        assertEquals(expectedText5_3, Messages.getText(result5.get(3)));
 
         // Case 6: No TERMs
         var messages6 = List.of(user1, ai1, user2);
@@ -301,13 +302,13 @@ public class LlmTest {
         var result7 = llm.emulateToolExecutionResults(messages7);
         assertEquals(1, result7.size());
         assertTrue(result7.get(0) instanceof UserMessage);
-        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\n<toolcall id=\"t2\" name=\"toolB\">\nResult B\n</toolcall>\n", Models.getText(result7.get(0)).stripIndent());
+        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\n<toolcall id=\"t2\" name=\"toolB\">\nResult B\n</toolcall>\n", Messages.getText(result7.get(0)).stripIndent());
 
         // Case 8: TERM at the beginning followed by UserMessage
         var messages8 = List.of(term1, user1);
         var result8 = llm.emulateToolExecutionResults(messages8);
         assertEquals(1, result8.size());
         assertTrue(result8.get(0) instanceof UserMessage);
-        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nInitial request", Models.getText(result8.get(0)).stripIndent());
+        assertEquals("<toolcall id=\"t1\" name=\"toolA\">\nResult A\n</toolcall>\n\nInitial request", Messages.getText(result8.get(0)).stripIndent());
     }
 }

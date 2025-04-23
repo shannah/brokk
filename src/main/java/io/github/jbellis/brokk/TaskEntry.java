@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
+import io.github.jbellis.brokk.util.Messages;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serial;
@@ -77,7 +78,7 @@ public record TaskEntry(int sequence, ContextFragment.TaskFragment log, String s
     public static @NotNull String formatMessages(List<ChatMessage> messages) {
         return messages.stream()
                   .map(message -> {
-                      var text = Models.getRepr(message);
+                      var text = Messages.getRepr(message);
                       return """
                       <message type=%s>
                       %s

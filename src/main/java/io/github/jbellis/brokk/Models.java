@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.StreamingResponseHandler;
@@ -17,7 +16,6 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -48,10 +46,6 @@ public final class Models {
 
     public static final String LITELLM_BASE_URL = "http://localhost:4000";
     public static final String UNAVAILABLE = "AI is unavailable";
-
-    // Simple OpenAI tokenizer for approximate counting
-    // Tokenizer can remain static as it's stateless based on model ID
-    private static final OpenAiTokenizer tokenizer = new OpenAiTokenizer("gpt-4o");
 
     // Core model storage - now instance fields
     private final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
@@ -360,75 +354,6 @@ public final class Models {
         var supports = info.get("supports_vision");
         assert supports instanceof Boolean : supports;
         return (Boolean) supports;
-    }
-
-    /**
-     * Extracts text content from a ChatMessage.
-     * This logic is independent of Models state, so can remain static.
-     */
-    public static String getText(ChatMessage message) {
-        return switch (message) {
-            case SystemMessage sm -> sm.text();
-            case AiMessage am -> am.text() == null ? am.text() : "";
-            case UserMessage um -> um.contents().stream()
-                    .filter(c -> c instanceof TextContent)
-                    .map(c -> ((TextContent) c).text())
-                    .collect(Collectors.joining("\n"));
-            case ToolExecutionResultMessage tr -> "%s -> %s".formatted(tr.toolName(), tr.text());
-            default -> throw new UnsupportedOperationException(message.getClass().toString());
-        };
-    }
-
-    /**
-     * Primary difference from getText:
-     * 1. Includes tool requests
-     * 2. Includes placeholder for images
-     */
-    public static String getRepr(ChatMessage message) {
-        return switch (message) {
-            case SystemMessage sm -> sm.text();
-            case CustomMessage cm -> cm.attributes().get("text").toString();
-            case AiMessage am -> {
-                var raw = am.text() == null ? "" : am.text();
-                if (!am.hasToolExecutionRequests()) {
-                    yield raw;
-                }
-                var toolText = am.toolExecutionRequests().stream()
-                        .map(Models::getRepr)
-                        .collect(Collectors.joining("\n"));
-                yield "%s\nTool calls:\n%s".formatted(raw, toolText);
-            }
-            case UserMessage um -> {
-                yield um.contents().stream()
-                        .map(c -> {
-                            if (c instanceof TextContent) {
-                                return ((TextContent) c).text();
-                            } else if (c instanceof ImageContent) {
-                                return "[Image]";
-                            } else {
-                                throw new UnsupportedOperationException(c.getClass().toString());
-                            }
-                        })
-                        .collect(Collectors.joining("\n"));
-            }
-            case ToolExecutionResultMessage tr -> "%s -> %s".formatted(tr.toolName(), tr.text());
-            default -> throw new UnsupportedOperationException(message.getClass().toString());
-        };
-    }
-
-    public static @NotNull String getRepr(ToolExecutionRequest tr) {
-        return "%s(%s)".formatted(tr.name(), tr.arguments());
-    }
-
-    /**
-     * Estimates the token count of a text string.
-     * This can remain static as it only depends on the static tokenizer.
-     */
-    public static int getApproximateTokens(String text) {
-        if (text == null || text.isEmpty()) {
-            return 0;
-        }
-        return tokenizer.encode(text).size();
     }
 
     public StreamingChatLanguageModel quickestModel() {

@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
 import io.github.jbellis.brokk.prompts.CopyExternalPrompts;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
+import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -592,7 +593,7 @@ public class ContextPanel extends JPanel {
             tableModel.addRow(new Object[]{locText, desc, fileReferences, frag});
         }
 
-        var approxTokens = Models.getApproximateTokens(fullText.toString());
+        var approxTokens = Messages.getApproximateTokens(fullText.toString());
         ((JLabel) locSummaryLabel.getComponent(0)).setText(
                 "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
         );
@@ -960,7 +961,7 @@ public class ContextPanel extends JPanel {
             var combined = new StringBuilder();
             for (var m : msgs) {
                 if (!(m instanceof AiMessage)) {
-                    combined.append(Models.getText(m)).append("\n\n");
+                    combined.append(Messages.getText(m)).append("\n\n");
                 }
             }
 

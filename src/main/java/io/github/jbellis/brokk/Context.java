@@ -2,13 +2,13 @@ package io.github.jbellis.brokk;
 
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.CustomMessage;
 import io.github.jbellis.brokk.ContextFragment.AutoContext;
 import io.github.jbellis.brokk.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -85,7 +85,7 @@ public class Context implements Serializable {
     }
 
     private static @NotNull ContextFragment.TaskFragment getWelcomeOutput(String initialOutputText) {
-        var messages = List.<ChatMessage>of(new CustomMessage(Map.of("text", initialOutputText)));
+        var messages = List.<ChatMessage>of(Messages.customSystem(initialOutputText));
         return new ContextFragment.TaskFragment(messages, "Welcome");
     }
 
