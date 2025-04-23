@@ -236,7 +236,7 @@ public class AnalyzerWrapper implements AutoCloseable {
             return null;
         }
 
-        var trackedFiles = project.getFiles();
+        var trackedFiles = project.getAllFiles();
         long cpgMTime;
         try {
             cpgMTime = Files.getLastModifiedTime(analyzerPath).toMillis();

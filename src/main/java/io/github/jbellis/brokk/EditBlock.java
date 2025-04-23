@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -613,7 +612,7 @@ public class EditBlock {
         // 4. Check all project files (case-insensitive basename match) - last resort
         var project = cm.getProject();
         if (project != null) {
-            var projectFileMatches = project.getFiles().stream()
+            var projectFileMatches = project.getAllFiles().stream()
                     .filter(Objects::nonNull)
                     .filter(f -> f.getFileName().equalsIgnoreCase(file.getFileName()))
                     .toList();

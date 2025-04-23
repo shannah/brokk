@@ -764,7 +764,7 @@ public class InstructionsPanel extends JPanel {
      * Parses the LLM response to extract suggested file paths.
      */
     private List<ProjectFile> parseSuggestedFiles(String llmResponse, ContextManager contextManager) {
-        return contextManager.getProject().getFiles().stream().parallel()
+        return contextManager.getProject().getAllFiles().stream().parallel()
                 .filter(f -> llmResponse.contains(f.toString()))
                 .toList();
     }

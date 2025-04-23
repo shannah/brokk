@@ -156,7 +156,7 @@ public class Project implements IProject, AutoCloseable {
     // --- Instance methods ---
 
     @Override
-    public Set<ProjectFile> getFiles() {
+    public Set<ProjectFile> getAllFiles() {
         var trackedFiles = repo.getTrackedFiles();
         var allFiles = new java.util.HashSet<>(trackedFiles);
         allFiles.addAll(dependencyFiles);

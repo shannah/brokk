@@ -22,7 +22,10 @@ public interface IProject {
         return null;
     }
 
-    default Set<ProjectFile> getFiles() {
+    /**
+     * All files in the project, including decompiled dependencies that are not in the git repo.
+     */
+    default Set<ProjectFile> getAllFiles() {
         return Set.of();
     }
 

@@ -98,7 +98,7 @@ public class FileTree extends JTree {
 
         List<Path> filesToAdd = new ArrayList<>();
 
-        project.getFiles().stream().map(ProjectFile::absPath).forEach(filesToAdd::add);
+        project.getAllFiles().stream().map(ProjectFile::absPath).forEach(filesToAdd::add);
         logger.debug("Found {} tracked files.", filesToAdd.size());
 
         // Sort paths for consistent tree order

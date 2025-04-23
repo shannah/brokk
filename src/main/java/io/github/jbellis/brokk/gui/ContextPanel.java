@@ -933,7 +933,7 @@ public class ContextPanel extends JPanel {
             // TODO when we can extract a single class from a source file, enable classes as well
             var selection = showMultiSourceSelectionDialog("Add Read-Only Context",
                                                            true, // Allow external files
-                                                           CompletableFuture.completedFuture(project.getFiles()), // All project files for completion
+                                                           CompletableFuture.completedFuture(project.getAllFiles()), // All project files for completion
                                                            Set.of(SelectionMode.FILES)); // FILES mode only
 
             if (selection == null || selection.files() == null || selection.files().isEmpty()) {
@@ -1139,7 +1139,7 @@ public class ContextPanel extends JPanel {
                 throw new RuntimeException(e);
             }
             var completableProjectFiles = contextManager.submitBackgroundTask("Gathering symbolx", () -> {
-                return project.getFiles().stream().parallel()
+                return project.getAllFiles().stream().parallel()
                         .filter(f -> !az.getClassesInFile(f).isEmpty())
                         .collect(Collectors.toSet());
             });

@@ -93,7 +93,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public List<ProjectFile> getTestFiles() {
         // Assuming cm.getProject().getFiles() returns Set<ProjectFile> based on other CM APIs.
         // If it returns Set<BrokkFile>, a conversion/cast might be needed depending on their relationship.
-        Set<ProjectFile> allProjectFiles = getProject().getFiles();
+        Set<ProjectFile> allProjectFiles = getProject().getAllFiles();
         if (allProjectFiles.isEmpty()) {
             logger.debug("No files found in project to identify test files.");
             return List.of();
@@ -914,7 +914,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                                 version,
                                             project.getRoot().getFileName(), // Show just the folder name
                                             project.getRepo().getTrackedFiles().size(),
-                                            project.getFiles().size(),
+                                            project.getAllFiles().size(),
                                             project.getAnalyzerLanguage(),
                                                 architectModelName != null ? architectModelName : "(Not Set)",
                                                 codeModelName != null ? codeModelName : "(Not Set)",

@@ -200,7 +200,7 @@ public class MenuBar {
             SwingUtilities.invokeLater(() -> {
                 // Autocomplete with all project files, transforming Set<ProjectFile> to List<Path>
                 var allFilesFuture = cm.submitBackgroundTask("Fetching project files", () -> {
-                    return project.getFiles().stream()
+                    return project.getAllFiles().stream()
                             .map(io.github.jbellis.brokk.analyzer.BrokkFile::absPath)
                             .toList();
                 });

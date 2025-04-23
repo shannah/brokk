@@ -427,7 +427,7 @@ public class SearchTools {
             throw new IllegalArgumentException("No valid patterns provided");
         }
 
-        var matchingFilenames = contextManager.getProject().getFiles().parallelStream().map(file -> {
+        var matchingFilenames = contextManager.getProject().getAllFiles().parallelStream().map(file -> {
                     try {
                         if (!file.isText()) {
                             return null;
@@ -486,7 +486,7 @@ public class SearchTools {
             throw new IllegalArgumentException("No valid patterns provided");
         }
 
-        var matchingFiles = contextManager.getProject().getFiles().stream()
+        var matchingFiles = contextManager.getProject().getAllFiles().stream()
                 .map(ProjectFile::toString) // Use relative path from ProjectFile
                 .filter(filePath -> {
                     for (Pattern compiledPattern : compiledPatterns) {
@@ -570,7 +570,7 @@ public class SearchTools {
 
         logger.debug("Listing files for directory path: '{}' (normalized prefix: '{}')", directoryPath, prefix);
 
-        var files = contextManager.getProject().getFiles().stream().parallel()
+        var files = contextManager.getProject().getAllFiles().stream().parallel()
                 .map(ProjectFile::toString) // Get relative path string
                 .filter(path -> {
                     if (prefix.isEmpty()) { // Root directory case

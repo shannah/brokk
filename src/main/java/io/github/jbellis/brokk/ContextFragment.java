@@ -5,7 +5,6 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.prompts.EditBlockConflictsParser;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.util.Messages;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
@@ -101,14 +100,14 @@ public interface ContextFragment extends Serializable {
     }
 
     static Set<ProjectFile> parseRepoFiles(String text, IProject project) {
-        var exactMatches = project.getFiles().stream().parallel()
+        var exactMatches = project.getAllFiles().stream().parallel()
                 .filter(f -> text.contains(f.toString()))
                 .collect(Collectors.toSet());
         if (!exactMatches.isEmpty()) {
             return exactMatches;
         }
 
-        return project.getFiles().stream().parallel()
+        return project.getAllFiles().stream().parallel()
                 .filter(f -> text.contains(f.getFileName()))
                 .collect(Collectors.toSet());
     }
