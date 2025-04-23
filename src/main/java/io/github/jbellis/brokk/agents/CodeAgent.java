@@ -359,7 +359,11 @@ public class CodeAgent {
                 .filter(file -> !cm.getEditableFiles().contains(file))
                 .toList();
 
-        if (!filesToAdd.isEmpty() && rejectReadonlyEdits) {
+        if (filesToAdd.isEmpty()) {
+            return List.of();
+        }
+
+        if (rejectReadonlyEdits) {
             var readOnlyFiles = filesToAdd.stream()
                     .filter(f -> cm.getReadonlyFiles().contains(f))
                     .toList();
@@ -370,10 +374,13 @@ public class CodeAgent {
                 // Return the list of read-only files that caused the issue
                 return readOnlyFiles;
             }
-            cm.getIo().systemOutput("Editing additional files " + filesToAdd);
-            cm.editFiles(filesToAdd);
         }
-        // Return empty list if no read-only files were edited or if rejectReadonlyEdits is false
+        
+        // Add the files regardless of rejectReadonlyEdits (unless we returned early due to read-only conflicts)
+        cm.getIo().systemOutput("Editing additional files " + filesToAdd);
+        cm.editFiles(filesToAdd);
+        
+        // Return empty list if no read-only files were rejected
         return List.of();
     }
 
