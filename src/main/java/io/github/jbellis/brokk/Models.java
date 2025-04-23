@@ -158,9 +158,6 @@ public final class Models {
                     // Process max_output_tokens from model_info
                     JsonNode modelInfoData = modelInfoNode.path("model_info");
                     int maxOutputTokens = modelInfoData.path("max_output_tokens").asInt(0);
-                    if (maxOutputTokens == 0) {
-                        maxOutputTokens = 65536; // Don't gimp Gemini Pro 2.5 unnecessarily
-                    }
 
                     // Store model location and max tokens
                     if (!modelName.isBlank() && !modelLocation.isBlank()) {

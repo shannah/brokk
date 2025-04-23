@@ -61,6 +61,9 @@ model_list:
       is_reasoning: false
       free_tier_eligible: false
       is_private: true
+      # Anthropic errors out if input + max_output > 200k. Default max_output is 128k,
+      # which is weighted the wrong way for typical coding tasks
+      max_output_tokens: 32768
 
   - model_name: deepseek-R1
     litellm_params:
