@@ -111,7 +111,7 @@ public class ArchitectAgent {
             logger.debug("TestAgent found no relevant test files to add.");
         }
 
-        var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, false);
+        var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, true);
         if (result.stopDetails().reason() == SessionResult.StopReason.LLM_ERROR) {
             throw new FatalLlmException(result.stopDetails().explanation());
         }

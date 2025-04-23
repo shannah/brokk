@@ -418,7 +418,7 @@ public class InstructionsPanel extends JPanel {
         var project = contextManager.getProject();
         project.pauseAnalyzerRebuilds();
         try {
-            var result = new CodeAgent(contextManager, model).runSession(input, true);
+            var result = new CodeAgent(contextManager, model).runSession(input, false);
             if (result.stopDetails().reason() == SessionResult.StopReason.SUCCESS) {
                 chrome.systemOutput("Code Agent complete!");
             } // else we should have details explaining the problem output already
