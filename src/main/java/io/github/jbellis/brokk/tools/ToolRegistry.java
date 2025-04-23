@@ -5,6 +5,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.*;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessageType;
+import io.github.jbellis.brokk.ContextManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -27,6 +29,7 @@ public class ToolRegistry {
 
     // Maps tool name to its invocation target (method + instance)
     private final Map<String, ToolInvocationTarget> toolMap = new ConcurrentHashMap<>();
+    private final ContextManager contextManager;
 
     // Internal record to hold method and the instance it belongs to
     private record ToolInvocationTarget(Method method, Object instance) {}
@@ -34,8 +37,8 @@ public class ToolRegistry {
     /**
      * Creates a new ToolRegistry and self-registers internal tools.
      */
-    public ToolRegistry() {
-        // Self-register internal tools
+    public ToolRegistry(ContextManager contextManager) {
+        this.contextManager = contextManager;
         register(this);
     }
 
@@ -48,6 +51,7 @@ public class ToolRegistry {
     or break problems into smaller pieces. Call it concurrently with other tools.
     """)
     public String think(@P("The step-by-step reasoning to work through") String reasoning) {
+        contextManager.getIo().llmOutput("\n" + reasoning, ChatMessageType.AI);
         return "I've thought through this problem: " + reasoning;
     }
 

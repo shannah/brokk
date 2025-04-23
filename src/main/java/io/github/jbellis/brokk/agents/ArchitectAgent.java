@@ -6,6 +6,7 @@ import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
@@ -238,20 +239,24 @@ public class ArchitectAgent {
             result = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
 
             if (result.error() != null) {
-                logger.debug("Error from LLM while deciding next action: {}", result .error().getMessage());
+                logger.debug("Error from LLM while deciding next action: {}", result.error().getMessage());
                 contextManager.getIo().systemOutput("Error from LLM while deciding next action (see debug log for details)");
                 return;
             }
-            if (result.chatResponse() == null || result .chatResponse().aiMessage() == null) {
+            if (result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 var msg = "Empty LLM response. Stopping project now.";
                 logger.debug(msg);
                 contextManager.getIo().systemOutput(msg);
                 return;
             }
+            // show thinking
+            if (!result.chatResponse().aiMessage().text().isBlank()) {
+                contextManager.getIo().llmOutput("\n" + result.chatResponse().aiMessage().text(), ChatMessageType.AI);
+            }
 
-            totalUsage = TokenUsage.sum(totalUsage, result .chatResponse().tokenUsage());
+            totalUsage = TokenUsage.sum(totalUsage, result.chatResponse().tokenUsage());
             // Add the request and response to message history
-            var aiMessage = ToolRegistry.removeDuplicateToolRequests(result .chatResponse().aiMessage());
+            var aiMessage = ToolRegistry.removeDuplicateToolRequests(result.chatResponse().aiMessage());
             architectMessages.add(messages.getLast());
             architectMessages.add(aiMessage);
 
