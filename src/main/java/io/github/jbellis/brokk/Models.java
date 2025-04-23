@@ -155,7 +155,6 @@ public final class Models {
 
                     // Process max_output_tokens from model_info
                     JsonNode modelInfoData = modelInfoNode.path("model_info");
-                    int maxOutputTokens = modelInfoData.path("max_output_tokens").asInt(0);
 
                     // Store model location and max tokens
                     if (!modelName.isBlank() && !modelLocation.isBlank()) {
@@ -203,8 +202,8 @@ public final class Models {
                         modelLocations.put(modelName, modelLocation);
                         modelInfoMap.put(modelName, modelInfo);
 
-                        logger.debug("Discovered model: {} -> {} (Max output tokens: {})",
-                                     modelName, modelLocation, maxOutputTokens);
+                        logger.debug("Discovered model: {} -> {} with info {})",
+                                     modelName, modelLocation, modelInfo);
                     }
                 }
 

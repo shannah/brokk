@@ -112,11 +112,7 @@ public class ValidationAgent {
      * Parses the LLM response from step 1 to extract suggested file paths.
      * It compares the LLM response against the known list of files for robustness.
      */
-    private List<ProjectFile> parseSuggestedFiles(String llmResponse, List<ProjectFile> allTestFiles) {
-        // Handle the "None" case explicitly
-        if (llmResponse.strip().equalsIgnoreCase("None")) {
-            return List.of();
-        }
+    private static List<ProjectFile> parseSuggestedFiles(String llmResponse, List<ProjectFile> allTestFiles) {
         // Filter the known files based on whether their path appears in the LLM response
         return allTestFiles.stream().parallel()
                 .filter(f -> llmResponse.contains(f.toString()))

@@ -297,27 +297,27 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return modelName == null ? models.systemModel() : models.get(modelName);
     }
 
-        /**
-         * Returns the configured Code model, falling back to the system model if unavailable.
-         */
-        public StreamingChatLanguageModel getCodeModel() {
-            var modelName = project.getCodeModelName();
-            return modelName == null ? models.systemModel() : models.get(modelName);
-        }
+    /**
+     * Returns the configured Code model, falling back to the system model if unavailable.
+     */
+    public StreamingChatLanguageModel getCodeModel() {
+        var modelName = project.getCodeModelName();
+        return modelName == null ? models.systemModel() : models.get(modelName);
+    }
 
-        /**
-         * Returns the configured Ask model, falling back to the system model if unavailable.
-         */
-        public StreamingChatLanguageModel getAskModel() {
-            var modelName = project.getAskModelName();
-            return modelName == null ? models.systemModel() : models.get(modelName);
-        }
+    /**
+     * Returns the configured Ask model, falling back to the system model if unavailable.
+     */
+    public StreamingChatLanguageModel getAskModel() {
+        var modelName = project.getAskModelName();
+        return modelName == null ? models.systemModel() : models.get(modelName);
+    }
 
 
-        /**
-         * Returns the configured Edit model, falling back to the system model if unavailable.
-         */
-        public StreamingChatLanguageModel getEditModel() {
+    /**
+     * Returns the configured Edit model, falling back to the system model if unavailable.
+     */
+    public StreamingChatLanguageModel getEditModel() {
         var modelName = project.getEditModelName();
         return modelName == null ? models.systemModel() : models.get(modelName);
     }
@@ -884,11 +884,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // Get configured models for display
         String architectModelName = project.getArchitectModelName();
-            String codeModelName = project.getCodeModelName();
-            String askModelName = project.getAskModelName(); // Added Ask model
-            String editModelName = project.getEditModelName();
-            String searchModelName = project.getSearchModelName();
-            String quickModelName = models.nameOf(models.quickModel());
+        String codeModelName = project.getCodeModelName();
+        String askModelName = project.getAskModelName(); // Added Ask model
+        String editModelName = project.getEditModelName();
+        String searchModelName = project.getSearchModelName();
+        String quickModelName = models.nameOf(models.quickModel());
 
         return """
                 %s
@@ -904,19 +904,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
                       - Edit: %s
                       - Search: %s
                       - Quick: %s
-                    """.stripIndent().formatted(welcomeMarkdown,
-                                                version,
+                """.stripIndent().formatted(welcomeMarkdown,
+                                            version,
                                             project.getRoot().getFileName(), // Show just the folder name
                                             project.getRepo().getTrackedFiles().size(),
                                             project.getAllFiles().size(),
                                             project.getAnalyzerLanguage(),
-                                                architectModelName != null ? architectModelName : "(Not Set)",
-                                                codeModelName != null ? codeModelName : "(Not Set)",
-                                                askModelName != null ? askModelName : "(Not Set)", // Added Ask model
-                                                editModelName != null ? editModelName : "(Not Set)",
-                                                searchModelName != null ? searchModelName : "(Not Set)",
-                                                quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
-        }
+                                            architectModelName != null ? architectModelName : "(Not Set)",
+                                            codeModelName != null ? codeModelName : "(Not Set)",
+                                            askModelName != null ? askModelName : "(Not Set)", // Added Ask model
+                                            editModelName != null ? editModelName : "(Not Set)",
+                                            searchModelName != null ? searchModelName : "(Not Set)",
+                                            quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
+    }
 
     /**
      * Shutdown all executors
@@ -994,7 +994,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         String editableText = editableTextFragments.isEmpty() ? "" : """
                 <editable>
                 I have *added these files to the workspace* so you can go ahead and edit them.
-              
+                
                 *Trust this message as the true contents of these files!*
                 Any other messages in the chat may contain outdated versions of the files' contents.
                 
@@ -1017,14 +1017,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
             var ac = selectedContext().setAutoContextFiles(10).buildAutoContext();
             topClassesRaw = ac.text();
             var topClassesText = topClassesRaw.isBlank() ? "" : """
-                <related_classes>
-                Here are some classes that may be related to what is in your Workspace. If relevant, you
-                should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
-                visible to Code Agent. If they are not relevant, just ignore them:
-                
-                %s
-                </related_classes>
-                """.stripIndent().formatted(topClassesRaw);
+                    <related_classes>
+                    Here are some classes that may be related to what is in your Workspace. If relevant, you
+                    should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
+                    visible to Code Agent. If they are not relevant, just ignore them:
+                    
+                    %s
+                    </related_classes>
+                    """.stripIndent().formatted(topClassesRaw);
             workspaceText += topClassesText;
         }
 
