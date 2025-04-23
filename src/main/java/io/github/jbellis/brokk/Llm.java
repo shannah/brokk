@@ -920,7 +920,7 @@ public class Llm {
             String fileTimestamp = timestamp.format(DateTimeFormatter.ofPattern("HH-mm-ss"));
             var filePath = sessionHistoryDir.resolve(String.format("%s %s.log", fileTimestamp, shortDesc));
             var options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE};
-            logger.debug("Writing history to new file: {}", filePath);
+            logger.debug("Writing history to file {}", filePath);
             Files.writeString(filePath, formattedRequest + formattedTools + formattedResponse, options);
         } catch (IOException e) {
             logger.error("Failed to write LLM history file", e);

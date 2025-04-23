@@ -14,8 +14,7 @@ public final class LogDescription {
     private static final int MAX_CHARACTERS = 40;
 
     /** Regex for characters that add no value in a one‑line summary. */
-    private static final Pattern UNWANTED =
-            Pattern.compile("[^\\p{Alnum}\\s_./:;\\\\-]");   // keep path & pkg separators
+    private static final Pattern UNWANTED = Pattern.compile("[^\\p{Alnum}\\s_.-]");
 
     private LogDescription() { /* utility */ }
 
@@ -33,13 +32,13 @@ public final class LogDescription {
         String cleaned = Normalizer.normalize(description, Normalizer.Form.NFKC)
                 .replaceAll("[\\p{Cc}&&[^\\s]]", "");
 
+        // Strip punctuation we decided is “junk”
+        cleaned = UNWANTED.matcher(cleaned).replaceAll(" ");
+
         // Compress all newlines / tabs to single spaces and squeeze multiple spaces
         cleaned = cleaned.replaceAll("[\\r\\n\\t]+", " ")
                 .replaceAll("\\s{2,}", " ")
                 .trim();
-
-        // Strip punctuation we decided is “junk”
-        cleaned = UNWANTED.matcher(cleaned).replaceAll("");
 
         if (cleaned.isEmpty()) {
             return "";
