@@ -80,7 +80,7 @@ public class InstructionsPanel extends JPanel {
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
         // Initialize Buttons first
-        agentButton = new JButton("Agent"); // Initialize the agent button
+        agentButton = new JButton("Architect"); // Initialize the agent button
         agentButton.setMnemonic(KeyEvent.VK_G); // Mnemonic for Agent
         agentButton.setToolTipText("Run the multi-step agent to execute the current plan");
         agentButton.addActionListener(e -> runArchitectCommand());
@@ -587,7 +587,7 @@ public class InstructionsPanel extends JPanel {
         clearCommandInput();
 
         // Submit the action, calling the private execute method inside the lambda, passing the goal
-        contextManager.submitAction("Agent", "Executing project...", () -> executeAgentCommand(architectModel, goal));
+        contextManager.submitAction("Architect", "Executing project...", () -> executeAgentCommand(architectModel, goal));
     }
 
     // Methods for running commands. These prepare the input and model, then delegate

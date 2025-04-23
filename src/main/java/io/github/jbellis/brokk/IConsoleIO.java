@@ -21,7 +21,7 @@ public interface IConsoleIO {
         Run,
         Ask,
         Code,
-        Agent,
+        Architect,
         Search,
         BuildError,
         CommandOutput

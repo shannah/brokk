@@ -419,7 +419,7 @@ public class ArchitectAgent {
         logger.debug("Initial context budget set to {} tokens", budget);
 
         var analyzer = contextManager.getAnalyzer();
-        var allFiles = contextManager.getProject().getFiles();
+        var allFiles = contextManager.getRepo().getTrackedFiles();
         int fileCount = allFiles.size();
         logger.debug("Project contains {} files.", fileCount);
 
