@@ -438,20 +438,38 @@ public class AnalyzerWrapper implements AutoCloseable {
             return;
         }
 
-        try (var walker = Files.walk(start)) {
-            walker.filter(Files::isDirectory)
-                  .filter(dir -> !dir.toString().contains(".brokk"))
-                  .forEach(dir -> {
-                      try {
-                          dir.register(watchService,
-                                       StandardWatchEventKinds.ENTRY_CREATE,
-                                       StandardWatchEventKinds.ENTRY_DELETE,
-                                       StandardWatchEventKinds.ENTRY_MODIFY);
-                      } catch (IOException e) {
-                          logger.warn("Failed to register directory for watching: {}", dir, e);
-                      }
-                  });
-        }
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try (var walker = Files.walk(start)) {
+                walker.filter(Files::isDirectory)
+                        .filter(dir -> !dir.toString().contains(".brokk"))
+                        .forEach(dir -> {
+                            try {
+                                dir.register(watchService,
+                                             StandardWatchEventKinds.ENTRY_CREATE,
+                                             StandardWatchEventKinds.ENTRY_DELETE,
+                                             StandardWatchEventKinds.ENTRY_MODIFY);
+                            } catch (IOException e) {
+                                logger.warn("Failed to register directory for watching: {}", dir, e);
+                            }
+                        });
+                // Success: If the walk completes without exception, break the retry loop.
+                return;
+            } catch (IOException | java.io.UncheckedIOException e) {
+                // Determine the root cause, handling the case where the UncheckedIOException wraps another exception.
+                Throwable cause = (e instanceof java.io.UncheckedIOException uioe) ? uioe.getCause() : e;
+
+                // Retry only if it's a NoSuchFileException and we have attempts left.
+                if (cause instanceof java.nio.file.NoSuchFileException && attempt < 3) {
+                    logger.warn("Attempt {} failed to walk directory {} due to NoSuchFileException. Retrying in 10ms...", attempt, start, cause);
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException ie) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        } // End of retry loop
+        logger.debug("Failed to (completely) register directory `{}` for watching", start);
     }
 
     /** Pause the file watching service. */
