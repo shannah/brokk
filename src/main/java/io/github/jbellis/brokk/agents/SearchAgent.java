@@ -209,7 +209,7 @@ public class SearchAgent {
         io.systemOutput("Search Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(query)));
 
         // If context exists, ask LLM to evaluate its relevance and kick off async summary
-        var contextWithClasses = contextManager.selectedContext().allFragments().map(f -> {
+        var contextWithClasses = contextManager.topContext().allFragments().map(f -> {
             String text;
             try {
                 text = f.text();

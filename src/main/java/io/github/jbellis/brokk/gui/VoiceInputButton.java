@@ -233,7 +233,7 @@ public class VoiceInputButton extends JButton {
                     // If custom symbols weren't retrieved or were empty, fall back to context symbols
                     if (symbolsForTranscription == null) {
                         logger.debug("Falling back to context symbols for transcription.");
-                        var sources = contextManager.selectedContext().allFragments()
+                        var sources = contextManager.topContext().allFragments()
                                 .flatMap(f -> f.sources(contextManager.getProject()).stream())
                                 .collect(Collectors.toSet());
 

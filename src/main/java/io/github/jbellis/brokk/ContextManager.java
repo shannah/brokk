@@ -261,7 +261,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Return the top context in the history stack
+     * Return the top, active context in the history stack
      */
     public Context topContext()
     {
@@ -269,7 +269,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Return the currently selected context in the UI, or the top context if none selected
+     * Return the currently selected context in the UI. *Usually* you should call topContext() instead.
      */
     public Context selectedContext()
     {
@@ -856,7 +856,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public List<ChatMessage> getHistoryMessages()
     {
-        var taskHistory = selectedContext().getTaskHistory();
+        var taskHistory = topContext().getTaskHistory();
 
         var messages = new ArrayList<ChatMessage>();
         // TODO check that no compressed tasks are mixed in with the uncompressed?
@@ -956,7 +956,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
      */
     public Collection<ChatMessage> getWorkspaceContentsMessages(boolean addRelatedClasses) {
-        var c = selectedContext();
+        var c = topContext();
         var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
 
         // --- Process Read-Only Fragments (Files, Virtual, AutoContext) ---
@@ -1035,7 +1035,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         String topClassesRaw = "";
         // this check is mostly equivalent to analyzer.isEmpty() but doesn't block for analyzer creation (or throw InterruptedException)
         if (addRelatedClasses && project.getAnalyzerLanguage() != Language.None) {
-            var ac = selectedContext().setAutoContextFiles(10).buildAutoContext();
+            var ac = topContext().setAutoContextFiles(10).buildAutoContext();
             topClassesRaw = ac.text();
             var topClassesText = topClassesRaw.isBlank() ? "" : """
                     <related_classes>
@@ -1060,7 +1060,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public String getReadOnlySummary(boolean includeAutocontext)
     {
-        var c = selectedContext();
+        var c = topContext();
         return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
                               c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
                               Stream.of(includeAutocontext && !c.getAutoContext().isEmpty() ? c.getAutoContext().description() : ""))
@@ -1070,21 +1070,21 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public String getEditableSummary()
     {
-        return selectedContext().editableFiles()
+        return topContext().editableFiles()
                 .map(p -> p.file().toString())
                 .collect(Collectors.joining(", "));
     }
 
     public Set<ProjectFile> getEditableFiles()
     {
-        return selectedContext().editableFiles()
+        return topContext().editableFiles()
                 .map(ContextFragment.ProjectPathFragment::file)
                 .collect(Collectors.toSet());
     }
 
     @Override
     public Set<BrokkFile> getReadonlyFiles() {
-        return selectedContext().readonlyFiles()
+        return topContext().readonlyFiles()
                 .map(ContextFragment.PathFragment::file)
                 .collect(Collectors.toSet());
     }
@@ -1548,7 +1548,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return submitUserTask("Compressing History", () -> {
             io.disableHistoryPanel(); // Disable history navigation during compression
             try {
-                var currentContext = selectedContext(); // Operate on the selected context
+                var currentContext = topContext();
                 var history = currentContext.getTaskHistory();
 
                 io.systemOutput("Compressing conversation history...");

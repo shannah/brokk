@@ -828,7 +828,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         panel.add(label, BorderLayout.NORTH);
 
         var spinner = new JSpinner(new SpinnerNumberModel(
-                contextManager.selectedContext().getAutoContextFileCount(),
+                contextManager.topContext().getAutoContextFileCount(),
                 0, 100, 1
         ));
         panel.add(spinner, BorderLayout.CENTER);

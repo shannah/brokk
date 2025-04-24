@@ -351,11 +351,13 @@ public class ContextPanel extends JPanel {
                         });
                         contextMenu.add(dropSelectionItem);
 
-                        if (!contextManager.selectedContext().equals(contextManager.topContext())) {
+                        if (contextManager.selectedContext().equals(contextManager.topContext())) {
+                            if (contextTable.getSelectedRowCount() == 1 && fragmentToShow instanceof ContextFragment.AutoContext) {
+                                // Check if AutoContext is enabled using the fragmentToShow variable
+                                dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
+                            }
+                        } else {
                             dropSelectionItem.setEnabled(false);
-                        } else if (contextTable.getSelectedRowCount() == 1 && fragmentToShow instanceof ContextFragment.AutoContext) {
-                            // Check if AutoContext is enabled using the fragmentToShow variable
-                            dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
                         }
                     } else {
                         // No row selected - show the popup with all options
