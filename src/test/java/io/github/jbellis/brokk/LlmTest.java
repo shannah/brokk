@@ -37,7 +37,7 @@ public class LlmTest {
         public void toolErrorRaw(String msg) {
             System.out.println("Tool error: " + msg);
         }
-        @Override public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {}
+        @Override public void llmOutput(String token, ChatMessageType type) {}
         @Override public void systemOutput(String message) {}
         @Override public void showOutputSpinner(String message) {}
         @Override public void hideOutputSpinner() {}

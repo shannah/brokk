@@ -545,20 +545,24 @@ public class InstructionsPanel extends JPanel {
         var contextManager = chrome.getContextManager();
         Environment.ProcessResult result;
         try {
+            chrome.showOutputSpinner("Executing command...");
             result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
         } catch (InterruptedException e) {
             chrome.systemOutput("Cancelled!");
             return;
         }
+        finally {
+            chrome.hideOutputSpinner();
+        }
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-        var wrappedOutput = "\n```\n" + output + "\n```";
-        chrome.llmOutput(wrappedOutput, ChatMessageType.USER, IConsoleIO.MessageSubType.CommandOutput);
+        var wrappedOutput = "```bash\n" + output + "\n```";
+        chrome.llmOutput(wrappedOutput, ChatMessageType.CUSTOM);
 
         // Add to context history with the output text
-        var llmOutputText = chrome.getLlmOutputText();
+        var action = "Run: " + input;
         contextManager.pushContext(ctx -> {
-            var parsed = new TaskFragment(List.of(new UserMessage(input), new AiMessage(llmOutputText)), wrappedOutput);
-            return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture("Run " + input));
+            var parsed = new TaskFragment(List.copyOf(chrome.getLlmRawMessages()), action);
+            return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture(action));
         });
     }
 

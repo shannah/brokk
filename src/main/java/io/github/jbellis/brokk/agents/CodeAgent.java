@@ -724,7 +724,7 @@ public class CodeAgent {
                              ```
                              %s
                              ```
-                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM, IConsoleIO.MessageSubType.BuildError);
+                             """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM);
         // Add the combined error and output to the history for the next request
         return result.error() + "\n\n" + result.output();
     }

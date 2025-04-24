@@ -20,13 +20,6 @@ public class UserMessageRenderer implements MessageComponentRenderer {
     public Component renderComponent(ChatMessage message, boolean isDarkTheme) {
         // Check if message is a UserMessage with a name (use this prop as sub-type)
         if (message instanceof UserMessage userMessage && userMessage.name() != null && !userMessage.name().isEmpty()) {
-            try {
-                IConsoleIO.MessageSubType.valueOf(userMessage.name());
-                // Valid MessageSubType
-            } catch (IllegalArgumentException e) {
-                // Not a valid MessageSubType
-                logger.debug("UserMessage name '{}' is not a valid MessageSubType", userMessage.name());
-            }
             // Create a container panel with vertical BoxLayout
             JPanel containerPanel = new JPanel();
             containerPanel.setLayout(new BoxLayout(containerPanel, BoxLayout.Y_AXIS));
@@ -36,7 +29,7 @@ public class UserMessageRenderer implements MessageComponentRenderer {
             JPanel modePanel = new BaseChatMessagePanel(
                     null,
                     null,
-                    new JLabel(userMessage.name().toUpperCase() + " MODE"),
+                    new JLabel(userMessage.name()),
                     isDarkTheme,
                     ThemeColors.getColor(isDarkTheme, "message_background")
             );

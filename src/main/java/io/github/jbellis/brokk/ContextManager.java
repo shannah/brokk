@@ -336,15 +336,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {
-        IConsoleIO.MessageSubType messageSubType = null;
-        try {
-            messageSubType = IConsoleIO.MessageSubType.valueOf(action);
-        } catch (IllegalArgumentException e) {
-            logger.error("Unknown action type: {}", action);
-        }
         // need to set the correct parser here since we're going to append to the same fragment during the action
-        io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(messageSubType.toString(), input)), input));
-        
+        action = (action + " MODE").toUpperCase();
+        io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
         return submitLlmTask(action, task);
     }
 

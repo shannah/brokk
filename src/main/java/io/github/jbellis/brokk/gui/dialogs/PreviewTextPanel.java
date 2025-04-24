@@ -648,7 +648,7 @@ public class PreviewTextPanel extends JPanel {
             }
 
             @Override
-            public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
+            public void llmOutput(String token, ChatMessageType type) {
                 appendSystemMessage(token);
             }
 
