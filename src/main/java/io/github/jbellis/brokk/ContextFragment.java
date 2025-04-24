@@ -463,7 +463,6 @@ public interface ContextFragment extends Serializable {
             return sources;
         }
 
-        @Override
         public Set<ProjectFile> files(IProject project) {
             return sources.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
         }
@@ -471,6 +470,47 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "Search: " + query;
+        }
+
+        // --- Custom Serialization using Proxy Pattern ---
+        // SearchFragment extends TaskFragment, which has its own proxy for messages.
+        // We only need to handle SearchFragment's own fields here. TaskFragment's state
+        // should be handled by its proxy during the serialization process.
+
+        @Serial
+        private Object writeReplace() {
+            return new SerializationProxy(this);
+        }
+
+        @Serial
+        private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+            // This method should not be called if writeReplace is used.
+            throw new java.io.NotSerializableException("SearchFragment must be serialized via SerializationProxy");
+        }
+
+        private static class SerializationProxy implements Serializable {
+            @Serial
+            private static final long serialVersionUID = 41L; // Unique ID for SearchFragment proxy
+
+            private final String query;
+            private final String explanation;
+            private final Set<CodeUnit> sources;
+            // No need to serialize 'messages' or 'sessionName' here; TaskFragment's proxy handles them.
+
+            SerializationProxy(SearchFragment fragment) {
+                this.query = fragment.query;
+                this.explanation = fragment.explanation;
+                this.sources = fragment.sources;
+            }
+
+            @Serial
+            private Object readResolve() throws java.io.ObjectStreamException {
+                // Reconstruct the SearchFragment. The constructor call `super(...)`
+                // will initialize the TaskFragment part, including creating the messages
+                // based on query/explanation. If TaskFragment's proxy ran correctly,
+                // the deserialized state should align.
+                return new SearchFragment(query, explanation, sources);
+            }
         }
     }
 

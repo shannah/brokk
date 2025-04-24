@@ -126,13 +126,15 @@ public class ContextSerializationTest {
         ProjectFile mockFile = new ProjectFile(tempDir, "Mock.java");
 
         // Add examples of each *serializable* VirtualFragment type
-        // SearchFragment extends SessionFragment which holds non-serializable ChatMessages, so it's excluded here.
         context = context
                 .addVirtualFragment(new ContextFragment.StringFragment("string content", "String Fragment", SyntaxConstants.SYNTAX_STYLE_NONE))
-                // .addVirtualFragment(new ContextFragment.SearchFragment("query", "explanation", Set.of(CodeUnit.cls(mockFile, "Test")))) // Cannot serialize ChatMessage
                 .addVirtualFragment(new ContextFragment.SkeletonFragment(
                         Map.of(CodeUnit.cls(mockFile, "com.test.Test"), "class Test {}")
                 ));
+
+        // Create SearchFragment separately to ensure sources are serializable
+        var searchSources = Set.of(CodeUnit.cls(mockFile, "Test"));
+        context = context.addVirtualFragment(new ContextFragment.SearchFragment("query", "explanation", searchSources));
 
         // Add fragments that use Future
         CompletableFuture<String> descFuture = CompletableFuture.completedFuture("description");
@@ -160,8 +162,8 @@ public class ContextSerializationTest {
         byte[] serialized = Context.serialize(context);
         Context deserialized = Context.deserialize(serialized, "stub");
 
-        // Verify all serializable fragments were preserved (excluding SearchFragment)
-        assertEquals(5, deserialized.virtualFragments.size());
+        // Verify all serializable fragments were preserved (String, Skeleton, Search, Paste, Usage, Stacktrace)
+        assertEquals(6, deserialized.virtualFragments.size());
 
         // Verify fragment types
         var fragmentTypes = deserialized.virtualFragments.stream()
@@ -169,7 +171,7 @@ public class ContextSerializationTest {
                 .toList();
 
         assertTrue(fragmentTypes.contains(ContextFragment.StringFragment.class));
-        // assertTrue(fragmentTypes.contains(ContextFragment.SearchFragment.class)); // Excluded due to serialization issues
+        assertTrue(fragmentTypes.contains(ContextFragment.SearchFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.SkeletonFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.PasteTextFragment.class));
         assertTrue(fragmentTypes.contains(ContextFragment.UsageFragment.class));
@@ -181,6 +183,16 @@ public class ContextSerializationTest {
                 .findFirst()
                 .orElseThrow();
         assertEquals("string content", stringFragment.text());
+
+        // Verify SearchFragment content
+        var searchFragment = (ContextFragment.SearchFragment) deserialized.virtualFragments.stream()
+                .filter(f -> f instanceof ContextFragment.SearchFragment)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("Search: query", searchFragment.description());
+        assertTrue(searchFragment.text().contains("query"));
+        assertTrue(searchFragment.text().contains("explanation"));
+        assertEquals(Set.of(CodeUnit.cls(mockFile, "Test")), searchFragment.sources(null)); // project is unused in this impl
     }
 
     @Test
