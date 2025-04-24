@@ -24,6 +24,7 @@ import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
+import dev.langchain4j.model.openai.OpenAiTokenUsage;
 import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
@@ -102,7 +103,6 @@ public class Llm {
         var cancelled = new AtomicBoolean(false);
         var lock = new ReentrantLock();
         var errorRef = new AtomicReference<Throwable>(null);
-        var outputTokenCountRef = new AtomicReference<>(-1);
         var atomicResponse = new AtomicReference<ChatResponse>();
 
         Consumer<Runnable> ifNotCancelled = (r) -> {
@@ -145,7 +145,13 @@ public class Llm {
                         if (response.tokenUsage() == null) {
                             logger.warn("Null token usage !? in {}", response);
                         } else {
-                            outputTokenCountRef.set(response.tokenUsage().outputTokenCount());
+                            var tu = (OpenAiTokenUsage) response.tokenUsage();
+                            var template = "Token usage: {} input ({} cached), {} output ({} reasoning)";
+                            logger.debug(template,
+                                         tu.inputTokenCount(),
+                                         (tu.inputTokensDetails() == null) ? "?" : tu.inputTokensDetails().cachedTokens(),
+                                         tu.outputTokenCount(),
+                                         (tu.outputTokensDetails() == null) ? "?" : tu.outputTokensDetails().reasoningTokens());
                         }
                     }
                     latch.countDown();
@@ -174,20 +180,19 @@ public class Llm {
         }
 
         var streamingError = errorRef.get();
-        var outputTokenCount = outputTokenCountRef.get();
         if (streamingError != null) {
             // Return an error result
             logger.debug(streamingError);
-            return new StreamingResult(null, outputTokenCount, streamingError);
+            return new StreamingResult(null, streamingError);
         }
 
         var cr = atomicResponse.get();
         if (cr == null) {
             // also an error
             logger.warn("Null response from LLM");
-            return new StreamingResult(null, outputTokenCount, new IllegalStateException("No ChatResponse from model"));
+            return new StreamingResult(null, new IllegalStateException("No ChatResponse from model"));
         }
-        return new StreamingResult(cr, outputTokenCount, null);
+        return new StreamingResult(cr, null);
     }
 
     /**
@@ -395,7 +400,6 @@ public class Llm {
         int maxTries = 3;
         ChatResponse lastResponse = null;
         Throwable lastError = null;
-        int outputTokenCount = -1;
         // Use a mutable list for potential retries
         List<ChatMessage> attemptMessages = new ArrayList<>(initialProcessedMessages);
 
@@ -405,7 +409,6 @@ public class Llm {
 
             lastResponse = singleCallResult.chatResponse;
             lastError = singleCallResult.error;
-            outputTokenCount = singleCallResult.outputTokenCount;
 
             // If an error occurred (like connectivity or 400) let's bail early
             if (lastError != null) {
@@ -455,14 +458,14 @@ public class Llm {
             var failMsg = "No valid response after " + maxTries + " attempts: " + lastError.getMessage();
             logger.warn(failMsg, lastError);
             var dummyResponse = ChatResponse.builder().aiMessage(new AiMessage(failMsg)).build();
-            return new StreamingResult(dummyResponse, outputTokenCount, new RuntimeException(failMsg));
+            return new StreamingResult(dummyResponse, new RuntimeException(failMsg));
         }
         // Otherwise we have some final ChatResponse with an error
         var fail = ChatResponse.builder()
                 .aiMessage(new AiMessage("Error: " + lastError.getMessage()))
                 .build();
         logger.error("Emulated function calling failed: {}", lastError.getMessage());
-        return new StreamingResult(fail, outputTokenCount, lastError);
+        return new StreamingResult(fail, lastError);
     }
 
     /**
@@ -791,7 +794,7 @@ public class Llm {
         // Create a properly formatted AiMessage with tool execution requests
         var aiMessage = new AiMessage("[json]", toolExecutionRequests);
         var cr = ChatResponse.builder().aiMessage(aiMessage).build();
-        return new StreamingResult(cr, result.originalResponse, result.outputTokenCount, null);
+        return new StreamingResult(cr, result.originalResponse, null);
     }
 
     private static String getInstructions(List<ToolSpecification> tools, Function<Throwable, String> retryInstructionsProvider) {
@@ -958,15 +961,10 @@ public class Llm {
      */
     public record StreamingResult(ChatResponse chatResponse,
                                   ChatResponse originalResponse,
-                                  int outputTokenCount,
                                   Throwable error)
     {
         public StreamingResult(ChatResponse chatResponse, Throwable error) {
-            this(chatResponse, chatResponse, -1, error);
-        }
-
-        public StreamingResult(ChatResponse chatResponse, int outputTokenCount, Throwable error) {
-            this(chatResponse, chatResponse, outputTokenCount, error);
+            this(chatResponse, chatResponse, error);
         }
 
         public StreamingResult {
