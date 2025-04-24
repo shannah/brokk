@@ -1206,7 +1206,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     List<ChatMessage> messages = List.of(userMessage);
                     Llm.StreamingResult result = null;
                     try {
-                        result = getCoder(models.quickModel(), "Summarize pasted image").sendRequest(messages);
+                        result = getLlm(models.quickModel(), "Summarize pasted image").sendRequest(messages);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
@@ -1300,7 +1300,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // No details found, run the BuildAgent asynchronously
         submitBackgroundTask("Inferring build details", () -> {
             var model = getAskModel();
-            BuildAgent agent = new BuildAgent(this, getCoder(model, "Infer build details"), toolRegistry);
+            BuildAgent agent = new BuildAgent(this, getLlm(model, "Infer build details"), toolRegistry);
             BuildDetails inferredDetails = null;
             try {
                 inferredDetails = agent.execute(); // This runs the agent loop
@@ -1420,7 +1420,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                                 """.stripIndent().formatted(codeForLLM))
                 );
 
-                var result = getCoder(models.quickestModel(), "Generate style guide").sendRequest(messages);
+                var result = getLlm(models.quickestModel(), "Generate style guide").sendRequest(messages);
                 if (result.error() != null || result.chatResponse() == null) {
                     io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
@@ -1458,7 +1458,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var msgs = SummarizerPrompts.instance.compressHistory(historyString);
         Llm.StreamingResult result = null;
         try {
-            result = getCoder(models.quickModel(), "Compress history entry").sendRequest(msgs);
+            result = getLlm(models.quickModel(), "Compress history entry").sendRequest(msgs);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -1596,7 +1596,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // Use quickModel for summarization
             Llm.StreamingResult result;
             try {
-                result = getCoder(models.quickestModel(), "Summarize: " + content).sendRequest(msgs);
+                result = getLlm(models.quickestModel(), "Summarize: " + content).sendRequest(msgs);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }

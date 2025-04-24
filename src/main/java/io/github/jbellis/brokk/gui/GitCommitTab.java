@@ -688,7 +688,7 @@ public class GitCommitTab extends JPanel {
         // Use quickest model for commit messages via ContextManager
         Llm.StreamingResult result;
         try {
-            result = contextManager.getCoder(contextManager.getModels().quickestModel(), "Infer commit message").sendRequest(messages);
+            result = contextManager.getLlm(contextManager.getModels().quickestModel(), "Infer commit message").sendRequest(messages);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

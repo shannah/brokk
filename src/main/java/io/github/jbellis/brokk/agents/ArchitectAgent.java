@@ -225,7 +225,7 @@ public class ArchitectAgent {
         var contextAgent = new ContextAgent(contextManager, contextManager.getAskModel(), goal);
         contextAgent.execute();
 
-        var coder = contextManager.getCoder(model, "Architect: " + goal);
+        var llm = contextManager.getLlm(model, "Architect: " + goal);
 
         while (true) {
             // Build the prompt messages, including history
@@ -252,7 +252,7 @@ public class ArchitectAgent {
 
             // 5) Ask the LLM for the next step with tools required
             Llm.StreamingResult result;
-            result = coder.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
+            result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
 
             if (result.error() != null) {
                 logger.debug("Error from LLM while deciding next action: {}", result.error().getMessage());

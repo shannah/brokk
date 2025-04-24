@@ -77,7 +77,7 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default Llm getCoder(StreamingChatLanguageModel model, String taskDescription) {
+    default Llm getLlm(StreamingChatLanguageModel model, String taskDescription) {
         return new Llm(model, taskDescription, this);
     }
 

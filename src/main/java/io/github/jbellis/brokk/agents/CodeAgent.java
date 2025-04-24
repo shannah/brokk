@@ -58,7 +58,7 @@ public class CodeAgent {
     public SessionResult runSession(String userInput, boolean forArchitect) {
         var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
-        var coder = contextManager.getCoder(model, "Code: " + userInput);
+        var coder = contextManager.getLlm(model, "Code: " + userInput);
 
         // Track original contents of files before any changes
         var originalContents = new HashMap<ProjectFile, String>();
@@ -485,7 +485,7 @@ public class CodeAgent {
                                   details.instructions(),
                                   workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
             // Need a coder instance specifically for this task
-            var inferTestCoder = cm.getCoder(cm.getModels().quickModel(), "Infer tests");
+            var inferTestCoder = cm.getLlm(cm.getModels().quickModel(), "Infer tests");
             // Ask the LLM
             StreamingResult llmResult = null;
             try {
@@ -520,7 +520,7 @@ public class CodeAgent {
                                          String oldText,
                                          String instructions) throws InterruptedException
     {
-        var coder = contextManager.getCoder(model, "QuickEdit: " + instructions);
+        var coder = contextManager.getLlm(model, "QuickEdit: " + instructions);
         var analyzer = contextManager.getAnalyzer();
 
         // Use up to 5 related classes as context

@@ -22,7 +22,6 @@ import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import scala.Option;
 import scala.Tuple2;
 
 import java.io.IOException;
@@ -83,7 +82,7 @@ public class SearchAgent {
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
         this.ordinal = ordinal;
-        this.llm = contextManager.getCoder(model, "Search: " + query);
+        this.llm = contextManager.getLlm(model, "Search: " + query);
         this.io = contextManager.getIo();
         this.toolRegistry = toolRegistry;
 

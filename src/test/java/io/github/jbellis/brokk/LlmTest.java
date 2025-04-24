@@ -104,7 +104,7 @@ public class LlmTest {
                 System.out.println("Testing model: " + modelName);
                 // Get model instance via the Models object
                 StreamingChatLanguageModel model = models.get(modelName, Project.ReasoningLevel.DEFAULT);
-                var coder = contextManager.getCoder(model, "testModels");
+                var coder = contextManager.getLlm(model, "testModels");
                 assertNotNull(model, "Failed to get model instance for: " + modelName);
 
                 // Use the non-streaming sendMessage variant for simplicity in testing basic connectivity
@@ -161,7 +161,7 @@ public class LlmTest {
                     try {
                         System.out.println("Testing tool calling for model: " + modelName);
                         StreamingChatLanguageModel model = models.get(modelName, Project.ReasoningLevel.DEFAULT);
-                        var coder = contextManager.getCoder(model, "testToolCalling");
+                        var coder = contextManager.getLlm(model, "testToolCalling");
                         assertNotNull(model, "Failed to get model instance for: " + modelName);
 
                         var messages = new ArrayList<ChatMessage>();

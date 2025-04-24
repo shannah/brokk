@@ -457,7 +457,7 @@ public class InstructionsPanel extends JPanel {
             var messages = CodePrompts.instance.askMessages(contextManager, question, model);
 
             // stream from coder using the provided model
-            var response = contextManager.getCoder(model, "Ask: " + question).sendRequest(messages, true);
+            var response = contextManager.getLlm(model, "Ask: " + question).sendRequest(messages, true);
             if (response.error() != null) {
                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
             } else if (response.chatResponse() != null && response.chatResponse().aiMessage() != null) {
@@ -671,7 +671,7 @@ public class InstructionsPanel extends JPanel {
         contextManager.submitBackgroundTask("Suggest relevant tests", () -> {
             try {
                 var quickModel = contextManager.getModels().quickModel();
-                var coder = contextManager.getCoder(quickModel, "Suggest Tests");
+                var coder = contextManager.getLlm(quickModel, "Suggest Tests");
                 var prompt = createTestSuggestionPrompt(userInput, projectTestFiles, contextManager);
                 var llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
 

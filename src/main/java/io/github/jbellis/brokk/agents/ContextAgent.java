@@ -45,7 +45,7 @@ public class ContextAgent {
     public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) {
         this.contextManager = contextManager;
         this.llm = model;
-        this.coder = contextManager.getCoder(model, "ContextAgent: " + goal); // Coder for LLM interactions
+        this.coder = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
         this.goal = goal;
         this.io = contextManager.getIo();
         try {

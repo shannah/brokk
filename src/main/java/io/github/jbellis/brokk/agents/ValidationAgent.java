@@ -52,7 +52,7 @@ public class ValidationAgent {
         }
 
         // Step 1: Initial filtering to get potentially relevant files
-        var coder = contextManager.getCoder(quickModel, "TestAgent: " + instructions);
+        var coder = contextManager.getLlm(quickModel, "TestAgent: " + instructions);
         var potentiallyRelevantFiles = getPotentiallyRelevantFiles(allTestFiles, instructions, coder);
         if (potentiallyRelevantFiles.isEmpty()) {
             logger.debug("Initial filtering found no potentially relevant test files.");
