@@ -105,7 +105,7 @@ public class CodeAgent {
             var parseResult = parser.parseEditBlocks(llmText, contextManager.getRepo().getTrackedFiles());
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks);
-
+            
             if (parseResult.parseError() == null) {
                 // No parse errors
                 parseFailures = 0;
@@ -152,6 +152,10 @@ public class CodeAgent {
                 break;
             }
 
+            // Pre-create empty files for any new files before context updates
+            // This prevents UI race conditions with file existence checks
+            EditBlock.preCreateNewFiles(newlyParsedBlocks, contextManager);
+            
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
             var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, !forArchitect);
             if (!readOnlyFiles.isEmpty()) {

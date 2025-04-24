@@ -84,6 +84,44 @@ public class EditBlock {
             super(message);
         }
     }
+    
+    /**
+     * Pre-creates empty files for SearchReplaceBlocks representing new files
+     * (those with empty beforeText). This ensures files exist on disk before
+     * they are added to the context, preventing race conditions with UI updates.
+     * 
+     * @param blocks Collection of SearchReplaceBlocks potentially containing new file creations
+     * @param contextManager The context manager for resolving file paths
+     */
+    public static void preCreateNewFiles(Collection<SearchReplaceBlock> blocks, IContextManager contextManager) {
+        var io = contextManager.getIo();
+        for (SearchReplaceBlock block : blocks) {
+            // Skip blocks that aren't for new files (new files have empty beforeText)
+            if (block.filename() == null || !block.beforeText().trim().isEmpty()) {
+                continue;
+            }
+            
+            // Resolve the file path (same logic used in applyEditBlocks)
+            ProjectFile file;
+            try {
+                file = resolveProjectFile(contextManager, block.filename(), true);
+            } catch (SymbolNotFoundException | SymbolAmbiguousException e) {
+                logger.debug("Failed to resolve file for pre-creation: {}", e.getMessage());
+                continue;
+            }
+            
+            // Create the empty file if it doesn't exist yet
+            if (!file.exists()) {
+                try {
+                    file.write(""); // Using ProjectFile.write handles directory creation internally
+                    logger.debug("Pre-created empty file: {}", file);
+                } catch (IOException e) {
+                    logger.error("Failed to pre-create empty file {}: {}", file, e.getMessage());
+                    io.toolError("Failed to create empty file " + file + ": " + e.getMessage());
+                }
+            }
+        }
+    }
 
     /**
      * Parse the LLM response for SEARCH/REPLACE blocks and apply them.
