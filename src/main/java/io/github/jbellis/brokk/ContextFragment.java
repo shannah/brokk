@@ -778,6 +778,10 @@ public interface ContextFragment extends Serializable {
             );
         }
 
+        public Map<CodeUnit, String> skeletons() {
+            return skeletons;
+        }
+
         @Override
         public String syntaxStyle() {
             return SyntaxConstants.SYNTAX_STYLE_JAVA;
