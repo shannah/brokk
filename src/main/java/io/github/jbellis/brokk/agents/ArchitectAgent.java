@@ -51,7 +51,7 @@ public class ArchitectAgent {
     private final List<ChatMessage> architectMessages = new ArrayList<>();
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
-    private AtomicInteger searchAgentId = new AtomicInteger(1);
+    private final AtomicInteger searchAgentId = new AtomicInteger(1);
 
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
@@ -238,7 +238,8 @@ public class ArchitectAgent {
                                         "addClassSummariesToWorkspace",
                                         "addMethodSourcesToWorkspace",
                                         "addCallGraphInToWorkspace",
-                                        "addCallGraphOutToWorkspace");
+                                        "addCallGraphOutToWorkspace",
+                                        "getFiles");
             if (!contextManager.getAnalyzer().isEmpty()) {
                 toolSpecs.addAll(toolRegistry.getRegisteredTools(analyzerTools));
             }

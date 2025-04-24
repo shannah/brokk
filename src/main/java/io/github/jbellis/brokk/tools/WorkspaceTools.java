@@ -347,6 +347,47 @@ public class WorkspaceTools {
         return "Added %d method source(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
     }
 
+    @Tool("Returns the file paths relative to the project root for the given fully-qualified class names.")
+    public String getFiles(
+            @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util'])")
+            List<String> classNames
+    ) {
+        assert !getAnalyzer().isEmpty() : "Cannot get files: Code analyzer is not available.";
+        if (classNames == null || classNames.isEmpty()) {
+            throw new IllegalArgumentException("Class names list cannot be empty.");
+        }
+
+        List<String> foundFiles = new ArrayList<>();
+        List<String> notFoundClasses = new ArrayList<>();
+        var analyzer = getAnalyzer();
+
+        classNames.stream().distinct().forEach(className -> {
+            if (className == null || className.isBlank()) {
+                notFoundClasses.add("<blank or null>");
+                return;
+            }
+            var fileOpt = analyzer.getFileFor(className);
+            if (fileOpt.isDefined()) {
+                foundFiles.add(fileOpt.get().toString());
+            } else {
+                notFoundClasses.add(className);
+                logger.warn("Could not find file for class: {}", className);
+            }
+        });
+
+        if (foundFiles.isEmpty()) {
+             return "Could not find files for any of the provided class names: " + String.join(", ", classNames);
+        }
+
+        String resultMessage = "Files found: " + String.join(", ", foundFiles.stream().sorted().toList()); // Sort for consistent output
+
+        if (!notFoundClasses.isEmpty()) {
+            resultMessage += ". Could not find files for the following classes: [%s]".formatted(String.join(", ", notFoundClasses));
+        }
+
+        return resultMessage;
+    }
+
     // disabled until we can do this efficiently in Joern
 //    @Tool(value = """
 //    Retrieves the full source code of specified classes and adds each as a separate read-only text fragment.
