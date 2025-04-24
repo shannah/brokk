@@ -790,7 +790,7 @@ public class Llm {
         logger.trace("Generated tool execution requests: {}", toolExecutionRequests);
 
         // Create a properly formatted AiMessage with tool execution requests
-        var aiMessage = new AiMessage("[json]", toolExecutionRequests);
+        var aiMessage = new AiMessage(Messages.EMULATED_TOOL_CALLS, toolExecutionRequests);
         var cr = ChatResponse.builder().aiMessage(aiMessage).build();
         return new StreamingResult(cr, result.originalResponse, null);
     }

@@ -52,7 +52,7 @@ public class ToolRegistry {
     """)
     public String think(@P("The step-by-step reasoning to work through") String reasoning) {
         contextManager.getIo().llmOutput("\n" + reasoning, ChatMessageType.AI);
-        return "I've thought through this problem: " + reasoning;
+        return "Good thinking";
     }
 
     /**

@@ -5,10 +5,10 @@ import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
+import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -445,6 +445,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
+        // don't output our placeholder for emulated tool calls
+        if (token.equals(Messages.EMULATED_TOOL_CALLS)) {
+            return;
+        }
         // TODO: use messageSubType later on
         SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token, type));
     }
