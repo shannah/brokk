@@ -103,7 +103,7 @@ public class ContextAgent {
             var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
             logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
                          ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
-            rawSummaries = ac.fragment().skeletons();
+            rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
         } else {
             rawSummaries = getProjectSummaries(allFiles);
         }

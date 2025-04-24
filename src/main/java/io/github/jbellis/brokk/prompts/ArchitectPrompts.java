@@ -25,7 +25,8 @@ public abstract class ArchitectPrompts extends CodePrompts {
         if (cm.getProject().getAnalyzerLanguage() != Language.None) {
             var ac = cm.topContext().setAutoContextFiles(10).buildAutoContext();
             topClassesRaw = ac.text();
-            var topClassesText = topClassesRaw.isBlank() ? "" : """
+            if (!topClassesRaw.isBlank()) {
+                var topClassesText = topClassesRaw.isBlank() ? "" : """
                     <related_classes>
                     Here are some classes that may be related to what is in your Workspace. If relevant, you
                     should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
@@ -34,8 +35,9 @@ public abstract class ArchitectPrompts extends CodePrompts {
                     %s
                     </related_classes>
                     """.stripIndent().formatted(topClassesRaw);
-            messages.add(new UserMessage(topClassesText));
-            messages.add(new AiMessage("I will examine these classes."));
+                messages.add(new UserMessage(topClassesText));
+                messages.add(new AiMessage("I will examine these classes."));
+            }
         }
         return messages;
     }
