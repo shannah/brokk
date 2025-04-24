@@ -54,6 +54,7 @@ public class InstructionsPanel extends JPanel {
     private final JButton searchButton;
     private final JButton runButton;
     private final JButton stopButton;
+    private final JButton configureModelsButton; // Added configure models button
     private final JTextArea systemArea; // Moved from HistoryOutputPanel
     private final JScrollPane systemScrollPane; // Moved from HistoryOutputPanel
     private final JLabel commandResultLabel; // Moved from HistoryOutputPanel
@@ -110,7 +111,11 @@ public class InstructionsPanel extends JPanel {
         stopButton.setToolTipText("Cancel the current operation");
         stopButton.addActionListener(e -> chrome.getContextManager().interruptUserActionThread());
 
-        // Top Bar (History, Model, Stop) (North)
+        configureModelsButton = new JButton("Configure Models...");
+        configureModelsButton.setToolTipText("Open settings to configure AI models");
+        configureModelsButton.addActionListener(e -> SettingsDialog.showSettingsDialog(chrome, "Models"));
+
+        // Top Bar (History, Configure Models, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
         add(topBarPanel, BorderLayout.NORTH);
 
@@ -173,6 +178,7 @@ public class InstructionsPanel extends JPanel {
         historyButton.setToolTipText("Select a previous instruction from history");
         historyButton.addActionListener(e -> showHistoryMenu(historyButton));
         leftPanel.add(historyButton);
+        leftPanel.add(configureModelsButton); // Add the new button here
 
         topBarPanel.add(leftPanel, BorderLayout.WEST);
 
@@ -918,6 +924,7 @@ public class InstructionsPanel extends JPanel {
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
             micButton.setEnabled(false);
+            configureModelsButton.setEnabled(false); // Disable configure models button during action
             chrome.disableHistoryPanel();
         });
     }
@@ -933,6 +940,7 @@ public class InstructionsPanel extends JPanel {
             runButton.setEnabled(true); // Run in shell is always available
             stopButton.setEnabled(false);
             micButton.setEnabled(true);
+            configureModelsButton.setEnabled(projectLoaded); // Enable configure models if project loaded
             chrome.enableHistoryPanel();
         });
     }
