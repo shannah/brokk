@@ -279,7 +279,13 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             return;
         }
 
-        setText(taskEntry.log());
+        if (taskEntry.isCompressed()) {
+            setText(List.of(Messages.customSystem(taskEntry.summary())));
+        } else {
+            var taskFragment = taskEntry.log();
+            setParser(taskFragment.parser());
+            setText(taskFragment.messages());
+        }
     }
 
     /**

@@ -564,7 +564,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 for (TaskEntry entry : taskEntries) {
                     var markdownPanel = new MarkdownOutputPanel();
                     markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
-                    markdownPanel.setText(entry.log());
+                    markdownPanel.setText(entry);
                     markdownPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.GRAY));
                     messagesContainer.add(markdownPanel);
                 }
