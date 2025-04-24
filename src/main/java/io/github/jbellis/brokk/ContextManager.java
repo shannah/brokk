@@ -858,6 +858,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .filter(TaskEntry::isCompressed)
                 .map(TaskEntry::toString)
                 .collect(Collectors.joining("\n\n"));
+
+
         if (!compressed.isEmpty()) {
             messages.add(new UserMessage("<taskhistory>%s</taskhistory>".formatted(compressed)));
             messages.add(new AiMessage("Ok, I see the history."));
@@ -867,6 +869,22 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .filter(e -> !e.isCompressed())
                 .forEach(e -> messages.addAll(e.log().messages()));
 
+        return messages;
+    }
+
+    public List<ChatMessage> getHistoryMessagesForCopy()
+    {
+        var taskHistory = topContext().getTaskHistory();
+
+        var messages = new ArrayList<ChatMessage>();
+        var allTaskEntries = taskHistory.stream()
+                .map(TaskEntry::toString)
+                .collect(Collectors.joining("\n\n"));
+
+
+        if (!allTaskEntries.isEmpty()) {
+            messages.add(new UserMessage("<taskhistory>%s</taskhistory>".formatted(allTaskEntries)));
+        }
         return messages;
     }
 
