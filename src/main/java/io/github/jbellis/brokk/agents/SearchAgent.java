@@ -7,10 +7,7 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -50,7 +47,8 @@ public class SearchAgent {
     private static final int SUMMARIZE_THRESHOLD = 1000;
 
     private final IAnalyzer analyzer;
-    private final boolean interactive;
+    // Architect can create multiple concurrent SearchAgents
+    private final int ordinal;
     private final ContextManager contextManager;
     private final Llm llm;
     private final IConsoleIO io;
@@ -79,12 +77,12 @@ public class SearchAgent {
                        ContextManager contextManager,
                        StreamingChatLanguageModel model,
                        ToolRegistry toolRegistry,
-                       boolean interactive) throws InterruptedException
+                       int ordinal) throws InterruptedException
     {
         this.query = query;
         this.contextManager = contextManager;
         this.analyzer = contextManager.getProject().getAnalyzer();
-        this.interactive = interactive;
+        this.ordinal = ordinal;
         this.llm = contextManager.getCoder(model, "Search: " + query);
         this.io = contextManager.getIo();
         this.toolRegistry = toolRegistry;
@@ -220,7 +218,7 @@ public class SearchAgent {
                                                 text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n\n"));
         if (!contextWithClasses.isBlank()) {
-            io.systemOutput("Evaluating context..."); // Updated log message
+            llmOutput("\nEvaluating context...");
             var messages = new ArrayList<ChatMessage>();
             messages.add(new SystemMessage("""
                        You are an expert software architect.
@@ -248,7 +246,7 @@ public class SearchAgent {
         while (true) {
             // If thread interrupted, trigger Beast Mode for a final attempt
             if (Thread.interrupted()) {
-                if (beastMode || !interactive) {
+                if (beastMode || !isInteractive()) {
                     logger.debug("Search Agent interrupted effective immediately");
                     // caller will display to user
                     throw new InterruptedException();
@@ -262,7 +260,7 @@ public class SearchAgent {
             // Check if action history is now more than our budget, trigger Beast Mode if so
             if (!beastMode && actionHistorySize() > 0.90 * TOKEN_BUDGET) {
                 logger.debug("Token budget exceeded, attempting final answer (Beast Mode)...");
-                io.systemOutput("Token budget reached, attempting final answer");
+                llmOutput("Token budget reached, attempting final answer");
                 beastMode = true;
             }
 
@@ -361,6 +359,14 @@ public class SearchAgent {
                 }
             }
         }
+    }
+
+    private void llmOutput(String output) {
+        io.llmOutput("\n[Search #%d] %s".formatted(ordinal, output), ChatMessageType.AI);
+    }
+
+    private boolean isInteractive() {
+        return ordinal == 0;
     }
 
     private SessionResult errorResult(SessionResult.StopDetails details) {
@@ -879,7 +885,7 @@ public class SearchAgent {
 
             var explanation = getExplanationForToolRequest(request);
             if (!explanation.isBlank()) {
-                io.systemOutput(explanation);
+                llmOutput(explanation);
             }
 
             ToolExecutionResult result = Set.of("answerSearch", "abortSearch").contains(request.name())

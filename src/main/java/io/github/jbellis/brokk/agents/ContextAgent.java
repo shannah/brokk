@@ -13,7 +13,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +35,12 @@ public class ContextAgent {
     private final IAnalyzer analyzer;
 
     private final int maxInputTokens;
-    private final int budgetSmall;
-    private final int budgetMedium;
-    private final int budgetFilenameLimit;
+    // if the entire project fits in the Skip Pruning budget, just include it all and call it good
+    private final int skipPruningBudget;
+    // if our to-prune context is larger than the Pruning budget then we give up
+    private final int budgetPruning;
+    // if our pruned context is larger than the Final target budget then we also give up
+    private final int finalBudget;
 
     public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) {
         this.contextManager = contextManager;
@@ -54,14 +56,11 @@ public class ContextAgent {
         }
 
         this.maxInputTokens = contextManager.getModels().getMaxInputTokens(model);
-        // Rule 1: Smallest budget, add everything if it fits
-        this.budgetSmall = min(32_000, maxInputTokens / 4);
-        // Rule 2: Medium budget, ask LLM to pick relevant if all data fits
-        this.budgetMedium = maxInputTokens / 2;
-        // Rule 3: Filename budget, use filenames first if data is too large
-        this.budgetFilenameLimit = (int) (maxInputTokens * 0.9);
+        this.skipPruningBudget = min(32_000, maxInputTokens / 4);
+        this.finalBudget = maxInputTokens / 2;
+        this.budgetPruning = (int) (maxInputTokens * 0.9);
 
-        logger.debug("ContextAgent initialized. Budgets: Small={}, Medium={}, FilenameLimit={}", budgetSmall, budgetMedium, budgetFilenameLimit);
+        logger.debug("ContextAgent initialized. Budgets: Small={}, Medium={}, FilenameLimit={}", skipPruningBudget, finalBudget, budgetPruning);
     }
 
     /**
@@ -70,19 +69,35 @@ public class ContextAgent {
      * potentially using LLM inference, and adds the selected content to the workspace.
      */
     public void execute() throws InterruptedException {
-        // create a List from the Set
-        var allFilesList = new ArrayList<>(contextManager.getRepo().getTrackedFiles());
+        var allFiles = contextManager.getRepo().getTrackedFiles().stream().sorted().toList();
 
+        var singlePassSuccess = analyzer.isEmpty()
+                                ? executeWithFileContents(allFiles)
+                                : executeWithSummaries(allFiles);
+        if (singlePassSuccess) {
+            return;
+        }
+
+        // do two passes starting with filenames
+        var filenameString = getFilenameString(allFiles);
+        int filenameTokens = Messages.getApproximateTokens(filenameString);
+        logger.debug("Total tokens for filename list: {}", filenameTokens);
+        if (filenameTokens > budgetPruning) {
+            logGiveUp("filename list");
+            return; // too large for us to handle
+        }
+
+        var prunedFiles = pruneFilenames(allFiles);
         if (analyzer.isEmpty()) {
-            executeWithFileContents(allFilesList);
+            executeWithFileContents(prunedFiles);
         } else {
-            executeWithSummaries(allFilesList);
+            executeWithSummaries(prunedFiles);
         }
     }
 
     // --- Logic branch for using class summaries ---
 
-    private void executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
+    private boolean executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
@@ -97,28 +112,18 @@ public class ContextAgent {
         logger.debug("Total tokens for {} summaries: {}", rawSummaries.size(), summaryTokens);
 
         // Rule 1: Use all summaries if they fit the smallest budget
-        if (summaryTokens <= budgetSmall) {
+        if (summaryTokens <= skipPruningBudget) {
             addSummariesToWorkspace(rawSummaries, "all summaries");
-            return;
+            return true;
         }
 
-        // Rule 2: Ask LLM to pick relevant summaries if all summaries fit the medium budget
-        if (summaryTokens <= budgetMedium) {
+        // Rule 2: Ask LLM to pick relevant summaries if all summaries fit the Pruning budget
+        if (summaryTokens <= budgetPruning) {
             askLlmToSelectSummaries(rawSummaries);
-            return;
+            return true;
         }
 
-        // Rule 3: Use filenames first if summaries are too large
-        var filenameString = getFilenameString(allFiles);
-        int filenameTokens = Messages.getApproximateTokens(filenameString);
-        logger.debug("Total tokens for filename list: {}", filenameTokens);
-
-        if (filenameTokens <= budgetFilenameLimit) {
-            executeWithFilenamesFirst(allFiles, true); // true indicates we aim for summaries
-        } else {
-            // Rule 4: Filenames too large, give up
-            logGiveUp("filename list");
-        }
+        return false;
     }
 
     /**
@@ -180,29 +185,25 @@ public class ContextAgent {
         }
 
         var responseText = result.chatResponse().aiMessage().text();
-        var relevantClassNames = parseLlmResponseLines(responseText);
-        logger.debug("LLM suggested {} relevant classes: {}", relevantClassNames.size(), relevantClassNames);
-
         var relevantSummaries = summaries.entrySet().stream()
-                .filter(entry -> relevantClassNames.contains(entry.getKey().fqName()))
+                .filter(e -> responseText.contains(e.getKey().fqName()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-        if (relevantSummaries.isEmpty()) {
-            logger.debug("LLM did not identify any relevant summaries. Skipping context population.");
-            return;
-        }
+        logger.debug("LLM suggested {} relevant classes", relevantSummaries.size());
 
         // Check budget *after* LLM selection
         int relevantSummaryTokens = Messages.getApproximateTokens(String.join("\n", relevantSummaries.values()));
-        if (relevantSummaryTokens <= budgetSmall) { // Re-use small budget here
-            addSummariesToWorkspace(relevantSummaries, "LLM-selected summaries");
+        if (relevantSummaryTokens <= finalBudget) {
+            addSummariesToWorkspace(relevantSummaries, "summaries");
         } else {
-            logger.debug("LLM-selected summaries ({} tokens) still exceed budget ({}). Aborting.", relevantSummaryTokens, budgetSmall);
-            logGiveUp("LLM-selected summaries");
+            logger.debug("summaries ({} tokens) still exceed budget ({}). Aborting.", relevantSummaryTokens, skipPruningBudget);
+            logGiveUp("summaries");
         }
     }
 
     private void addSummariesToWorkspace(Map<CodeUnit, String> summaries, String description) {
+        if (summaries.isEmpty()) {
+            return;
+        }
         var fragment = new ContextFragment.SkeletonFragment(summaries);
         contextManager.addVirtualFragment(fragment);
         int tokens = Messages.getApproximateTokens(String.join("\n", summaries.values()));
@@ -213,10 +214,10 @@ public class ContextAgent {
 
     // --- Logic branch for using full file contents ---
 
-    private void executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
+    private boolean executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             logger.debug("Non-empty context and no anlyzer present, skipping context population");
-            return;
+            return true;
         }
 
         var allContentsMap = readFileContents(allFiles);
@@ -224,28 +225,18 @@ public class ContextAgent {
         logger.debug("Total tokens for {} files' content: {}", allFiles.size(), contentTokens);
 
         // Rule 1: Use all files if content fits the smallest budget
-        if (contentTokens <= budgetSmall) {
+        if (contentTokens <= skipPruningBudget) {
             addFilesToWorkspace(allFiles, "all files");
-            return;
+            return true;
         }
 
-        // Rule 2: Ask LLM to pick relevant files if all content fits the medium budget
-        if (contentTokens <= budgetMedium) {
+        // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
+        if (contentTokens <= budgetPruning) {
             askLlmToSelectFiles(allFiles, allContentsMap);
-            return;
+            return true;
         }
 
-        // Rule 3: Use filenames first if content is too large
-        var filenameString = getFilenameString(allFiles);
-        int filenameTokens = Messages.getApproximateTokens(filenameString);
-        logger.debug("Total tokens for filename list: {}", filenameTokens);
-
-        if (filenameTokens <= budgetFilenameLimit) {
-            executeWithFilenamesFirst(allFiles, false); // false indicates we aim for file contents
-        } else {
-            // Rule 4: Filenames too large, give up
-            logGiveUp("filename list");
-        }
+        return false;
     }
 
     private Map<ProjectFile, String> readFileContents(Collection<ProjectFile> files) {
@@ -296,46 +287,33 @@ public class ContextAgent {
         }
 
         var responseText = result.chatResponse().aiMessage().text();
-        var relevantFilePaths = parseLlmResponseLines(responseText);
-        logger.debug("LLM suggested {} relevant file paths: {}", relevantFilePaths.size(), relevantFilePaths);
-
-        // Create a map of path string to ProjectFile for quick lookup
-        var pathToProjectFileMap = allFiles.stream()
-                .collect(Collectors.toMap(ProjectFile::toString, f -> f));
-
-        var relevantFiles = relevantFilePaths.stream()
-                .map(pathToProjectFileMap::get)
-                .filter(java.util.Objects::nonNull) // Filter out any paths not found in the original list
+        var relevantFiles = allFiles.stream()
+                .filter(f -> responseText.contains(f.toString()))
                 .toList();
-
-        if (relevantFiles.isEmpty()) {
-            logger.debug("LLM did not identify any relevant files or paths were incorrect. Skipping context population.");
-            return;
-        }
 
         // Check budget *after* LLM selection
         var relevantContentsMap = readFileContents(relevantFiles); // Read only relevant files now
         int relevantContentTokens = Messages.getApproximateTokens(String.join("\n", relevantContentsMap.values()));
-        if (relevantContentTokens <= budgetSmall) { // Re-use small budget here
-            addFilesToWorkspace(relevantFiles, "LLM-selected files");
+        if (relevantContentTokens <= finalBudget) {
+            addFilesToWorkspace(relevantFiles, "files");
         } else {
-            logger.debug("LLM-selected file contents ({} tokens) still exceed budget ({}). Aborting.", relevantContentTokens, budgetSmall);
-            logGiveUp("LLM-selected file contents");
+            logger.debug("file contents ({} tokens) still exceed budget ({}). Aborting.", relevantContentTokens, skipPruningBudget);
+            logGiveUp("file contents");
         }
     }
 
     private void addFilesToWorkspace(List<ProjectFile> files, String description) {
-        contextManager.addReadOnlyFiles(files);
-        // Estimate tokens again based on actual files added (might differ slightly if some failed read previously)
-        var addedContents = readFileContents(files);
-        int tokens = Messages.getApproximateTokens(String.join("\n", addedContents.values()));
-        logger.debug("Added {} read-only files ({}) to workspace ({} tokens)", files.size(), description, tokens);
+        if (files.isEmpty()) {
+            return;
+        }
+        contextManager.editFiles(files);
+        logger.debug("Added {} read-only files ({}) to workspace", files.size(), description);
         io.systemOutput("Added content of %d %s to workspace".formatted(files.size(), description));
     }
 
     // --- Logic for Rule 3: Use filenames first ---
 
-    private void executeWithFilenamesFirst(List<ProjectFile> allFiles, boolean aimForSummaries) throws InterruptedException {
+    private List<ProjectFile> pruneFilenames(List<ProjectFile> allFiles) throws InterruptedException {
         var filenameString = getFilenameString(allFiles);
 
         var systemMessage = """
@@ -359,65 +337,13 @@ public class ContextAgent {
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error or empty response from LLM during filename selection: {}. Aborting context population.",
                         result.error() != null ? result.error().getMessage() : "Empty response");
-            return;
+            return List.of();
         }
 
         var responseText = result.chatResponse().aiMessage().text();
-        var relevantFilePaths = parseLlmResponseLines(responseText);
-        logger.debug("LLM suggested {} potentially relevant file paths: {}", relevantFilePaths.size(), relevantFilePaths);
-
-        // Create a map of path string to ProjectFile for quick lookup
-        var pathToProjectFileMap = allFiles.stream()
-                .collect(Collectors.toMap(ProjectFile::toString, f -> f));
-
-        var relevantFiles = relevantFilePaths.stream()
-                .map(pathToProjectFileMap::get)
-                .filter(java.util.Objects::nonNull) // Filter out any paths not found in the original list
+        return allFiles.stream()
+                .filter(f -> responseText.contains(f.toString()))
                 .toList();
-
-        if (relevantFiles.isEmpty()) {
-            logger.debug("LLM did not identify any potentially relevant files or paths were incorrect based on filename list. Skipping context population.");
-            return;
-        }
-
-        logger.debug("Proceeding to check budgets for the {} potentially relevant files.", relevantFiles.size());
-
-        // --- Stage 2: Apply Rules 1 & 2 to the subset ---
-        if (aimForSummaries) {
-            var subsetSummaries = getProjectSummaries(relevantFiles);
-            if (subsetSummaries.isEmpty()) {
-                logger.debug("No summaries found for potentially relevant files. Aborting.");
-                return;
-            }
-            int subsetTokens = Messages.getApproximateTokens(String.join("\n", subsetSummaries.values()));
-            logger.debug("Tokens for summaries of potentially relevant files: {}", subsetTokens);
-            if (subsetTokens <= budgetSmall) { // Rule 1 check on subset
-                addSummariesToWorkspace(subsetSummaries, "summaries from LLM-selected files");
-            } else if (subsetTokens <= budgetMedium) { // Rule 2 check on subset
-                logger.debug("Subset summaries ({}) exceed small budget ({}), asking LLM to select again.", subsetTokens, budgetSmall);
-                askLlmToSelectSummaries(subsetSummaries); // Pass subset to select *from*
-            } else {
-                logger.debug("Summaries of potentially relevant files ({}) exceed medium budget ({}). Aborting.", subsetTokens, budgetMedium);
-                logGiveUp("summaries of potentially relevant files");
-            }
-        } else { // Aim for full contents
-            var subsetContentsMap = readFileContents(relevantFiles);
-            if (subsetContentsMap.isEmpty()) {
-                logger.debug("Could not read content for potentially relevant files. Aborting.");
-                return;
-            }
-            int subsetTokens = Messages.getApproximateTokens(String.join("\n", subsetContentsMap.values()));
-            logger.debug("Tokens for content of potentially relevant files: {}", subsetTokens);
-            if (subsetTokens <= budgetSmall) { // Rule 1 check on subset
-                addFilesToWorkspace(relevantFiles, "content from LLM-selected files");
-            } else if (subsetTokens <= budgetMedium) { // Rule 2 check on subset
-                logger.debug("Subset content ({}) exceeds small budget ({}), asking LLM to select again.", subsetTokens, budgetSmall);
-                askLlmToSelectFiles(relevantFiles, subsetContentsMap); // Pass subset to select *from*
-            } else {
-                logger.debug("Content of potentially relevant files ({}) exceed medium budget ({}). Aborting.", subsetTokens, budgetMedium);
-                logGiveUp("content of potentially relevant files");
-            }
-        }
     }
 
 
@@ -427,13 +353,6 @@ public class ContextAgent {
         return files.stream()
                 .map(ProjectFile::toString)
                 .collect(Collectors.joining("\n"));
-    }
-
-    private List<String> parseLlmResponseLines(String response) {
-        return response.lines()
-                .map(String::strip)
-                .filter(line -> !line.isEmpty())
-                .toList();
     }
 
     private void logGiveUp(String itemDescription) {

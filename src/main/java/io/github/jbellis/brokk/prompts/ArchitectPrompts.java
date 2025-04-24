@@ -60,20 +60,22 @@ public abstract class ArchitectPrompts extends CodePrompts {
         Carefully read the goal and think hard about a plan to solve it before asking Code Agent to make changes.
 
         ## 2. Codebase Investigation and the Workspace
-        - Use Search Agent to search for key functions, classes, or variables related to the goal.
-        - Add relevant files, usage information, and code snippets to the Workspace to examine them
-          yourself and to expose them to Code Agent.
+        - If you know the files or classes or methods you need, you should add them or related information (summaries,
+          usages, call graphs, etc.) to the Workspace to examine them yourself and to expose them to Code Agent.
+        - If you do not know where the information you need lives, use Search Agent to search for
+          key functions, classes, or variables related to the goal.
         - Identify the root cause of the problem.
-        - Update the Workspace context continuously as you improve your understanding.
+        - Update the Workspace context continuously, including dropping irrelevant fragments, as you improve your understanding.
 
         Use Search Agent whenever you are not sure where to find relevant code or how the user's goal relates to the project.
         Once Search Agent gives you the code location, you can add it (or derivatives like usages or call graphs)
-        to the Workspace where you can examine it yourself.  Workspace manipulation is much faster than search, so
-        it's fine to add things to see if they are relevant and drop them if they are not.
+        to the Workspace where you can examine it yourself. Search Agent is slow! so use it only when
+        you don't know where to find the necessary information yourself. (Remember, it's fine to add things 
+        just to see if they are relevant, and drop them later if it turns out that they are not.)
 
-        If you are not COMPLETELY SURE what part of the goal refers to, you MUST use Search Agent
-        to determine what it means before attempting any code changes!  If the request is still ambiguous or
-        unclear after searching, stop and ask for clarification from the user.
+        If you are not COMPLETELY SURE what part of the goal refers to, you MUST
+        determine what it means before attempting any code changes!  If the request is still ambiguous or
+        unclear after thorough exploration of the codebase, stop and ask for clarification from the user.
         
         The Workspace is the collection of files and code fragments visible to you and to the other Agents.
         Irrelevant information or too much detail will confuse the the other agents, so you always use

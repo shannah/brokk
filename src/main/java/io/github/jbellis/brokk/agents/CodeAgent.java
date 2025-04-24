@@ -119,7 +119,7 @@ public class CodeAgent {
                         break;
                     }
                     allMessages.add(new UserMessage(parseResult.parseError()));
-                    io.systemOutput("Failed to parse LLM response; retrying");
+                    io.llmOutput("Failed to parse LLM response; retrying", ChatMessageType.CUSTOM);
                 } else {
                     // Partial parse => ask LLM to continue from last parsed block
                     parseFailures = 0;
@@ -133,7 +133,8 @@ public class CodeAgent {
                             Please continue from there (WITHOUT repeating that one).
                             """.stripIndent().formatted(newlyParsedBlocks.getLast());
                     allMessages.add(new UserMessage(partialMsg));
-                    io.systemOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()));
+                    io.llmOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()),
+                                 ChatMessageType.CUSTOM);
                 }
                 continue;
             }
@@ -168,7 +169,7 @@ public class CodeAgent {
             var editResult = EditBlock.applyEditBlocks(contextManager, io, blocks);
             if (editResult.hadSuccessfulEdits()) {
                 int succeeded = blocks.size() - editResult.failedBlocks().size();
-                io.llmOutput("\n" + succeeded + " SEARCH/REPLACE blocks applied.", ChatMessageType.SYSTEM);
+                io.llmOutput("\n" + succeeded + " SEARCH/REPLACE blocks applied.", ChatMessageType.CUSTOM);
             }
             editResult.originalContents().forEach(originalContents::putIfAbsent);
             int succeededCount = (blocks.size() - editResult.failedBlocks().size());
@@ -198,7 +199,7 @@ public class CodeAgent {
                                                               contextManager);
                 if (!parseRetryPrompt.isEmpty()) {
                     if (applyFailures >= MAX_PARSE_ATTEMPTS) {
-                        io.systemOutput("Parse/Apply retry limit reached; ending session");
+                        io.systemOutput("Diff-apply retry limit reached; ending session");
                         // Capture filenames from the failed blocks for details
                         var failedFilenames = editResult.failedBlocks().stream()
                                 .map(fb -> fb.block().filename())
@@ -208,7 +209,6 @@ public class CodeAgent {
                         stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, failedFilenames);
                         break;
                     }
-                    io.systemOutput("Attempting to fix apply/match errors...");
                     allMessages.add(new UserMessage(parseRetryPrompt));
                     continue;
                 }
@@ -234,7 +234,6 @@ public class CodeAgent {
 
             // If the build failed after applying edits, create the next request for the LLM
             // (formatBuildErrorsForLLM includes instructions to stop if not progressing)
-            io.systemOutput("Attempting to fix build errors...");
             allMessages.add(new UserMessage(formatBuildErrorsForLLM(buildError)));
         }
 
@@ -686,9 +685,8 @@ public class CodeAgent {
 
             // we don't send file details to the output
             var summary = """
-                    %s
-                    %s
-                    """.stripIndent().formatted(instructions, successNote);
+                    \nFailed to apply %s of %s diff blocks, retrying
+                    """.stripIndent().formatted(failedBlocks.size(), failedBlocks.size() + succeededCount);
             io.llmOutput(summary, ChatMessageType.CUSTOM);
 
             // Construct the full message for the LLM
@@ -707,27 +705,26 @@ public class CodeAgent {
      */
     private static String checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io) throws InterruptedException {
         if (verificationCommand == null) {
-            io.systemOutput("No verification command specified, skipping build check.");
-            return ""; // Treat skipped build as success for workflow purposes
+            io.llmOutput("\nNo verification command specified, skipping build/check.", ChatMessageType.CUSTOM);
+            return "";
         }
 
-        io.systemOutput("Running verification command: " + verificationCommand);
+        io.llmOutput("Running verification command: " + verificationCommand, ChatMessageType.CUSTOM);
         var result = Environment.instance.captureShellCommand(verificationCommand, cm.getProject().getRoot());
         logger.debug("Verification command result: {}", result);
 
         if (result.error() == null) {
-            io.systemOutput("Verification successful!");
+            io.llmOutput("\n## Verification successful", ChatMessageType.CUSTOM);
             return "";
         }
 
         // Build failed
         io.llmOutput("""
-                             **Verification Failed:** %s
+                             \n**Verification Failed:** %s
                              ```
                              %s
                              ```
                              """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM, IConsoleIO.MessageSubType.BuildError);
-        io.systemOutput("Verification failed (details above)");
         // Add the combined error and output to the history for the next request
         return result.error() + "\n\n" + result.output();
     }

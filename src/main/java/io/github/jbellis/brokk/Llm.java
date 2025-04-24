@@ -441,7 +441,7 @@ public class Llm {
                 }
 
                 // Otherwise, add the failed AI message and a new user message with retry instructions
-                io.systemOutput("Retry " + attempt + "/" + (maxTries - 1) + ": Invalid JSON response, requesting proper format.");
+                io.llmOutput("\nRetry " + attempt + "/" + (maxTries - 1) + ": Invalid JSON response, requesting proper format.", ChatMessageType.CUSTOM);
                 // Add the raw response that failed parsing
                 attemptMessages.add(new AiMessage(lastResponse.aiMessage().text()));
                 // Add the user message requesting correction

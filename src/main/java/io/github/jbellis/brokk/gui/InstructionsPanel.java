@@ -526,7 +526,7 @@ public class InstructionsPanel extends JPanel {
         }
         try {
             var contextManager = chrome.getContextManager();
-            var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry(), true);
+            var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry(), 0);
             var result = agent.execute();
             assert result != null;
             // Search does not stream to llmOutput, so set the final answer here
@@ -593,7 +593,7 @@ public class InstructionsPanel extends JPanel {
         clearCommandInput();
 
         // Submit the action, calling the private execute method inside the lambda, passing the goal
-        contextManager.submitAction("Architect", "Executing project...", () -> executeAgentCommand(architectModel, goal));
+        contextManager.submitAction("Architect", goal, () -> executeAgentCommand(architectModel, goal));
     }
 
     // Methods for running commands. These prepare the input and model, then delegate

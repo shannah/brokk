@@ -1,12 +1,14 @@
 package io.github.jbellis.brokk.analyzer;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public interface BrokkFile extends Serializable {
+public interface BrokkFile extends Serializable, Comparable<BrokkFile> {
     Path absPath();
 
     default String read() throws IOException {
@@ -39,4 +41,8 @@ public interface BrokkFile extends Serializable {
     @Override
     String toString();
 
+    @Override
+    default int compareTo(@NotNull BrokkFile o) {
+        return absPath().compareTo(o.absPath());
+    }
 }

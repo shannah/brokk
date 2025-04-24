@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -50,6 +51,7 @@ public class ArchitectAgent {
     private final List<ChatMessage> architectMessages = new ArrayList<>();
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
+    private AtomicInteger searchAgentId = new AtomicInteger(1);
 
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
@@ -119,6 +121,8 @@ public class ArchitectAgent {
             logger.debug("ValidationAgent found no relevant test files to add");
         }
 
+        // TODO label this Architect
+        io.llmOutput("\n" + instructions, ChatMessageType.CUSTOM);
         var result = new CodeAgent(contextManager, contextManager.getEditModel()).runSession(instructions, true);
         var stopDetails = result.stopDetails();
         var reason = stopDetails.reason();
@@ -184,7 +188,7 @@ public class ArchitectAgent {
         logger.debug("callSearchAgent invoked with query: {}", query);
 
         // Instantiate and run SearchAgent
-        var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry, false);
+        var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry, searchAgentId.getAndIncrement());
         var result = searchAgent.execute();
         if (result.stopDetails().reason() == SessionResult.StopReason.LLM_ERROR) {
             throw new FatalLlmException(result.stopDetails().explanation());
@@ -217,6 +221,7 @@ public class ArchitectAgent {
         io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
         // ContextAgent modifies workspace in-place
+        io.llmOutput("\nComputing initial context", ChatMessageType.CUSTOM);
         var contextAgent = new ContextAgent(contextManager, contextManager.getAskModel(), goal);
         contextAgent.execute();
 
