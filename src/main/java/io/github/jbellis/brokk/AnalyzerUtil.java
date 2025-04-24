@@ -4,6 +4,8 @@ import io.github.jbellis.brokk.analyzer.CallSite;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 import scala.Option;
 
@@ -18,6 +20,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class AnalyzerUtil {
+    private static final Logger logger = LogManager.getLogger(AnalyzerUtil.class);
+
     @NotNull
     public static AnalyzerWrapper.CodeWithSource processUsages(IAnalyzer analyzer, List<CodeUnit> uses) {
         StringBuilder code = new StringBuilder();
@@ -74,6 +78,8 @@ public class AnalyzerUtil {
     }
 
     public static List<CodeUnit> combinedPagerankFor(IAnalyzer analyzer, Map<String, Double> weightedSeeds) {
+        logger.debug("Computing pagerank for {}", weightedSeeds);
+
         // do forward and reverse pagerank passes
         var forwardResults = analyzer.getPagerank(weightedSeeds, 3 * Context.MAX_AUTO_CONTEXT_FILES, false);
         var reverseResults = analyzer.getPagerank(weightedSeeds, 3 * Context.MAX_AUTO_CONTEXT_FILES, true);
@@ -84,11 +90,14 @@ public class AnalyzerUtil {
         reverseResults.forEach(pair -> combinedScores.merge(pair._1(), pair._2(), Double::sum));
 
         // sort by combined score
-        return combinedScores.entrySet().stream()
+        var result = combinedScores.entrySet().stream()
                 .sorted(Map.Entry.<CodeUnit, Double>comparingByValue().reversed())
                 .map(Map.Entry::getKey)
                 // isClassInProject filtering is implicitly handled by getPagerank returning CodeUnits
                 .toList();
+
+        logger.debug("Pagerank results: {}", result);
+        return result;
     }
 
     @NotNull
