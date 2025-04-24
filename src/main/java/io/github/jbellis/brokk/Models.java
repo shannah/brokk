@@ -29,6 +29,10 @@ public final class Models {
     private final Logger logger = LogManager.getLogger(Models.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     // Share OkHttpClient across instances for efficiency
+    // Model name constants
+    public static final String O3 = "o3";
+    public static final String GEMINI_2_5_PRO_PREVIEW = "gemini-2.5-pro-preview";
+
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -47,7 +51,6 @@ public final class Models {
     private StreamingChatLanguageModel quickModel;
     private volatile StreamingChatLanguageModel quickestModel = null;
     private volatile SpeechToTextModel sttModel = null;
-    private StreamingChatLanguageModel systemModel;
 
     // Constructor - could potentially take project-specific config later
     public Models() {
@@ -92,15 +95,6 @@ public final class Models {
         quickestModel = get("gemini-2.0-flash-lite", Project.ReasoningLevel.DEFAULT);
         if (quickestModel == null) {
             quickestModel = new UnavailableStreamingModel();
-        }
-
-        // this may be available depending on account status
-        // TODO update for full release 2.5
-        systemModel = get("gemini-2.5-pro-exp-03-25", Project.ReasoningLevel.DEFAULT);
-        if (systemModel == null) {
-             // Fallback to quickModel if the primary system model isn't available
-             // Note: quickModel was already initialized above
-             systemModel = quickModel;
         }
 
         // hardcoding raw location for STT
@@ -366,7 +360,7 @@ public final class Models {
      * @param model The model instance to check.
      * @return True if the model info contains `"is_reasoning": true`, false otherwise.
      */
-    @Deprecated // Use supportsReasoning(String modelName) for the reasoning effort feature
+    // TODO clean this up
     public boolean isReasoning(StreamingChatLanguageModel model) {
         var modelName = nameOf(model);
         var info = modelInfoMap.get(modelName);
@@ -409,11 +403,6 @@ public final class Models {
     public StreamingChatLanguageModel quickModel() {
         assert quickModel != null;
         return quickModel;
-    }
-
-    public StreamingChatLanguageModel systemModel() {
-        assert systemModel != null;
-        return systemModel;
     }
 
     /**

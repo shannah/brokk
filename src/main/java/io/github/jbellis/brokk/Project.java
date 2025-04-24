@@ -235,10 +235,10 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the configured model name for architect/agent tasks.
-     * Falls back to a default if not set.
+     * Falls back to the default architect model if not set.
      */
     public String getArchitectModelName() {
-        return workspaceProps.getProperty(ARCHITECT_MODEL_KEY);
+        return workspaceProps.getProperty(ARCHITECT_MODEL_KEY, Models.O3);
     }
 
     /**
@@ -251,10 +251,11 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the configured model name for code generation tasks.
-     * Falls back to a default if not set.
+     * Falls back to the default code model if not set.
      */
     public String getCodeModelName() {
-        return workspaceProps.getProperty(CODE_MODEL_KEY);
+        // Default to gemini-2.5-pro-preview
+        return workspaceProps.getProperty(CODE_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
@@ -267,10 +268,10 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the configured model name for ask tasks.
-     * Falls back to a default if not set.
+     * Falls back to the default ask model if not set.
      */
     public String getAskModelName() {
-        return workspaceProps.getProperty(ASK_MODEL_KEY);
+        return workspaceProps.getProperty(ASK_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
@@ -284,10 +285,10 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the configured model name for edit tasks.
-     * Falls back to a default if not set.
+     * Falls back to the default edit model if not set.
      */
     public String getEditModelName() {
-        return workspaceProps.getProperty(EDIT_MODEL_KEY);
+        return workspaceProps.getProperty(EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
@@ -302,7 +303,7 @@ public class Project implements IProject, AutoCloseable {
      * Gets the reasoning level for architect tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getArchitectReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(ARCHITECT_REASONING_KEY));
+        return ReasoningLevel.fromString(workspaceProps.getProperty(ARCHITECT_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
@@ -317,7 +318,7 @@ public class Project implements IProject, AutoCloseable {
      * Gets the reasoning level for code tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getCodeReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(CODE_REASONING_KEY));
+        return ReasoningLevel.fromString(workspaceProps.getProperty(CODE_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
@@ -332,7 +333,7 @@ public class Project implements IProject, AutoCloseable {
      * Gets the reasoning level for ask tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getAskReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(ASK_REASONING_KEY));
+        return ReasoningLevel.fromString(workspaceProps.getProperty(ASK_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
@@ -344,10 +345,10 @@ public class Project implements IProject, AutoCloseable {
     }
 
     /**
-     * Gets the reasoning level for edit tasks. Defaults to DEFAULT.
+     * Gets the reasoning level for edit tasks. Defaults to LOW.
      */
     public ReasoningLevel getEditReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(EDIT_REASONING_KEY));
+        return ReasoningLevel.fromString(workspaceProps.getProperty(EDIT_REASONING_KEY), ReasoningLevel.LOW);
     }
 
     /**
@@ -362,7 +363,7 @@ public class Project implements IProject, AutoCloseable {
      * Gets the reasoning level for search tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getSearchReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(SEARCH_REASONING_KEY));
+        return ReasoningLevel.fromString(workspaceProps.getProperty(SEARCH_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
@@ -375,10 +376,11 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the configured model name for search/RAG tasks.
-     * Falls back to a default if not set.
+     * Falls back to the default search model if not set.
      */
     public String getSearchModelName() {
-        return workspaceProps.getProperty(SEARCH_MODEL_KEY);
+        // Default to gemini-2.5-pro-preview
+        return workspaceProps.getProperty(SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
@@ -961,14 +963,17 @@ public class Project implements IProject, AutoCloseable {
             return name().charAt(0) + name().substring(1).toLowerCase();
         }
 
-        public static ReasoningLevel fromString(String value) {
+        /**
+         * Converts a String to a ReasoningLevel, falling back to the provided default.
+         */
+        public static ReasoningLevel fromString(String value, ReasoningLevel defaultLevel) {
             if (value == null || value.isBlank()) {
-                return DEFAULT;
+                return defaultLevel;
             }
             try {
                 return ReasoningLevel.valueOf(value.toUpperCase());
             } catch (IllegalArgumentException e) {
-                return DEFAULT; // Fallback to default if string is invalid
+                return defaultLevel; // Fallback to provided default if string is invalid
             }
         }
     }
