@@ -16,6 +16,7 @@ import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -750,7 +751,8 @@ public interface ContextFragment extends Serializable {
             assert !isEmpty();
             return "Summary of " + skeletons.keySet().stream()
                     .map(CodeUnit::identifier)
-                    .sorted()
+                    .sorted(Comparator.comparingInt((String s) -> (int) s.chars().filter(ch -> ch == '$').count())
+                                      .thenComparing(Comparator.naturalOrder()))
                     .collect(Collectors.joining(", "));
         }
 
