@@ -34,8 +34,8 @@ libraryDependencies ++= Seq(
   "io.methvin" % "directory-watcher" % "0.18.0",
   
   // LangChain4j dependencies
-  "dev.langchain4j" % "langchain4j" % "1.0.0-beta2",
-  "dev.langchain4j" % "langchain4j-open-ai" % "1.0.0-beta2",
+  "dev.langchain4j" % "langchain4j" % "1.0.0-beta3",
+  "dev.langchain4j" % "langchain4j-open-ai" % "1.0.0-beta3",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
 
   // Console and logging
