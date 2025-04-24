@@ -294,7 +294,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getArchitectModel() {
         var modelName = project.getArchitectModelName();
-        return modelName == null ? models.systemModel() : models.get(modelName);
+        var reasoning = project.getArchitectReasoningLevel();
+        return modelName == null ? models.systemModel() : models.get(modelName, reasoning);
     }
 
     /**
@@ -302,7 +303,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getCodeModel() {
         var modelName = project.getCodeModelName();
-        return modelName == null ? models.systemModel() : models.get(modelName);
+        var reasoning = project.getCodeReasoningLevel();
+        return modelName == null ? models.systemModel() : models.get(modelName, reasoning);
     }
 
     /**
@@ -310,7 +312,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getAskModel() {
         var modelName = project.getAskModelName();
-        return modelName == null ? models.systemModel() : models.get(modelName);
+        var reasoning = project.getAskReasoningLevel();
+        return modelName == null ? models.systemModel() : models.get(modelName, reasoning);
     }
 
 
@@ -319,7 +322,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getEditModel() {
         var modelName = project.getEditModelName();
-        return modelName == null ? models.systemModel() : models.get(modelName);
+        var reasoning = project.getEditReasoningLevel();
+        return modelName == null ? models.systemModel() : models.get(modelName, reasoning);
     }
 
     /**
@@ -327,7 +331,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public StreamingChatLanguageModel getSearchModel() {
         var modelName = project.getSearchModelName();
-        return modelName == null ? models.systemModel() : models.get(modelName);
+        var reasoning = project.getSearchReasoningLevel();
+        return modelName == null ? models.systemModel() : models.get(modelName, reasoning);
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {

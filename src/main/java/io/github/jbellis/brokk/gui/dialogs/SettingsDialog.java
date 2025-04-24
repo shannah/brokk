@@ -27,18 +27,24 @@ public class SettingsDialog extends JDialog {
     private JTextArea buildInstructionsArea;
     private DataRetentionPanel dataRetentionPanel; // Reference to the new panel
     // Model selection combo boxes (initialized in createModelsPanel)
-        private JComboBox<String> architectModelComboBox;
-        private JComboBox<String> codeModelComboBox;
-        private JComboBox<String> askModelComboBox; // Added Ask model combo box
-        private JComboBox<String> editModelComboBox;
-        private JComboBox<String> searchModelComboBox;
+    private JComboBox<String> architectModelComboBox;
+    private JComboBox<String> codeModelComboBox;
+    private JComboBox<Project.ReasoningLevel> codeReasoningComboBox;
+    private JComboBox<String> askModelComboBox; // Added Ask model combo box
+    private JComboBox<Project.ReasoningLevel> askReasoningComboBox;
+    private JComboBox<String> editModelComboBox;
+    private JComboBox<Project.ReasoningLevel> editReasoningComboBox;
+    private JComboBox<String> searchModelComboBox;
+    private JComboBox<Project.ReasoningLevel> searchReasoningComboBox;
+    private JComboBox<Project.ReasoningLevel> architectReasoningComboBox;
 
-        public SettingsDialog(Frame owner, Chrome chrome) {
+
+    public SettingsDialog(Frame owner, Chrome chrome) {
         super(owner, "Settings", true); // Modal dialog
         this.chrome = chrome;
-            setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-            setSize(600, 400); // Increased width
-            setLocationRelativeTo(owner);
+        setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        setSize(600, 400); // Increased width
+        setLocationRelativeTo(owner);
 
         tabbedPane = new JTabbedPane(JTabbedPane.LEFT); // Tabs on the left
 
@@ -63,24 +69,24 @@ public class SettingsDialog extends JDialog {
         var cancelButton = new JButton("Cancel");
         var applyButton = new JButton("Apply"); // Added Apply button
 
-            okButton.addActionListener(e -> {
-                applySettings();
+        okButton.addActionListener(e -> {
+            applySettings();
+            dispose();
+        });
+        cancelButton.addActionListener(e -> dispose());
+        applyButton.addActionListener(e -> applySettings());
+
+        // Add Escape key binding to close the dialog (like Cancel)
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel");
+        getRootPane().getActionMap().put("cancel", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
                 dispose();
-            });
-            cancelButton.addActionListener(e -> dispose());
-            applyButton.addActionListener(e -> applySettings());
+            }
+        });
 
-            // Add Escape key binding to close the dialog (like Cancel)
-            getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                    .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel");
-            getRootPane().getActionMap().put("cancel", new AbstractAction() {
-                @Override
-                public void actionPerformed(java.awt.event.ActionEvent e) {
-                    dispose();
-                }
-            });
-
-            buttonPanel.add(okButton);
+        buttonPanel.add(okButton);
         buttonPanel.add(cancelButton);
         buttonPanel.add(applyButton);
 
@@ -411,114 +417,234 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         int row = 0;
 
-        // Available models (get these from ContextManager or Project - assuming Models accessible via project for now)
         var models = chrome.getContextManager().getModels(); // Get Models instance
-        var availableModels = models.getAvailableModels().keySet().stream().sorted().toList();
+        var availableModels = models.getAvailableModelsForSettings().keySet().stream().sorted().toList(); // Use new method
+        var reasoningLevels = Project.ReasoningLevel.values();
+
+        // Helper function to update reasoning combo box state
+        Runnable updateReasoningState = () -> {
+            updateReasoningComboBox(architectModelComboBox, architectReasoningComboBox, models);
+            updateReasoningComboBox(codeModelComboBox, codeReasoningComboBox, models);
+            updateReasoningComboBox(askModelComboBox, askReasoningComboBox, models);
+            updateReasoningComboBox(editModelComboBox, editReasoningComboBox, models);
+            updateReasoningComboBox(searchModelComboBox, searchReasoningComboBox, models);
+        };
 
         // --- Architect Model ---
-            gbc.gridx = 0;
-            gbc.gridy = row;
-            gbc.weightx = 0.0;
-            modelsPanel.add(new JLabel("Architect Model:"), gbc);
-            architectModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
-            architectModelComboBox.setSelectedItem(project.getArchitectModelName());
-            JLabel architectTooltip = new JLabel("Plans and executes multi-step projects, calling other agents as needed");
-            architectTooltip.setFont(architectTooltip.getFont().deriveFont(Font.ITALIC, architectTooltip.getFont().getSize() * 0.9f));
-            gbc.gridx = 1;
-            gbc.gridy = row++;
-                gbc.weightx = 0.0; // Don't stretch combo box horizontally
-                gbc.fill = GridBagConstraints.NONE; // Use preferred size
-                modelsPanel.add(architectModelComboBox, gbc);
-                gbc.gridx = 1; // Ensure tooltip stays in the second column
-                gbc.gridy = row++;
-                gbc.weightx = 1.0; // Let tooltip potentially fill space if needed
-                gbc.fill = GridBagConstraints.HORIZONTAL; // Restore fill for tooltip
-                modelsPanel.add(architectTooltip, gbc);
-
-                    // --- Code Model ---
-                gbc.gridx = 0;
-                gbc.gridy = row;
-                gbc.weightx = 0.0;
-                modelsPanel.add(new JLabel("Code Model:"), gbc); // Label changed
-                codeModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
-                codeModelComboBox.setSelectedItem(project.getCodeModelName());
-                JLabel codeTooltip = new JLabel("Used when invoking Code Agent manually");
-                codeTooltip.setFont(codeTooltip.getFont().deriveFont(Font.ITALIC, codeTooltip.getFont().getSize() * 0.9f));
-                gbc.gridx = 1;
-                gbc.gridy = row++;
-                    gbc.weightx = 0.0; // Don't stretch combo box horizontally
-                    gbc.fill = GridBagConstraints.NONE; // Use preferred size
-                    modelsPanel.add(codeModelComboBox, gbc);
-                    gbc.gridx = 1;
-                    gbc.gridy = row++;
-                    gbc.weightx = 1.0;
-                    gbc.fill = GridBagConstraints.HORIZONTAL;
-                    modelsPanel.add(codeTooltip, gbc);
-
-                    // --- Ask Model --- Added
-                gbc.gridx = 0;
-                gbc.gridy = row;
-                gbc.weightx = 0.0;
-                modelsPanel.add(new JLabel("Ask Model:"), gbc);
-                askModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
-                askModelComboBox.setSelectedItem(project.getAskModelName()); // Use getAskModelName
-                JLabel askTooltip = new JLabel("Used when invoking the Ask command");
-                askTooltip.setFont(askTooltip.getFont().deriveFont(Font.ITALIC, askTooltip.getFont().getSize() * 0.9f));
-                gbc.gridx = 1;
-                gbc.gridy = row++;
-                    gbc.weightx = 0.0; // Don't stretch combo box horizontally
-                    gbc.fill = GridBagConstraints.NONE; // Use preferred size
-                    modelsPanel.add(askModelComboBox, gbc);
-                    gbc.gridx = 1;
-                    gbc.gridy = row++;
-                    gbc.weightx = 1.0;
-                    gbc.fill = GridBagConstraints.HORIZONTAL;
-                    modelsPanel.add(askTooltip, gbc);
-
-                    // --- Edit Model ---
-                gbc.gridx = 0;
-                gbc.gridy = row;
-            gbc.weightx = 0.0;
-            modelsPanel.add(new JLabel("Edit Model:"), gbc);
-            editModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
-            editModelComboBox.setSelectedItem(project.getEditModelName());
-            JLabel editTooltip = new JLabel("Used when invoking Code Agent from the Architect");
-            editTooltip.setFont(editTooltip.getFont().deriveFont(Font.ITALIC, editTooltip.getFont().getSize() * 0.9f));
-            gbc.gridx = 1;
-            gbc.gridy = row++;
-                gbc.weightx = 0.0; // Don't stretch combo box horizontally
-                gbc.fill = GridBagConstraints.NONE; // Use preferred size
-                modelsPanel.add(editModelComboBox, gbc);
-                gbc.gridx = 1;
-                gbc.gridy = row++;
-                gbc.weightx = 1.0;
-                gbc.fill = GridBagConstraints.HORIZONTAL;
-                modelsPanel.add(editTooltip, gbc);
-
-                // --- Search Model ---
-            gbc.gridx = 0;
-            gbc.gridy = row;
-            gbc.weightx = 0.0;
-            modelsPanel.add(new JLabel("Search Model:"), gbc);
-            searchModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
-            searchModelComboBox.setSelectedItem(project.getSearchModelName());
-            JLabel searchTooltip = new JLabel("Searches the project for information described in natural language");
-            searchTooltip.setFont(searchTooltip.getFont().deriveFont(Font.ITALIC, searchTooltip.getFont().getSize() * 0.9f));
-            gbc.gridx = 1;
-            gbc.gridy = row++;
-                gbc.weightx = 0.0; // Don't stretch combo box horizontally
-                gbc.fill = GridBagConstraints.NONE; // Use preferred size
-                modelsPanel.add(searchModelComboBox, gbc);
-                gbc.gridx = 1;
-                gbc.gridy = row++;
-                gbc.weightx = 1.0;
-                gbc.fill = GridBagConstraints.HORIZONTAL;
-                modelsPanel.add(searchTooltip, gbc);
-
-            // Add vertical glue
-        gbc.gridx = 0;
+        gbc.gridx = 0; // Label column
         gbc.gridy = row;
-        gbc.gridwidth = 2;
+        gbc.anchor = GridBagConstraints.EAST; // Align label right
+        modelsPanel.add(new JLabel("Architect Model:"), gbc);
+
+        architectModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        architectModelComboBox.setSelectedItem(project.getArchitectModelName());
+        architectModelComboBox.addActionListener(e -> updateReasoningState.run()); // Add listener
+
+        gbc.gridx = 1; // Model combo column
+        gbc.gridy = row;
+        gbc.weightx = 0.0; // Don't stretch combo box horizontally
+        gbc.fill = GridBagConstraints.NONE; // Use preferred size
+        gbc.anchor = GridBagConstraints.WEST; // Align left
+        modelsPanel.add(architectModelComboBox, gbc);
+
+        gbc.gridx = 2; // Reasoning Label column
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Reasoning:"), gbc);
+
+        architectReasoningComboBox = new JComboBox<>(reasoningLevels);
+        architectReasoningComboBox.setSelectedItem(project.getArchitectReasoningLevel());
+        gbc.gridx = 3; // Reasoning Combo column
+        gbc.gridy = row;
+        gbc.weightx = 0.0; // Don't stretch
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(architectReasoningComboBox, gbc);
+
+        // Tooltip spans model and reasoning columns
+        JLabel architectTooltip = new JLabel("Plans and executes multi-step projects, calling other agents as needed");
+        architectTooltip.setFont(architectTooltip.getFont().deriveFont(Font.ITALIC, architectTooltip.getFont().getSize() * 0.9f));
+        gbc.gridx = 1;
+        gbc.gridy = row + 1; // Next row
+        gbc.gridwidth = 3;   // Span 3 columns (model combo, reasoning label, reasoning combo)
+        gbc.weightx = 1.0;   // Let tooltip fill space horizontally
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(architectTooltip, gbc);
+        row += 2; // Move down two rows (one for controls, one for tooltip)
+
+        // --- Code Model ---
+        gbc.gridwidth = 1; // Reset gridwidth
+        gbc.gridx = 0; // Label column
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Code Model:"), gbc); // Label changed
+
+        codeModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        codeModelComboBox.setSelectedItem(project.getCodeModelName());
+        codeModelComboBox.addActionListener(e -> updateReasoningState.run());
+
+        gbc.gridx = 1;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(codeModelComboBox, gbc);
+
+        gbc.gridx = 2;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Reasoning:"), gbc);
+
+        codeReasoningComboBox = new JComboBox<>(reasoningLevels);
+        codeReasoningComboBox.setSelectedItem(project.getCodeReasoningLevel());
+        gbc.gridx = 3;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(codeReasoningComboBox, gbc);
+
+        JLabel codeTooltip = new JLabel("Used when invoking Code Agent manually");
+        codeTooltip.setFont(codeTooltip.getFont().deriveFont(Font.ITALIC, codeTooltip.getFont().getSize() * 0.9f));
+        gbc.gridx = 1;
+        gbc.gridy = row + 1;
+        gbc.gridwidth = 3;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(codeTooltip, gbc);
+        row += 2;
+
+        // --- Ask Model --- Added
+        gbc.gridwidth = 1;
+        gbc.gridx = 0; // Label column
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Ask Model:"), gbc);
+
+        askModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        askModelComboBox.setSelectedItem(project.getAskModelName()); // Use getAskModelName
+        askModelComboBox.addActionListener(e -> updateReasoningState.run());
+
+        gbc.gridx = 1;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(askModelComboBox, gbc);
+
+        gbc.gridx = 2;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Reasoning:"), gbc);
+
+        askReasoningComboBox = new JComboBox<>(reasoningLevels);
+        askReasoningComboBox.setSelectedItem(project.getAskReasoningLevel());
+        gbc.gridx = 3;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(askReasoningComboBox, gbc);
+
+        JLabel askTooltip = new JLabel("Used when invoking the Ask command");
+        askTooltip.setFont(askTooltip.getFont().deriveFont(Font.ITALIC, askTooltip.getFont().getSize() * 0.9f));
+        gbc.gridx = 1;
+        gbc.gridy = row + 1;
+        gbc.gridwidth = 3;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(askTooltip, gbc);
+        row += 2;
+
+        // --- Edit Model ---
+        gbc.gridwidth = 1;
+        gbc.gridx = 0; // Label column
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Edit Model:"), gbc);
+
+        editModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        editModelComboBox.setSelectedItem(project.getEditModelName());
+        editModelComboBox.addActionListener(e -> updateReasoningState.run());
+
+        gbc.gridx = 1;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(editModelComboBox, gbc);
+
+        gbc.gridx = 2;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Reasoning:"), gbc);
+
+        editReasoningComboBox = new JComboBox<>(reasoningLevels);
+        editReasoningComboBox.setSelectedItem(project.getEditReasoningLevel());
+        gbc.gridx = 3;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(editReasoningComboBox, gbc);
+
+        JLabel editTooltip = new JLabel("Used when invoking Code Agent from the Architect");
+        editTooltip.setFont(editTooltip.getFont().deriveFont(Font.ITALIC, editTooltip.getFont().getSize() * 0.9f));
+        gbc.gridx = 1;
+        gbc.gridy = row + 1;
+        gbc.gridwidth = 3;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(editTooltip, gbc);
+        row += 2;
+
+        // --- Search Model ---
+        gbc.gridwidth = 1;
+        gbc.gridx = 0; // Label column
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Search Model:"), gbc);
+
+        searchModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        searchModelComboBox.setSelectedItem(project.getSearchModelName());
+        searchModelComboBox.addActionListener(e -> updateReasoningState.run());
+
+        gbc.gridx = 1;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(searchModelComboBox, gbc);
+
+        gbc.gridx = 2;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.EAST;
+        modelsPanel.add(new JLabel("Reasoning:"), gbc);
+
+        searchReasoningComboBox = new JComboBox<>(reasoningLevels);
+        searchReasoningComboBox.setSelectedItem(project.getSearchReasoningLevel());
+        gbc.gridx = 3;
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(searchReasoningComboBox, gbc);
+
+        JLabel searchTooltip = new JLabel("Searches the project for information described in natural language");
+        searchTooltip.setFont(searchTooltip.getFont().deriveFont(Font.ITALIC, searchTooltip.getFont().getSize() * 0.9f));
+        gbc.gridx = 1;
+        gbc.gridy = row + 1;
+        gbc.gridwidth = 3;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        modelsPanel.add(searchTooltip, gbc);
+        row += 2;
+
+        // Initial state update for reasoning dropdowns
+        SwingUtilities.invokeLater(updateReasoningState);
+
+        // Add vertical glue
+        gbc.gridx = 0;
+        gbc.gridy = row; // Use final row value
+        gbc.gridwidth = 4; // Span all columns
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.VERTICAL;
         modelsPanel.add(Box.createVerticalGlue(), gbc);
@@ -610,38 +736,94 @@ public class SettingsDialog extends JDialog {
                 }
             }
 
-            // Apply Model Selections (ensure combo boxes were initialized)
-            if (architectModelComboBox != null) {
-                String selectedArchitectModel = (String) architectModelComboBox.getSelectedItem();
-                if (selectedArchitectModel != null && !selectedArchitectModel.equals(project.getArchitectModelName())) {
-                    project.setArchitectModelName(selectedArchitectModel);
-                }
+            // Apply Model Selections and Reasoning Levels
+            applyModelAndReasoning(project, architectModelComboBox, architectReasoningComboBox,
+                                   project::getArchitectModelName, project::setArchitectModelName,
+                                   project::getArchitectReasoningLevel, project::setArchitectReasoningLevel);
+
+            applyModelAndReasoning(project, codeModelComboBox, codeReasoningComboBox,
+                                   project::getCodeModelName, project::setCodeModelName,
+                                   project::getCodeReasoningLevel, project::setCodeReasoningLevel);
+
+            applyModelAndReasoning(project, askModelComboBox, askReasoningComboBox,
+                                   project::getAskModelName, project::setAskModelName,
+                                   project::getAskReasoningLevel, project::setAskReasoningLevel);
+
+            applyModelAndReasoning(project, editModelComboBox, editReasoningComboBox,
+                                   project::getEditModelName, project::setEditModelName,
+                                   project::getEditReasoningLevel, project::setEditReasoningLevel);
+
+            applyModelAndReasoning(project, searchModelComboBox, searchReasoningComboBox,
+                                   project::getSearchModelName, project::setSearchModelName,
+                                   project::getSearchReasoningLevel, project::setSearchReasoningLevel);
+        }
+    }
+
+
+    /**
+     * Helper method to apply model name and reasoning level settings
+     */
+    private void applyModelAndReasoning(Project project,
+                                        JComboBox<String> modelCombo,
+                                        JComboBox<Project.ReasoningLevel> reasoningCombo,
+                                        java.util.function.Supplier<String> currentModelGetter,
+                                        java.util.function.Consumer<String> modelSetter,
+                                        java.util.function.Supplier<Project.ReasoningLevel> currentReasoningGetter,
+                                        java.util.function.Consumer<Project.ReasoningLevel> reasoningSetter)
+    {
+        if (modelCombo != null) { // Check if combo box was initialized
+            String selectedModel = (String) modelCombo.getSelectedItem();
+            if (selectedModel != null && !selectedModel.equals(currentModelGetter.get())) {
+                modelSetter.accept(selectedModel);
             }
-            if (codeModelComboBox != null) {
-                    String selectedCodeModel = (String) codeModelComboBox.getSelectedItem();
-                        if (selectedCodeModel != null && !selectedCodeModel.equals(project.getCodeModelName())) {
-                            project.setCodeModelName(selectedCodeModel);
-                        }
+        }
+        if (reasoningCombo != null) { // Check if combo box was initialized
+            Project.ReasoningLevel selectedReasoning = (Project.ReasoningLevel) reasoningCombo.getSelectedItem();
+            // Only save if the combo box is enabled (i.e., model supports reasoning)
+            // and the selected value is different from the current setting.
+            if (selectedReasoning != null && reasoningCombo.isEnabled() && selectedReasoning != currentReasoningGetter.get()) {
+                reasoningSetter.accept(selectedReasoning);
+            }
+            // If the combo is disabled, we don't save anything, implicitly leaving it as DEFAULT.
+        }
+    }
+
+    /**
+     * Updates the enabled state and selection of a reasoning combo box based on the selected model.
+     */
+    private void updateReasoningComboBox(JComboBox<String> modelComboBox, JComboBox<Project.ReasoningLevel> reasoningComboBox, io.github.jbellis.brokk.Models models) {
+        if (modelComboBox == null || reasoningComboBox == null) return; // Not initialized yet
+
+        String selectedModelName = (String) modelComboBox.getSelectedItem();
+        boolean supportsReasoning = selectedModelName != null && models.supportsReasoning(selectedModelName);
+
+        reasoningComboBox.setEnabled(supportsReasoning);
+        reasoningComboBox.setToolTipText(supportsReasoning ? "Select reasoning effort" : "Reasoning effort not supported by this model");
+
+        if (!supportsReasoning) {
+            // Set underlying item to DEFAULT, but render as "Off" when disabled
+            reasoningComboBox.setSelectedItem(Project.ReasoningLevel.DEFAULT);
+            reasoningComboBox.setRenderer(new DefaultListCellRenderer() {
+                @Override
+                public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                    JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                    // For the selected item display in a disabled box (index == -1), show "Off"
+                    // Otherwise, show normal enum values for the dropdown list itself.
+                    if (index == -1 && !reasoningComboBox.isEnabled()) {
+                        label.setText("Off");
+                        label.setForeground(UIManager.getColor("ComboBox.disabledForeground")); // Use standard disabled color
+                    } else if (value instanceof Project.ReasoningLevel level) {
+                        label.setText(level.toString()); // Use standard enum toString for dropdown items
+                    } else {
+                        label.setText(value == null ? "" : value.toString()); // Handle null or unexpected types
                     }
-                    // Added Ask model apply
-                    if (askModelComboBox != null) {
-                        String selectedAskModel = (String) askModelComboBox.getSelectedItem();
-                        if (selectedAskModel != null && !selectedAskModel.equals(project.getAskModelName())) {
-                            project.setAskModelName(selectedAskModel);
-                        }
-                    }
-                    if (editModelComboBox != null) {
-                        String selectedEditModel = (String) editModelComboBox.getSelectedItem();
-                        if (selectedEditModel != null && !selectedEditModel.equals(project.getEditModelName())) {
-                        project.setEditModelName(selectedEditModel);
-                    }
+                    return label;
                 }
-                if (searchModelComboBox != null) {
-                    String selectedSearchModel = (String) searchModelComboBox.getSelectedItem();
-                    if (selectedSearchModel != null && !selectedSearchModel.equals(project.getSearchModelName())) {
-                        project.setSearchModelName(selectedSearchModel);
-                    }
-                }
+            });
+        } else {
+            // Restore default renderer when enabled - needed if switching from non-supported to supported model
+            reasoningComboBox.setRenderer(new DefaultListCellRenderer());
+            // The actual selection is handled by the initial load or retained from previous state
         }
     }
 

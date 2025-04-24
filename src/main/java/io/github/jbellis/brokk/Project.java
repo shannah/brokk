@@ -46,11 +46,17 @@ public class Project implements IProject, AutoCloseable {
     private static final String BUILD_DETAILS_KEY = "buildDetailsJson";
     private static final String ARCHITECT_MODEL_KEY = "architectModel";
     private static final String CODE_MODEL_KEY = "codeModel";
-        private static final String ASK_MODEL_KEY = "askModel"; // Added for Ask
-        private static final String EDIT_MODEL_KEY = "editModel";
-        private static final String SEARCH_MODEL_KEY = "searchModel";
+    private static final String ASK_MODEL_KEY = "askModel"; // Added for Ask
+    private static final String EDIT_MODEL_KEY = "editModel";
+    private static final String SEARCH_MODEL_KEY = "searchModel";
+    private static final String ARCHITECT_REASONING_KEY = "architectReasoning";
+    private static final String CODE_REASONING_KEY = "codeReasoning";
+    private static final String ASK_REASONING_KEY = "askReasoning";
+    private static final String EDIT_REASONING_KEY = "editReasoning";
+    private static final String SEARCH_REASONING_KEY = "searchReasoning";
 
-        // --- Static paths ---
+
+    // --- Static paths ---
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
     private static final Path PROJECTS_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("projects.properties");
     private static final Path GLOBAL_PROPERTIES_PATH = BROKK_CONFIG_DIR.resolve("brokk.properties");
@@ -243,42 +249,42 @@ public class Project implements IProject, AutoCloseable {
         saveWorkspaceProperties();
     }
 
-        /**
-         * Gets the configured model name for code generation tasks.
-         * Falls back to a default if not set.
-         */
-        public String getCodeModelName() {
-            return workspaceProps.getProperty(CODE_MODEL_KEY);
-        }
+    /**
+     * Gets the configured model name for code generation tasks.
+     * Falls back to a default if not set.
+     */
+    public String getCodeModelName() {
+        return workspaceProps.getProperty(CODE_MODEL_KEY);
+    }
 
-        /**
-         * Sets the model name for code generation tasks.
-         */
-        public void setCodeModelName(String modelName) {
-            workspaceProps.setProperty(CODE_MODEL_KEY, modelName);
-            saveWorkspaceProperties();
-        }
+    /**
+     * Sets the model name for code generation tasks.
+     */
+    public void setCodeModelName(String modelName) {
+        workspaceProps.setProperty(CODE_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
 
-        /**
-         * Gets the configured model name for ask tasks.
-         * Falls back to a default if not set.
-         */
-        public String getAskModelName() {
-            return workspaceProps.getProperty(ASK_MODEL_KEY);
-        }
+    /**
+     * Gets the configured model name for ask tasks.
+     * Falls back to a default if not set.
+     */
+    public String getAskModelName() {
+        return workspaceProps.getProperty(ASK_MODEL_KEY);
+    }
 
-        /**
-         * Sets the model name for ask tasks.
-         */
-        public void setAskModelName(String modelName) {
-            workspaceProps.setProperty(ASK_MODEL_KEY, modelName);
-            saveWorkspaceProperties();
-        }
+    /**
+     * Sets the model name for ask tasks.
+     */
+    public void setAskModelName(String modelName) {
+        workspaceProps.setProperty(ASK_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
 
 
-        /**
-         * Gets the configured model name for edit tasks.
-         * Falls back to a default if not set.
+    /**
+     * Gets the configured model name for edit tasks.
+     * Falls back to a default if not set.
      */
     public String getEditModelName() {
         return workspaceProps.getProperty(EDIT_MODEL_KEY);
@@ -289,6 +295,81 @@ public class Project implements IProject, AutoCloseable {
      */
     public void setEditModelName(String modelName) {
         workspaceProps.setProperty(EDIT_MODEL_KEY, modelName);
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the reasoning level for architect tasks. Defaults to DEFAULT.
+     */
+    public ReasoningLevel getArchitectReasoningLevel() {
+        return ReasoningLevel.fromString(workspaceProps.getProperty(ARCHITECT_REASONING_KEY));
+    }
+
+    /**
+     * Sets the reasoning level for architect tasks.
+     */
+    public void setArchitectReasoningLevel(ReasoningLevel level) {
+        workspaceProps.setProperty(ARCHITECT_REASONING_KEY, level.name());
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the reasoning level for code tasks. Defaults to DEFAULT.
+     */
+    public ReasoningLevel getCodeReasoningLevel() {
+        return ReasoningLevel.fromString(workspaceProps.getProperty(CODE_REASONING_KEY));
+    }
+
+    /**
+     * Sets the reasoning level for code tasks.
+     */
+    public void setCodeReasoningLevel(ReasoningLevel level) {
+        workspaceProps.setProperty(CODE_REASONING_KEY, level.name());
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the reasoning level for ask tasks. Defaults to DEFAULT.
+     */
+    public ReasoningLevel getAskReasoningLevel() {
+        return ReasoningLevel.fromString(workspaceProps.getProperty(ASK_REASONING_KEY));
+    }
+
+    /**
+     * Sets the reasoning level for ask tasks.
+     */
+    public void setAskReasoningLevel(ReasoningLevel level) {
+        workspaceProps.setProperty(ASK_REASONING_KEY, level.name());
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the reasoning level for edit tasks. Defaults to DEFAULT.
+     */
+    public ReasoningLevel getEditReasoningLevel() {
+        return ReasoningLevel.fromString(workspaceProps.getProperty(EDIT_REASONING_KEY));
+    }
+
+    /**
+     * Sets the reasoning level for edit tasks.
+     */
+    public void setEditReasoningLevel(ReasoningLevel level) {
+        workspaceProps.setProperty(EDIT_REASONING_KEY, level.name());
+        saveWorkspaceProperties();
+    }
+
+    /**
+     * Gets the reasoning level for search tasks. Defaults to DEFAULT.
+     */
+    public ReasoningLevel getSearchReasoningLevel() {
+        return ReasoningLevel.fromString(workspaceProps.getProperty(SEARCH_REASONING_KEY));
+    }
+
+    /**
+     * Sets the reasoning level for search tasks.
+     */
+    public void setSearchReasoningLevel(ReasoningLevel level) {
+        workspaceProps.setProperty(SEARCH_REASONING_KEY, level.name());
         saveWorkspaceProperties();
     }
 
@@ -490,11 +571,11 @@ public class Project implements IProject, AutoCloseable {
             byte[] serialized = Context.serialize(context);
             String encoded = java.util.Base64.getEncoder().encodeToString(serialized);
             workspaceProps.setProperty("context", encoded);
-            
+
             // Save the current fragment ID counter
             int currentMaxId = ContextFragment.getCurrentMaxId();
             workspaceProps.setProperty("contextFragmentNextId", String.valueOf(currentMaxId));
-            
+
             saveWorkspaceProperties();
         } catch (Exception e) {
             logger.error("Error saving context: {}", e.getMessage());
@@ -519,7 +600,7 @@ public class Project implements IProject, AutoCloseable {
                     logger.warn("Invalid fragment ID counter value: {}", nextIdStr);
                 }
             }
-            
+
             // Then load the context
             String encoded = workspaceProps.getProperty("context");
             if (encoded != null && !encoded.isEmpty()) {
@@ -866,6 +947,30 @@ public class Project implements IProject, AutoCloseable {
     @Override
     public IAnalyzer getAnalyzer() throws InterruptedException {
         return analyzerWrapper.get();
+    }
+
+    /**
+     * Enum defining the reasoning effort levels for models.
+     */
+    public enum ReasoningLevel {
+        DEFAULT, LOW, MEDIUM, HIGH;
+
+        @Override
+        public String toString() {
+            // Capitalize first letter for display
+            return name().charAt(0) + name().substring(1).toLowerCase();
+        }
+
+        public static ReasoningLevel fromString(String value) {
+            if (value == null || value.isBlank()) {
+                return DEFAULT;
+            }
+            try {
+                return ReasoningLevel.valueOf(value.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return DEFAULT; // Fallback to default if string is invalid
+            }
+        }
     }
 
     /**

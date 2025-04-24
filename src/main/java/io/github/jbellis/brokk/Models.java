@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
@@ -83,20 +84,23 @@ public final class Models {
         }
 
         // these should always be available
-        quickModel = get("gemini-2.0-flash");
+        // Initialize default models with DEFAULT reasoning level
+        quickModel = get("gemini-2.0-flash", Project.ReasoningLevel.DEFAULT);
         if (quickModel == null) {
             quickModel = new UnavailableStreamingModel();
         }
-        quickestModel = get("gemini-2.0-flash-lite");
+        quickestModel = get("gemini-2.0-flash-lite", Project.ReasoningLevel.DEFAULT);
         if (quickestModel == null) {
             quickestModel = new UnavailableStreamingModel();
         }
 
         // this may be available depending on account status
         // TODO update for full release 2.5
-        systemModel = get("gemini-2.5-pro-exp-03-25");
+        systemModel = get("gemini-2.5-pro-exp-03-25", Project.ReasoningLevel.DEFAULT);
         if (systemModel == null) {
-            systemModel = quickModel;
+             // Fallback to quickModel if the primary system model isn't available
+             // Note: quickModel was already initialized above
+             systemModel = quickModel;
         }
 
         // hardcoding raw location for STT
@@ -199,10 +203,11 @@ public final class Models {
     }
 
     /**
-     * Gets a map of available model *names* to their full location strings.
+     * Gets a map of available model *names* to their full location strings, suitable for display in settings.
+     * Filters out internal/utility models like flash-lite.
      * e.g. "deepseek-v3" -> "deepseek/deepseek-chat"
      */
-    public Map<String, String> getAvailableModels() {
+    public Map<String, String> getAvailableModelsForSettings() {
         // flash-lite is defined for low-ltency use cases that don't require high intelligence,
         // it's not suitible for writing code
         return modelLocations.entrySet().stream()
@@ -241,13 +246,40 @@ public final class Models {
     }
 
     /**
-     * Retrieves or creates a StreamingChatLanguageModel for the given modelName.
+     * Checks if the model supports reasoning effort based on its metadata.
+     *
+     * @param modelName The display name of the model (e.g., "gemini-2.5-pro-exp-03-25").
+     * @return True if the model info contains `"supports_reasoning": true`, false otherwise.
      */
-    public StreamingChatLanguageModel get(String modelName) {
-        return loadedModels.computeIfAbsent(modelName, key -> {
+    public boolean supportsReasoning(String modelName) {
+        var info = modelInfoMap.get(modelName);
+        if (info == null) {
+            logger.warn("Model info not found for {}, assuming no reasoning support.", modelName);
+            return false; // Assume not supported if info is missing
+        }
+        var supports = info.get("supports_reasoning");
+        // supports_reasoning might not be present, treat null as false
+        return supports instanceof Boolean && (Boolean) supports;
+    }
+
+
+    /**
+     * Retrieves or creates a StreamingChatLanguageModel for the given modelName and reasoning level.
+     *
+     * @param modelName      The display name of the model (e.g., "gemini-2.5-pro-exp-03-25").
+     * @param reasoningLevel The desired reasoning level.
+     * @return The configured model instance, or null if the model name is invalid.
+     */
+    public StreamingChatLanguageModel get(String modelName, Project.ReasoningLevel reasoningLevel) {
+        // Use a composite key for the cache to include reasoning level if not default
+        String cacheKey = modelName + (reasoningLevel == Project.ReasoningLevel.DEFAULT ? "" : ":" + reasoningLevel.name());
+
+        return loadedModels.computeIfAbsent(cacheKey, key -> {
             String location = modelLocations.get(modelName);
-            logger.debug("Creating new model instance for '{}' at location '{}' via LiteLLM", modelName, location);
+            logger.debug("Creating new model instance for '{}' at location '{}' with reasoning '{}' via LiteLLM",
+                         modelName, location, reasoningLevel);
             if (location == null) {
+                logger.error("Location not found for model name: {}", modelName);
                 return null;
             }
 
@@ -261,7 +293,15 @@ public final class Models {
                     .baseUrl(LITELLM_BASE_URL)
                     .timeout(Duration.ofMinutes(3)) // default 60s is not enough in practice
                     .apiKey("litellm") // placeholder, LiteLLM manages actual keys
-                    .modelName(location);
+                    .modelName(location); // Use the resolved location
+
+            // Apply reasoning effort if not default and supported
+            logger.debug("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
+            if (supportsReasoning(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
+                builder.defaultRequestParameters(OpenAiChatRequestParameters.builder()
+                                                         .reasoningEffort(reasoningLevel.name().toLowerCase())
+                                                         .build());
+            }
 
             if (modelName.contains("sonnet")) {
                 // "Claude 3.7 Sonnet may be less likely to make make parallel tool calls in a response,
@@ -321,17 +361,22 @@ public final class Models {
     /**
      * Checks if the model is designated as a "reasoning" model based on its metadata.
      * Reasoning models are expected to perform "think" steps implicitly.
+     * This refers to the old `is_reasoning` flag, distinct from the new `supports_reasoning` for effort levels.
      *
      * @param model The model instance to check.
      * @return True if the model info contains `"is_reasoning": true`, false otherwise.
      */
+    @Deprecated // Use supportsReasoning(String modelName) for the reasoning effort feature
     public boolean isReasoning(StreamingChatLanguageModel model) {
         var modelName = nameOf(model);
         var info = modelInfoMap.get(modelName);
-        assert info != null;
+        if (info == null) {
+             logger.warn("Model info not found for {}, assuming not a reasoning model (old flag).", modelName);
+             return false;
+        }
         var isReasoning = info.get("is_reasoning");
-        if (!(isReasoning instanceof Boolean)) {
-            logger.debug("Non-boolean reasoning value {} for model {}, did we add optional reasoning and forget to update Models?", isReasoning, modelName);
+        // is_reasoning might not be present, treat null as false
+        if (isReasoning == null) {
             return false;
         }
         return (Boolean) isReasoning;
