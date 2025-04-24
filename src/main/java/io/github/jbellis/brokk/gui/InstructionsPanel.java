@@ -7,6 +7,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextFragment.TaskFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
+import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
@@ -575,7 +576,7 @@ public class InstructionsPanel extends JPanel {
         if (contextHasImages()) {
             var nonVisionModels = Stream.of(architectModel,editModel, searchModel)
                     .filter(m -> !models.supportsVision(m))
-                    .map(models::nameOf)
+                    .map(Models::nameOf)
                     .toList();
             if (!nonVisionModels.isEmpty()) {
                 showVisionSupportErrorDialog(String.join(", ", nonVisionModels));
@@ -607,7 +608,7 @@ public class InstructionsPanel extends JPanel {
             var codeModel = contextManager.getCodeModel();
 
             if (contextHasImages() && !models.supportsVision(codeModel)) {
-                showVisionSupportErrorDialog(models.nameOf(codeModel) + " (Code)");
+                showVisionSupportErrorDialog(Models.nameOf(codeModel) + " (Code)");
                 return; // Abort if model doesn't support vision and context has images
             }
 
@@ -857,7 +858,7 @@ public class InstructionsPanel extends JPanel {
 
             // --- Vision Check ---
             if (contextHasImages() && !models.supportsVision(askModel)) {
-                showVisionSupportErrorDialog(models.nameOf(askModel) + " (Ask)"); // Updated text
+                showVisionSupportErrorDialog(Models.nameOf(askModel) + " (Ask)"); // Updated text
                 return; // Abort if model doesn't support vision and context has images
             }
             // --- End Vision Check ---
@@ -881,7 +882,7 @@ public class InstructionsPanel extends JPanel {
         var searchModel = contextManager.getSearchModel();
 
         if (contextHasImages() && !models.supportsVision(searchModel)) {
-            showVisionSupportErrorDialog(models.nameOf(searchModel) + " (Search)");
+            showVisionSupportErrorDialog(Models.nameOf(searchModel) + " (Search)");
             return; // Abort if model doesn't support vision and context has images
         }
 

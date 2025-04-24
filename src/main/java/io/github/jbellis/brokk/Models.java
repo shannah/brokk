@@ -3,17 +3,12 @@ package io.github.jbellis.brokk;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.data.message.*;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import dev.langchain4j.model.openai.OpenAiTokenizer;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,12 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -65,15 +55,9 @@ public final class Models {
     /**
      * Returns the display name for a given model instance
      */
-    public String nameOf(StreamingChatLanguageModel model) {
-        // Handle the case where the model is not found (e.g., UnavailableStreamingModel)
-        return loadedModels.entrySet().stream()
-                .filter(e -> e.getValue().equals(model))
-                .map(Map.Entry::getKey)
-                .findFirst()
-                .orElse("unknown"); // Return "unknown" or similar if not found
+    public static String nameOf(StreamingChatLanguageModel model) {
+        return model.defaultRequestParameters().modelName();
     }
-
 
     /**
      * Initializes models by fetching available models from LiteLLM.
@@ -230,7 +214,7 @@ public final class Models {
      * Retrieves the maximum output tokens for the given model name.
      * Returns -1 if the information is not available.
      */
-    public int getMaxOutputTokens(String modelName) {
+    private int getMaxOutputTokens(String modelName) {
         var info = modelInfoMap.get(modelName);
         if (info == null || !info.containsKey("max_output_tokens")) {
             logger.warn("max_output_tokens not found for model: {}", modelName);
@@ -245,8 +229,8 @@ public final class Models {
      * Retrieves the maximum input tokens for the given model name.
      * Returns -1 if the information is not available.
      */
-    public int getMaxInputTokens(String modelName) {
-        var info = modelInfoMap.get(modelName);
+    public int getMaxInputTokens(StreamingChatLanguageModel modelName) {
+        var info = modelInfoMap.get(nameOf(modelName));
         if (info == null || !info.containsKey("max_input_tokens")) {
             logger.warn("max_input_tokens not found for model: {}", modelName);
             return 65536;
@@ -271,6 +255,7 @@ public final class Models {
             // placeholder, LiteLLM manages actual keys
             var builder = OpenAiStreamingChatModel.builder()
                     .logRequests(true) // Not visible unless you turn down the threshold for dev.langchain4j in log4j2.xml
+                    .logResponses(true) // ditto
                     .strictJsonSchema(true)
                     .maxTokens(getMaxOutputTokens(modelName))
                     .baseUrl(LITELLM_BASE_URL)
@@ -308,7 +293,7 @@ public final class Models {
         return b != null && b;
     }
 
-    public boolean isLazy(StreamingChatLanguageModel model) {
+    public static boolean isLazy(StreamingChatLanguageModel model) {
         String modelName = nameOf(model);
         return !(modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro"));
     }

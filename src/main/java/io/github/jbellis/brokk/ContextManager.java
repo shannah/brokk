@@ -888,7 +888,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         String askModelName = project.getAskModelName(); // Added Ask model
         String editModelName = project.getEditModelName();
         String searchModelName = project.getSearchModelName();
-        String quickModelName = models.nameOf(models.quickModel());
+        String quickModelName = Models.nameOf(models.quickModel());
 
         return """
                 %s
@@ -1278,7 +1278,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // No details found, run the BuildAgent asynchronously
         submitBackgroundTask("Inferring build details", () -> {
-            BuildAgent agent = new BuildAgent(this, getCoder(models.systemModel(), "Infer build details"), toolRegistry);
+            var model = getAskModel();
+            BuildAgent agent = new BuildAgent(this, getCoder(model, "Infer build details"), toolRegistry);
             BuildDetails inferredDetails = null;
             try {
                 inferredDetails = agent.execute(); // This runs the agent loop

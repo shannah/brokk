@@ -422,7 +422,7 @@ public class ArchitectAgent {
         // Budget: Use a fixed proxy (25k tokens) for 1/4 of a large model's input capacity,
         // as max input tokens are not directly available via the API.
         var models = contextManager.getModels();
-        int budget = min(128_000, models.getMaxInputTokens(models.nameOf(model)) / 4);
+        int budget = min(128_000, models.getMaxInputTokens(model) / 4);
         logger.debug("Initial context budget set to {} tokens", budget);
 
         var analyzer = contextManager.getAnalyzer();

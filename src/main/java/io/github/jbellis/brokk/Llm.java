@@ -258,7 +258,7 @@ public class Llm {
         Throwable lastError = null;
         int attempt = 0;
         // Get model name once using instance field
-        String modelName = contextManager.getModels().nameOf(model);
+        String modelName = Models.nameOf(model);
         var messages = Messages.forLlm(rawMessages);
 
         while (attempt++ < maxAttempts) {
@@ -894,12 +894,12 @@ public class Llm {
 
         // Add the think tool only if the model is not a reasoning model
         if (!contextManager.getModels().isReasoning(this.model)) {
-            logger.debug("Adding 'think' tool for non-reasoning model {}", contextManager.getModels().nameOf(this.model));
+            logger.debug("Adding 'think' tool for non-reasoning model {}", Models.nameOf(this.model));
             var enhancedTools = new ArrayList<>(originalTools);
             enhancedTools.addAll(contextManager.getToolRegistry().getRegisteredTools(List.of("think")));
             return enhancedTools;
         }
-        logger.debug("Skipping 'think' tool for reasoning model {}", contextManager.getModels().nameOf(this.model));
+        logger.debug("Skipping 'think' tool for reasoning model {}", Models.nameOf(this.model));
         return originalTools;
     }
 
@@ -916,7 +916,7 @@ public class Llm {
 
             String shortDesc = LogDescription.getShortDescription(getResultDescription(result));
             var formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
-                                                                              contextManager.getModels().nameOf(model),
+                                                                              Models.nameOf(model),
                                                                               TaskEntry.formatMessages(request.messages()));
             var formattedTools = request.toolSpecifications() == null ? "" : "# Tools:\n\n" + request.toolSpecifications().stream().map(ToolSpecification::name).collect(Collectors.joining("\n"));
             var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());
