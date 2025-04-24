@@ -201,7 +201,7 @@ public final class Models {
      * Filters out internal/utility models like flash-lite.
      * e.g. "deepseek-v3" -> "deepseek/deepseek-chat"
      */
-    public Map<String, String> getAvailableModelsForSettings() {
+    public Map<String, String> getAvailableModels() {
         // flash-lite is defined for low-ltency use cases that don't require high intelligence,
         // it's not suitible for writing code
         return modelLocations.entrySet().stream()

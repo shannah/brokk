@@ -418,7 +418,7 @@ public class SettingsDialog extends JDialog {
         int row = 0;
 
         var models = chrome.getContextManager().getModels(); // Get Models instance
-        var availableModels = models.getAvailableModelsForSettings().keySet().stream().sorted().toList(); // Use new method
+        var availableModels = models.getAvailableModels().keySet().stream().sorted().toList(); // Use new method
         var reasoningLevels = Project.ReasoningLevel.values();
 
         // Helper function to update reasoning combo box state
