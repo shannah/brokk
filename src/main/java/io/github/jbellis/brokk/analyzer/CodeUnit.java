@@ -70,6 +70,18 @@ public record CodeUnit(ProjectFile source, CodeUnitType kind, String fqName)
                 .collect(Collectors.joining("."));
     }
 
+    public CodeUnit classUnit() {
+        return switch (kind) {
+            case CLASS -> this;
+            default -> {
+                var lastDotIndex = fqName.lastIndexOf('.');
+                assert lastDotIndex > 0;
+                var fqcn = fqName.substring(0, lastDotIndex);
+                yield cls(source, fqcn);
+            }
+        };
+    }
+
     @Override
     public int compareTo(CodeUnit other)
     {

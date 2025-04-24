@@ -29,13 +29,7 @@ import scala.Option;
 import scala.Tuple2;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
@@ -570,7 +564,8 @@ public class SearchAgent {
                     if (symbols != null) {
                         symbols.stream()
                                 .map(this::extractClassNameFromSymbol)
-                                .forEach(trackedClassNames::add);
+                                .filter(Optional::isPresent)
+                                .forEach(cu -> trackedClassNames.add(cu.get()));
                     }
                 }
             }
@@ -593,14 +588,9 @@ public class SearchAgent {
     /**
      * Extracts class name from a symbol
      */
-    private String extractClassNameFromSymbol(String symbol) {
-        // If the symbol contains a method or field reference
-        int lastDot = symbol.lastIndexOf('.');
-        if (lastDot > 0) {
-            return symbol.substring(0, lastDot);
-        }
-        // Otherwise assume it's a class
-        return symbol;
+    private Optional<String> extractClassNameFromSymbol(String symbol) {
+        return analyzer.getDefinition(symbol)
+                .flatMap(cu -> Optional.of(cu.classUnit().fqName()));
     }
 
     /**
@@ -1115,7 +1105,9 @@ public class SearchAgent {
         if (!potentialNames.isEmpty()) {
             // Filter again for plausible FQCNs before adding
             var validNames = potentialNames.stream()
-                    .map(this::extractClassNameFromSymbol) // Normalize FQCNs
+                    .map(this::extractClassNameFromSymbol)
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
                     .collect(Collectors.toSet());
             if (!validNames.isEmpty()) {
                 logger.debug("Tracking potential class names from result: {}", validNames);
@@ -1160,28 +1152,18 @@ public class SearchAgent {
         // TODO I'm skeptical that just throwing in all the classes examined during the search is the right approach
         // -- would we get better results parsing the answer for classname matches?
         combinedNames.addAll(trackedClassNames);
-        logger.debug("Combined tracked and LLM classes before coalesce: {}", combinedNames);
-        var coalesced = combinedNames.stream()
-                .map(this::extractClassNameFromSymbol) // Normalize before filtering
-                .distinct() // Ensure uniqueness after normalization
-                .filter(c -> combinedNames.stream() // Coalesce inner classes
-                        .map(this::extractClassNameFromSymbol)
-                        .noneMatch(c2 -> !c.equals(c2) && c.startsWith(c2 + "$")))
-                .sorted() // Consistent order
-                .toList();
-        logger.debug("Coalesced relevant classes: {}", coalesced);
-
-        // Map final classes to CodeUnits representing the files they are in
-        var sources = coalesced.stream()
-                .map(analyzer::getFileFor) // Get Option<ProjectFile>
-                .filter(Option::isDefined) // Filter out classes where file couldn't be found
-                .map(Option::get)          // Get ProjectFile
-                .distinct()                // Get unique files
-                .map(pf -> CodeUnit.cls(pf, pf.toString())) // Create CodeUnit representing the file
+        logger.debug("Combined tracked and LLM classes before normalize/coalesce: {}", combinedNames);
+        // Transform to CodeUnit
+        var codeUnits = combinedNames.stream()
+                .map(analyzer::getDefinition)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(CodeUnit::classUnit)
                 .collect(Collectors.toSet());
+        var coalesced = AnalyzerUtil.coalesceInnerClasses(codeUnits);
 
-        logger.debug("Final sources identified (files): {}", sources.stream().map(CodeUnit::source).toList());
-        var fragment = new ContextFragment.SearchFragment(query, explanationText, sources);
+        logger.debug("Final sources identified (files): {}", coalesced.stream().map(CodeUnit::source).toList());
+        var fragment = new ContextFragment.SearchFragment(query, explanationText, coalesced);
         return new SessionResult("Search: " + query,
                                  fragment, Map.of(),
                                  new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));

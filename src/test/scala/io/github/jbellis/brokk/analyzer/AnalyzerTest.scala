@@ -371,6 +371,41 @@ class AnalyzerTest {
   }
 
   @Test
+  def getDefinitionTest(): Unit = {
+    val analyzer = getAnalyzer
+
+    // Test finding a class
+    val classDefOpt = analyzer.getDefinition("D")
+    assertTrue(classDefOpt.isPresent, "Should find definition for class D")
+    assertEquals("D", classDefOpt.get().fqName())
+    assertTrue(classDefOpt.get().isClass)
+
+    // Test finding a method (unique non-overloaded)
+    val methodDefOpt = analyzer.getDefinition("A.method1")
+    assertTrue(methodDefOpt.isPresent, "Should find definition for method A.method1")
+    assertEquals("A.method1", methodDefOpt.get().fqName())
+    assertTrue(methodDefOpt.get().isFunction)
+
+    // Test finding a method
+    val overloadedMethodOpt = analyzer.getDefinition("A.method2")
+    assertTrue(overloadedMethodOpt.isPresent, "Should find a definition for overloaded method A.method2")
+    assertEquals("A.method2", overloadedMethodOpt.get().fqName())
+    assertTrue(overloadedMethodOpt.get().isFunction)
+
+    // Test finding a field
+    val fieldDefOpt = analyzer.getDefinition("D.field1")
+    assertTrue(fieldDefOpt.isPresent, "Should find definition for field D.field1")
+    assertEquals("D.field1", fieldDefOpt.get().fqName())
+    assertFalse(fieldDefOpt.get().isClass)
+    assertFalse(fieldDefOpt.get().isFunction)
+
+    // Test non-existent symbol
+    val nonExistentOpt = analyzer.getDefinition("NonExistentSymbol")
+    assertFalse(nonExistentOpt.isPresent, "Should not find definition for NonExistentSymbol")
+  }
+
+
+  @Test
   def getUsesClassWithStaticMembersTest(): Unit = {
     val analyzer = getAnalyzer
     val symbol = "E"

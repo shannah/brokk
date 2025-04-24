@@ -739,6 +739,68 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   }
 
   /**
+   * Finds a single CodeUnit definition matching the exact symbol name.
+   *
+   * @param symbol The exact, case-sensitive FQ name of the class, method, or field.
+   *               Symbols are checked in that order, so if you have a field and a method with the same name,
+   *               the method will be returned.
+   * @return An Optional containing the CodeUnit if exactly one match is found, otherwise empty.
+   */
+  override def getDefinition(symbol: String): java.util.Optional[CodeUnit] = {
+    // lots of similarity to searchDefinitions, but that uses pattern-matching fullName and this
+    // uses fullNameExact so trying to share code seems like more trouble than it's worth
+    import scala.jdk.CollectionConverters.*
+
+    // Try finding as a class
+    val classMatch = cpg.typeDecl
+      .fullNameExact(symbol)
+      .filter(td => isClassInProject(td.fullName)) // Filter TypeDecl based on its fullName
+      .flatMap(td => toFile(td).map(file => CodeUnit.cls(file, symbol)))
+      .headOption
+
+    if (classMatch.isDefined) return java.util.Optional.of(classMatch.get)
+
+    // Try finding as a method
+    // First, find all raw method nodes matching the resolved symbol name within project classes
+    val rawMethodMatches = cpg.method
+      .filter(m => resolveMethodName(chopColon(m.fullName)) == symbol)
+      .filter(m => m.typeDecl.fullName.headOption.exists(isClassInProject))
+      .l
+
+    // If any method matches the resolved name, pick the first one.
+    // CodeUnit doesn't distinguish overloads, so ambiguity at this level is ignored.
+    if (rawMethodMatches.nonEmpty) {
+      val theMethod = rawMethodMatches.head
+      val methodCodeUnitOpt = toFile(theMethod.typeDecl.head).map(file => CodeUnit.fn(file, symbol))
+      // Convert Option[CodeUnit] to java.util.Optional[CodeUnit]
+      return methodCodeUnitOpt match {
+        case Some(cu) => java.util.Optional.of(cu)
+        case None     => java.util.Optional.empty() // Should not happen if isClassInProject passed, but handle defensively
+      }
+    }
+
+    // Try finding as a field (symbol must be className.fieldName)
+    val lastDot = symbol.lastIndexOf('.')
+    if (lastDot > 0) {
+      val className = symbol.substring(0, lastDot)
+      val fieldName = symbol.substring(lastDot + 1)
+
+      val fieldMatch = cpg.member
+        .nameExact(fieldName)
+        .where(_.typeDecl.fullNameExact(className))
+        .filter(f => f.typeDecl.fullName.headOption.exists(tn => isClassInProject(tn.toString))) // Check existence using isClassInProject on the string name
+        .flatMap(f => toFile(f.typeDecl).map(file => CodeUnit.field(file, symbol)))
+        .headOption // Expecting only one field with this name in the class
+
+      if (fieldMatch.isDefined) return java.util.Optional.of(fieldMatch.get)
+    }
+
+    // Not found as class, unique method, or field
+    java.util.Optional.empty()
+  }
+
+
+  /**
    * Weighted PageRank at the class level. If seedClassWeights is non-empty,
    * seeds are assigned according to those weights. Otherwise, all classes
    * are seeded equally.
