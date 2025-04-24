@@ -55,7 +55,7 @@ public abstract class CodePrompts {
         // (1) helps with cache friendliness after a session (when we may compress additional history messages)
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
         messages.addAll(parser.exampleMessages());
-        messages.addAll(cm.getWorkspaceContentsMessages(false));
+        messages.addAll(cm.getWorkspaceContentsMessages());
         messages.addAll(cm.getHistoryMessages());
         messages.add(new UserMessage(codeReqeust() + "\n" + parser.instructions(input, reminder)));
 
@@ -69,7 +69,7 @@ public abstract class CodePrompts {
         // Follow the same order as in codeMessages to preserve cache across requests
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
         messages.addAll(cm.getParserForWorkspace().exampleMessages());
-        messages.addAll(cm.getWorkspaceContentsMessages(false));
+        messages.addAll(cm.getWorkspaceContentsMessages());
         messages.addAll(cm.getHistoryMessages());
         messages.add(new UserMessage(askRequest(input)));
 

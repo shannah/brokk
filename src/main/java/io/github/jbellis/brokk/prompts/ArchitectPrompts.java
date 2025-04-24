@@ -1,8 +1,11 @@
 package io.github.jbellis.brokk.prompts;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.analyzer.Language;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,8 +16,27 @@ public abstract class ArchitectPrompts extends CodePrompts {
     public List<ChatMessage> collectMessages(ContextManager cm, List<ChatMessage> sessionMessages) {
         var messages = new ArrayList<ChatMessage>();
         messages.add(new SystemMessage(formatIntro(cm, CodePrompts.ARCHITECT_REMINDER)));
+        messages.addAll(cm.getWorkspaceContentsMessages());
+        messages.addAll(cm.getHistoryMessages());
         messages.addAll(sessionMessages);
-        messages.addAll(cm.getWorkspaceContentsMessages(true));
+        // top 10 related classes
+        String topClassesRaw = "";
+        // this check is mostly equivalent to analyzer.isEmpty() but doesn't block for analyzer creation (or throw InterruptedException)
+        if (cm.getProject().getAnalyzerLanguage() != Language.None) {
+            var ac = cm.topContext().setAutoContextFiles(10).buildAutoContext();
+            topClassesRaw = ac.text();
+            var topClassesText = topClassesRaw.isBlank() ? "" : """
+                    <related_classes>
+                    Here are some classes that may be related to what is in your Workspace. If relevant, you
+                    should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
+                    visible to Code Agent. If they are not relevant, just ignore them:
+                    
+                    %s
+                    </related_classes>
+                    """.stripIndent().formatted(topClassesRaw);
+            messages.add(new UserMessage(topClassesText));
+            messages.add(new AiMessage("I will examine these classes."));
+        }
         return messages;
     }
 
