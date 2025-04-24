@@ -140,7 +140,7 @@ public class SymbolSelectionPanel extends JPanel {
             // Get completions using the brokk Completions utility
             var completions = analyzer == null
                             ? List.<CodeUnit>of()
-                            : Completions.completeClassesAndMembers(text, analyzer);
+                            : Completions.completeSymbols(text, analyzer);
 
             // Convert to RSTA completions, filtering by the requested types
             var L = completions.stream()

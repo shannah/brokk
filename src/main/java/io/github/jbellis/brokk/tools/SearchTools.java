@@ -153,7 +153,7 @@ public class SearchTools {
         Set<CodeUnit> allDefinitions = new HashSet<>();
         for (String pattern : patterns) {
             if (!pattern.isBlank()) {
-                allDefinitions.addAll(getAnalyzer().getDefinitions(pattern));
+                allDefinitions.addAll(getAnalyzer().searchDefinitions(pattern));
             }
         }
         logger.debug("Raw definitions: {}", allDefinitions);

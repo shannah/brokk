@@ -498,7 +498,7 @@ public class MultiFileSelectionDialog extends JDialog {
 
         // Get all potential code units using Completions utility and filter for classes
         // This aligns with how SymbolCompletionProvider works and avoids assuming IAnalyzer.getClasses()
-        Map<String, CodeUnit> knownClasses = Completions.completeClassesAndMembers("", az).stream().filter(cu -> cu.kind() == CodeUnitType.CLASS).collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
+        Map<String, CodeUnit> knownClasses = Completions.completeSymbols("", az).stream().filter(cu -> cu.kind() == CodeUnitType.CLASS).collect(Collectors.toMap(CodeUnit::fqName, cu -> cu, (cu1, cu2) -> cu1)); // Handle potential duplicates
 
         for (String className : classNames) {
             if (className.isBlank()) continue;
@@ -685,7 +685,7 @@ public class MultiFileSelectionDialog extends JDialog {
             this.completionsFuture = backgroundExecutor.submit(() -> {
                 try {
                     // Filter for classes during the background load
-                    return Completions.completeClassesAndMembers("", analyzer.get())
+                    return Completions.completeSymbols("", analyzer.get())
                             .stream()
                             .filter(c -> c.kind() == CodeUnitType.CLASS)
                             .toList();

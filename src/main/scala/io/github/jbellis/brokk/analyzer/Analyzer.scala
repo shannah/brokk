@@ -690,7 +690,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     buildCallGraph(resolvedMethodName, isIncoming = false, maxDepth = depth)
   }
 
-  override def getDefinitions(pattern: String): java.util.List[CodeUnit] = {
+  override def searchDefinitions(pattern: String): java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     val ciPattern = "(?i)" + pattern // case-insensitive
 

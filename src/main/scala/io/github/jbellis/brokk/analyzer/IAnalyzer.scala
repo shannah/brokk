@@ -30,7 +30,7 @@ trait IAnalyzer {
   def getFileFor(fqcn: String): Option[ProjectFile] =
     throw new UnsupportedOperationException()
     
-  def getDefinitions(pattern: String): util.List[CodeUnit] =
+  def searchDefinitions(pattern: String): util.List[CodeUnit] =
     throw new UnsupportedOperationException()
     
   def getUses(symbol: String): util.List[CodeUnit] = 

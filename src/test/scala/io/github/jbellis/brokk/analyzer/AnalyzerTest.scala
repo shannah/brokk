@@ -355,17 +355,17 @@ class AnalyzerTest {
     assertTrue("e".matches("(?i)E"))
 
     // Find classes matching "*E"
-    val classMatches = analyzer.getDefinitions(".*e")
+    val classMatches = analyzer.searchDefinitions(".*e")
     val classRefs = asScala(classMatches).filter(_.isClass).map(_.fqName).toSet
     assertEquals(Set("E", "UseE", "AnonymousUsage"), classRefs)
 
     // Find methods matching "method*"
-    val methodMatches = analyzer.getDefinitions("method.*1")
+    val methodMatches = analyzer.searchDefinitions("method.*1")
     val methodRefs = asScala(methodMatches).map(_.fqName).toSet
     assertEquals(Set("A.method1", "D.methodD1"), methodRefs)
 
     // Find fields matching "field.*"
-    val fieldMatches = analyzer.getDefinitions(".*field.*")
+    val fieldMatches = analyzer.searchDefinitions(".*field.*")
     val fieldRefs = asScala(fieldMatches).map(_.fqName).toSet
     assertEquals(Set("D.field1", "D.field2", "E.iField", "E.sField"), fieldRefs)
   }

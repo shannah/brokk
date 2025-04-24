@@ -34,7 +34,7 @@ class DisabledAnalyzer extends IAnalyzer {
   override def getFileFor(fqcn: String): Option[ProjectFile] =
     None
 
-  override def getDefinitions(pattern: String): util.List[CodeUnit] =
+  override def searchDefinitions(pattern: String): util.List[CodeUnit] =
     Collections.emptyList()
 
   override def getUses(symbol: String): util.List[CodeUnit] =

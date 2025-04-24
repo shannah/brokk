@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class CompletionsTest {
     @VisibleForTesting
     static List<CodeUnit> completeUsage(String input, IAnalyzer analyzer) {
-        return Completions.completeClassesAndMembers(input, analyzer);
+        return Completions.completeSymbols(input, analyzer);
     }
 
     private static class MockAnalyzer implements IAnalyzer {
@@ -52,7 +52,7 @@ public class CompletionsTest {
         }
 
         @Override
-        public List<CodeUnit> getDefinitions(String pattern) {
+        public List<CodeUnit> searchDefinitions(String pattern) {
             // Case-insensitive pattern matching for compatibility with Analyzer
             var regex = "^(?i)" + pattern + "$";
 
@@ -134,7 +134,7 @@ public class CompletionsTest {
     public void testShortNameCompletions() {
         var mock = new MockAnalyzer();
 
-        var completions = Completions.completeClassesAndMembers("Do", mock);
+        var completions = Completions.completeSymbols("Do", mock);
         assertEquals(Set.of("Do", "Do$Re", "Do$Re$Sub"), toShortValues(completions));
     }
 }

@@ -13,9 +13,9 @@ import java.util.List;
 import java.util.function.Function;
 
 public class Completions {
-    public static List<CodeUnit> completeClassesAndMembers(String input, IAnalyzer analyzer) {
+    public static List<CodeUnit> completeSymbols(String input, IAnalyzer analyzer) {
         String pattern = input.trim();
-        var allDefs = analyzer.getDefinitions(".*").stream().toList();
+        var allDefs = analyzer.searchDefinitions(".*").stream().toList();
 
         // empty pattern -> alphabetic list
         if (pattern.isEmpty()) {
