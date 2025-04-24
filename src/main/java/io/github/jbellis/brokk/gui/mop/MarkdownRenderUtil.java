@@ -24,7 +24,9 @@ import java.util.regex.Pattern;
 public class MarkdownRenderUtil {
     private static final Logger logger = LogManager.getLogger(MarkdownRenderUtil.class);
     private static final Parser parser = Parser.builder().build();
-    private static final HtmlRenderer renderer = HtmlRenderer.builder().build();
+    private static final HtmlRenderer renderer = HtmlRenderer.builder()
+            .softBreak("<br />\n")  // Convert single newlines to HTML line breaks
+            .build();
 
     /**
      * Renders a string containing Markdown, handling ``` code fences.
