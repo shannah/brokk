@@ -4,11 +4,8 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.ContextFragment.TaskFragment;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
@@ -331,7 +328,8 @@ public class InstructionsPanel extends JPanel {
     private boolean contextHasImages() {
         var contextManager = chrome.getContextManager();
         return contextManager.topContext() != null &&
-                contextManager.topContext().allFragments().anyMatch(f -> !f.isText());
+                contextManager.topContext().allFragments()
+                    .anyMatch(f -> !f.isText() && !(f instanceof ContextFragment.OutputFragment));
     }
 
     /**
