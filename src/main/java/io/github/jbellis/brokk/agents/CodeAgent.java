@@ -148,7 +148,7 @@ public class CodeAgent {
                     // Previous build failed and LLM provided no fixes
                     stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.BUILD_ERROR, buildError);
                 } else {
-                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS);
+                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS, llmText);
                 }
                 break;
             }
