@@ -44,9 +44,11 @@ public class MarkdownRenderUtil {
         contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Regex to find code blocks ```optional_info \n content ```
-        // DOTALL allows . to match newline characters
+        // (?m) makes ^ and $ match start/end of lines
+        // (?s) DOTALL allows . to match newline characters
+        // ^\s* ensures the fence starts at the beginning of a line (with optional whitespace)
         // reluctant quantifier *? ensures it finds the *next* ```
-        Pattern codeBlockPattern = Pattern.compile("(?s)```(\\w*)[\\r\\n]?(.*?)```");
+        Pattern codeBlockPattern = Pattern.compile("(?ms)^\\s*```(\\w*)[\\r\\n](.*?)^\\s*```\\s*$");
         Matcher matcher = codeBlockPattern.matcher(markdownContent);
 
         int lastMatchEnd = 0;
