@@ -165,7 +165,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         if (messages.isEmpty()) return;
 
         var lastMessage = messages.getLast();
-        var newText = Messages.getRepr(lastMessage) + " " + additionalText;
+        var newText = Messages.getRepr(lastMessage) + additionalText;
         var type = lastMessage.type();
 
         // Create a new message with the combined text
