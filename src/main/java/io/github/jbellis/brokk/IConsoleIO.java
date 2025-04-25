@@ -17,7 +17,7 @@ public interface IConsoleIO {
 
     void toolErrorRaw(String msg);
 
-    public enum MessageSubType {
+    enum MessageSubType {
         Run,
         Ask,
         Code,
@@ -45,9 +45,18 @@ public interface IConsoleIO {
         throw new UnsupportedOperationException();
     }
     
-    default public List<ChatMessage> getLlmRawMessages() {
+    default List<ChatMessage> getLlmRawMessages() {
         throw new UnsupportedOperationException();
     }
 
-    public void blockLlmOutput(boolean blocked);
+    void blockLlmOutput(boolean blocked);
+
+    /**
+     * Prompt the user to select which of the proposed context fragments to add.
+     * @param proposals the fragments returned by ContextAgent
+     * @return the list of fragments the user chose (empty if none)
+     */
+    default List<ContextFragment> selectContextProposals(List<ContextFragment> proposals) {
+        throw new UnsupportedOperationException();
+    }
 }

@@ -344,7 +344,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
         // need to set the correct parser here since we're going to append to the same fragment during the action
         io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(messageSubType.toString(), input)), input));
-        
+
         return submitLlmTask(action, task);
     }
 
@@ -355,7 +355,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> submitUserTask(String description, Runnable task) {
         return submitUserTask(description, task, false);
     }
-    
+
     private Future<?> submitUserTask(String description, Runnable task, boolean isLlmTask) {
         return userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
@@ -442,17 +442,23 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public void editFiles(Collection<ProjectFile> files)
     {
-        // Create the new fragments to be added as editable
         var proposedEditableFragments = files.stream().map(ContextFragment.ProjectPathFragment::new).toList();
+        editFiles(proposedEditableFragments);
+    }
+
+    /**
+     * Add the given files to editable.
+     */
+    public void editFiles(List<ContextFragment.ProjectPathFragment> fragments) {
         // Find existing read-only fragments that correspond to these files
         var currentReadOnlyFiles = topContext().readonlyFiles().collect(Collectors.toSet());
-        var filesToEditSet = new HashSet<>(files);
+        var filesToEditSet = fragments.stream().map(ContextFragment.ProjectPathFragment::file).collect(Collectors.toSet());
         var existingReadOnlyFragmentsToRemove = currentReadOnlyFiles.stream()
                 .filter(pf -> filesToEditSet.contains(pf.file()))
                 .toList();
         // Find existing editable fragments that correspond to these files to avoid duplicates
         var currentEditableFileSet = topContext().editableFiles().map(PathFragment::file).collect(Collectors.toSet());
-        var uniqueNewEditableFragments = proposedEditableFragments.stream()
+        var uniqueNewEditableFragments = fragments.stream()
                 .filter(frag -> !currentEditableFileSet.contains(frag.file()))
                 .toList();
 

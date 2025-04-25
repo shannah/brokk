@@ -884,10 +884,77 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
     
     /**
-         * Sets the blocking state on the MarkdownOutputPanel to prevent clearing/resetting during operations.
-         * 
-         * @param blocked true to prevent clear/reset operations, false to allow them
-         */
+     * Implements the selection dialog for ContextAgent proposals.
+     */
+    @Override
+    public List<ContextFragment> selectContextProposals(List<ContextFragment> proposals) {
+        final List<ContextFragment>[] result = new List[1];
+        result[0] = null;
+        SwingUtil.runOnEDT(() -> {
+            JDialog dialog = new JDialog(frame, "Select Context Items to Add", true);
+            dialog.setLayout(new BorderLayout());
+            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+
+            JLabel instruction = new JLabel("<html>Select items to add to the workspace:</html>");
+            instruction.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
+            dialog.add(instruction, BorderLayout.NORTH);
+
+            JPanel checkboxPanel = new JPanel();
+            checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
+            List<JCheckBox> checks = new ArrayList<>();
+            JButton ok = new JButton("Add Context and Continue");
+            JButton cancel = new JButton("Cancel");
+            for (ContextFragment fragment : proposals) {
+                JCheckBox check = new JCheckBox(fragment.shortDescription(), true);
+            checks.add(check);
+            checkboxPanel.add(check);
+            }
+            JScrollPane scroll = new JScrollPane(checkboxPanel);
+            scroll.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+            dialog.add(scroll, BorderLayout.CENTER);
+
+            // Dynamically update OK button text based on selections
+            for (JCheckBox checkBox : checks) {
+                checkBox.addItemListener(e -> {
+                    boolean anySelected = checks.stream().anyMatch(JCheckBox::isSelected);
+                    ok.setText(anySelected
+                               ? "Add Context and Continue"
+                               : "Continue without adding Context");
+                });
+            }
+
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            buttons.add(ok);
+            buttons.add(cancel);
+            dialog.add(buttons, BorderLayout.SOUTH);
+
+            ok.addActionListener(e -> {
+                List<ContextFragment> picked = new ArrayList<>();
+                for (int i = 0; i < checks.size(); i++) {
+                    if (checks.get(i).isSelected()) {
+                        picked.add(proposals.get(i));
+                    }
+                }
+                result[0] = picked;
+                dialog.dispose();
+            });
+            cancel.addActionListener(e -> {
+            result[0] = null;
+            dialog.dispose();
+        });
+
+            dialog.pack();
+            dialog.setLocationRelativeTo(frame);
+            dialog.setVisible(true);
+        });
+        return result[0];
+    }
+
+    /**
+     * Sets the blocking state on the MarkdownOutputPanel to prevent clearing/resetting during operations.
+     *
+     * @param blocked true to prevent clear/reset operations, false to allow them
+     */
     public void blockLlmOutput(boolean blocked) {
         // Ensure that prev setText calls are processed before blocking => we need the invokeLater
         SwingUtilities.invokeLater(() -> {
@@ -895,7 +962,5 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 historyOutputPanel.setMarkdownOutputPanelBlocking(blocked);
             }
         });
-
     }
-        
 }

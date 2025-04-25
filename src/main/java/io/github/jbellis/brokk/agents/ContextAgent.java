@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -17,6 +18,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
 import static java.lang.Math.min;
 
@@ -42,6 +44,8 @@ public class ContextAgent {
     // if our pruned context is larger than the Final target budget then we also give up
     private final int finalBudget;
 
+    private final List<ContextFragment> proposals = new ArrayList<>();
+
     public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) {
         this.contextManager = contextManager;
         this.llm = model;
@@ -63,19 +67,21 @@ public class ContextAgent {
         logger.debug("ContextAgent initialized. Budgets: Small={}, Medium={}, FilenameLimit={}", skipPruningBudget, finalBudget, budgetPruning);
     }
 
+    private record ExecutionResult(boolean success, List<ContextFragment> fragments) { }
+
     /**
      * Executes the context population logic.
      * This method determines the best initial context based on project size and token budgets,
      * potentially using LLM inference, and adds the selected content to the workspace.
      */
-    public void execute() throws InterruptedException {
+    public List<ContextFragment> execute() throws InterruptedException {
         var allFiles = contextManager.getRepo().getTrackedFiles().stream().sorted().toList();
 
-        var singlePassSuccess = analyzer.isEmpty()
-                                ? executeWithFileContents(allFiles)
-                                : executeWithSummaries(allFiles);
-        if (singlePassSuccess) {
-            return;
+        var firstResult = analyzer.isEmpty()
+                          ? executeWithFileContents(allFiles)
+                          : executeWithSummaries(allFiles);
+        if (firstResult.success) {
+            return firstResult.fragments;
         }
 
         // do two passes starting with filenames
@@ -83,21 +89,21 @@ public class ContextAgent {
         int filenameTokens = Messages.getApproximateTokens(filenameString);
         logger.debug("Total tokens for filename list: {}", filenameTokens);
         if (filenameTokens > budgetPruning) {
+            // too large for us to handle
             logGiveUp("filename list");
-            return; // too large for us to handle
+            return List.of();
         }
 
         var prunedFiles = pruneFilenames(allFiles);
-        if (analyzer.isEmpty()) {
-            executeWithFileContents(prunedFiles);
-        } else {
-            executeWithSummaries(prunedFiles);
-        }
+        var secondResult = analyzer.isEmpty()
+                           ? executeWithFileContents(prunedFiles)
+                           : executeWithSummaries(prunedFiles);
+        return secondResult.fragments;
     }
 
     // --- Logic branch for using class summaries ---
 
-    private boolean executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
+    private ExecutionResult executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
@@ -113,27 +119,43 @@ public class ContextAgent {
 
         // Rule 1: Use all summaries if they fit the smallest budget
         if (summaryTokens <= skipPruningBudget) {
-            addSummariesToWorkspace(rawSummaries, "all summaries");
-            return true;
+            var fragments = skeletonPerSummary(rawSummaries);
+            return new ExecutionResult(true, fragments);
         }
 
         // Rule 2: Ask LLM to pick relevant summaries if all summaries fit the Pruning budget
         if (summaryTokens <= budgetPruning) {
-            askLlmToSelectSummaries(rawSummaries);
-            return true;
+            var relevantSummaries = askLlmToSelectSummaries(rawSummaries);
+            int relevantSummaryTokens = Messages.getApproximateTokens(String.join("\n", relevantSummaries.values()));
+            if (relevantSummaryTokens <= finalBudget) {
+                var fragments = skeletonPerSummary(relevantSummaries);
+                return new ExecutionResult(true, fragments);
+            } else {
+                logGiveUp("summaries");
+                return new ExecutionResult(false, List.of());
+            }
         }
 
-        return false;
+        return new ExecutionResult(false, List.of());
+    }
+
+    /**
+     * one SkeletonFragment per summary so ArchitectAgent can easily ask user which ones to include
+     */
+    private static @NotNull List<ContextFragment> skeletonPerSummary(Map<CodeUnit, String> relevantSummaries) {
+        return relevantSummaries.entrySet().stream()
+                .map(entry -> (ContextFragment) new ContextFragment.SkeletonFragment(Map.of(entry.getKey(), entry.getValue())))
+                .toList();
     }
 
     /**
      * Collect a structural “skeleton” for every top-level class whose source file
      * is in the supplied collection.
-     *
+     * <p>
      * We:
-     *   1. Grab the CodeUnits belonging to those files (via the analyzer).
-     *   2. Collapse inner-classes so we only consider the outermost declaration.
-     *   3. Ask the analyzer for a skeleton of each class and keep the non-empty ones.
+     * 1. Grab the CodeUnits belonging to those files (via the analyzer).
+     * 2. Collapse inner-classes so we only consider the outermost declaration.
+     * 3. Ask the analyzer for a skeleton of each class and keep the non-empty ones.
      */
     private Map<CodeUnit, String> getProjectSummaries(Collection<ProjectFile> files) {
         // turn file list into class list
@@ -155,7 +177,7 @@ public class ContextAgent {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    private void askLlmToSelectSummaries(Map<CodeUnit, String> summaries) throws InterruptedException {
+    private Map<CodeUnit, String> askLlmToSelectSummaries(Map<CodeUnit, String> summaries) throws InterruptedException {
         var promptContent = summaries.entrySet().stream()
                 .map(entry -> "Class: %s\n```java\n%s\n```".formatted(entry.getKey().fqName(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
@@ -181,7 +203,7 @@ public class ContextAgent {
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error or empty response from LLM during summary selection: {}. Aborting context population.",
                         result.error() != null ? result.error().getMessage() : "Empty response");
-            return;
+            return Map.of();
         }
 
         var responseText = result.chatResponse().aiMessage().text();
@@ -190,34 +212,15 @@ public class ContextAgent {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         logger.debug("LLM suggested {} relevant classes", relevantSummaries.size());
 
-        // Check budget *after* LLM selection
-        int relevantSummaryTokens = Messages.getApproximateTokens(String.join("\n", relevantSummaries.values()));
-        if (relevantSummaryTokens <= finalBudget) {
-            addSummariesToWorkspace(relevantSummaries, "summaries");
-        } else {
-            logger.debug("summaries ({} tokens) still exceed budget ({}). Aborting.", relevantSummaryTokens, skipPruningBudget);
-            logGiveUp("summaries");
-        }
+        return relevantSummaries;
     }
-
-    private void addSummariesToWorkspace(Map<CodeUnit, String> summaries, String description) {
-        if (summaries.isEmpty()) {
-            return;
-        }
-        var fragment = new ContextFragment.SkeletonFragment(summaries);
-        contextManager.addVirtualFragment(fragment);
-        int tokens = Messages.getApproximateTokens(String.join("\n", summaries.values()));
-        logger.debug("Added skeleton fragment ({}) to workspace ({} tokens)", description, tokens);
-        io.systemOutput("Added %s for %d classes to workspace".formatted(description, summaries.size()));
-    }
-
 
     // --- Logic branch for using full file contents ---
 
-    private boolean executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
+    private ExecutionResult executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
-            logger.debug("Non-empty context and no anlyzer present, skipping context population");
-            return true;
+            logger.debug("Non-empty context and no analyzer present, skipping context population");
+            return new ExecutionResult(true, List.of());
         }
 
         var allContentsMap = readFileContents(allFiles);
@@ -226,17 +229,30 @@ public class ContextAgent {
 
         // Rule 1: Use all files if content fits the smallest budget
         if (contentTokens <= skipPruningBudget) {
-            addFilesToWorkspace(allFiles, "all files");
-            return true;
+            var fragments = allFiles.stream()
+                    .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
+                    .toList();
+            return new ExecutionResult(true, fragments);
         }
 
         // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
         if (contentTokens <= budgetPruning) {
-            askLlmToSelectFiles(allFiles, allContentsMap);
-            return true;
+            var relevantFiles = askLlmToSelectFiles(allFiles, allContentsMap);
+            var relevantContentsMap = readFileContents(relevantFiles);
+            int relevantContentTokens = Messages.getApproximateTokens(String.join("\n", relevantContentsMap.values()));
+            if (relevantContentTokens <= finalBudget) {
+                var fragments = relevantFiles.stream()
+                        .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
+                        .toList();
+                return new ExecutionResult(true, fragments);
+            } else {
+                logGiveUp("pruned file contents");
+                return new ExecutionResult(false, List.of());
+            }
         }
 
-        return false;
+        logGiveUp("file contents");
+        return new ExecutionResult(false, List.of());
     }
 
     private Map<ProjectFile, String> readFileContents(Collection<ProjectFile> files) {
@@ -257,7 +273,7 @@ public class ContextAgent {
     }
 
 
-    private void askLlmToSelectFiles(List<ProjectFile> allFiles, Map<ProjectFile, String> contentsMap) throws InterruptedException {
+    private List<ProjectFile> askLlmToSelectFiles(List<ProjectFile> allFiles, Map<ProjectFile, String> contentsMap) throws InterruptedException {
         var promptContent = contentsMap.entrySet().stream()
                 .map(entry -> "File: %s\n```\n%s\n```".formatted(entry.getKey().toString(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
@@ -283,32 +299,14 @@ public class ContextAgent {
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error or empty response from LLM during file selection: {}. Aborting context population.",
                         result.error() != null ? result.error().getMessage() : "Empty response");
-            return;
+            return List.of();
         }
 
         var responseText = result.chatResponse().aiMessage().text();
-        var relevantFiles = allFiles.stream()
+
+        return allFiles.stream()
                 .filter(f -> responseText.contains(f.toString()))
                 .toList();
-
-        // Check budget *after* LLM selection
-        var relevantContentsMap = readFileContents(relevantFiles); // Read only relevant files now
-        int relevantContentTokens = Messages.getApproximateTokens(String.join("\n", relevantContentsMap.values()));
-        if (relevantContentTokens <= finalBudget) {
-            addFilesToWorkspace(relevantFiles, "files");
-        } else {
-            logger.debug("file contents ({} tokens) still exceed budget ({}). Aborting.", relevantContentTokens, skipPruningBudget);
-            logGiveUp("file contents");
-        }
-    }
-
-    private void addFilesToWorkspace(List<ProjectFile> files, String description) {
-        if (files.isEmpty()) {
-            return;
-        }
-        contextManager.editFiles(files);
-        logger.debug("Added {} read-only files ({}) to workspace", files.size(), description);
-        io.systemOutput("Added content of %d %s to workspace".formatted(files.size(), description));
     }
 
     // --- Logic for Rule 3: Use filenames first ---

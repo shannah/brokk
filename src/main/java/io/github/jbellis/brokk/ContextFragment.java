@@ -330,8 +330,8 @@ public interface ContextFragment extends Serializable {
 
     static PathFragment toPathFragment(BrokkFile bf) {
         if (bf.isText()) {
-            if (bf instanceof ProjectFile repo) {
-                return new ProjectPathFragment(repo);
+            if (bf instanceof ProjectFile pf) {
+                return new ProjectPathFragment(pf);
             } else if (bf instanceof ExternalFile ext) {
                 return new ExternalPathFragment(ext);
             }

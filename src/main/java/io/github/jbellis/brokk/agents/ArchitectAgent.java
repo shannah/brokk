@@ -32,6 +32,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.Map;
 import java.util.stream.Stream;
 
 
@@ -220,10 +221,35 @@ public class ArchitectAgent {
     public void execute() throws ExecutionException, InterruptedException {
         io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
-        // ContextAgent modifies workspace in-place
-        io.llmOutput("\nComputing initial context", ChatMessageType.CUSTOM);
+        io.llmOutput("\nExamining initial workspace", ChatMessageType.CUSTOM);
         var contextAgent = new ContextAgent(contextManager, contextManager.getAskModel(), goal);
-        contextAgent.execute();
+        List<ContextFragment> proposals = contextAgent.execute();
+        if (proposals.isEmpty()) {
+            io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
+            return;
+        }
+
+        List<ContextFragment> selected = io.selectContextProposals(proposals);
+        if (selected != null && !selected.isEmpty()) {
+            // Either a batch of path fragments, or one/multiple skeleton fragments
+            boolean allProjectPath = selected.stream().allMatch(f -> f instanceof ContextFragment.ProjectPathFragment);
+            if (allProjectPath) {
+                var casted = (List<ContextFragment.ProjectPathFragment>) (List<? extends ContextFragment>) selected;
+                contextManager.editFiles(casted);
+            } else if (selected.stream().allMatch(f -> f instanceof ContextFragment.SkeletonFragment)) {
+                // Merge multiple SkeletonFragments into one
+                var skeletons = selected.stream()
+                                        .map(ContextFragment.SkeletonFragment.class::cast)
+                                        .toList();
+                var combined = skeletons.stream()
+                                        .flatMap(sf -> sf.skeletons().entrySet().stream())
+                                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(combined));
+            } else {
+                // Unsupported mixed selection
+                logger.warn("Mixed selection of fragments; only ProjectPathFragment or SkeletonFragment allowed");
+            }
+        }
 
         var llm = contextManager.getLlm(model, "Architect: " + goal);
 
