@@ -535,6 +535,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (result.wasUndone()) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
+                    project.saveContext(currentContext);
                     io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
                 } else {
                     io.toolErrorRaw("no undo state available");
@@ -558,6 +559,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (result.wasUndone()) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
+                    project.saveContext(currentContext);
                     io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
                 } else {
                     io.toolErrorRaw("Context not found or already at that point");
@@ -581,6 +583,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (wasRedone) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
+                    project.saveContext(currentContext);
                     io.systemOutput("Redo!");
                 } else {
                     io.toolErrorRaw("no redo state available");
