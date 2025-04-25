@@ -51,7 +51,7 @@ class EditBlockTest {
         }
 
         @Override
-        public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
+        public void llmOutput(String token, ChatMessageType type) {
             // not needed for these tests
         }
 

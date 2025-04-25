@@ -337,15 +337,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Future<?> submitAction(String action, String input, Runnable task) {
-        IConsoleIO.MessageSubType messageSubType = null;
-        try {
-            messageSubType = IConsoleIO.MessageSubType.valueOf(action);
-        } catch (IllegalArgumentException e) {
-            logger.error("Unknown action type: {}", action);
-        }
         // need to set the correct parser here since we're going to append to the same fragment during the action
-        io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(messageSubType.toString(), input)), input));
-
+        action = (action + " MODE").toUpperCase();
+        io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
         return submitLlmTask(action, task);
     }
 
@@ -548,6 +542,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (result.wasUndone()) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
+                    project.saveContext(currentContext);
                     io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
                 } else {
                     io.toolErrorRaw("no undo state available");
@@ -571,6 +566,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (result.wasUndone()) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
+                    project.saveContext(currentContext);
                     io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
                 } else {
                     io.toolErrorRaw("Context not found or already at that point");
@@ -594,6 +590,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (wasRedone) {
                     var currentContext = contextHistory.topContext();
                     io.updateContextHistoryTable(currentContext);
+                    project.saveContext(currentContext);
                     io.systemOutput("Redo!");
                 } else {
                     io.toolErrorRaw("no redo state available");
@@ -871,6 +868,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .filter(TaskEntry::isCompressed)
                 .map(TaskEntry::toString)
                 .collect(Collectors.joining("\n\n"));
+
+
         if (!compressed.isEmpty()) {
             messages.add(new UserMessage("<taskhistory>%s</taskhistory>".formatted(compressed)));
             messages.add(new AiMessage("Ok, I see the history."));
@@ -880,6 +879,22 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .filter(e -> !e.isCompressed())
                 .forEach(e -> messages.addAll(e.log().messages()));
 
+        return messages;
+    }
+
+    public List<ChatMessage> getHistoryMessagesForCopy()
+    {
+        var taskHistory = topContext().getTaskHistory();
+
+        var messages = new ArrayList<ChatMessage>();
+        var allTaskEntries = taskHistory.stream()
+                .map(TaskEntry::toString)
+                .collect(Collectors.joining("\n\n"));
+
+
+        if (!allTaskEntries.isEmpty()) {
+            messages.add(new UserMessage("<taskhistory>%s</taskhistory>".formatted(allTaskEntries)));
+        }
         return messages;
     }
 
@@ -982,8 +997,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
                             if (formatted != null && !formatted.isBlank()) {
                                 readOnlyTextFragments.append(formatted).append("\n\n");
                             }
-                        } else {
-                            // Handle image fragments
+                        } else if (fragment instanceof ContextFragment.ImageFileFragment ||
+                                   fragment instanceof ContextFragment.PasteImageFragment) {
+                            // Handle image fragments - explicitly check for known image fragment types
                             try {
                                 // Convert AWT Image to LangChain4j ImageContent
                                 var l4jImage = ImageUtil.toL4JImage(fragment.image()); // Assumes ImageUtil helper
@@ -991,8 +1007,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                 // Add a placeholder in the text part for reference
                                 readOnlyTextFragments.append(fragment.format()).append("\n\n");
                             } catch (IOException e) {
-                                logger.error("Failed to process PasteImageFragment image for LLM message", e);
+                                logger.error("Failed to process image fragment for LLM message", e);
                                 removeBadFragment(fragment, e); // Remove problematic fragment
+                            }
+                        } else {
+                            // Handle non-text, non-image fragments (e.g., HistoryFragment, TaskFragment)
+                            // Just add their formatted representation as text
+                            String formatted = fragment.format();
+                            if (formatted != null && !formatted.isBlank()) {
+                                readOnlyTextFragments.append(formatted).append("\n\n");
                             }
                         }
                     } catch (IOException e) {

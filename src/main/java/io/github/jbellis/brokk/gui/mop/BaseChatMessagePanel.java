@@ -213,10 +213,10 @@ public class BaseChatMessagePanel extends JPanel {
         );
         // Center JLabel
         if (contentComponent instanceof JLabel) {
-            contentWrapper.setAlignmentX(Component.CENTER_ALIGNMENT);
+            contentWrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
             // Don't set a fixed preferred size - let it be determined by the content
             // Add a wrapper panel to handle centering
-            JPanel centeringPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+            JPanel centeringPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
             centeringPanel.setOpaque(false);
             centeringPanel.add(contentWrapper);
             contentArea.add(centeringPanel);

@@ -19,7 +19,7 @@ public class SpinnerIndicatorPanel extends JPanel {
      * @param backgroundColor The background color to apply (usually matching the parent's text area).
      */
     public SpinnerIndicatorPanel(String message, boolean isDarkTheme, Color backgroundColor) {
-        setLayout(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        setLayout(new FlowLayout(FlowLayout.LEFT, 20, 10));
         setAlignmentX(LEFT_ALIGNMENT);
         var spinnerIcon = new ImageIcon(Objects.requireNonNull(getClass().getResource(
                 "/icons/" + (isDarkTheme ? "spinner_dark.gif" : "spinner_white.gif"))));

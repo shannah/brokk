@@ -27,11 +27,7 @@ public interface IConsoleIO {
         CommandOutput
     }
 
-    void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType);
-
-    default void llmOutput(String token, ChatMessageType type) {
-        llmOutput(token, type, null);
-    }
+    void llmOutput(String token, ChatMessageType type);
     
     default void systemOutput(String message) {
         llmOutput("\n" + message, ChatMessageType.USER);

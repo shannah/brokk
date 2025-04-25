@@ -444,18 +444,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     @Override
-    public void llmOutput(String token, ChatMessageType type, MessageSubType messageSubType) {
+    public void llmOutput(String token, ChatMessageType type) {
         // don't output our placeholder for emulated tool calls
         if (token.equals(Messages.EMULATED_TOOL_CALLS)) {
             return;
         }
         // TODO: use messageSubType later on
         SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token, type));
-    }
-
-    @Override
-    public void llmOutput(String token, ChatMessageType type) {
-        llmOutput(token, type, null);
     }
 
     public void setLlmOutput(ContextFragment.TaskFragment newOutput) {
@@ -569,7 +564,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 for (TaskEntry entry : taskEntries) {
                     var markdownPanel = new MarkdownOutputPanel();
                     markdownPanel.updateTheme(themeManager != null && themeManager.isDarkTheme());
-                    markdownPanel.setText(entry.log());
+                    markdownPanel.setText(entry);
                     markdownPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.GRAY));
                     messagesContainer.add(markdownPanel);
                 }
