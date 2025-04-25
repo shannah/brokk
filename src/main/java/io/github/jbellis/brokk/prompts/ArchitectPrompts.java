@@ -16,7 +16,7 @@ public abstract class ArchitectPrompts extends CodePrompts {
     public List<ChatMessage> collectMessages(ContextManager cm, List<ChatMessage> sessionMessages) {
         var messages = new ArrayList<ChatMessage>();
         messages.add(new SystemMessage(formatIntro(cm, CodePrompts.ARCHITECT_REMINDER)));
-        messages.addAll(cm.getWorkspaceContentsMessages());
+        messages.addAll(cm.getWorkspaceContentsMessages(true));
         messages.addAll(cm.getHistoryMessages());
         messages.addAll(sessionMessages);
         // top 10 related classes

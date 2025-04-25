@@ -962,14 +962,18 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
      */
-    public Collection<ChatMessage> getWorkspaceContentsMessages() {
+    public Collection<ChatMessage> getWorkspaceContentsMessages(boolean withoutAutocontext) {
         var c = topContext();
         var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
 
         // --- Process Read-Only Fragments (Files, Virtual, AutoContext) ---
         var readOnlyTextFragments = new StringBuilder();
         var readOnlyImageFragments = new ArrayList<ImageContent>();
-        Streams.concat(c.readonlyFiles(), c.virtualFragments(), Stream.of(c.getAutoContext()))
+        var stream = Streams.concat(c.readonlyFiles(), c.virtualFragments());
+        if (!withoutAutocontext) {
+            stream = Streams.concat(stream, Stream.of(c.getAutoContext()));
+        }
+        stream
                 .forEach(fragment -> {
                     try {
                         if (fragment.isText()) {
