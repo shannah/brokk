@@ -57,6 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -1534,37 +1535,33 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public Future<?> compressHistoryAsync() {
         return submitUserTask("Compressing History", () -> {
-            io.disableHistoryPanel(); // Disable history navigation during compression
+            // Disable history navigation during compression
+            io.disableHistoryPanel();
             try {
                 var currentContext = topContext();
-                var history = currentContext.getTaskHistory();
+                var history        = currentContext.getTaskHistory();
 
                 io.systemOutput("Compressing conversation history...");
-                List<TaskEntry> compressedHistory = new ArrayList<>(history.size());
-                boolean changed = false;
-                for (TaskEntry entry : history) {
-                    // Pass the sequence number (i + 1) for the new entry in the compressed list
-                    TaskEntry compressedEntry = compressHistory(entry);
-                    compressedHistory.add(compressedEntry);
-                    if (!entry.equals(compressedEntry)) { // Check if the entry actually changed (e.g., wasn't already compressed)
-                        changed = true;
-                    }
-                }
 
-                // Only push if changes were made
+                List<TaskEntry> compressedHistory = history
+                        .parallelStream()                       // run each compression in parallel
+                        .map(this::compressHistory)             // same logic, now concurrent
+                        .collect(Collectors                      // keep original order & capacity
+                                         .toCollection(() -> new ArrayList<>(history.size())));
+
+                boolean changed = IntStream.range(0, history.size())
+                        .anyMatch(i -> !history.get(i).equals(compressedHistory.get(i)));
                 if (!changed) {
-                    io.systemOutput("Unable to compress history");
+                    io.systemOutput("History is already compressed");
                     return;
                 }
 
-                // Create a new context with the compressed history
+                // Push new context containing the compressed history
                 pushContext(ctx -> ctx.withCompressedHistory(List.copyOf(compressedHistory)));
                 io.systemOutput("Task history compressed successfully.");
             } finally {
-                // Re-enable history navigation *after* pushContext updates the UI
+                // Re-enable history navigation *after* the UI context is updated
                 SwingUtilities.invokeLater(io::enableHistoryPanel);
-                // TODO clean up enable/disable of UI elements in usertasks
-                // enableUserActionButtons is handled by submitUserTask
             }
         });
     }
