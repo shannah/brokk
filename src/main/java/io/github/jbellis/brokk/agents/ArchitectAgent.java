@@ -251,6 +251,7 @@ public class ArchitectAgent {
             }
         }
 
+        io.llmOutput("\nPlanning", ChatMessageType.AI);
         var llm = contextManager.getLlm(model, "Architect: " + goal);
 
         while (true) {

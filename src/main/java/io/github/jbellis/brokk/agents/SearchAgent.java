@@ -884,7 +884,7 @@ public class SearchAgent {
 
             var explanation = getExplanationForToolRequest(request);
             if (!explanation.isBlank()) {
-                llmOutput(explanation);
+                llmOutput("\n" + explanation);
             }
 
             ToolExecutionResult result = Set.of("answerSearch", "abortSearch").contains(request.name())
