@@ -78,7 +78,7 @@ public class AnalyzerUtil {
     }
 
     public static List<CodeUnit> combinedPagerankFor(IAnalyzer analyzer, Map<String, Double> weightedSeeds) {
-        logger.debug("Computing pagerank for {}", weightedSeeds);
+        logger.trace("Computing pagerank for {}", weightedSeeds);
 
         // do forward and reverse pagerank passes
         var forwardResults = analyzer.getPagerank(weightedSeeds, 3 * Context.MAX_AUTO_CONTEXT_FILES, false);
@@ -96,7 +96,7 @@ public class AnalyzerUtil {
                 // isClassInProject filtering is implicitly handled by getPagerank returning CodeUnits
                 .toList();
 
-        logger.debug("Pagerank results: {}", result);
+        logger.trace("Pagerank results: {}", result);
         return result;
     }
 
