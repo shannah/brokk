@@ -892,8 +892,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         result[0] = null;
         SwingUtil.runOnEDT(() -> {
             JDialog dialog = new JDialog(frame, "Select Context Items to Add", true);
-            dialog.setLayout(new BorderLayout());
             dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+            dialog.setLayout(new BorderLayout(10, 10));
+            dialog.setMinimumSize(new Dimension(400, 300));
 
             JLabel instruction = new JLabel("<html>Select items to add to the workspace:</html>");
             instruction.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
