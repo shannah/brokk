@@ -983,8 +983,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
                             if (formatted != null && !formatted.isBlank()) {
                                 readOnlyTextFragments.append(formatted).append("\n\n");
                             }
-                        } else {
-                            // Handle image fragments
+                        } else if (fragment instanceof ContextFragment.ImageFileFragment || 
+                                   fragment instanceof ContextFragment.PasteImageFragment) {
+                            // Handle image fragments - explicitly check for known image fragment types
                             try {
                                 // Convert AWT Image to LangChain4j ImageContent
                                 var l4jImage = ImageUtil.toL4JImage(fragment.image()); // Assumes ImageUtil helper
@@ -992,8 +993,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                 // Add a placeholder in the text part for reference
                                 readOnlyTextFragments.append(fragment.format()).append("\n\n");
                             } catch (IOException e) {
-                                logger.error("Failed to process PasteImageFragment image for LLM message", e);
+                                logger.error("Failed to process image fragment for LLM message", e);
                                 removeBadFragment(fragment, e); // Remove problematic fragment
+                            }
+                        } else {
+                            // Handle non-text, non-image fragments (e.g., HistoryFragment, TaskFragment)
+                            // Just add their formatted representation as text
+                            String formatted = fragment.format();
+                            if (formatted != null && !formatted.isBlank()) {
+                                readOnlyTextFragments.append(formatted).append("\n\n");
                             }
                         }
                     } catch (IOException e) {
