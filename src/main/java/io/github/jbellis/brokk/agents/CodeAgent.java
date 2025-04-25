@@ -78,12 +78,19 @@ public class CodeAgent {
         SessionResult.StopDetails stopDetails;
 
         var parser = contextManager.getParserForWorkspace();
-
-        // initial messages including the Workspace
-        var allMessages = CodePrompts.instance.codeMessages(contextManager, userInput, model);
+        // We'll collect the conversation as ChatMessages to store in context history.
+        var sessionMessages = new ArrayList<ChatMessage>();
+        UserMessage nextRequest = CodePrompts.instance.codeRequest(userInput.trim(),
+                                                                   CodePrompts.reminderForModel(contextManager.getModels(), model),
+                                                                   parser);
 
         while (true) {
             // Prepare and send request to LLM
+            var allMessages = CodePrompts.instance.collectCodeMessages(contextManager,
+                                                                       model,
+                                                                       parser,
+                                                                       sessionMessages,
+                                                                       nextRequest);
             StreamingResult streamingResult = null;
             try {
                 streamingResult = coder.sendRequest(allMessages, true);
@@ -96,7 +103,8 @@ public class CodeAgent {
 
             // Append request/response to session history
             var llmResponse = streamingResult.chatResponse();
-            allMessages.add(llmResponse.aiMessage());
+            sessionMessages.add(nextRequest);
+            sessionMessages.add(llmResponse.aiMessage());
 
             String llmText = llmResponse.aiMessage().text();
             logger.debug("got response");
@@ -105,7 +113,7 @@ public class CodeAgent {
             var parseResult = parser.parseEditBlocks(llmText, contextManager.getRepo().getTrackedFiles());
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks);
-            
+
             if (parseResult.parseError() == null) {
                 // No parse errors
                 parseFailures = 0;
@@ -118,7 +126,7 @@ public class CodeAgent {
                         io.systemOutput("Parse error limit reached; ending session");
                         break;
                     }
-                    allMessages.add(new UserMessage(parseResult.parseError()));
+                    nextRequest = new UserMessage(parseResult.parseError());
                     io.llmOutput("Failed to parse LLM response; retrying", ChatMessageType.CUSTOM);
                 } else {
                     // Partial parse => ask LLM to continue from last parsed block
@@ -132,7 +140,7 @@ public class CodeAgent {
                             
                             Please continue from there (WITHOUT repeating that one).
                             """.stripIndent().formatted(newlyParsedBlocks.getLast());
-                    allMessages.add(new UserMessage(partialMsg));
+                    nextRequest = new UserMessage(partialMsg);
                     io.llmOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()),
                                  ChatMessageType.CUSTOM);
                 }
@@ -156,7 +164,7 @@ public class CodeAgent {
             // Pre-create empty files for any new files before context updates
             // This prevents UI race conditions with file existence checks
             EditBlock.preCreateNewFiles(newlyParsedBlocks, contextManager);
-            
+
             // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
             var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, !forArchitect);
             if (!readOnlyFiles.isEmpty()) {
@@ -209,7 +217,7 @@ public class CodeAgent {
                         stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, failedFilenames);
                         break;
                     }
-                    allMessages.add(new UserMessage(parseRetryPrompt));
+                    nextRequest = new UserMessage(parseRetryPrompt);
                     continue;
                 }
             } else {
@@ -234,7 +242,7 @@ public class CodeAgent {
 
             // If the build failed after applying edits, create the next request for the LLM
             // (formatBuildErrorsForLLM includes instructions to stop if not progressing)
-            allMessages.add(new UserMessage(formatBuildErrorsForLLM(buildError)));
+            nextRequest = new UserMessage(formatBuildErrorsForLLM(buildError));
         }
 
         // Conclude session
@@ -398,11 +406,11 @@ public class CodeAgent {
                 return readOnlyFiles;
             }
         }
-        
+
         // Add the files regardless of rejectReadonlyEdits (unless we returned early due to read-only conflicts)
         cm.getIo().systemOutput("Editing additional files " + filesToAdd);
         cm.editFiles(filesToAdd);
-        
+
         // Return empty list if no read-only files were rejected
         return List.of();
     }
@@ -594,7 +602,7 @@ public class CodeAgent {
     }
 
     /**
-     * Generates a message based on parse/apply errors from failed edit blocks, including current file content.
+     * Generates a message based on parse/apply errors from failed edit blocks
      */
     private static String getApplyFailureMessage(List<EditBlock.FailedBlock> failedBlocks,
                                                  EditBlockParser parser,
@@ -670,7 +678,7 @@ public class CodeAgent {
                     Provide corrected SEARCH/REPLACE blocks for the failed edits only.
                     </instructions>
                     """.formatted(totalFailCount, pluralizeFail, failuresByFile.size(), pluralizeFail).stripIndent();
-    
+
             // Add info about successful blocks, if any
             String successNote = "";
             if (succeededCount > 0) {

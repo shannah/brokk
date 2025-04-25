@@ -40,38 +40,35 @@ public abstract class CodePrompts {
                 : OVEREAGER_REMINDER;
     }
 
-    public final List<ChatMessage> codeMessages(ContextManager cm, String input, StreamingChatLanguageModel model) {
+    public final List<ChatMessage> collectCodeMessages(ContextManager cm,
+                                                       StreamingChatLanguageModel model,
+                                                       EditBlockParser parser,
+                                                       ArrayList<ChatMessage> sessionMessages,
+                                                       UserMessage request)
+    {
+        // TODO revisit cache-friendly message ordering with the next generation of models,
+        // as of early 2025 o4-mini in particular gets very confused when it sees (its own) edits in the history
+        // after the initial workspace contents
         var messages = new ArrayList<ChatMessage>();
-        var parser = cm.getParserForWorkspace();
         var reminder = reminderForModel(cm.getModels(), model);
 
-        // The ordering here is chosen to maximize cache-ability when running multiple Code or Ask sessions.
-        // In particular, we put the Workspace at the top to maximize its visibility to the LLM, then
-        // historical messages, and finally the examples. This offers two good cache "breakpoints" when we need
-        // to manage cache manually:
-        //  1. after Workspace
-        //  2. after the entire set of messages
-        // (2) maximizes cache friendliness within a session (since session is append only);
-        // (1) helps with cache friendliness after a session (when we may compress additional history messages)
         messages.add(new SystemMessage(formatIntro(cm, reminder)));
         messages.addAll(parser.exampleMessages());
-        messages.addAll(cm.getWorkspaceContentsMessages(false));
         messages.addAll(cm.getHistoryMessages());
-        messages.add(new UserMessage(codeReqeust() + "\n" + parser.instructions(input, reminder)));
+        messages.addAll(sessionMessages);
+        messages.addAll(cm.getWorkspaceContentsMessages(false));
+        messages.add(request);
 
         return messages;
     }
 
-    public final List<ChatMessage> askMessages(ContextManager cm, String input, StreamingChatLanguageModel model) {
+    public final List<ChatMessage> collectAskMessages(ContextManager cm, String input) {
         var messages = new ArrayList<ChatMessage>();
-        var reminder = reminderForModel(cm.getModels(), model);
 
-        // Follow the same order as in codeMessages to preserve cache across requests
-        messages.add(new SystemMessage(formatIntro(cm, reminder)));
-        messages.addAll(cm.getParserForWorkspace().exampleMessages());
-        messages.addAll(cm.getWorkspaceContentsMessages(false));
+        messages.add(new SystemMessage(formatIntro(cm, "")));
         messages.addAll(cm.getHistoryMessages());
-        messages.add(new UserMessage(askRequest(input)));
+        messages.addAll(cm.getWorkspaceContentsMessages(false));
+        messages.add(askRequest(input));
 
         return messages;
     }
@@ -121,38 +118,37 @@ public abstract class CodePrompts {
         """.stripIndent().formatted(reminder);
     }
 
-    public String codeReqeust() {
-        return """
-                <instructions>
-                Think about this request for changes to the supplied code.
-                If the request is ambiguous, ask questions.
-                
-                Once you understand the request you MUST:
-                
-                1. Decide if you need to propose *SEARCH/REPLACE* edits for any code whose source is not available.
-                   You can create new files without asking!
-                   But if you need to propose changes to code you can't see,
-                   you *MUST* tell the user their full filename names and ask them to *add the files to the chat*;
-                   end your reply and wait for their approval.
-                   But if you only need to change individual functions whose code you can see,
-                   you may do so without having the entire file in the Workspace.
-                
-                2. Explain the needed changes in a few short sentences.
-                
-                3. Describe each change with a *SEARCH/REPLACE* block.
+    public UserMessage codeRequest(String input, String reminder, EditBlockParser parser) {
+        var instructions = """
+        <instructions>
+        Think about this request for changes to the supplied code.
+        If the request is ambiguous, ask questions.
         
-                All changes to files must use this *SEARCH/REPLACE* block format.
+        Once you understand the request you MUST:
         
-                If a file is read-only or unavailable, ask the user to add it or make it editable.
-                
-                If you are struggling to use a dependency or API correctly, stop and ask the user for help.
-                </instructions>
-                """.stripIndent().formatted();
-        // input gets injected by parser
+        1. Decide if you need to propose *SEARCH/REPLACE* edits for any code whose source is not available.
+           You can create new files without asking!
+           But if you need to propose changes to code you can't see,
+           you *MUST* tell the user their full filename names and ask them to *add the files to the chat*;
+           end your reply and wait for their approval.
+           But if you only need to change individual functions whose code you can see,
+           you may do so without having the entire file in the Workspace.
+        
+        2. Explain the needed changes in a few short sentences.
+        
+        3. Describe each change with a *SEARCH/REPLACE* block.
+
+        All changes to files must use this *SEARCH/REPLACE* block format.
+
+        If a file is read-only or unavailable, ask the user to add it or make it editable.
+        
+        If you are struggling to use a dependency or API correctly, stop and ask the user for help.
+        """;
+        return new UserMessage(instructions + parser.instructions(input, reminder));
     }
 
-    public String askRequest(String input) {
-        return """
+    public UserMessage askRequest(String input) {
+        var text = """
                <instructions>
                Answer this question about the supplied code thoroughly and accurately.
                
@@ -171,6 +167,7 @@ public abstract class CodePrompts {
                <question>
                %s
                </question>
-               """.stripIndent().formatted(input);
+               """.formatted(input);
+        return new UserMessage(text);
     }
 }

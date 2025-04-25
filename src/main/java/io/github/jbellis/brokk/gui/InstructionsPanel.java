@@ -11,7 +11,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
-import io.github.jbellis.brokk.prompts.CodePrompts;
+import io.github.jbellis.brokk.prompts.AskPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -453,10 +453,9 @@ public class InstructionsPanel extends JPanel {
                 chrome.toolErrorRaw("Please provide a question");
                 return;
             }
-            // Provide the prompt messages
-            var messages = CodePrompts.instance.askMessages(contextManager, question, model);
 
             // stream from coder using the provided model
+            var messages = AskPrompts.instance.collectAskMessages(contextManager, question);
             var response = contextManager.getLlm(model, "Ask: " + question).sendRequest(messages, true);
             if (response.error() != null) {
                 chrome.toolErrorRaw("Error during 'Ask': " + response.error().getMessage());
