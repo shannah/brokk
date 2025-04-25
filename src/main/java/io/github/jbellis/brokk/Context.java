@@ -647,7 +647,6 @@ public class Context implements Serializable {
                            autoContextFileCount,
                            newHistory, // Use the new history
                            Map.of(), // original contents
-                           // Keep plan when compressing history
                            null,     // parsed output
                            CompletableFuture.completedFuture("Compressed History")).refresh(); // Call refresh to potentially update autoContext
     }
