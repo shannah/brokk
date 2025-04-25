@@ -685,8 +685,8 @@ public class CodeAgent {
 
             // we don't send file details to the output
             var summary = """
-                    \nFailed to apply %s of %s diff blocks, retrying
-                    """.stripIndent().formatted(failedBlocks.size(), failedBlocks.size() + succeededCount);
+                    \nFailed to apply %s block(s), retrying
+                    """.stripIndent().formatted(failedBlocks.size());
             io.llmOutput(summary, ChatMessageType.CUSTOM);
 
             // Construct the full message for the LLM
