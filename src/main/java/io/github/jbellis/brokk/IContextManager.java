@@ -15,10 +15,36 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
+import java.util.Objects;
+
 /**
  * Interface for context manager functionality
  */
 public interface IContextManager {
+
+    /**
+     * Listener interface for context change events.
+     */
+    interface ContextListener {
+        /**
+         * Called when the context has changed.
+         *
+         * @param newCtx The new context state.
+         * @param source The object that initiated the context change. Can be null.
+         */
+        void contextChanged(Context newCtx);
+    }
+
+    /**
+     * Adds a listener that will be notified when the context changes.
+     *
+     * @param listener The listener to add. Must not be null.
+     */
+    default void addContextListener(ContextListener listener) {
+        Objects.requireNonNull(listener);
+        // Default implementation does nothing
+    }
+
     default ProjectFile toFile(String relName) {
         throw new UnsupportedOperationException();
     }

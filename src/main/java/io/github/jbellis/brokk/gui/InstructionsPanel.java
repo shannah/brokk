@@ -4,12 +4,19 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.*;
+import io.github.jbellis.brokk.Context;
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextFragment.TaskFragment;
+import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IContextManager;
+import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
+import io.github.jbellis.brokk.agents.ContextAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -21,12 +28,17 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -36,7 +48,7 @@ import java.util.stream.Stream;
  * It also includes the system messages and command result areas.
  * All initialization and action code related to these components has been moved here.
  */
-public class InstructionsPanel extends JPanel {
+public class InstructionsPanel extends JPanel implements IContextManager.ContextListener { // Qualify interface name
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
@@ -51,10 +63,14 @@ public class InstructionsPanel extends JPanel {
     private final JButton searchButton;
     private final JButton runButton;
     private final JButton stopButton;
-    private final JButton configureModelsButton; // Added configure models button
-    private final JTextArea systemArea; // Moved from HistoryOutputPanel
-    private final JScrollPane systemScrollPane; // Moved from HistoryOutputPanel
-    private final JLabel commandResultLabel; // Moved from HistoryOutputPanel
+    private final JButton configureModelsButton;
+    private final JTextArea systemArea;
+    private final JScrollPane systemScrollPane;
+    private final JLabel commandResultLabel;
+    private JTable referenceFileTable;
+    private final JPanel centerPanel;
+    private final Timer contextSuggestionTimer; // Timer for debouncing context suggestions
+    private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false);
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2));
@@ -66,16 +82,21 @@ public class InstructionsPanel extends JPanel {
 
         this.chrome = chrome;
 
+        // Determine colors before building components that use them
+        Color themePlaceholder = UIManager.getColor("TextArea.placeholderForeground");
+        this.placeholderForeground = themePlaceholder != null ? themePlaceholder : DEFAULT_PLACEHOLDER_COLOR;
+        this.standardForeground = UIManager.getColor("TextArea.foreground");
+
         // Initialize components
-        commandInputField = buildCommandInputField();
+        commandInputField = buildCommandInputField(); // Build first to add listener
         micButton = new VoiceInputButton(
                 commandInputField,
                 chrome.getContextManager(),
                 () -> chrome.actionOutput("Recording"),
                 chrome::toolError
         );
-        systemArea = new JTextArea(); // Initialize moved component
-        systemScrollPane = buildSystemMessagesArea(); // Initialize moved component
+        systemArea = new JTextArea();
+        systemScrollPane = buildSystemMessagesArea();
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
         // Initialize Buttons first
@@ -117,19 +138,43 @@ public class InstructionsPanel extends JPanel {
         add(topBarPanel, BorderLayout.NORTH);
 
         // Center Panel (Command Input + System/Result) (Center)
-        JPanel centerPanel = buildCenterPanel();
-        add(centerPanel, BorderLayout.CENTER);
+        this.centerPanel = buildCenterPanel();
+        add(this.centerPanel, BorderLayout.CENTER);
 
         // Bottom Bar (Mic, Model, Actions) (South)
         JPanel bottomPanel = buildBottomPanel();
         add(bottomPanel, BorderLayout.SOUTH);
+
+        // Initialize the reference file table
+        initializeReferenceFileTable();
+
+        // Initialize and configure the context suggestion timer
+        contextSuggestionTimer = new Timer(400, this::triggerContextSuggestion);
+        contextSuggestionTimer.setRepeats(false);
+        commandInputField.getDocument().addDocumentListener(new DocumentListener() {
+            private void checkAndHandleSuggestions() {
+                if (commandInputField.getText().split("\\s+").length >= 2) {
+                    contextSuggestionTimer.restart();
+                } else {
+                    // Input is blank, stop any pending timer and clear suggestions immediately
+                    contextSuggestionTimer.stop();
+                    referenceFileTable.setValueAt(List.of(), 0, 0);
+                }
+            }
+            @Override public void insertUpdate(DocumentEvent e) { checkAndHandleSuggestions(); }
+            @Override public void removeUpdate(DocumentEvent e) { checkAndHandleSuggestions(); }
+            @Override public void changedUpdate(DocumentEvent e) { checkAndHandleSuggestions(); }
+        });
 
         SwingUtilities.invokeLater(() -> {
             if (chrome.getFrame() != null && chrome.getFrame().getRootPane() != null) {
                 chrome.getFrame().getRootPane().setDefaultButton(codeButton);
             }
         });
+        // Add this panel as a listener to context changes
+        chrome.getContextManager().addContextListener(this);
     }
+
 
     private RSyntaxTextArea buildCommandInputField() {
         var area = new RSyntaxTextArea(3, 40);
@@ -151,7 +196,7 @@ public class InstructionsPanel extends JPanel {
         area.getInputMap().put(ctrlEnter, "submitDefault");
         area.getActionMap().put("submitDefault", new AbstractAction() {
             @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
+            public void actionPerformed(ActionEvent e) {
                 // If there's a default button, "click" it
                 var rootPane = SwingUtilities.getRootPane(area);
                 if (rootPane != null && rootPane.getDefaultButton() != null) {
@@ -183,24 +228,212 @@ public class InstructionsPanel extends JPanel {
     }
 
     private JPanel buildCenterPanel() {
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 2));
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
 
-        // Command Input Field (Top)
+        // Command Input Field
         JScrollPane commandScrollPane = new JScrollPane(commandInputField);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         commandScrollPane.setPreferredSize(new Dimension(600, 80));
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
-        centerPanel.add(commandScrollPane, BorderLayout.CENTER);
+        panel.add(commandScrollPane);
 
-        // System Messages + Command Result (Bottom)
-        // Create a panel to hold system messages and the command result label
+        // Reference-file table will be inserted just below the command input
+        // by initializeReferenceFileTable()
+
+        // System Messages + Command Result
         var topInfoPanel = new JPanel();
         topInfoPanel.setLayout(new BoxLayout(topInfoPanel, BoxLayout.PAGE_AXIS));
         topInfoPanel.add(commandResultLabel);
         topInfoPanel.add(systemScrollPane);
-        centerPanel.add(topInfoPanel, BorderLayout.SOUTH);
+        panel.add(topInfoPanel);
 
-        return centerPanel;
+        return panel;
+    }
+
+    /**
+     * Initializes the file-reference table that sits directly beneath the
+     * command-input field and wires a context-menu that targets the specific
+     * badge the mouse is over (mirrors ContextPanel behaviour).
+     */
+    private void initializeReferenceFileTable()
+    {
+        // ----- create the table itself --------------------------------------------------------
+        referenceFileTable = new JTable(new javax.swing.table.DefaultTableModel(
+                new Object[] { "File References" }, 1) {
+            @Override public boolean isCellEditable(int row, int column) { return false; }
+            @Override public Class<?> getColumnClass(int columnIndex)     { return List.class; }
+        });
+        referenceFileTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        referenceFileTable.setRowHeight(23);                 // match ContextPanel
+        referenceFileTable.setTableHeader(null);             // single-column ⇒ header not needed
+        referenceFileTable.setShowGrid(false);
+        referenceFileTable.getColumnModel()
+                .getColumn(0)
+                .setCellRenderer(new TableUtils.FileReferencesTableCellRenderer());
+
+        // Clear initial content (it will be populated by context suggestions)
+        referenceFileTable.setValueAt(List.of(), 0, 0);
+
+        // ----- context-menu support -----------------------------------------------------------
+        referenceFileTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mousePressed (java.awt.event.MouseEvent e) { handlePopup(e); }
+            @Override public void mouseReleased(java.awt.event.MouseEvent e) { handlePopup(e); }
+
+            private void handlePopup(java.awt.event.MouseEvent e) {
+                if (!e.isPopupTrigger()) return;
+                int row = referenceFileTable.rowAtPoint(e.getPoint());
+                if (row < 0) return;
+
+                referenceFileTable.requestFocusInWindow(); // Request focus on right-click
+                referenceFileTable.setRowSelectionInterval(row, row);
+                @SuppressWarnings("unchecked")
+                var fileRefs = (List<FileReferenceData>)
+                        referenceFileTable.getValueAt(row, 0);
+
+                if (fileRefs == null || fileRefs.isEmpty()) return;
+
+                // --- NEW: determine which badge the mouse is over -----------------------------
+                var targetRef = findClickedReference(e.getPoint(), row, fileRefs) == null
+                                ? fileRefs.get(0)
+                                : findClickedReference(e.getPoint(), row, fileRefs);
+                assert targetRef != null;
+
+                var cm = chrome.getContextManager();
+                JPopupMenu menu = new JPopupMenu();
+
+                JMenuItem showContentsItem = new JMenuItem("Show Contents");
+                showContentsItem.addActionListener(e1 -> {
+                    if (targetRef.getRepoFile() != null) {
+                        chrome.openFragmentPreview(new ContextFragment.ProjectPathFragment(targetRef.getRepoFile()));
+                    }
+                });
+                menu.add(showContentsItem);
+                menu.addSeparator();
+
+                // Edit option
+                JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
+                editItem.addActionListener(e1 -> {
+                    if (targetRef.getRepoFile() != null) {
+                        suppressExternalSuggestionsTrigger.set(true);
+                        cm.editFiles(List.of(targetRef.getRepoFile()));
+                    } else {
+                        chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
+                    }
+                });
+                // Disable for dependency projects
+                if (cm.getProject() != null && !cm.getProject().hasGit()) {
+                    editItem.setEnabled(false);
+                    editItem.setToolTipText("Editing not available without Git");
+                }
+                menu.add(editItem);
+
+                // Read option
+                JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
+                readItem.addActionListener(e1 -> {
+                    if (targetRef.getRepoFile() != null) {
+                        suppressExternalSuggestionsTrigger.set(true);
+                        cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
+                    } else {
+                        chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
+                    }
+                });
+                menu.add(readItem);
+
+                // Summarize option
+                JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
+                summarizeItem.addActionListener(e1 -> {
+                    if (targetRef.getRepoFile() != null) {
+                        cm.submitContextTask("Summarize", () -> {
+                            var project = cm.getProject();
+                            var analyzer = project.getAnalyzerWrapper();
+                            try {
+                                var az = analyzer.get();
+                                var sources = az.getClassesInFile(targetRef.getRepoFile());
+                                if (sources.isEmpty()) {
+                                    chrome.toolErrorRaw("No classes found in the file");
+                                    return;
+                                }
+                                suppressExternalSuggestionsTrigger.set(true);
+                                boolean success = cm.summarizeClasses(new HashSet<>(sources));
+                                if (success) {
+                                    chrome.systemOutput("Summarized " + sources.size() + " classes");
+                                } else {
+                                    chrome.toolErrorRaw("No summarizable classes found");
+                                }
+                            } catch (InterruptedException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        });
+                    } else {
+                        chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
+                    }
+                });
+                menu.add(summarizeItem);
+
+                if (chrome.themeManager != null) chrome.themeManager.registerPopupMenu(menu);
+                menu.show(referenceFileTable, e.getX(), e.getY());
+            }
+        });
+
+        // Clear selection when the table loses focus
+        referenceFileTable.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                referenceFileTable.clearSelection();
+            }
+        });
+
+        // ----- wrap in a scroll-pane and clamp its height -------------------------------------
+        int rowHeight   = referenceFileTable.getRowHeight();
+        int fixedHeight = rowHeight + 2;       // +2 for a tiny margin
+
+        var tableScrollPane = new JScrollPane(referenceFileTable);
+        tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        tableScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+
+        tableScrollPane.setPreferredSize(new Dimension(600, fixedHeight));
+        tableScrollPane.setMinimumSize  (new Dimension(100, fixedHeight));
+        tableScrollPane.setMaximumSize  (new Dimension(Integer.MAX_VALUE, fixedHeight));
+
+        // Insert directly beneath the command-input area (index 1)
+        centerPanel.add(tableScrollPane, 1);
+    }
+
+    /**
+     * Resolves which {@link FileReferenceData} badge is under the supplied mouse
+     * location.  Logic is identical to ContextPanel#findClickedReference.
+     */
+    private FileReferenceData findClickedReference(Point pointInTableCoords,
+                                                   int row,
+                                                   List<FileReferenceData> references)
+    {
+        // Convert to cell-local coordinates
+        Rectangle cellRect = referenceFileTable.getCellRect(row, 0, false);
+        int xInCell = pointInTableCoords.x - cellRect.x;
+        int yInCell = pointInTableCoords.y - cellRect.y;
+        if (xInCell < 0 || yInCell < 0) return null;
+
+        // Badge layout parameters – keep in sync with FileReferenceList
+        final int hgap               = 4;     // FlowLayout hgap
+        final int horizontalPadding  = 12;    // label internal padding (6 px each side)
+        final int borderThickness    = 3;     // stroke + antialias buffer
+
+        // Font used inside the badges (85 % of table font size)
+        var baseFont   = referenceFileTable.getFont();
+        var badgeFont  = baseFont.deriveFont(Font.PLAIN, baseFont.getSize() * 0.85f);
+        var fm         = referenceFileTable.getFontMetrics(badgeFont);
+
+        int currentX = 0;
+        for (var ref : references) {
+            int textWidth  = fm.stringWidth(ref.getFileName());
+            int labelWidth = textWidth + horizontalPadding + borderThickness;
+            if (xInCell >= currentX && xInCell <= currentX + labelWidth) {
+                return ref;
+            }
+            currentX += labelWidth + hgap;
+        }
+        return null;
     }
 
     private JPanel buildBottomPanel() {
@@ -329,7 +562,7 @@ public class InstructionsPanel extends JPanel {
         var contextManager = chrome.getContextManager();
         return contextManager.topContext() != null &&
                 contextManager.topContext().allFragments()
-                    .anyMatch(f -> !f.isText() && !(f instanceof ContextFragment.OutputFragment));
+                        .anyMatch(f -> !f.isText() && !(f instanceof ContextFragment.OutputFragment));
     }
 
     /**
@@ -409,10 +642,50 @@ public class InstructionsPanel extends JPanel {
         systemArea.append(timestamp + ": " + message);
         // Scroll to bottom
         SwingUtilities.invokeLater(() -> systemArea.setCaretPosition(systemArea.getDocument().getLength()));
-    } // Added missing closing brace
+    }
 
 
     // --- Private Execution Logic ---
+
+    /**
+     * Called by the contextSuggestionTimer when the user stops typing.
+     * Triggers the background task to fetch context recommendations.
+     */
+    private void triggerContextSuggestion(ActionEvent e) {
+        var contextManager = chrome.getContextManager();
+        var goal = commandInputField.getText();
+        if (goal.isBlank() || contextManager == null || contextManager.getProject() == null) {
+            // Clear recommendations if input is blank or project not ready
+            SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
+            return;
+        }
+
+        contextManager.submitBackgroundTask("Suggesting context", () -> {
+            try {
+                logger.debug("Fetching context recommendations for: '{}'", goal);
+                var model = contextManager.getModels().quickestModel();
+                var agent = new ContextAgent(contextManager, model, goal);
+                var recommendations = agent.getRecommendations();
+
+                var fileRefs = recommendations.stream().limit(10)
+                        .flatMap(f -> f.files(contextManager.getProject()).stream())
+                        .distinct() // Ensure uniqueness
+                        .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
+                                                         pf.toString(),
+                                                         pf))
+                        .toList();
+
+                logger.debug("Updating reference table with {} suggestions", fileRefs.size());
+                // Update the UI on the EDT
+                SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(fileRefs, 0, 0));
+            } catch (Exception ex) {
+                // Log error but don't bother the user for suggestion failures
+                logger.warn("Failed to get context suggestions for goal '{}': {}", goal, ex.getMessage(), ex);
+                // Clear the table on error
+                SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
+            }
+        });
+    }
 
     /**
      * Executes the core logic for the "Code" command.
@@ -549,8 +822,7 @@ public class InstructionsPanel extends JPanel {
         } catch (InterruptedException e) {
             chrome.systemOutput("Cancelled!");
             return;
-        }
-        finally {
+        } finally {
             chrome.hideOutputSpinner();
         }
         String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
@@ -581,18 +853,18 @@ public class InstructionsPanel extends JPanel {
         var searchModel = contextManager.getSearchModel();
 
         if (contextHasImages()) {
-            var nonVisionModels = Stream.of(architectModel,editModel, searchModel)
+            var nonVisionModels = Stream.of(architectModel, editModel, searchModel)
                     .filter(m -> !models.supportsVision(m))
                     .map(Models::nameOf)
                     .toList();
             if (!nonVisionModels.isEmpty()) {
                 showVisionSupportErrorDialog(String.join(", ", nonVisionModels));
-                    return; // Abort if any required model lacks vision and context has images
-                }
+                return; // Abort if any required model lacks vision and context has images
             }
+        }
 
-            disableButtons();
-            chrome.getProject().addToInstructionsHistory(goal, 20);
+        disableButtons();
+        chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
         // Submit the action, calling the private execute method inside the lambda, passing the goal
@@ -611,13 +883,13 @@ public class InstructionsPanel extends JPanel {
         }
 
         var contextManager = chrome.getContextManager();
-            var models = contextManager.getModels();
-            var codeModel = contextManager.getCodeModel();
+        var models = contextManager.getModels();
+        var codeModel = contextManager.getCodeModel();
 
-            if (contextHasImages() && !models.supportsVision(codeModel)) {
-                showVisionSupportErrorDialog(Models.nameOf(codeModel) + " (Code)");
-                return; // Abort if model doesn't support vision and context has images
-            }
+        if (contextHasImages() && !models.supportsVision(codeModel)) {
+            showVisionSupportErrorDialog(Models.nameOf(codeModel) + " (Code)");
+            return; // Abort if model doesn't support vision and context has images
+        }
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
@@ -673,8 +945,8 @@ public class InstructionsPanel extends JPanel {
         // Submit the background task that interacts with the LLM
         contextManager.submitBackgroundTask("Suggest relevant tests", () -> {
             try {
-                var quickModel = contextManager.getModels().quickModel();
-                var coder = contextManager.getLlm(quickModel, "Suggest Tests");
+                var model = contextManager.getModels().quickModel();
+                var coder = contextManager.getLlm(model, "Suggest Tests");
                 var prompt = createTestSuggestionPrompt(userInput, projectTestFiles, contextManager);
                 var llmResult = coder.sendRequest(List.of(new UserMessage(prompt)));
 
@@ -860,15 +1132,15 @@ public class InstructionsPanel extends JPanel {
         }
 
         var contextManager = chrome.getContextManager();
-            var models = contextManager.getModels();
-            var askModel = contextManager.getAskModel(); // Use dedicated Ask model
+        var models = contextManager.getModels();
+        var askModel = contextManager.getAskModel(); // Use dedicated Ask model
 
-            // --- Vision Check ---
-            if (contextHasImages() && !models.supportsVision(askModel)) {
-                showVisionSupportErrorDialog(Models.nameOf(askModel) + " (Ask)"); // Updated text
-                return; // Abort if model doesn't support vision and context has images
-            }
-            // --- End Vision Check ---
+        // --- Vision Check ---
+        if (contextHasImages() && !models.supportsVision(askModel)) {
+            showVisionSupportErrorDialog(Models.nameOf(askModel) + " (Ask)"); // Updated text
+            return; // Abort if model doesn't support vision and context has images
+        }
+        // --- End Vision Check ---
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
@@ -928,6 +1200,15 @@ public class InstructionsPanel extends JPanel {
             configureModelsButton.setEnabled(false); // Disable configure models button during action
             chrome.disableHistoryPanel();
         });
+    }
+
+    @Override
+    public void contextChanged(Context newCtx) {
+        // FIXME suppressExternalSuggestionsTrigger is race-y and error prone
+        if (!contextSuggestionTimer.isRunning() && !suppressExternalSuggestionsTrigger.get()) {
+            triggerContextSuggestion(null);
+            suppressExternalSuggestionsTrigger.set(false);
+        }
     }
 
     public void enableButtons() {

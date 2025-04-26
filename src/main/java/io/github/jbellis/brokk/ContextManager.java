@@ -41,6 +41,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -53,6 +54,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -150,9 +152,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
+    private final List<ContextListener> contextListeners = new CopyOnWriteArrayList<>();
 
     public ExecutorService getBackgroundTasks() {
         return backgroundTasks;
+    }
+
+    @Override
+    public void addContextListener(ContextListener listener) {
+        contextListeners.add(Objects.requireNonNull(listener));
     }
 
     /**
@@ -1002,7 +1010,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                 readOnlyTextFragments.append(formatted).append("\n\n");
                             }
                         } else if (fragment instanceof ContextFragment.ImageFileFragment ||
-                                   fragment instanceof ContextFragment.PasteImageFragment) {
+                                fragment instanceof ContextFragment.PasteImageFragment) {
                             // Handle image fragments - explicitly check for known image fragment types
                             try {
                                 // Convert AWT Image to LangChain4j ImageContent
@@ -1113,11 +1121,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Push context changes with a function that modifies the current context.
      * Returns the new context, or null if no changes were made by the generator.
      */
-    public Context pushContext(Function<Context, Context> contextGenerator)
-    {
+    public Context pushContext(Function<Context, Context> contextGenerator) {
         Context newContext = contextHistory.pushContext(contextGenerator);
         if (newContext == null) {
             return null;
+        }
+
+        for (var listener : contextListeners) {
+            listener.contextChanged(newContext);
         }
 
         io.updateContextHistoryTable(newContext);
@@ -1570,7 +1581,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             io.disableHistoryPanel();
             try {
                 var currentContext = topContext();
-                var history        = currentContext.getTaskHistory();
+                var history = currentContext.getTaskHistory();
 
                 io.systemOutput("Compressing conversation history...");
 

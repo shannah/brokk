@@ -845,7 +845,7 @@ public class ContextPanel extends JPanel {
             }
             return null;
         } finally {
-            chrome.focusInput(); // Use chrome
+            chrome.focusInput();
         }
     }
 
@@ -869,7 +869,7 @@ public class ContextPanel extends JPanel {
             }
             return null;
         } finally {
-            chrome.focusInput(); // Use chrome
+            chrome.focusInput();
         }
     }
 
@@ -1227,7 +1227,7 @@ public class ContextPanel extends JPanel {
             }
             return null; // Indicate cancellation or no selection
         } finally {
-            chrome.focusInput(); // Qualify chrome
+            chrome.focusInput();
         }
     }
 

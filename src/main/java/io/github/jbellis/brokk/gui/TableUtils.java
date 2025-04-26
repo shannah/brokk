@@ -12,11 +12,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TableUtils {
+
     /**
      * Adjusts the preferred width of the specified column to fit its content.
      * Also sets a maximum width to prevent columns from becoming too wide.
      *
-     * @param table The JTable whose column will be resized.
+     * @param table    The JTable whose column will be resized.
      * @param colIndex The index of the column to adjust.
      */
     public static void fitColumnWidth(JTable table, int colIndex) {
@@ -35,7 +36,7 @@ public class TableUtils {
             Component comp = table.prepareRenderer(cellRenderer, row, colIndex);
             width = Math.max(width, comp.getPreferredSize().width);
         }
-        
+
         column.setPreferredWidth(width);
         column.setMaxWidth(width);
     }
@@ -50,7 +51,8 @@ public class TableUtils {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
-                                                       int row, int column) {
+                                                       int row, int column)
+        {
             // Convert the value to a list of FileReferenceData
             List<FileReferenceList.FileReferenceData> fileRefs = convertToFileReferences(value);
 
@@ -148,6 +150,7 @@ public class TableUtils {
 
         /**
          * Sets the selection state of this component
+         *
          * @param selected true if this component is in a selected table row
          */
         public void setSelected(boolean selected) {
@@ -223,7 +226,7 @@ public class TableUtils {
         /**
          * Represents a file reference with metadata for context menu usage.
          */
-        static class FileReferenceData {
+        public static class FileReferenceData {
             private final String fileName;
             private final String fullPath;
             private final ProjectFile projectFile; // Optional, if available

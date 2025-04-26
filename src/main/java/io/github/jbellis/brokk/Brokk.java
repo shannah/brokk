@@ -118,7 +118,6 @@ public class Brokk {
                 frame.setState(Frame.NORMAL);
                 frame.toFront();
                 frame.requestFocus();
-                existingWindow.focusInput();
             });
             return;
         }
@@ -142,13 +141,11 @@ public class Brokk {
                  // e.g., update model list if policy affects it. (Future enhancement)
                  // Models.refreshAvailableModels(); // TODO: Implement model refresh based on policy
                  io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
-                 io.focusInput(); // Re-focus input after dialog closes
             });
         }
 
         io.onComplete(); // Finalize UI setup
         io.systemOutput("Opened project at " + projectPath);
-        io.focusInput();
 
         openProjectWindows.put(projectPath, io);
 

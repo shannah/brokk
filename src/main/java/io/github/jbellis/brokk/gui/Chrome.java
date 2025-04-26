@@ -130,9 +130,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.validate();
         frame.repaint();
 
-        // Set focus to command input field on startup
-        instructionsPanel.requestCommandInputFocus();
-
         // Possibly check if .gitignore is set
         if (getProject() != null && getProject().hasGit()) {
             contextManager.submitBackgroundTask("Checking .gitignore", () -> {
