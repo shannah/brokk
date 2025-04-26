@@ -745,14 +745,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     return;
                 }
 
-                logger.debug("Fetching context recommendations for: '{}'", goal);
+                logger.debug("Fetching context recommendations (top 10) for: '{}'", goal);
                 var model = contextManager.getModels().quickestModel();
                 var agent = new ContextAgent(contextManager, model, goal);
-                var recommendations = agent.getRecommendations();
+                var recommendations = agent.getRecommendations(10);
 
-                var fileRefs = recommendations.stream().limit(10)
+                var fileRefs = recommendations.stream()
                         .flatMap(f -> f.files(contextManager.getProject()).stream())
-                        .distinct() // Ensure uniqueness
+                        .distinct()
                         .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
                                                          pf.toString(),
                                                          pf))

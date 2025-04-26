@@ -57,18 +57,20 @@ public class ContextAgent {
         logger.debug("ContextAgent initialized. Budgets: Small={}, Medium={}, FilenameLimit={}", skipPruningBudget, finalBudget, budgetPruning);
     }
 
-    private record RecommendationResult(boolean success, List<ContextFragment> fragments) { }
+    private record RecommendationResult(boolean success, List<ContextFragment> fragments) {
+    }
 
     /**
      * Executes the context population logic, obtains context recommendations,
      * presents them for selection (if workspace is not empty), and adds them to the workspace.
-     * 
+     *
      * @return true if context fragments were successfully added, false otherwise
      */
     public boolean execute() throws InterruptedException {
         io.llmOutput("\nExamining initial workspace", ChatMessageType.CUSTOM);
-        
-        List<ContextFragment> proposals = getRecommendations();
+
+        // Execute without a specific limit on recommendations
+        List<ContextFragment> proposals = getRecommendations(null);
         if (proposals.isEmpty()) {
             io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
             return false;
@@ -95,11 +97,11 @@ public class ContextAgent {
         } else if (selected.stream().allMatch(f -> f instanceof ContextFragment.SkeletonFragment)) {
             // Merge multiple SkeletonFragments into one
             var skeletons = selected.stream()
-                                    .map(ContextFragment.SkeletonFragment.class::cast)
-                                    .toList();
+                    .map(ContextFragment.SkeletonFragment.class::cast)
+                    .toList();
             var combined = skeletons.stream()
-                                    .flatMap(sf -> sf.skeletons().entrySet().stream())
-                                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                    .flatMap(sf -> sf.skeletons().entrySet().stream())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(combined));
         } else {
             throw new AssertionError(selected.toString());
@@ -110,13 +112,16 @@ public class ContextAgent {
     /**
      * Determines the best initial context based on project size and token budgets,
      * potentially using LLM inference, and returns recommended context fragments.
+     *
+     * @param topK Optional limit on the number of recommendations to return. If null, no limit is applied (unless LLM limits).
      */
-    public List<ContextFragment> getRecommendations() throws InterruptedException {
+    public List<ContextFragment> getRecommendations(Integer topK) throws InterruptedException {
         var allFiles = contextManager.getRepo().getTrackedFiles().stream().sorted().toList();
 
+        // single pass against raw files/summaries
         var firstResult = analyzer.isEmpty()
-                          ? executeWithFileContents(allFiles)
-                          : executeWithSummaries(allFiles);
+                          ? executeWithFileContents(allFiles, topK)
+                          : executeWithSummaries(allFiles, topK);
         if (firstResult.success) {
             return firstResult.fragments;
         }
@@ -132,15 +137,20 @@ public class ContextAgent {
         }
 
         var prunedFiles = pruneFilenames(allFiles);
+        if (prunedFiles.isEmpty()) {
+            logger.debug("Filename pruning resulted in an empty list. No context found.");
+            return List.of();
+        }
+
         var secondResult = analyzer.isEmpty()
-                           ? executeWithFileContents(prunedFiles)
-                           : executeWithSummaries(prunedFiles);
+                           ? executeWithFileContents(prunedFiles, topK)
+                           : executeWithSummaries(prunedFiles, topK);
         return secondResult.fragments;
     }
 
     // --- Logic branch for using class summaries ---
 
-    private RecommendationResult executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
+    private RecommendationResult executeWithSummaries(List<ProjectFile> allFiles, Integer topK) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
@@ -154,15 +164,15 @@ public class ContextAgent {
         int summaryTokens = Messages.getApproximateTokens(String.join("\n", rawSummaries.values()));
         logger.debug("Total tokens for {} summaries: {}", rawSummaries.size(), summaryTokens);
 
-        // Rule 1: Use all summaries if they fit the smallest budget
-        if (summaryTokens <= skipPruningBudget) {
+        // Rule 1: Use all available summaries if they fit the smallest budget
+        if (summaryTokens <= skipPruningBudget && (topK == null || rawSummaries.size() <= topK)) {
             var fragments = skeletonPerSummary(rawSummaries);
             return new RecommendationResult(true, fragments);
         }
 
         // Rule 2: Ask LLM to pick relevant summaries if all summaries fit the Pruning budget
         if (summaryTokens <= budgetPruning) {
-            var relevantSummaries = askLlmToSelectSummaries(rawSummaries);
+            var relevantSummaries = askLlmToSelectSummaries(rawSummaries, topK);
             int relevantSummaryTokens = Messages.getApproximateTokens(String.join("\n", relevantSummaries.values()));
             if (relevantSummaryTokens <= finalBudget) {
                 var fragments = skeletonPerSummary(relevantSummaries);
@@ -173,6 +183,8 @@ public class ContextAgent {
             }
         }
 
+        // If summaries are too large even for pruning, signal failure for this branch
+        logGiveUp("summaries (too large for pruning budget)");
         return new RecommendationResult(false, List.of());
     }
 
@@ -214,16 +226,20 @@ public class ContextAgent {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    private Map<CodeUnit, String> askLlmToSelectSummaries(Map<CodeUnit, String> summaries) throws InterruptedException {
+    private Map<CodeUnit, String> askLlmToSelectSummaries(Map<CodeUnit, String> summaries, Integer topK) throws InterruptedException {
         var promptContent = summaries.entrySet().stream()
                 .map(entry -> "Class: %s\n```java\n%s\n```".formatted(entry.getKey().fqName(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
 
-        var systemMessage = """
-                You are an assistant that identifies relevant code summaries based on a goal.
-                Given a list of class summaries and a goal, identify which classes are most relevant to achieving the goal.
-                Output *only* the fully qualified names of the relevant classes, one per line. Do not include any other text, explanations, or formatting.
-                """.stripIndent();
+        var systemMessage = new StringBuilder("""
+                 You are an assistant that identifies relevant code summaries based on a goal.
+                 Given a list of class summaries and a goal, identify which classes are most relevant to achieving the goal.
+                 Output *only* the fully qualified names of the relevant classes, one per line, ordered from most to least relevant.
+                 Do not include any other text, explanations, or formatting.
+                 """.stripIndent());
+        if (topK != null) {
+            systemMessage.append("\nLimit your response to the top %d most relevant classes.".formatted(topK));
+        }
         var userMessage = """
                 Goal: %s
                 
@@ -233,7 +249,7 @@ public class ContextAgent {
                 Which of these classes are most relevant to the goal? List their fully qualified names, one per line.
                 """.formatted(goal, promptContent).stripIndent();
 
-        var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
+        var messages = List.of(new SystemMessage(systemMessage.toString()), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select relevant summaries (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
         var result = llm.sendRequest(messages);
 
@@ -252,20 +268,20 @@ public class ContextAgent {
         return relevantSummaries;
     }
 
-    // --- Logic branch for using full file contents ---
+// --- Logic branch for using full file contents ---
 
-    private RecommendationResult executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
+    private RecommendationResult executeWithFileContents(List<ProjectFile> allFiles, Integer topK) throws InterruptedException {
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             logger.debug("Non-empty context and no analyzer present, skipping context population");
             return new RecommendationResult(true, List.of());
         }
 
-        var allContentsMap = readFileContents(allFiles);
-        int contentTokens = Messages.getApproximateTokens(String.join("\n", allContentsMap.values()));
-        logger.debug("Total tokens for {} files' content: {}", allFiles.size(), contentTokens);
+        var contentsMap = readFileContents(allFiles);
+        int contentTokens = Messages.getApproximateTokens(String.join("\n", contentsMap.values()));
+        logger.debug("Total tokens for {} files' content: {}", contentsMap.size(), contentTokens);
 
-        // Rule 1: Use all files if content fits the smallest budget
-        if (contentTokens <= skipPruningBudget) {
+        // Rule 1: Use all available files if content fits the smallest budget
+        if (contentTokens <= skipPruningBudget && (topK == null || allFiles.size() <= topK)) {
             var fragments = allFiles.stream()
                     .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                     .toList();
@@ -274,7 +290,7 @@ public class ContextAgent {
 
         // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
         if (contentTokens <= budgetPruning) {
-            var relevantFiles = askLlmToSelectFiles(allFiles, allContentsMap);
+            var relevantFiles = askLlmToSelectFiles(allFiles, contentsMap, topK);
             var relevantContentsMap = readFileContents(relevantFiles);
             int relevantContentTokens = Messages.getApproximateTokens(String.join("\n", relevantContentsMap.values()));
             if (relevantContentTokens <= finalBudget) {
@@ -310,16 +326,20 @@ public class ContextAgent {
     }
 
 
-    private List<ProjectFile> askLlmToSelectFiles(List<ProjectFile> allFiles, Map<ProjectFile, String> contentsMap) throws InterruptedException {
+    private List<ProjectFile> askLlmToSelectFiles(List<ProjectFile> allFiles, Map<ProjectFile, String> contentsMap, Integer topK) throws InterruptedException {
         var promptContent = contentsMap.entrySet().stream()
                 .map(entry -> "<file path='%s'>\n%s\n</file>".formatted(entry.getKey().toString(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
 
-        var systemMessage = """
-                You are an assistant that identifies relevant files based on a goal.
-                Given a list of files with their content and a goal, identify which files are most relevant to achieving the goal.
-                Output *only* the full paths of the relevant files, one per line. Do not include any other text, explanations, or formatting.
-                """.stripIndent();
+        var systemMessage = new StringBuilder("""
+                 You are an assistant that identifies relevant files based on a goal.
+                 Given a list of files with their content and a goal, identify which files are most relevant to achieving the goal.
+                 Output *only* the full paths of the relevant files, one per line, ordered from most to least relevant.
+                 Do not include any other text, explanations, or formatting.
+                 """.stripIndent());
+        if (topK != null) {
+            systemMessage.append("\nLimit your response to the top %d most relevant files.".formatted(topK));
+        }
         var userMessage = """
                 Goal: %s
                 
@@ -329,7 +349,7 @@ public class ContextAgent {
                 Which of these files are most relevant to the goal? List their full paths, one per line.
                 """.formatted(goal, promptContent).stripIndent();
 
-        var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
+        var messages = List.of(new SystemMessage(systemMessage.toString()), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select relevant files (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
         var result = llm.sendRequest(messages);
 
@@ -346,7 +366,7 @@ public class ContextAgent {
                 .toList();
     }
 
-    // --- Logic for Rule 3: Use filenames first ---
+    // --- Logic for Rule 3: Use filenames first (always runs before content/summary if needed) ---
 
     private List<ProjectFile> pruneFilenames(List<ProjectFile> allFiles) throws InterruptedException {
         var filenameString = getFilenameString(allFiles);
@@ -381,8 +401,7 @@ public class ContextAgent {
                 .toList();
     }
 
-
-    // --- Helper methods ---
+// --- Helper methods ---
 
     private String getFilenameString(List<ProjectFile> files) {
         return files.stream()
