@@ -747,7 +747,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
                 logger.debug("Fetching context recommendations (top 10) for: '{}'", goal);
                 var model = contextManager.getModels().quickestModel();
-                var agent = new ContextAgent(contextManager, model, goal);
+                // Pass false for fullContext when suggesting from InstructionsPanel input
+                var agent = new ContextAgent(contextManager, model, goal, false);
                 var recommendations = agent.getRecommendations(10);
 
                 var fileRefs = recommendations.stream()

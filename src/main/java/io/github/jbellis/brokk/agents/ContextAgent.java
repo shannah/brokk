@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.agents;
 
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -20,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.lang.Math.min;
 
@@ -35,6 +37,7 @@ public class ContextAgent {
     private final String goal;
     private final IConsoleIO io;
     private final IAnalyzer analyzer;
+    private final boolean fullWorkspace;
 
     // if the entire project fits in the Skip Pruning budget, just include it all and call it good
     private final int skipPruningBudget;
@@ -43,12 +46,13 @@ public class ContextAgent {
     // if our pruned context is larger than the Final target budget then we also give up
     private final int finalBudget;
 
-    public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) throws InterruptedException {
+    public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal, boolean fullWorkspace) throws InterruptedException {
         this.contextManager = contextManager;
         this.llm = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
         this.goal = goal;
         this.io = contextManager.getIo();
         this.analyzer = contextManager.getAnalyzer();
+        this.fullWorkspace = fullWorkspace;
 
         int maxInputTokens = contextManager.getModels().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
@@ -117,14 +121,23 @@ public class ContextAgent {
      * @param topK Optional limit on the number of recommendations to return. If null, no limit is applied (unless LLM limits).
      */
     public List<ContextFragment> getRecommendations(Integer topK) throws InterruptedException {
+        var workspaceRepresentation = getWorkspaceRepresentation();
         var allFiles = contextManager.getRepo().getTrackedFiles().stream().sorted().toList();
 
-        // single pass against raw files/summaries
-        var firstResult = analyzer.isEmpty()
-                          ? executeWithFileContents(allFiles, topK)
-                          : executeWithSummaries(allFiles, topK);
-        if (firstResult.success) {
-            return firstResult.fragments;
+        // Try summaries first if analyzer is available
+        if (!analyzer.isEmpty()) {
+            var summaryResult = executeWithSummaries(allFiles, topK, workspaceRepresentation);
+            if (summaryResult.success) {
+                return summaryResult.fragments;
+            }
+            // If summaries failed (e.g., too large even for pruning), fall through to filename-based pruning
+        } else {
+            // If no analyzer, try full file contents directly
+            var contentResult = executeWithFileContents(allFiles, topK, workspaceRepresentation);
+            if (contentResult.success) {
+                return contentResult.fragments;
+            }
+            // If contents failed, fall through to filename-based pruning
         }
 
         // do two passes starting with filenames
@@ -143,27 +156,46 @@ public class ContextAgent {
             return List.of();
         }
 
-        var secondResult = analyzer.isEmpty()
-                           ? executeWithFileContents(prunedFiles, topK)
-                           : executeWithSummaries(prunedFiles, topK);
-        return secondResult.fragments;
+        // After pruning filenames, try again with summaries or contents
+        if (!analyzer.isEmpty()) {
+            return executeWithSummaries(prunedFiles, topK, workspaceRepresentation).fragments;
+        } else {
+            return executeWithFileContents(prunedFiles, topK, workspaceRepresentation).fragments;
+        }
     }
+
+    // --- Logic for getting workspace representation ---
+
+    private Object getWorkspaceRepresentation() {
+        if (fullWorkspace) {
+            // Return full messages if requested
+            return contextManager.getWorkspaceContentsMessages(false);
+        } else {
+            // Return summary string otherwise
+            return CodePrompts.formatWorkspaceSummary(contextManager, false);
+        }
+    }
+
 
     // --- Logic branch for using class summaries ---
 
-    private RecommendationResult executeWithSummaries(List<ProjectFile> allFiles, Integer topK) throws InterruptedException {
+    private RecommendationResult executeWithSummaries(List<ProjectFile> filesToConsider, Integer topK, Object workspaceRepresentation) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
-        if (contextManager.topContext().allFragments().findAny().isPresent()) {
-            var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
+        // If the workspace isn't empty, use pagerank candidates for initial summaries
+        if (!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty()) {
+           var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
             logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
                          ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
-            rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
+           logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
+                        ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
+           rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
         } else {
-            rawSummaries = getProjectSummaries(allFiles);
+            // If workspace is empty, get summaries for the provided files (all or pruned)
+            rawSummaries = getProjectSummaries(filesToConsider);
         }
 
         int summaryTokens = Messages.getApproximateTokens(String.join("\n", rawSummaries.values()));
-        logger.debug("Total tokens for {} summaries: {}", rawSummaries.size(), summaryTokens);
+        logger.debug("Total tokens for {} summaries (from {} files): {}", rawSummaries.size(), filesToConsider.size(), summaryTokens);
 
         // Rule 1: Use all available summaries if they fit the smallest budget
         if (summaryTokens <= skipPruningBudget && (topK == null || rawSummaries.size() <= topK)) {
@@ -173,7 +205,7 @@ public class ContextAgent {
 
         // Rule 2: Ask LLM to pick relevant summaries if all summaries fit the Pruning budget
         if (summaryTokens <= budgetPruning) {
-            var relevantSummaries = askLlmToSelectSummaries(rawSummaries, topK);
+            var relevantSummaries = askLlmToSelectSummaries(rawSummaries, topK, workspaceRepresentation);
             int relevantSummaryTokens = Messages.getApproximateTokens(String.join("\n", relevantSummaries.values()));
             if (relevantSummaryTokens <= finalBudget) {
                 var fragments = skeletonPerSummary(relevantSummaries);
@@ -227,8 +259,8 @@ public class ContextAgent {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    private Map<CodeUnit, String> askLlmToSelectSummaries(Map<CodeUnit, String> summaries, Integer topK) throws InterruptedException {
-        var promptContent = summaries.entrySet().stream()
+    private Map<CodeUnit, String> askLlmToSelectSummaries(Map<CodeUnit, String> summaries, Integer topK, Object workspaceRepresentation) throws InterruptedException {
+        var summariesText = summaries.entrySet().stream()
                 .map(entry -> "Class: %s\n```java\n%s\n```".formatted(entry.getKey().fqName(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
 
@@ -241,24 +273,55 @@ public class ContextAgent {
         if (topK != null) {
             systemMessage.append("\nLimit your response to the top %d most relevant classes.".formatted(topK));
         }
-        var userMessage = """
-                <goal>
-                %s
-                </goal>
-                
-                <workspace>
-                %s
-                </workspace>
-                
-                <summaries>>
-                %s
-                </summaries>
-                
-                Which of these classes are most relevant to the goal? Take into consideration what is already in the workspace, and list their fully qualified names, one per line.
-                """.formatted(goal, CodePrompts.formatWorkspaceSummary(contextManager, false), promptContent).stripIndent();
 
-        var messages = List.of(new SystemMessage(systemMessage.toString()), new UserMessage(userMessage));
-        logger.debug("Invoking LLM to select relevant summaries (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
+        var finalSystemMessage = new SystemMessage(systemMessage.toString());
+        List<ChatMessage> messages;
+        int promptTokens;
+
+        if (workspaceRepresentation instanceof String workspaceSummary) {
+            var userMessageText = """
+                    <goal>
+                    %s
+                    </goal>
+                    
+                    <workspace>
+                    %s
+                    </workspace>
+                    
+                    <summaries>
+                    %s
+                    </summaries>
+                    
+                    Which of these classes are most relevant to the goal? Take into consideration what is already in the workspace, and list their fully qualified names, one per line.
+                    """.formatted(goal, workspaceSummary, summariesText).stripIndent();
+            messages = List.of(finalSystemMessage, new UserMessage(userMessageText));
+            promptTokens = Messages.getApproximateTokens(userMessageText) + Messages.getApproximateTokens(finalSystemMessage.text());
+        } else if (workspaceRepresentation instanceof List workspaceMessages) {
+            @SuppressWarnings("unchecked") // Checked by instanceof
+            List<ChatMessage> castedMessages = (List<ChatMessage>) workspaceMessages;
+            var userPrompt = """
+                    <goal>
+                    %s
+                    </goal>
+                    
+                    <summaries>
+                    %s
+                    </summaries>
+                    
+                    Which of these classes are most relevant to the goal? Take into consideration what is already in the workspace (provided as prior messages), and list their fully qualified names, one per line.
+                    """.formatted(goal, summariesText).stripIndent();
+
+            // Combine system message, workspace messages, and the final user prompt
+            messages = Stream.concat(Stream.of(finalSystemMessage),
+                                     Stream.concat(castedMessages.stream(), Stream.of(new UserMessage(userPrompt))))
+                             .toList();
+            promptTokens = messages.stream().mapToInt(m -> Messages.getApproximateTokens(Messages.getText(m))).sum();
+        } else {
+            throw new IllegalArgumentException("Unsupported workspace representation type: " + workspaceRepresentation.getClass());
+        }
+
+
+        logger.debug("Invoking LLM to select relevant summaries (prompt size ~{} tokens)", promptTokens);
         var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
@@ -276,21 +339,22 @@ public class ContextAgent {
         return relevantSummaries;
     }
 
-// --- Logic branch for using full file contents ---
+// --- Logic branch for using full file contents (when analyzer is not available) ---
 
-    private RecommendationResult executeWithFileContents(List<ProjectFile> allFiles, Integer topK) throws InterruptedException {
-        if (contextManager.topContext().allFragments().findAny().isPresent()) {
-            logger.debug("Non-empty context and no analyzer present, skipping context population");
-            return new RecommendationResult(true, List.of());
+    private RecommendationResult executeWithFileContents(List<ProjectFile> filesToConsider, Integer topK, Object workspaceRepresentation) throws InterruptedException {
+        // If the workspace isn't empty, don't suggest adding whole files if no analyzer available
+        if (!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty()) {
+            logger.debug("Non-empty context and no analyzer present, skipping file content suggestions");
+            return new RecommendationResult(true, List.of()); // Indicate success but no *new* fragments needed
         }
 
-        var contentsMap = readFileContents(allFiles);
+        var contentsMap = readFileContents(filesToConsider);
         int contentTokens = Messages.getApproximateTokens(String.join("\n", contentsMap.values()));
         logger.debug("Total tokens for {} files' content: {}", contentsMap.size(), contentTokens);
 
         // Rule 1: Use all available files if content fits the smallest budget
-        if (contentTokens <= skipPruningBudget && (topK == null || allFiles.size() <= topK)) {
-            var fragments = allFiles.stream()
+        if (contentTokens <= skipPruningBudget && (topK == null || filesToConsider.size() <= topK)) {
+            var fragments = filesToConsider.stream()
                     .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                     .toList();
             return new RecommendationResult(true, fragments);
@@ -298,7 +362,7 @@ public class ContextAgent {
 
         // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
         if (contentTokens <= budgetPruning) {
-            var relevantFiles = askLlmToSelectFiles(allFiles, contentsMap, topK);
+            var relevantFiles = askLlmToSelectFiles(filesToConsider, contentsMap, topK, workspaceRepresentation);
             var relevantContentsMap = readFileContents(relevantFiles);
             int relevantContentTokens = Messages.getApproximateTokens(String.join("\n", relevantContentsMap.values()));
             if (relevantContentTokens <= finalBudget) {
@@ -334,8 +398,8 @@ public class ContextAgent {
     }
 
 
-    private List<ProjectFile> askLlmToSelectFiles(List<ProjectFile> allFiles, Map<ProjectFile, String> contentsMap, Integer topK) throws InterruptedException {
-        var promptContent = contentsMap.entrySet().stream()
+    private List<ProjectFile> askLlmToSelectFiles(List<ProjectFile> filesToConsider, Map<ProjectFile, String> contentsMap, Integer topK, Object workspaceRepresentation) throws InterruptedException {
+        var filesText = contentsMap.entrySet().stream()
                 .map(entry -> "<file path='%s'>\n%s\n</file>".formatted(entry.getKey().toString(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
 
@@ -348,24 +412,53 @@ public class ContextAgent {
         if (topK != null) {
             systemMessage.append("\nLimit your response to the top %d most relevant files.".formatted(topK));
         }
-        var userMessage = """
-                <goal>
-                %s
-                </goal>
-                
-                <workspace>
-                %s
-                </workspace>
-                
-                <files>>
-                %s
-                </files>
-                
-                Which of these files are most relevant to the goal? Take into consideration what is already in the workspace, and list their full paths, one per line.
-                """.formatted(goal, CodePrompts.formatWorkspaceSummary(contextManager, false), promptContent).stripIndent();
 
-        var messages = List.of(new SystemMessage(systemMessage.toString()), new UserMessage(userMessage));
-        logger.debug("Invoking LLM to select relevant files (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
+        var finalSystemMessage = new SystemMessage(systemMessage.toString());
+        List<ChatMessage> messages;
+        int promptTokens;
+
+        if (workspaceRepresentation instanceof String workspaceSummary) {
+            var userMessageText = """
+                    <goal>
+                    %s
+                    </goal>
+                    
+                    <workspace>
+                    %s
+                    </workspace>
+                    
+                    <files>
+                    %s
+                    </files>
+                    
+                    Which of these files are most relevant to the goal? Take into consideration what is already in the workspace, and list their full paths, one per line.
+                    """.formatted(goal, workspaceSummary, filesText).stripIndent();
+            messages = List.of(finalSystemMessage, new UserMessage(userMessageText));
+            promptTokens = Messages.getApproximateTokens(userMessageText) + Messages.getApproximateTokens(finalSystemMessage.text());
+        } else if (workspaceRepresentation instanceof List workspaceMessages) {
+            @SuppressWarnings("unchecked") // Checked by instanceof
+            List<ChatMessage> castedMessages = (List<ChatMessage>) workspaceMessages;
+            var userPrompt = """
+                    <goal>
+                    %s
+                    </goal>
+                    
+                    <files>
+                    %s
+                    </files>
+                    
+                    Which of these files are most relevant to the goal? Take into consideration what is already in the workspace (provided as prior messages), and list their full paths, one per line.
+                    """.formatted(goal, filesText).stripIndent();
+
+            messages = Stream.concat(Stream.of(finalSystemMessage),
+                                     Stream.concat(castedMessages.stream(), Stream.of(new UserMessage(userPrompt))))
+                             .toList();
+            promptTokens = messages.stream().mapToInt(m -> Messages.getApproximateTokens(Messages.getText(m))).sum();
+        } else {
+            throw new IllegalArgumentException("Unsupported workspace representation type: " + workspaceRepresentation.getClass());
+        }
+
+        logger.debug("Invoking LLM to select relevant files (prompt size ~{} tokens)", promptTokens);
         var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
@@ -376,12 +469,12 @@ public class ContextAgent {
 
         var responseText = result.chatResponse().aiMessage().text();
 
-        return allFiles.stream()
+        return filesToConsider.stream()
                 .filter(f -> responseText.contains(f.toString()))
                 .toList();
     }
 
-    // --- Logic for Rule 3: Use filenames first (always runs before content/summary if needed) ---
+    // --- Logic for pruning based on filenames only (used as a fallback) ---
 
     private List<ProjectFile> pruneFilenames(List<ProjectFile> allFiles) throws InterruptedException {
         var filenameString = getFilenameString(allFiles);
@@ -391,14 +484,22 @@ public class ContextAgent {
                 Given a list of file paths and a goal, identify which files *might* be relevant to achieving the goal.
                 Output *only* the full paths of the potentially relevant files, one per line. Do not include any other text, explanations, or formatting.
                 """.stripIndent();
+        // we never include the full workspace here since we're in context-constrained mode
         var userMessage = """
-                Goal: %s
-                
-                File Paths:
+                <goal>
                 %s
+                </goal>
+                
+                <workspace>
+                %s
+                </workspace>
+                
+                <files>
+                %s
+                </files>
                 
                 Which of these file paths seem potentially relevant to the goal? List their full paths, one per line.
-                """.formatted(goal, filenameString).stripIndent();
+                """.formatted(goal, CodePrompts.formatWorkspaceSummary(contextManager, false), filenameString).stripIndent();
 
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select potentially relevant filenames (prompt size ~{} tokens)", Messages.getApproximateTokens(filenameString));

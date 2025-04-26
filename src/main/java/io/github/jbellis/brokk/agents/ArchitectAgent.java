@@ -220,7 +220,7 @@ public class ArchitectAgent {
     public void execute() throws ExecutionException, InterruptedException {
         io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
-        var contextAgent = new ContextAgent(contextManager, contextManager.getAskModel(), goal);
+        var contextAgent = new ContextAgent(contextManager, contextManager.getAskModel(), goal, true);
         contextAgent.execute();
 
         io.llmOutput("\nPlanning", ChatMessageType.AI);
