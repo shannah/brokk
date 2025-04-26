@@ -465,23 +465,25 @@ public class Context implements Serializable {
                                      originalContents,
                                      parsedOutput,
                                      action);
-        contextManager.submitBackgroundTask("Computing AutoContext", () -> {
-            var newAutoContext = buildAutoContext();
-            // Construct the final replacement context, preserving the ID from the placeholder context (which is the original ID)
-            var replacement = new Context(newContext.id, // Preserve the ID
-                                          contextManager,
-                                          editableFiles,
-                                          readonlyFiles,
-                                          virtualFragments,
-                                          newAutoContext,
-                                          autoContextFileCount,
-                                          taskHistory,
-                                          originalContents,
-                                          parsedOutput,
-                                          action);
-            contextManager.replaceContext(newContext, replacement);
-            return null;
-        });
+        if (isAutoContextEnabled()) {
+            contextManager.submitBackgroundTask("Computing AutoContext", () -> {
+                var newAutoContext = buildAutoContext();
+                // Construct the final replacement context, preserving the ID from the placeholder context (which is the original ID)
+                var replacement = new Context(newContext.id, // Preserve the ID
+                                              contextManager,
+                                              editableFiles,
+                                              readonlyFiles,
+                                              virtualFragments,
+                                              newAutoContext,
+                                              autoContextFileCount,
+                                              taskHistory,
+                                              originalContents,
+                                              parsedOutput,
+                                              action);
+                contextManager.replaceContext(newContext, replacement);
+                return null;
+            });
+        }
 
         return newContext;
     }
