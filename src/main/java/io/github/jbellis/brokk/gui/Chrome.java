@@ -40,9 +40,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     final JFrame frame;
     private JLabel backgroundStatusLabel;
     private Dimension backgroundLabelPreferredSize;
-        private JPanel bottomPanel;
+    private JPanel bottomPanel;
 
-        private JSplitPane topSplitPane;
+    private JSplitPane topSplitPane;
     private JSplitPane verticalSplitPane;
     private JSplitPane contextGitSplitPane;
     private HistoryOutputPanel historyOutputPanel;
@@ -71,10 +71,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         // 2) Build main window
-    frame = newFrame("Brokk: Code Intelligence for AI");
-    frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-    frame.setSize(800, 1200);  // Taller than wide
-    frame.setLayout(new BorderLayout());
+        frame = newFrame("Brokk: Code Intelligence for AI");
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.setSize(800, 1200);  // Taller than wide
+        frame.setLayout(new BorderLayout());
 
         // 3) Main panel (top area + bottom area)
         frame.add(buildMainPanel(), BorderLayout.CENTER);
@@ -319,7 +319,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 } else {
                     historyOutputPanel.clearLlmOutput();
                 }
-                
+
             }
             updateCaptureButtons();
         });
@@ -495,8 +495,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     private void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
         JFrame previewFrame = newFrame(title);
-            previewFrame.setContentPane(contentComponent);
-            previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+        previewFrame.setContentPane(contentComponent);
+        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
 
         var project = contextManager.getProject();
         assert project != null;
@@ -791,16 +791,16 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public ContextPanel getContextPanel() {
         return contextPanel;
     }
-    
+
     /**
      * Creates a new JFrame with the Brokk icon set properly.
-     * 
+     *
      * @param title The title for the new frame
      * @return A configured JFrame with the application icon
      */
     public static JFrame newFrame(String title) {
         JFrame frame = new JFrame(title);
-        
+
         try {
             var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
             if (iconUrl != null) {
@@ -812,7 +812,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         } catch (Exception e) {
             LogManager.getLogger(Chrome.class).warn("Failed to set application icon", e);
         }
-        
+
         return frame;
     }
 
@@ -877,7 +877,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             historyOutputPanel.enableHistory();
         }
     }
-    
+
     /**
      * Implements the selection dialog for ContextAgent proposals.
      */
@@ -902,8 +902,8 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             JButton cancel = new JButton("Cancel");
             for (ContextFragment fragment : proposals) {
                 JCheckBox check = new JCheckBox(fragment.shortDescription(), true);
-            checks.add(check);
-            checkboxPanel.add(check);
+                checks.add(check);
+                checkboxPanel.add(check);
             }
             JScrollPane scroll = new JScrollPane(checkboxPanel);
             scroll.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
@@ -935,9 +935,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 dialog.dispose();
             });
             cancel.addActionListener(e -> {
-            result[0] = null;
-            dialog.dispose();
-        });
+                result[0] = null;
+                dialog.dispose();
+            });
 
             dialog.pack();
             dialog.setLocationRelativeTo(frame);

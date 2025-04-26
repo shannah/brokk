@@ -30,10 +30,6 @@ public class LlmTest {
         }
 
         @Override
-        public void toolError(String msg) {
-        }
-
-        @Override
         public void toolErrorRaw(String msg) {
             System.out.println("Tool error: " + msg);
         }
