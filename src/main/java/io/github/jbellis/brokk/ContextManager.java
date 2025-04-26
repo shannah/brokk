@@ -1440,7 +1440,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                                 """.stripIndent().formatted(codeForLLM))
                 );
 
-                var result = getLlm(models.quickestModel(), "Generate style guide").sendRequest(messages);
+                var result = getLlm(getAskModel(), "Generate style guide").sendRequest(messages);
                 if (result.error() != null || result.chatResponse() == null) {
                     io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
