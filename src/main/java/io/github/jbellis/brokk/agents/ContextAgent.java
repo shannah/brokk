@@ -30,13 +30,11 @@ public class ContextAgent {
     private static final Logger logger = LogManager.getLogger(ContextAgent.class);
 
     private final ContextManager contextManager;
-    private final StreamingChatLanguageModel llm;
-    private final Llm coder;
+    private final Llm llm;
     private final String goal;
     private final IConsoleIO io;
     private final IAnalyzer analyzer;
 
-    private final int maxInputTokens;
     // if the entire project fits in the Skip Pruning budget, just include it all and call it good
     private final int skipPruningBudget;
     // if our to-prune context is larger than the Pruning budget then we give up
@@ -46,8 +44,7 @@ public class ContextAgent {
 
     public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) {
         this.contextManager = contextManager;
-        this.llm = model;
-        this.coder = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
+        this.llm = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
         this.goal = goal;
         this.io = contextManager.getIo();
         try {
@@ -57,7 +54,7 @@ public class ContextAgent {
             throw new RuntimeException("Interrupted while initializing Analyzer for ContextAgent", e);
         }
 
-        this.maxInputTokens = contextManager.getModels().getMaxInputTokens(model);
+        int maxInputTokens = contextManager.getModels().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
         this.finalBudget = maxInputTokens / 2;
         this.budgetPruning = (int) (maxInputTokens * 0.9);
@@ -243,7 +240,7 @@ public class ContextAgent {
 
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select relevant summaries (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
-        var result = coder.sendRequest(messages);
+        var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error or empty response from LLM during summary selection: {}. Aborting context population.",
@@ -339,7 +336,7 @@ public class ContextAgent {
 
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select relevant files (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
-        var result = coder.sendRequest(messages);
+        var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error or empty response from LLM during file selection: {}. Aborting context population.",
@@ -375,7 +372,7 @@ public class ContextAgent {
 
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select potentially relevant filenames (prompt size ~{} tokens)", Messages.getApproximateTokens(filenameString));
-        var result = coder.sendRequest(messages);
+        var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error or empty response from LLM during filename selection: {}. Aborting context population.",
