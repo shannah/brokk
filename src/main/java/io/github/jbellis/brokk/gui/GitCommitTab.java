@@ -245,7 +245,7 @@ public class GitCommitTab extends JPanel {
                 } catch (ExecutionException ex) {
                     logger.error("Error getting suggested commit message:", ex.getCause());
                     SwingUtilities.invokeLater(() -> {
-                        chrome.actionOutput("Error suggesting commit message: " + ex.getCause().getMessage());
+                        chrome.toolErrorRaw("Error suggesting commit message: " + ex.getCause().getMessage());
                         chrome.enableUserActionButtons();
                     });
                 } catch (InterruptedException ex) {
@@ -280,7 +280,7 @@ public class GitCommitTab extends JPanel {
                     } catch (ExecutionException | InterruptedException ex) {
                         logger.error("Error getting suggested message or stashing:", ex);
                         SwingUtilities.invokeLater(() -> {
-                            chrome.actionOutput("Error during auto-stash: " + ex.getMessage());
+                            chrome.toolErrorRaw("Error during auto-stash: " + ex.getMessage());
                             chrome.enableUserActionButtons();
                         });
                         if (ex instanceof InterruptedException) {
@@ -289,7 +289,7 @@ public class GitCommitTab extends JPanel {
                     } catch (Exception ex) {
                         logger.error("Error stashing changes with suggested message:", ex);
                         SwingUtilities.invokeLater(() -> {
-                            chrome.actionOutput("Error stashing changes: " + ex.getMessage());
+                            chrome.toolErrorRaw("Error stashing changes: " + ex.getMessage());
                             chrome.enableUserActionButtons();
                         });
                     }
@@ -306,7 +306,7 @@ public class GitCommitTab extends JPanel {
                     } catch (Exception ex) {
                         logger.error("Error stashing changes with provided message:", ex);
                         SwingUtilities.invokeLater(() -> {
-                            chrome.actionOutput("Error stashing changes: " + ex.getMessage());
+                            chrome.toolErrorRaw("Error stashing changes: " + ex.getMessage());
                             chrome.enableUserActionButtons();
                         });
                     }
@@ -351,7 +351,7 @@ public class GitCommitTab extends JPanel {
                 } catch (Exception ex) {
                     logger.error("Error committing files:", ex);
                     SwingUtilities.invokeLater(() -> {
-                        chrome.actionOutput("Error committing files: " + ex.getMessage());
+                        chrome.toolErrorRaw("Error committing files: " + ex.getMessage());
                         chrome.enableUserActionButtons();
                     });
                 }
@@ -654,14 +654,14 @@ public class GitCommitTab extends JPanel {
                               : getRepo().diffFiles(selectedFiles);
 
                 if (diff.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> chrome.actionOutput("No changes detected"));
+                    SwingUtilities.invokeLater(() -> chrome.systemOutput("No changes detected"));
                     return null; // Indicate no changes
                 }
                 // Call the LLM logic directly
                 return inferCommitMessage(diff);
             } catch (Exception ex) {
                 logger.error("Error generating commit message suggestion:", ex);
-                SwingUtilities.invokeLater(() -> chrome.actionOutput("Error suggesting commit message: " + ex.getMessage()));
+                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error suggesting commit message: " + ex.getMessage()));
                 // Propagate the exception to the future
                 throw ex;
             }

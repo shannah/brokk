@@ -356,7 +356,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             userActionThread.set(Thread.currentThread());
 
             try {
-                io.actionOutput(description);
                 if (isLlmTask) {
                     io.blockLlmOutput(true);
                 }
@@ -382,7 +381,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             userActionThread.set(Thread.currentThread());
 
             try {
-                io.actionOutput(description);
                 return task.call();
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");

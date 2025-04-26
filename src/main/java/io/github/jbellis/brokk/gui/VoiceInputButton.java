@@ -190,12 +190,14 @@ public class VoiceInputButton extends JButton {
             setIcon(micOffIcon);
         }
         setBackground(null); // Return to default button background
+        contextManager.getIo().actionComplete();
 
         // Convert the in-memory raw PCM data to a valid .wav file
         var audioBytes = micBuffer.toByteArray();
 
         // We do the STT in the background so as not to block the UI
         contextManager.submitUserTask("Transcribing Audio", () -> {
+            contextManager.getIo().systemOutput("Transcribing audio");
             try {
                 // Our original AudioFormat from startMicCapture
                 AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, true);
