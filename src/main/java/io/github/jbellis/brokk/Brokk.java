@@ -57,6 +57,16 @@ public class Brokk {
         // Models are now initialized within ContextManager after instantiation
 
         SwingUtilities.invokeLater(() -> {
+            // 1) Set FlatLaf Look & Feel - we'll use light as default initially
+            try {
+                com.formdev.flatlaf.FlatLightLaf.setup();
+            } catch (Exception e) {
+                logger.warn("Failed to set LAF, using default", e);
+            }
+
+            // Ensure a Brokk key is set before doing anything else
+            SettingsDialog.showSignupDialog();
+
             // Check for --no-project flag
             boolean noProjectFlag = false;
             String projectPathArg = null;

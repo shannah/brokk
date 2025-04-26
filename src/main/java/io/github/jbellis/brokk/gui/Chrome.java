@@ -63,13 +63,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     public Chrome(ContextManager contextManager) {
         this.contextManager = contextManager;
 
-        // 1) Set FlatLaf Look & Feel - we'll use light as default initially
-        try {
-            com.formdev.flatlaf.FlatLightLaf.setup();
-        } catch (Exception e) {
-            logger.warn("Failed to set LAF, using default", e);
-        }
-
         // 2) Build main window
         frame = newFrame("Brokk: Code Intelligence for AI");
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -814,6 +807,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         }
 
         return frame;
+    }
+    
+    /**
+     * Creates a new JDialog with the Brokk icon set properly.
+     *
+     * @param owner The parent Frame for this dialog
+     * @param title The title for the new dialog
+     * @param modal Whether the dialog should be modal
+     * @return A configured JDialog with the application icon
+     */
+    public static JDialog newDialog(Frame owner, String title, boolean modal) {
+        JDialog dialog = new JDialog(owner, title, modal);
+        
+        try {
+            var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
+            if (iconUrl != null) {
+                var icon = new ImageIcon(iconUrl);
+                dialog.setIconImage(icon.getImage());
+            } else {
+                LogManager.getLogger(Chrome.class).warn("Could not find resource {}", Brokk.ICON_RESOURCE);
+            }
+        } catch (Exception e) {
+            LogManager.getLogger(Chrome.class).warn("Failed to set application icon", e);
+        }
+        
+        return dialog;
     }
 
     public void showSetAutoContextSizeDialog() {

@@ -188,13 +188,13 @@ public class SettingsDialog extends JDialog {
         var proxyInfoLabel = new JLabel("Brokk will look for a litellm proxy on localhost:4000");
         proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
         panel.add(proxyInfoLabel, gbc);
-        
+
         // Add restart requirement note
         gbc.gridy = row++;
         var restartLabel = new JLabel("Restart required after changing proxy settings");
         restartLabel.setFont(restartLabel.getFont().deriveFont(Font.ITALIC));
         panel.add(restartLabel, gbc);
-        
+
         gbc.insets = new Insets(2, 2, 2, 2);
 
         // Load initial proxy setting via enum
@@ -1045,5 +1045,162 @@ public class SettingsDialog extends JDialog {
         }
 
         dialog.setVisible(true);   // show the modal dialog
+    }
+
+    /**
+     * Displays a modal dialog requiring the user to enter a valid Brokk Key
+     * if one is not already configured. This blocks until a valid key is provided.
+     * This should be called early in the application startup process.
+     */
+    public static void showSignupDialog() {
+        if (!Project.getBrokkKey().isEmpty()) {
+            logger.debug("Brokk key already configured, skipping signup dialog.");
+            return; // Key already exists, nothing to do
+        }
+
+        // hardcode dark theme
+        com.formdev.flatlaf.FlatDarkLaf.setup();
+        logger.debug("No Brokk key found, showing signup/login dialog.");
+
+        // Create a modal dialog using the Chrome utility to ensure the icon is set
+        var dialog = Chrome.newDialog(null, "Brokk Setup", true); // Parentless, modal
+        dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE); // Prevent closing via 'X' initially
+        // dialog.setSize(400, 200); // Size is now handled by pack() later
+        dialog.setLocationRelativeTo(null); // Center on screen
+
+        var panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        var gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        // --- Info Label ---
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        var infoLabel = new JLabel("<html>Please enter your Brokk Key to continue.<br>" +
+                                   "You can sign up for free at:</html>");
+        panel.add(infoLabel, gbc);
+
+        // --- Signup URL Link ---
+        gbc.gridy++;
+        var url = "https://brokk.ai";
+        var loginLabel = new JLabel("<html><a href=\"" + url + "\">" + url + "</a></html>");
+        loginLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        loginLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                try {
+                    Desktop.getDesktop().browse(new URI(url));
+                } catch (Exception ex) {
+                    logger.error("Failed to open signup URL: {}", url, ex);
+                    JOptionPane.showMessageDialog(dialog,
+                                                  "Could not open the browser. Please visit:\n" + url,
+                                                  "Browser Error", JOptionPane.WARNING_MESSAGE);
+                }
+            }
+        });
+        panel.add(loginLabel, gbc);
+
+        // --- Key Label ---
+        gbc.gridy++;
+        gbc.gridwidth = 1;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0.0;
+        panel.add(new JLabel("Brokk Key:"), gbc);
+
+        // --- Key Text Field ---
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        var keyField = new JTextField(25);
+        panel.add(keyField, gbc);
+
+        // --- Button Panel ---
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.gridwidth = 2;
+        gbc.anchor = GridBagConstraints.CENTER;
+        gbc.fill = GridBagConstraints.NONE;
+        
+        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        
+        var okButton = new JButton("OK");
+        var exitButton = new JButton("Exit");
+        
+        buttonPanel.add(okButton);
+        buttonPanel.add(exitButton);
+        
+        panel.add(buttonPanel, gbc);
+
+        // --- Action Listeners for Buttons ---
+        okButton.addActionListener(e -> {
+            String newBrokkKey = keyField.getText().trim();
+            if (newBrokkKey.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Please enter a Brokk Key.", "Key Required", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            try {
+                // Validate the key structure
+                io.github.jbellis.brokk.Models.parseKey(newBrokkKey);
+                // If valid, save it and close the dialog
+                Project.setBrokkKey(newBrokkKey);
+                logger.debug("Brokk Key successfully configured.");
+                dialog.dispose(); // Close the dialog
+            } catch (IllegalArgumentException ex) {
+                logger.warn("Invalid Brokk Key entered: {}", ex.getMessage());
+                JOptionPane.showMessageDialog(dialog,
+                                              "Invalid Brokk Key: " + ex.getMessage() + "\nPlease check your key and try again.",
+                                              "Invalid Key",
+                                              JOptionPane.ERROR_MESSAGE);
+                keyField.requestFocusInWindow(); // Focus the field again
+                keyField.selectAll();
+            }
+        });
+        
+        // Exit button action - exit the application
+        exitButton.addActionListener(e -> {
+            logger.debug("User chose to exit from signup dialog");
+            System.exit(0);
+        });
+
+        // --- Window Closing Behavior ---
+        dialog.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                // Check if a valid key has been set *before* allowing close
+                if (Project.getBrokkKey().isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog,
+                                                  "You must enter a valid Brokk Key to use Brokk.",
+                                                  "Key Required",
+                                                  JOptionPane.WARNING_MESSAGE);
+                    // Optionally, could offer an "Exit" button here, but for now, force key entry.
+                } else {
+                    // This case should ideally not be reached if OK button logic is correct,
+                    // but allows closing if a key *was* somehow set without disposing.
+                    dialog.dispose();
+                }
+            }
+        });
+
+        // Add Escape key binding to trigger OK button
+        dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+              .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel");
+        dialog.getRootPane().getActionMap().put("cancel", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                 // Treat Escape like clicking OK for validation purposes
+                 okButton.doClick();
+            }
+        });
+        // Set default button
+        dialog.getRootPane().setDefaultButton(okButton);
+
+        dialog.setContentPane(panel);
+        dialog.pack(); // Adjust size to fit content
+        dialog.setResizable(false);
+        dialog.setVisible(true); // Show the modal dialog and block until disposed
     }
 }
