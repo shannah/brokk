@@ -8,10 +8,8 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.Llm;
-import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.apache.logging.log4j.LogManager;
@@ -29,26 +27,20 @@ public class BuildAgent {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final Llm llm;
-    // Primarily for listFiles tool via SearchTools
-    private final StreamingChatLanguageModel model;
     private final ToolRegistry toolRegistry;
 
     // Use standard ChatMessage history
     private final List<ChatMessage> chatHistory = new ArrayList<>();
-    private final ContextManager contextManager;
     // Field to store the result from the reportBuildDetails tool
     private BuildDetails reportedDetails = null;
     // Field to store the reason from the abortBuildDetails tool
     private String abortReason = null;
 
-    public BuildAgent(ContextManager contextManager, Llm llm, ToolRegistry toolRegistry) {
-        this.contextManager = contextManager;
+    public BuildAgent(Llm llm, ToolRegistry toolRegistry) {
         assert llm != null : "coder cannot be null";
         assert toolRegistry != null : "toolRegistry cannot be null";
         this.llm = llm;
         this.toolRegistry = toolRegistry;
-        // Get Models instance from coder and call instance method
-        this.model = contextManager.getModels().quickModel();
     }
 
     /**
