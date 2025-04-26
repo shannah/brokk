@@ -31,7 +31,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future; // Import for Future
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference; // Import for AtomicReference
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -45,11 +47,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final String PLACEHOLDER_TEXT = """
-    Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them
-    to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
-    
-    More tips are available in the Getting Started section on the right -->
-    """;
+            Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them
+            to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
+            
+            More tips are available in the Getting Started section on the right -->
+            """;
 
     private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
     private static final int TRUNCATION_LENGTH = 100;    // Characters
@@ -70,6 +72,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private JTable referenceFileTable;
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing context suggestions
+    private final AtomicReference<Future<?>> currentSuggestionTask = new AtomicReference<>(); // Holds the running suggestion task
     private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false);
 
     public InstructionsPanel(Chrome chrome) {
@@ -726,8 +729,22 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             return;
         }
 
-        contextManager.submitBackgroundTask("Suggesting context", () -> {
+        // Cancel any previously running suggestion task
+        Future<?> previousTask = currentSuggestionTask.get();
+        if (previousTask != null && !previousTask.isDone()) {
+            logger.debug("Cancelling previous context suggestion task.");
+            previousTask.cancel(true);
+        }
+
+        // Submit the new task and store its Future
+        Future<?> newTask = contextManager.submitBackgroundTask("Suggesting context", () -> {
             try {
+                // Check for interruption early
+                if (Thread.currentThread().isInterrupted()) {
+                    logger.debug("Context suggestion task interrupted before starting.");
+                    return;
+                }
+
                 logger.debug("Fetching context recommendations for: '{}'", goal);
                 var model = contextManager.getModels().quickestModel();
                 var agent = new ContextAgent(contextManager, model, goal);
@@ -742,15 +759,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         .toList();
 
                 logger.debug("Updating reference table with {} suggestions", fileRefs.size());
-                // Update the UI on the EDT
                 SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(fileRefs, 0, 0));
-            } catch (Exception ex) {
-                // Log error but don't bother the user for suggestion failures
-                logger.warn("Failed to get context suggestions for goal '{}': {}", goal, ex.getMessage(), ex);
-                // Clear the table on error
-                SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
+            } catch (InterruptedException interruptedException) {
+                // Task was cancelled via interrupt
+                logger.debug("Context suggestion task explicitly interrupted: {}", interruptedException.getMessage());
             }
         });
+        // Store the future of the newly submitted task
+        if (!currentSuggestionTask.compareAndSet(previousTask, newTask)) {
+            // shouldn't happen, but just in case
+            logger.warn("Failed to store the new suggestion task future; cancelling it.");
+            newTask.cancel(true);
+        }
     }
 
     /**

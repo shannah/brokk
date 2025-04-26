@@ -42,17 +42,12 @@ public class ContextAgent {
     // if our pruned context is larger than the Final target budget then we also give up
     private final int finalBudget;
 
-    public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) {
+    public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) throws InterruptedException {
         this.contextManager = contextManager;
         this.llm = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
         this.goal = goal;
         this.io = contextManager.getIo();
-        try {
-            this.analyzer = contextManager.getAnalyzer();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); // Preserve interrupted status
-            throw new RuntimeException("Interrupted while initializing Analyzer for ContextAgent", e);
-        }
+        this.analyzer = contextManager.getAnalyzer();
 
         int maxInputTokens = contextManager.getModels().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
