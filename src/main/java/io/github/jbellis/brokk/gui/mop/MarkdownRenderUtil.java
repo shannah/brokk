@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui.mop;
 
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.ext.tables.TablesExtension;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
@@ -15,6 +16,7 @@ import javax.swing.text.DefaultCaret;
 import javax.swing.text.html.HTMLEditorKit;
 import java.awt.*;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,9 +25,12 @@ import java.util.regex.Pattern;
  */
 public class MarkdownRenderUtil {
     private static final Logger logger = LogManager.getLogger(MarkdownRenderUtil.class);
-    private static final Parser parser = Parser.builder().build();
+    private static final Parser parser = Parser.builder()
+            .extensions(Collections.singletonList(TablesExtension.create()))
+            .build();
     private static final HtmlRenderer renderer = HtmlRenderer.builder()
             .softBreak("<br />\n")  // Convert single newlines to HTML line breaks
+            .extensions(Collections.singletonList(TablesExtension.create()))
             .build();
 
     /**
@@ -247,6 +252,15 @@ public class MarkdownRenderUtil {
         ss.addRule("code { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; " +
                            "padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 3px; " +
                            "color: " + linkColor + "; }");
+
+        // Table styling
+        ss.addRule("table { border-collapse: collapse; margin: 15px 0; width: 100%; }");
+        ss.addRule("table, th, td { border: 1px solid " + borderColor + "; }");
+        ss.addRule("th { background-color: " + ThemeColors.getColorHex(isDarkTheme, "code_block_background") + "; " +
+                  "padding: 8px; text-align: left; font-weight: 600; }");
+        ss.addRule("td { padding: 8px; }");
+        ss.addRule("tr:nth-child(even) { background-color: " + ThemeColors.getColorHex(isDarkTheme, "message_background") + "; }");
+        ss.addRule("tr:hover { background-color: " + ThemeColors.getColorHex(isDarkTheme, "chat_background") + "; }");
 
         return htmlPane;
     }
