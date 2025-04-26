@@ -317,7 +317,7 @@ public class ContextAgent {
 
     private List<ProjectFile> askLlmToSelectFiles(List<ProjectFile> allFiles, Map<ProjectFile, String> contentsMap) throws InterruptedException {
         var promptContent = contentsMap.entrySet().stream()
-                .map(entry -> "File: %s\n```\n%s\n```".formatted(entry.getKey().toString(), entry.getValue()))
+                .map(entry -> "<file path='%s'>\n%s\n</file>".formatted(entry.getKey().toString(), entry.getValue()))
                 .collect(Collectors.joining("\n\n"));
 
         var systemMessage = """
