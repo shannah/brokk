@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.agents;
 
+import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
@@ -18,7 +19,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.ArrayList;
 
 import static java.lang.Math.min;
 
@@ -44,8 +44,6 @@ public class ContextAgent {
     // if our pruned context is larger than the Final target budget then we also give up
     private final int finalBudget;
 
-    private final List<ContextFragment> proposals = new ArrayList<>();
-
     public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal) {
         this.contextManager = contextManager;
         this.llm = model;
@@ -67,14 +65,61 @@ public class ContextAgent {
         logger.debug("ContextAgent initialized. Budgets: Small={}, Medium={}, FilenameLimit={}", skipPruningBudget, finalBudget, budgetPruning);
     }
 
-    private record ExecutionResult(boolean success, List<ContextFragment> fragments) { }
+    private record RecommendationResult(boolean success, List<ContextFragment> fragments) { }
 
     /**
-     * Executes the context population logic.
-     * This method determines the best initial context based on project size and token budgets,
-     * potentially using LLM inference, and adds the selected content to the workspace.
+     * Executes the context population logic, obtains context recommendations,
+     * presents them for selection (if workspace is not empty), and adds them to the workspace.
+     * 
+     * @return true if context fragments were successfully added, false otherwise
      */
-    public List<ContextFragment> execute() throws InterruptedException {
+    public boolean execute() throws InterruptedException {
+        io.llmOutput("\nExamining initial workspace", ChatMessageType.CUSTOM);
+        
+        List<ContextFragment> proposals = getRecommendations();
+        if (proposals.isEmpty()) {
+            io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
+            return false;
+        }
+
+        List<ContextFragment> selected;
+        // If workspace is empty, automatically accept all suggestions
+        if (contextManager.topContext().allFragments().findAny().isEmpty()) {
+            selected = proposals;
+            io.llmOutput("\nAdding all recommended context items to empty workspace", ChatMessageType.CUSTOM);
+        } else {
+            selected = io.selectContextProposals(proposals);
+        }
+
+        if (selected == null || selected.isEmpty()) {
+            return false;
+        }
+
+        // Either a batch of path fragments, or one/multiple skeleton fragments
+        boolean allProjectPath = selected.stream().allMatch(f -> f instanceof ContextFragment.ProjectPathFragment);
+        if (allProjectPath) {
+            var casted = (List<ContextFragment.ProjectPathFragment>) (List<? extends ContextFragment>) selected;
+            contextManager.editFiles(casted);
+        } else if (selected.stream().allMatch(f -> f instanceof ContextFragment.SkeletonFragment)) {
+            // Merge multiple SkeletonFragments into one
+            var skeletons = selected.stream()
+                                    .map(ContextFragment.SkeletonFragment.class::cast)
+                                    .toList();
+            var combined = skeletons.stream()
+                                    .flatMap(sf -> sf.skeletons().entrySet().stream())
+                                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(combined));
+        } else {
+            throw new AssertionError(selected.toString());
+        }
+        return true;
+    }
+
+    /**
+     * Determines the best initial context based on project size and token budgets,
+     * potentially using LLM inference, and returns recommended context fragments.
+     */
+    public List<ContextFragment> getRecommendations() throws InterruptedException {
         var allFiles = contextManager.getRepo().getTrackedFiles().stream().sorted().toList();
 
         var firstResult = analyzer.isEmpty()
@@ -103,7 +148,7 @@ public class ContextAgent {
 
     // --- Logic branch for using class summaries ---
 
-    private ExecutionResult executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
+    private RecommendationResult executeWithSummaries(List<ProjectFile> allFiles) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
@@ -120,7 +165,7 @@ public class ContextAgent {
         // Rule 1: Use all summaries if they fit the smallest budget
         if (summaryTokens <= skipPruningBudget) {
             var fragments = skeletonPerSummary(rawSummaries);
-            return new ExecutionResult(true, fragments);
+            return new RecommendationResult(true, fragments);
         }
 
         // Rule 2: Ask LLM to pick relevant summaries if all summaries fit the Pruning budget
@@ -129,14 +174,14 @@ public class ContextAgent {
             int relevantSummaryTokens = Messages.getApproximateTokens(String.join("\n", relevantSummaries.values()));
             if (relevantSummaryTokens <= finalBudget) {
                 var fragments = skeletonPerSummary(relevantSummaries);
-                return new ExecutionResult(true, fragments);
+                return new RecommendationResult(true, fragments);
             } else {
                 logGiveUp("summaries");
-                return new ExecutionResult(false, List.of());
+                return new RecommendationResult(false, List.of());
             }
         }
 
-        return new ExecutionResult(false, List.of());
+        return new RecommendationResult(false, List.of());
     }
 
     /**
@@ -217,10 +262,10 @@ public class ContextAgent {
 
     // --- Logic branch for using full file contents ---
 
-    private ExecutionResult executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
+    private RecommendationResult executeWithFileContents(List<ProjectFile> allFiles) throws InterruptedException {
         if (contextManager.topContext().allFragments().findAny().isPresent()) {
             logger.debug("Non-empty context and no analyzer present, skipping context population");
-            return new ExecutionResult(true, List.of());
+            return new RecommendationResult(true, List.of());
         }
 
         var allContentsMap = readFileContents(allFiles);
@@ -232,7 +277,7 @@ public class ContextAgent {
             var fragments = allFiles.stream()
                     .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                     .toList();
-            return new ExecutionResult(true, fragments);
+            return new RecommendationResult(true, fragments);
         }
 
         // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
@@ -244,15 +289,15 @@ public class ContextAgent {
                 var fragments = relevantFiles.stream()
                         .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                         .toList();
-                return new ExecutionResult(true, fragments);
+                return new RecommendationResult(true, fragments);
             } else {
                 logGiveUp("pruned file contents");
-                return new ExecutionResult(false, List.of());
+                return new RecommendationResult(false, List.of());
             }
         }
 
         logGiveUp("file contents");
-        return new ExecutionResult(false, List.of());
+        return new RecommendationResult(false, List.of());
     }
 
     private Map<ProjectFile, String> readFileContents(Collection<ProjectFile> files) {
