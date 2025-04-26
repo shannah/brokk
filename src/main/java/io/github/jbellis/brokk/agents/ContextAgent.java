@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -241,13 +242,20 @@ public class ContextAgent {
             systemMessage.append("\nLimit your response to the top %d most relevant classes.".formatted(topK));
         }
         var userMessage = """
-                Goal: %s
-                
-                Summaries:
+                <goal>
                 %s
+                </goal>
                 
-                Which of these classes are most relevant to the goal? List their fully qualified names, one per line.
-                """.formatted(goal, promptContent).stripIndent();
+                <workspace>
+                %s
+                </workspace>
+                
+                <summaries>>
+                %s
+                </summaries>
+                
+                Which of these classes are most relevant to the goal? Take into consideration what is already in the workspace, and list their fully qualified names, one per line.
+                """.formatted(goal, CodePrompts.formatWorkspaceSummary(contextManager, false), promptContent).stripIndent();
 
         var messages = List.of(new SystemMessage(systemMessage.toString()), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select relevant summaries (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
@@ -341,13 +349,20 @@ public class ContextAgent {
             systemMessage.append("\nLimit your response to the top %d most relevant files.".formatted(topK));
         }
         var userMessage = """
-                Goal: %s
-                
-                Files:
+                <goal>
                 %s
+                </goal>
                 
-                Which of these files are most relevant to the goal? List their full paths, one per line.
-                """.formatted(goal, promptContent).stripIndent();
+                <workspace>
+                %s
+                </workspace>
+                
+                <files>>
+                %s
+                </files>
+                
+                Which of these files are most relevant to the goal? Take into consideration what is already in the workspace, and list their full paths, one per line.
+                """.formatted(goal, CodePrompts.formatWorkspaceSummary(contextManager, false), promptContent).stripIndent();
 
         var messages = List.of(new SystemMessage(systemMessage.toString()), new UserMessage(userMessage));
         logger.debug("Invoking LLM to select relevant files (prompt size ~{} tokens)", Messages.getApproximateTokens(promptContent));
