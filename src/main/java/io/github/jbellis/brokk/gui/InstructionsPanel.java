@@ -4,13 +4,8 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.Context;
-import io.github.jbellis.brokk.ContextFragment;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.ContextFragment.TaskFragment;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.IContextManager;
-import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.SessionResult;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.ContextAgent;
@@ -22,8 +17,6 @@ import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -51,11 +44,18 @@ import java.util.stream.Stream;
 public class InstructionsPanel extends JPanel implements IContextManager.ContextListener { // Qualify interface name
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
+    private static final String PLACEHOLDER_TEXT = """
+    Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them
+    to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
+    
+    More tips are available in the Getting Started section on the right -->
+    """;
+
     private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
     private static final int TRUNCATION_LENGTH = 100;    // Characters
 
     private final Chrome chrome;
-    private final RSyntaxTextArea commandInputField;
+    private final JTextArea commandInputField;
     private final VoiceInputButton micButton;
     private final JButton agentButton;
     private final JButton codeButton;
@@ -81,11 +81,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                                    new Font(Font.DIALOG, Font.BOLD, 12)));
 
         this.chrome = chrome;
-
-        // Determine colors before building components that use them
-        Color themePlaceholder = UIManager.getColor("TextArea.placeholderForeground");
-        this.placeholderForeground = themePlaceholder != null ? themePlaceholder : DEFAULT_PLACEHOLDER_COLOR;
-        this.standardForeground = UIManager.getColor("TextArea.foreground");
 
         // Initialize components
         commandInputField = buildCommandInputField(); // Build first to add listener
@@ -161,9 +156,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     referenceFileTable.setValueAt(List.of(), 0, 0);
                 }
             }
-            @Override public void insertUpdate(DocumentEvent e) { checkAndHandleSuggestions(); }
-            @Override public void removeUpdate(DocumentEvent e) { checkAndHandleSuggestions(); }
-            @Override public void changedUpdate(DocumentEvent e) { checkAndHandleSuggestions(); }
+
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                checkAndHandleSuggestions();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                checkAndHandleSuggestions();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                checkAndHandleSuggestions();
+            }
         });
 
         SwingUtilities.invokeLater(() -> {
@@ -175,12 +182,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         chrome.getContextManager().addContextListener(this);
     }
 
-
-    private RSyntaxTextArea buildCommandInputField() {
-        var area = new RSyntaxTextArea(3, 40);
-        area.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
-        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        area.setHighlightCurrentLine(false);
+    private JTextArea buildCommandInputField() {
+        var area = new JTextArea(3, 40);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         area.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
@@ -189,7 +193,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         area.setWrapStyleWord(true);
         area.setRows(3); // Initial rows
         area.setMinimumSize(new Dimension(100, 80));
-        area.setAutoIndentEnabled(false);
+        area.setEnabled(false); // Start disabled
+        area.setText(PLACEHOLDER_TEXT); // Keep placeholder, will be cleared on activation
 
         // Add Ctrl+Enter shortcut to trigger the default button
         var ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, java.awt.event.InputEvent.CTRL_DOWN_MASK);
@@ -232,13 +237,45 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
 
         // Command Input Field
+        // Command Input Field with Overlay
         JScrollPane commandScrollPane = new JScrollPane(commandInputField);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        commandScrollPane.setPreferredSize(new Dimension(600, 80));
+        commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Use preferred size for layout
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
-        panel.add(commandScrollPane);
 
-        // Reference-file table will be inserted just below the command input
+        // Transparent overlay panel
+        var overlayPanel = new JPanel();
+        overlayPanel.setOpaque(false); // Make it transparent
+        overlayPanel.setCursor(Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)); // Hint text input
+
+        // Layered pane to stack command input and overlay
+        var layeredPane = new JLayeredPane();
+        // Set layout manager for layered pane to handle component bounds automatically
+        layeredPane.setLayout(new OverlayLayout(layeredPane)); // Or use custom layout if needed
+        layeredPane.setPreferredSize(commandScrollPane.getPreferredSize()); // Match size
+        layeredPane.setMinimumSize(commandScrollPane.getMinimumSize());
+
+        // Add components to layers
+        layeredPane.add(commandScrollPane, JLayeredPane.DEFAULT_LAYER); // Input field at the bottom
+        layeredPane.add(overlayPanel, JLayeredPane.PALETTE_LAYER); // Overlay on top
+
+        // Mouse listener for the overlay
+        overlayPanel.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                overlayPanel.setVisible(false); // Hide the overlay
+                commandInputField.setEnabled(true); // Enable the text area
+                // Clear placeholder only if it's still present
+                if (commandInputField.getText().equals(PLACEHOLDER_TEXT)) {
+                    clearCommandInput();
+                }
+                commandInputField.requestFocusInWindow(); // Give it focus
+            }
+        });
+
+        panel.add(layeredPane); // Add the layered pane instead of the scroll pane directly
+
+        // Reference-file table will be inserted just below the command input (now layeredPane)
         // by initializeReferenceFileTable()
 
         // System Messages + Command Result
@@ -260,9 +297,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     {
         // ----- create the table itself --------------------------------------------------------
         referenceFileTable = new JTable(new javax.swing.table.DefaultTableModel(
-                new Object[] { "File References" }, 1) {
-            @Override public boolean isCellEditable(int row, int column) { return false; }
-            @Override public Class<?> getColumnClass(int columnIndex)     { return List.class; }
+                new Object[]{"File References"}, 1)
+        {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return List.class;
+            }
         });
         referenceFileTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         referenceFileTable.setRowHeight(23);                 // match ContextPanel
@@ -277,8 +322,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // ----- context-menu support -----------------------------------------------------------
         referenceFileTable.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override public void mousePressed (java.awt.event.MouseEvent e) { handlePopup(e); }
-            @Override public void mouseReleased(java.awt.event.MouseEvent e) { handlePopup(e); }
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                handlePopup(e);
+            }
+
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                handlePopup(e);
+            }
 
             private void handlePopup(java.awt.event.MouseEvent e) {
                 if (!e.isPopupTrigger()) return;
@@ -385,7 +437,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         });
 
         // ----- wrap in a scroll-pane and clamp its height -------------------------------------
-        int rowHeight   = referenceFileTable.getRowHeight();
+        int rowHeight = referenceFileTable.getRowHeight();
         int fixedHeight = rowHeight + 2;       // +2 for a tiny margin
 
         var tableScrollPane = new JScrollPane(referenceFileTable);
@@ -393,8 +445,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         tableScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 
         tableScrollPane.setPreferredSize(new Dimension(600, fixedHeight));
-        tableScrollPane.setMinimumSize  (new Dimension(100, fixedHeight));
-        tableScrollPane.setMaximumSize  (new Dimension(Integer.MAX_VALUE, fixedHeight));
+        tableScrollPane.setMinimumSize(new Dimension(100, fixedHeight));
+        tableScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, fixedHeight));
 
         // Insert directly beneath the command-input area (index 1)
         centerPanel.add(tableScrollPane, 1);
@@ -415,18 +467,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         if (xInCell < 0 || yInCell < 0) return null;
 
         // Badge layout parameters – keep in sync with FileReferenceList
-        final int hgap               = 4;     // FlowLayout hgap
-        final int horizontalPadding  = 12;    // label internal padding (6 px each side)
-        final int borderThickness    = 3;     // stroke + antialias buffer
+        final int hgap = 4;     // FlowLayout hgap
+        final int horizontalPadding = 12;    // label internal padding (6 px each side)
+        final int borderThickness = 3;     // stroke + antialias buffer
 
         // Font used inside the badges (85 % of table font size)
-        var baseFont   = referenceFileTable.getFont();
-        var badgeFont  = baseFont.deriveFont(Font.PLAIN, baseFont.getSize() * 0.85f);
-        var fm         = referenceFileTable.getFontMetrics(badgeFont);
+        var baseFont = referenceFileTable.getFont();
+        var badgeFont = baseFont.deriveFont(Font.PLAIN, baseFont.getSize() * 0.85f);
+        var fm = referenceFileTable.getFontMetrics(badgeFont);
 
         int currentX = 0;
         for (var ref : references) {
-            int textWidth  = fm.stringWidth(ref.getFileName());
+            int textWidth = fm.stringWidth(ref.getFileName());
             int labelWidth = textWidth + horizontalPadding + borderThickness;
             if (xInCell >= currentX && xInCell <= currentX + labelWidth) {
                 return ref;
@@ -536,6 +588,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     JMenuItem menuItem = new JMenuItem(displayText);
                     menuItem.setToolTipText("<html><pre>" + escapedItem + "</pre></html>");
                     menuItem.addActionListener(event -> {
+                        // Hide overlay and enable input field (similar to overlay click)
+                        Component overlay = commandInputField.getParent().getParent().getComponent(1);
+                        overlay.setVisible(false);
+                        commandInputField.setEnabled(true);
+
+                        // Set text and request focus
                         commandInputField.setText(item);
                         commandInputField.requestFocusInWindow();
                     });
@@ -597,10 +655,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     // --- Public API ---
 
+    /**
+     * Gets the current user input text. If the placeholder is currently displayed,
+     * it returns an empty string, otherwise it returns the actual text content.
+     */
     public String getInputText() {
         return commandInputField.getText();
     }
 
+    /**
+     * Clears the command input field and ensures the text color is set to the standard foreground.
+     * This prevents the placeholder from reappearing inadvertently.
+     */
     public void clearCommandInput() {
         commandInputField.setText("");
     }
@@ -1221,6 +1287,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             searchButton.setEnabled(projectLoaded);
             runButton.setEnabled(true); // Run in shell is always available
             stopButton.setEnabled(false);
+            // Mic button remains enabled unless an action is running.
+            // Command input field enablement is handled by the overlay click listener.
             micButton.setEnabled(true);
             configureModelsButton.setEnabled(projectLoaded); // Enable configure models if project loaded
             chrome.enableHistoryPanel();
