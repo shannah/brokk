@@ -389,81 +389,64 @@ public class Llm {
                                                Function<List<ChatMessage>, ChatRequest> requestBuilder,
                                                Function<Throwable, String> retryInstructionsProvider) throws InterruptedException
     {
+        // FIXME we only log the last of the requests performed which could cause difficulty troubleshooting
         assert !tools.isEmpty();
 
-        // Preprocess messages to combine tool results with subsequent user messages for emulation
+        // Pre-process messages to combine tool results with subsequent user messages for emulation
         List<ChatMessage> initialProcessedMessages = Llm.emulateToolExecutionResults(messages);
 
-        // We'll do up to 3 tries
-        int maxTries = 3;
-        ChatResponse lastResponse = null;
-        Throwable lastError = null;
-        // Use a mutable list for potential retries
+        final int maxTries = 3;
         List<ChatMessage> attemptMessages = new ArrayList<>(initialProcessedMessages);
 
-        for (int attempt = 1; attempt <= maxTries; attempt++) {
-            var request = requestBuilder.apply(attemptMessages);
-            var singleCallResult = doSingleStreamingCall(request, echo);
+        ChatRequest   lastRequest; // for logging
+        StreamingResult finalResult; // what we will return (and have logged)
 
-            lastResponse = singleCallResult.chatResponse;
-            lastError = singleCallResult.error;
+        for (int attempt = 1; true; attempt++) {
+            // Perform the request for THIS attempt
+            lastRequest = requestBuilder.apply(attemptMessages);
+            StreamingResult rawResult = doSingleStreamingCallInternal(lastRequest, echo);
 
-            // If an error occurred (like connectivity or 400) let's bail early
-            if (lastError != null) {
-                break;
-            }
-
-            // If there's no AI message, we can't parse
-            if (lastResponse == null || lastResponse.aiMessage() == null) {
-                lastError = new IllegalArgumentException("No valid ChatResponse or AiMessage from model");
+            // Fast-fail on transport / HTTP errors (no retry)
+            if (rawResult.error() != null) {
+                finalResult = rawResult;           // will be logged below
                 break;
             }
 
             // Now parse the JSON
             try {
-                StreamingResult parseResult = parseJsonToToolRequests(singleCallResult, objectMapper);
-                // If we got tool calls, we are done
-                if (parseResult.chatResponse.aiMessage().hasToolExecutionRequests()) {
-                    return parseResult;
-                } // <-- This closing brace was missing
-                // else if no tool calls, but toolChoice= AUTO => it's acceptable
-                if (toolChoice == ToolChoice.AUTO) {
-                    return singleCallResult;
-                }
-                // else we wanted at least 1 tool call
-                throw new IllegalArgumentException("No 'tool_calls' found in JSON");
-            } catch (IllegalArgumentException e) {
-                logger.debug("JSON parse failed on attempt {}: {}", attempt, e.getMessage());
-                if (attempt == maxTries) {
-                    // last try
-                    lastError = new RuntimeException("Failed to produce valid tool_calls after " + maxTries + " attempts", e);
-                    break;
+                StreamingResult parseResult = parseJsonToToolRequests(rawResult, objectMapper);
+                if (!parseResult.chatResponse().aiMessage().hasToolExecutionRequests()
+                    && toolChoice == ToolChoice.REQUIRED)
+                {
+                    // REQUIRED but none produced – force retry
+                    throw new IllegalArgumentException("No 'tool_calls' found in JSON");
                 }
 
-                // Otherwise, add the failed AI message and a new user message with retry instructions
-                io.llmOutput("\nRetry " + attempt + "/" + (maxTries - 1) + ": Invalid JSON response, requesting proper format.", ChatMessageType.CUSTOM);
-                // Add the raw response that failed parsing
-                attemptMessages.add(new AiMessage(lastResponse.aiMessage().text()));
-                // Add the user message requesting correction
-                String instructions = retryInstructionsProvider.apply(e);
-                attemptMessages.add(new UserMessage(instructions));
+                // we got tool calls, or they're optional -- we're done
+                finalResult = parseResult;
+                break;
+            } catch (IllegalArgumentException parseError) {
+                // JSON invalid or lacked tool_calls
+                if (attempt == maxTries) {
+                    // create dummy result for failure
+                    var cr = ChatResponse.builder().aiMessage(new AiMessage("Error: " + parseError.getMessage()));
+                    finalResult = new StreamingResult(cr.build(), parseError);
+                    break; // out of retry loop
+                }
+
+                // Add the model’s invalid output and user instructions, then retry
+                io.llmOutput("\nRetry " + attempt + "/" + (maxTries - 1)
+                                     + ": invalid JSON response; requesting proper format.",
+                             ChatMessageType.CUSTOM);
+                attemptMessages.add(new AiMessage(rawResult.chatResponse().aiMessage().text()));
+                attemptMessages.add(new UserMessage(retryInstructionsProvider.apply(parseError)));
             }
         }
 
-        // If we get here, we have an error or invalid final response
-        if (lastResponse == null) {
-            // No final response at all
-            var failMsg = "No valid response after " + maxTries + " attempts: " + lastError.getMessage();
-            logger.warn(failMsg, lastError);
-            var dummyResponse = ChatResponse.builder().aiMessage(new AiMessage(failMsg)).build();
-            return new StreamingResult(dummyResponse, new RuntimeException(failMsg));
-        }
-        // Otherwise we have some final ChatResponse with an error
-        var fail = ChatResponse.builder()
-                .aiMessage(new AiMessage("Error: " + lastError.getMessage()))
-                .build();
-        logger.error("Emulated function calling failed: {}", lastError.getMessage());
-        return new StreamingResult(fail, lastError);
+        // All retries exhausted OR fatal error occurred
+        assert finalResult != null;
+        logRequest(this.model, lastRequest, finalResult);
+        return finalResult;
     }
 
     /**
@@ -632,10 +615,10 @@ public class Llm {
                 """.stripIndent().formatted(e == null ? "" : "Your previous response was not valid: " + e.getMessage());
 
         // Check if we've already added tool instructions to any message
-        boolean instructionsPresent = messages.stream().anyMatch(m -> 
-            Messages.getText(m).contains("available tools:") &&
-            Messages.getText(m).contains("tool_calls"));
-        
+        boolean instructionsPresent = messages.stream().anyMatch(m ->
+                                                                         Messages.getText(m).contains("available tools:") &&
+                                                                                 Messages.getText(m).contains("tool_calls"));
+
         logger.debug("Tool emulation sending {} messages with instructionsPresent={}", messages.size(), instructionsPresent);
 
         // Prepare messages, possibly adding instructions
@@ -652,10 +635,10 @@ public class Llm {
         Function<List<ChatMessage>, ChatRequest> requestBuilder = attemptMessages -> ChatRequest.builder()
                 .messages(attemptMessages)
                 .parameters(ChatRequestParameters.builder()
-                        .responseFormat(ResponseFormat.builder()
-                                .type(ResponseFormatType.JSON)
-                                .build())
-                        .build())
+                                    .responseFormat(ResponseFormat.builder()
+                                                            .type(ResponseFormatType.JSON)
+                                                            .build())
+                                    .build())
                 .build();
 
         return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider);
@@ -911,13 +894,12 @@ public class Llm {
         try {
             var timestamp = LocalDateTime.now(); // timestamp finished, not started
 
-            String shortDesc = LogDescription.getShortDescription(getResultDescription(result));
-            var formattedRequest = "# Request %s... to %s:\n\n%s\n".formatted(shortDesc,
-                                                                              Models.nameOf(model),
-                                                                              TaskEntry.formatMessages(request.messages()));
+            var formattedRequest = "# Request to %s:\n\n%s\n".formatted(Models.nameOf(model),
+                                                                        TaskEntry.formatMessages(request.messages()));
             var formattedTools = request.toolSpecifications() == null ? "" : "# Tools:\n\n" + request.toolSpecifications().stream().map(ToolSpecification::name).collect(Collectors.joining("\n"));
             var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());
             String fileTimestamp = timestamp.format(DateTimeFormatter.ofPattern("HH-mm-ss"));
+            String shortDesc = LogDescription.getShortDescription(result.getDescription());
             var filePath = sessionHistoryDir.resolve(String.format("%s %s.log", fileTimestamp, shortDesc));
             var options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE};
             logger.debug("Writing history to file {}", filePath);
@@ -925,31 +907,6 @@ public class Llm {
         } catch (IOException e) {
             logger.error("Failed to write LLM history file", e);
         }
-    }
-
-    /**
-     * Generates a short description of the result for logging purposes.
-     *
-     * @param result The streaming result to describe.
-     * @return A short description string.
-     */
-    private String getResultDescription(StreamingResult result) {
-        if (result.error != null) {
-            return result.error.getMessage();
-        }
-
-        assert result.chatResponse != null;
-        var aiMessage = result.chatResponse.aiMessage();
-        if (aiMessage.hasToolExecutionRequests()) {
-            return aiMessage.toolExecutionRequests().stream()
-                    .map(ToolExecutionRequest::name)
-                    .collect(Collectors.joining(", "));
-        }
-        var text = aiMessage.text();
-        if (text != null && !text.isBlank()) {
-            return text;
-        }
-        return "empty response";
     }
 
     /**
@@ -976,6 +933,30 @@ public class Llm {
             }
 
             return originalResponse.toString();
+        }
+
+        /**
+         * Generates a short description of the result for logging purposes.
+         *
+         * @return A short description string.
+         */
+        private String getDescription() {
+            if (error != null) {
+                return error.getMessage();
+            }
+
+            assert chatResponse != null;
+            var aiMessage = chatResponse.aiMessage();
+            if (aiMessage.hasToolExecutionRequests()) {
+                return aiMessage.toolExecutionRequests().stream()
+                        .map(ToolExecutionRequest::name)
+                        .collect(Collectors.joining(", "));
+            }
+            var text = aiMessage.text();
+            if (text != null && !text.isBlank()) {
+                return text;
+            }
+            return "empty response";
         }
     }
 }
