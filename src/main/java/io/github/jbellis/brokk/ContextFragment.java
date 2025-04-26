@@ -444,6 +444,9 @@ public interface ContextFragment extends Serializable {
         }
     }
 
+    // FIXME SearchFragment does not preserve the tool calls output that the user sees during
+    // the search, I think we need to add a messages parameter and pass them to super();
+    // then we'd also want to override format() to keep it out of what the LLM sees
     class SearchFragment extends TaskFragment {
         private static final long serialVersionUID = 4L;
         private final String query;
@@ -486,6 +489,10 @@ public interface ContextFragment extends Serializable {
         private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
             // This method should not be called if writeReplace is used.
             throw new java.io.NotSerializableException("SearchFragment must be serialized via SerializationProxy");
+        }
+
+        public String explanation() {
+            return explanation;
         }
 
         private static class SerializationProxy implements Serializable {

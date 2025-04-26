@@ -361,7 +361,8 @@ public class SearchAgent {
     }
 
     private void llmOutput(String output) {
-        io.llmOutput("\n[Search #%d] %s".formatted(ordinal, output), ChatMessageType.AI);
+        var ordinalText = ordinal > 0 ? "[Search #%d] ".formatted(ordinal) : "";
+        io.llmOutput("\n%s%s".formatted(ordinalText, output), ChatMessageType.AI);
     }
 
     private boolean isInteractive() {

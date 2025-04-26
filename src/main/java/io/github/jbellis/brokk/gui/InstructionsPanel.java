@@ -528,8 +528,8 @@ public class InstructionsPanel extends JPanel {
             var agent = new SearchAgent(query, contextManager, model, contextManager.getToolRegistry(), 0);
             var result = agent.execute();
             assert result != null;
-            // Search does not stream to llmOutput, so set the final answer here
-            chrome.setLlmOutput(result.output());
+            // Search does not stream to llmOutput, so add the final answer here
+            chrome.llmOutput("\n# Answer\n%s".formatted(((ContextFragment.SearchFragment) result.output()).explanation()), ChatMessageType.AI);
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
             chrome.toolErrorRaw("Search agent interrupted without answering");
