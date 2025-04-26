@@ -70,10 +70,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JScrollPane systemScrollPane;
     private final JLabel commandResultLabel;
     private JTable referenceFileTable;
+    private final JButton thinkButton; // Button to trigger high-quality context suggestion
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing context suggestions
     private final AtomicReference<Future<?>> currentSuggestionTask = new AtomicReference<>(); // Holds the running suggestion task
     private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false);
+    private JPanel overlayPanel; // Panel used to initially disable command input
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2));
@@ -130,6 +132,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         configureModelsButton = new JButton("Configure Models...");
         configureModelsButton.setToolTipText("Open settings to configure AI models");
         configureModelsButton.addActionListener(e -> SettingsDialog.showSettingsDialog(chrome, "Models"));
+
+        thinkButton = new JButton("Think");
+        thinkButton.setToolTipText("Suggest relevant context using a more thorough analysis");
+        thinkButton.addActionListener(this::triggerQualityContextSuggestion);
+        thinkButton.setEnabled(false); // Start disabled like command input
 
         // Top Bar (History, Configure Models, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
@@ -247,7 +254,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
 
         // Transparent overlay panel
-        var overlayPanel = new JPanel();
+        this.overlayPanel = new JPanel(); // Initialize the member variable
         overlayPanel.setOpaque(false); // Make it transparent
         overlayPanel.setCursor(Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)); // Hint text input
 
@@ -267,7 +274,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
                 overlayPanel.setVisible(false); // Hide the overlay
-                commandInputField.setEnabled(true); // Enable the text area
+                setCommandInputAndThinkEnabled(true); // Enable input and think button
                 // Clear placeholder only if it's still present
                 if (commandInputField.getText().equals(PLACEHOLDER_TEXT)) {
                     clearCommandInput();
@@ -441,18 +448,29 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // ----- wrap in a scroll-pane and clamp its height -------------------------------------
         int rowHeight = referenceFileTable.getRowHeight();
-        int fixedHeight = rowHeight + 2;       // +2 for a tiny margin
-
+        int fixedHeight = rowHeight + 2; // +2 for a tiny margin
+    
         var tableScrollPane = new JScrollPane(referenceFileTable);
         tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
         tableScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
-
-        tableScrollPane.setPreferredSize(new Dimension(600, fixedHeight));
-        tableScrollPane.setMinimumSize(new Dimension(100, fixedHeight));
-        tableScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, fixedHeight));
-
-        // Insert directly beneath the command-input area (index 1)
-        centerPanel.add(tableScrollPane, 1);
+    
+        // Create a container panel for the button and the table
+        var suggestionAreaPanel = new JPanel(new BorderLayout(5, 0)); // 5px horizontal gap
+        suggestionAreaPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0)); // Add vertical padding
+    
+        // Add the Think button to the left
+        suggestionAreaPanel.add(thinkButton, BorderLayout.WEST);
+    
+        // Add the table scroll pane to the center (takes remaining space)
+        suggestionAreaPanel.add(tableScrollPane, BorderLayout.CENTER);
+    
+        // Apply height constraints to the container panel
+        suggestionAreaPanel.setPreferredSize(new Dimension(600, fixedHeight));
+        suggestionAreaPanel.setMinimumSize(new Dimension(100, fixedHeight));
+        suggestionAreaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, fixedHeight));
+    
+        // Insert the container panel beneath the command-input area (index 1)
+        centerPanel.add(suggestionAreaPanel, 1);
     }
 
     /**
@@ -517,10 +535,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
         actionButtonsPanel.add(agentButton);
         actionButtonsPanel.add(codeButton);
-        actionButtonsPanel.add(askButton);
-        actionButtonsPanel.add(searchButton);
-        actionButtonsPanel.add(runButton);
-        return actionButtonsPanel;
+            actionButtonsPanel.add(askButton);
+            actionButtonsPanel.add(searchButton);
+            actionButtonsPanel.add(runButton);
+            // thinkButton is moved next to the reference table
+            return actionButtonsPanel;
     }
 
     /**
@@ -591,10 +610,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     JMenuItem menuItem = new JMenuItem(displayText);
                     menuItem.setToolTipText("<html><pre>" + escapedItem + "</pre></html>");
                     menuItem.addActionListener(event -> {
-                        // Hide overlay and enable input field (similar to overlay click)
-                        Component overlay = commandInputField.getParent().getParent().getComponent(1);
-                        overlay.setVisible(false);
-                        commandInputField.setEnabled(true);
+                        // Hide overlay and enable input field and think button
+                        overlayPanel.setVisible(false);
+                        setCommandInputAndThinkEnabled(true);
 
                         // Set text and request focus
                         commandInputField.setText(item);
@@ -717,13 +735,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // --- Private Execution Logic ---
 
     /**
-     * Called by the contextSuggestionTimer when the user stops typing.
-     * Triggers the background task to fetch context recommendations.
+     * Called by the contextSuggestionTimer when the user stops typing (quick suggestion).
+     * Triggers a background task using the quickest model and summary context.
      */
     private void triggerContextSuggestion(ActionEvent e) {
         var contextManager = chrome.getContextManager();
         var goal = commandInputField.getText();
-        if (goal.isBlank() || contextManager == null || contextManager.getProject() == null) {
+        if (goal.isBlank() || contextManager == null || contextManager.getProject() == null || !commandInputField.isEnabled()) {
             // Clear recommendations if input is blank or project not ready
             SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
             return;
@@ -745,11 +763,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     return;
                 }
 
-                logger.debug("Fetching context recommendations (top 10) for: '{}'", goal);
+                logger.debug("Fetching QUICK context recommendations (top 10) for: '{}'", goal);
                 var model = contextManager.getModels().quickestModel();
-                // Pass false for fullContext when suggesting from InstructionsPanel input
+                // Use summary context (fullContext=false) for quick suggestions
                 var agent = new ContextAgent(contextManager, model, goal, false);
-                var recommendations = agent.getRecommendations(10);
+                var recommendations = agent.getRecommendations(10); // Limit to 10
 
                 var fileRefs = recommendations.stream()
                         .flatMap(f -> f.files(contextManager.getProject()).stream())
@@ -773,6 +791,73 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             newTask.cancel(true);
         }
     }
+
+    /**
+     * Triggered by the "Think" button click (high-quality suggestion).
+     * Triggers a background task using the ask model and full workspace context.
+     */
+    private void triggerQualityContextSuggestion(ActionEvent e) {
+        var contextManager = chrome.getContextManager();
+        var goal = commandInputField.getText();
+        if (goal.isBlank() || contextManager == null || contextManager.getProject() == null) {
+            // Clear recommendations if input is blank or project not ready
+            SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
+            return;
+        }
+
+        // Disable input and think button while thinking
+        setCommandInputAndThinkEnabled(false);
+
+        // Cancel any previously running suggestion task
+        Future<?> previousTask = currentSuggestionTask.get();
+        if (previousTask != null && !previousTask.isDone()) {
+            logger.debug("Cancelling previous context suggestion task.");
+            previousTask.cancel(true);
+        }
+
+        // Submit the new task and store its Future
+        Future<?> newTask = contextManager.submitUserTask("Thinking about context", () -> {
+            try {
+                // Check for interruption early
+                if (Thread.currentThread().isInterrupted()) {
+                    logger.debug("Quality context suggestion task interrupted before starting.");
+                    return;
+                }
+
+                logger.debug("Fetching QUALITY context recommendations (top 10) for: '{}'", goal);
+                var model = contextManager.getAskModel(); // Use ask model for quality
+                // Use full workspace context (fullContext=true) for quality suggestions
+                var agent = new ContextAgent(contextManager, model, goal, true);
+                var recommendations = agent.getRecommendations(10); // Limit to 10
+
+                var fileRefs = recommendations.stream()
+                        .flatMap(f -> f.files(contextManager.getProject()).stream())
+                        .distinct()
+                        .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
+                                                         pf.toString(),
+                                                         pf))
+                        .toList();
+
+                logger.debug("Updating reference table with {} quality suggestions", fileRefs.size());
+                SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(fileRefs, 0, 0));
+            } catch (InterruptedException interruptedException) {
+                // Task was cancelled via interrupt
+                logger.debug("Quality context suggestion task explicitly interrupted: {}", interruptedException.getMessage());
+            } finally {
+                // Re-enable input components after task completion or interruption
+                SwingUtilities.invokeLater(() -> setCommandInputAndThinkEnabled(true));
+            }
+        });
+        // Store the future of the newly submitted task
+        if (!currentSuggestionTask.compareAndSet(previousTask, newTask)) {
+            // shouldn't happen, but just in case
+            logger.warn("Failed to store the new quality suggestion task future; cancelling it.");
+            newTask.cancel(true);
+            // Re-enable input components if storing the task failed
+            SwingUtilities.invokeLater(() -> setCommandInputAndThinkEnabled(true));
+        }
+    }
+
 
     /**
      * Executes the core logic for the "Code" command.
@@ -1286,6 +1371,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             micButton.setEnabled(false);
             configureModelsButton.setEnabled(false); // Disable configure models button during action
             chrome.disableHistoryPanel();
+            // Disable command input and think button during actions
+            setCommandInputAndThinkEnabled(false);
         });
     }
 
@@ -1309,10 +1396,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             runButton.setEnabled(true); // Run in shell is always available
             stopButton.setEnabled(false);
             // Mic button remains enabled unless an action is running.
-            // Command input field enablement is handled by the overlay click listener.
             micButton.setEnabled(true);
             configureModelsButton.setEnabled(projectLoaded); // Enable configure models if project loaded
             chrome.enableHistoryPanel();
+            // Enable command input and think button only if project loaded and overlay is hidden
+            setCommandInputAndThinkEnabled(projectLoaded && !this.overlayPanel.isVisible());
         });
+    }
+
+    /**
+     * Sets the enabled state for both the command input field and the think button.
+     * @param enabled true to enable, false to disable.
+     */
+    private void setCommandInputAndThinkEnabled(boolean enabled) {
+        commandInputField.setEnabled(enabled);
+        thinkButton.setEnabled(enabled);
     }
 }
