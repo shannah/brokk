@@ -32,7 +32,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.Map;
 import java.util.stream.Stream;
 
 
@@ -113,7 +112,7 @@ public class ArchitectAgent {
         logger.debug("callCodeAgent invoked with instructions: {}", instructions);
 
         logger.debug("Invoking ValidationAgent to find relevant tests..");
-        var testAgent = new ValidationAgent(contextManager, contextManager.getModels().quickModel());
+        var testAgent = new ValidationAgent(contextManager);
         var relevantTests = testAgent.execute(instructions);
         if (!relevantTests.isEmpty()) {
             logger.debug("Adding relevant test files found by ValidationAgent to workspace: {}", relevantTests);

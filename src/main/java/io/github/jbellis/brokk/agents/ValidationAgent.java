@@ -4,10 +4,10 @@ package io.github.jbellis.brokk.agents;
 
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.prompts.CodePrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,8 +23,6 @@ import java.util.stream.Collectors;
 public class ValidationAgent {
     private static final Logger logger = LogManager.getLogger(ValidationAgent.class);
     private final ContextManager contextManager;
-    private final StreamingChatLanguageModel quickModel;
-    private final ExecutorService executor;
 
     // Constants for relevance markers
     private static final String RELEVANT_MARKER = "BRK_RELEVANT";
@@ -32,10 +30,8 @@ public class ValidationAgent {
     // attempts for relevance check if LLM response is unclear
     private static final int MAX_RELEVANCE_TRIES = 3;
 
-    public ValidationAgent(ContextManager contextManager, StreamingChatLanguageModel quickModel) {
+    public ValidationAgent(ContextManager contextManager) {
         this.contextManager = contextManager;
-        this.quickModel = quickModel;
-        this.executor = contextManager.getBackgroundTasks();
     }
 
     /**
@@ -52,8 +48,8 @@ public class ValidationAgent {
         }
 
         // Step 1: Initial filtering to get potentially relevant files
-        var coder = contextManager.getLlm(quickModel, "TestAgent: " + instructions);
-        var potentiallyRelevantFiles = getPotentiallyRelevantFiles(allTestFiles, instructions, coder);
+        var llm = contextManager.getLlm(contextManager.getModels().quickModel(), "TestAgent: " + instructions);
+        var potentiallyRelevantFiles = getPotentiallyRelevantFiles(allTestFiles, instructions, llm);
         if (potentiallyRelevantFiles.isEmpty()) {
             logger.debug("Initial filtering found no potentially relevant test files.");
             return List.of();
@@ -61,7 +57,7 @@ public class ValidationAgent {
         logger.debug("Potentially relevant test files identified: {}", potentiallyRelevantFiles);
 
         // Step 2: Detailed relevance check in parallel
-        var relevantFiles = checkFilesForRelevance(potentiallyRelevantFiles, instructions, coder);
+        var relevantFiles = checkFilesForRelevance(potentiallyRelevantFiles, instructions, llm);
         logger.debug("Confirmed relevant test files: {}", relevantFiles);
 
         return relevantFiles;
@@ -75,22 +71,28 @@ public class ValidationAgent {
                 .map(ProjectFile::toString)
                 .collect(Collectors.joining("\n"));
 
+        var workspaceSummary = CodePrompts.formatWorkspaceSummary(contextManager, true);
+
         var systemMessage = """
                 You are an assistant that identifies potentially relevant test files.
-                Given a list of test files and instructions for a coding task, identify which files *may* contain tests relevant to implementing the instructions.
+                Given a coding task, the current workspace, and a list of test files, identify which files *may* contain tests relevant to implementing the instructions.
                 List the full paths of the potentially relevant files, one per line. If none seem relevant, respond with "None".
                 """.stripIndent();
         var userMessage = """
-                <instructions>
+                <testfiles>
                 %s
-                </instructions>
+                </testfiles>
                 
-                <files>
+                <workspace>
                 %s
-                </files>
-                
-                Which of these test files might be relevant to testing the changes made to satisfy the instructions? List the full paths, one per line.
-                """.formatted(instructions, filesText).stripIndent();
+                </workspace>
+
+                <task>
+                %s
+                </task>
+
+                Which of these test files might be relevant to testing the changes made to satisfy the given task? List the full paths, one per line.
+                """.formatted(filesText, workspaceSummary, instructions).stripIndent();
 
         // send the request
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
@@ -99,7 +101,7 @@ public class ValidationAgent {
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
             logger.warn("Error during initial test file filtering call: {}", result.error() != null ? result.error().getMessage() : "Empty response");
-            return List.of(); // Return empty list on error
+            return List.of();
         }
 
         var llmResponse = result.chatResponse().aiMessage().text();
