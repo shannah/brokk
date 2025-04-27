@@ -19,6 +19,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
@@ -26,10 +27,8 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future; // Import for Future
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -407,24 +406,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 summarizeItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
                         cm.submitContextTask("Summarize", () -> {
-                            var project = cm.getProject();
-                            var analyzer = project.getAnalyzerWrapper();
-                            try {
-                                var az = analyzer.get();
-                                var sources = az.getClassesInFile(targetRef.getRepoFile());
-                                if (sources.isEmpty()) {
-                                    chrome.toolErrorRaw("No classes found in the file");
-                                    return;
-                                }
-                                suppressExternalSuggestionsTrigger.set(true);
-                                boolean success = cm.summarizeClasses(new HashSet<>(sources));
-                                if (success) {
-                                    chrome.systemOutput("Summarized " + sources.size() + " classes");
-                                } else {
-                                    chrome.toolErrorRaw("No summarizable classes found");
-                                }
-                            } catch (InterruptedException ex) {
-                                throw new RuntimeException(ex);
+                            suppressExternalSuggestionsTrigger.set(true);
+                            boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
+                            if (success) {
+                                chrome.systemOutput("Summarized " + targetRef.getFullPath());
+                            } else {
+                                chrome.toolErrorRaw("No summarizable code found");
                             }
                         });
                     } else {

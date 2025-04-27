@@ -1114,66 +1114,76 @@ public class ContextPanel extends JPanel {
     }
 
     private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) {
-        var project = contextManager.getProject(); // Qualify contextManager
-        var analyzer = project.getAnalyzerWrapper();
+        var project = contextManager.getProject();
+        var analyzer = project.getAnalyzerWrapper(); // Keep analyzer check
 
-        HashSet<CodeUnit> sources = new HashSet<>();
+        HashSet<ProjectFile> selectedFiles = new HashSet<>();
+        HashSet<CodeUnit> selectedClasses = new HashSet<>();
+
         if (selectedFragments.isEmpty()) {
-            // Show dialog allowing selection of files OR classes for summarization
-            // Only allow selecting project files that contain classes for the Files tab
-            IAnalyzer az;
-            try {
-                az = analyzer.get();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            var completableProjectFiles = contextManager.submitBackgroundTask("Gathering symbolx", () -> {
-                return project.getAllFiles().stream().parallel()
-                        .filter(f -> !az.getClassesInFile(f).isEmpty())
-                        .collect(Collectors.toSet());
-            });
+            // Dialog case: select files OR classes
+            // Prepare project files for completion (can be done async)
+            // No need to filter here anymore, the dialog handles presentation.
+            var completableProjectFiles = contextManager.submitBackgroundTask("Gathering project files", project::getAllFiles);
 
+            // Show dialog allowing selection of files OR classes
             var selection = showMultiSourceSelectionDialog("Summarize Sources",
                                                            false, // No external files for summarize
-                                                           completableProjectFiles, // Project files with classes
-                                                           Set.of(SelectionMode.FILES, SelectionMode.CLASSES)); // Both modes
+                                                           completableProjectFiles, // All project files for completion
+                                                           Set.of(SelectionMode.FILES, SelectionMode.CLASSES)); // Both modes allowed
 
             if (selection == null || selection.isEmpty()) {
+                chrome.systemOutput("No files or classes selected for summarization.");
                 chrome.systemOutput("No files or classes selected for summarization.");
                 return;
             }
 
-            // Process selected files
+            // Add selected files (must be ProjectFile for summarization)
             if (selection.files() != null) {
-                var projectFiles = toProjectFilesUnsafe(selection.files());
-                for (var file : projectFiles) {
-                    sources.addAll(az.getClassesInFile(file));
-                }
+                selectedFiles.addAll(toProjectFilesUnsafe(selection.files()));
             }
-
-            // Process selected classes
+            // Add selected classes/symbols
             if (selection.classes() != null) {
-                sources.addAll(selection.classes());
+                selectedClasses.addAll(selection.classes());
             }
-        } else {
-            // Extract sources from selected fragments
+        } // End: if (selectedFragments.isEmpty())
+        else {
+            // Fragment case: Extract files and classes from selected fragments
             for (var frag : selectedFragments) {
-                sources.addAll(frag.sources(project));
+                if (frag instanceof ContextFragment.ProjectPathFragment ppf) {
+                    // If it's a file fragment, add the file
+                    selectedFiles.add(ppf.file());
+                } else {
+                    // Otherwise, add the sources (which should be classes/symbols)
+                    selectedClasses.addAll(frag.sources(project));
+                }
             }
         }
 
-        if (sources.isEmpty()) {
-            chrome.toolErrorRaw("No classes found in the selected " + (selectedFragments.isEmpty() ? "files" : "fragments")); // Qualify chrome
+        if (selectedFiles.isEmpty() && selectedClasses.isEmpty()) {
+            chrome.toolErrorRaw("No files or classes identified for summarization in the selection.");
             return;
         }
 
-        boolean success = contextManager.summarizeClasses(sources); // Qualify contextManager
+        // Call the updated addSummaries method
+        boolean success = contextManager.addSummaries(selectedFiles, selectedClasses);
+
         if (success) {
-            chrome.systemOutput("Summarized " + sources.size() + " classes"); // Qualify chrome
+            int fileCount = selectedFiles.size();
+            int classCount = selectedClasses.size();
+            String message = "Summarized ";
+            if (fileCount > 0 && classCount > 0) {
+                message += fileCount + " file(s) and " + classCount + " symbol(s)";
+            } else if (fileCount > 0) {
+                message += fileCount + " file(s)";
+            } else {
+                message += classCount + " symbol(s)";
+            }
+            chrome.systemOutput(message);
         } else {
-            chrome.toolErrorRaw("No summarizable classes found"); // Qualify chrome
+            chrome.toolErrorRaw("No summarizable content found in the selected files or symbols.");
         }
-    }
+    } // End: doSummarizeAction
 
     /**
      * Cast BrokkFile to ProjectFile. Will throw if ExternalFiles are present.

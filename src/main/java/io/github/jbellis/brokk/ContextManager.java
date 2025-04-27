@@ -817,21 +817,51 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Summarize classes => adds skeleton fragments
+     * Summarize files and classes, adding skeleton fragments to the context.
+     *
+     * @param files   A set of ProjectFiles to summarize (extracts all classes within them).
+     * @param classes A set of specific CodeUnits (classes, methods, etc.) to summarize.
+     * @return true if any summaries were successfully added, false otherwise.
      */
-    public boolean summarizeClasses(Set<CodeUnit> classes) {
+    public boolean addSummaries(Set<ProjectFile> files, Set<CodeUnit> classes) {
         IAnalyzer analyzer;
         analyzer = getAnalyzerUninterrupted();
-        if (!analyzer.isCpg()) {
+        if (!analyzer.isCpg() && files.isEmpty() && classes.isEmpty()) { // Check if analyzer is needed
             io.toolErrorRaw("Code Intelligence is empty; nothing to add");
+            // If analyzer isn't ready and we have inputs, warn but allow proceeding if possible
+            // (e.g., if only files are provided and getSkeletons doesn't strictly require CPG)
+            // For now, we require CPG for any summarization.
+            io.toolErrorRaw("Code Intelligence is not ready; cannot generate summaries.");
             return false;
         }
 
-        var skeletons = AnalyzerUtil.getSkeletonStrings(analyzer, classes);
-        if (skeletons.isEmpty()) {
+        // Combine skeletons from both files and specific classes
+        var allSkeletons = new java.util.HashMap<CodeUnit, String>();
+
+        // Process files: get skeletons for all classes within each file
+        for (var file : files) {
+            try {
+                var fileSkeletons = analyzer.getSkeletons(file);
+                allSkeletons.putAll(fileSkeletons);
+            } catch (Exception e) {
+                logger.warn("Failed to get skeletons for file {}: {}", file, e.getMessage());
+                // Optionally inform the user via io.toolErrorRaw or systemOutput
+            }
+        }
+
+        // Process specific classes/symbols
+        if (!classes.isEmpty()) {
+            var classSkeletons = AnalyzerUtil.getSkeletonStrings(analyzer, classes);
+            allSkeletons.putAll(classSkeletons);
+        }
+
+        if (allSkeletons.isEmpty()) {
+            // No skeletons could be generated from the provided files or classes
             return false;
         }
-        var skeletonFragment = new ContextFragment.SkeletonFragment(skeletons);
+
+        // Create and add the fragment
+        var skeletonFragment = new ContextFragment.SkeletonFragment(allSkeletons);
         addVirtualFragment(skeletonFragment);
         return true;
     }

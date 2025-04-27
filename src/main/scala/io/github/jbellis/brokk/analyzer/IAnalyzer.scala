@@ -85,6 +85,14 @@ trait IAnalyzer {
   def getSymbols(sources: java.util.Set[CodeUnit]): java.util.Set[String] = {
     throw new UnsupportedOperationException()
   }
+
+  def getSkeletons(file: ProjectFile): java.util.Map[CodeUnit, String] = {
+    val skeletons = new java.util.HashMap[CodeUnit, String]()
+    getClassesInFile(file).forEach(cls => {
+      getSkeleton(cls.fqName()).foreach(skel => skeletons.put(cls, skel))
+    })
+    skeletons
+  }
 }
 
 /**
