@@ -1005,6 +1005,8 @@ class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
   def this(sourcePath: Path, preloadedPath: Path, language: Language) =
     this(sourcePath, preloadedPath)
 
+  override def isCpg: Boolean = true
+
   /**
    * Java-specific method signature builder.
    */

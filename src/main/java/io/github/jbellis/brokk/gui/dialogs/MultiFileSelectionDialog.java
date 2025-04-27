@@ -131,7 +131,7 @@ public class MultiFileSelectionDialog extends JDialog {
         }
 
         // --- Create Classes Tab (if requested) ---
-        if (modes.contains(SelectionMode.CLASSES)) {
+        if (modes.contains(SelectionMode.CLASSES) && analyzer.isCpg()) {
             tabbedPane.addTab("Classes", createClassSelectionPanel());
         }
 
@@ -485,16 +485,13 @@ public class MultiFileSelectionDialog extends JDialog {
         logger.debug("Raw class names parsed: {}", classNames);
 
         List<CodeUnit> resolvedClasses = new ArrayList<>();
-        IAnalyzer az = null;
+        IAnalyzer az;
         try {
             az = analyzer.get();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        if (az == null || az.isEmpty()) {
-            logger.warn("Analyzer is not available or empty, cannot resolve class names.");
-            return resolvedClasses;
-        }
+        assert az != null && az.isCpg();
 
         // Get all potential code units using Completions utility and filter for classes
         // This aligns with how SymbolCompletionProvider works and avoids assuming IAnalyzer.getClasses()
@@ -705,14 +702,15 @@ public class MultiFileSelectionDialog extends JDialog {
         @Override
         public List<Completion> getCompletions(JTextComponent comp) {
             String pattern = getAlreadyEnteredText(comp).trim();
+            if (pattern.isEmpty()) return List.of();
+
             IAnalyzer az;
             try {
                 az = analyzer.get();
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-
-            if (pattern.isEmpty() || az == null || az.isEmpty()) return List.of();
+            assert az != null && az.isCpg();
 
             List<CodeUnit> availableCompletions;
             try {

@@ -141,7 +141,7 @@ public class SearchTools {
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
             String reasoning
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot search definitions: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot search definitions: CPG analyzer is not available.";
         if (patterns.isEmpty()) {
             throw new IllegalArgumentException("Cannot search definitions: patterns list is empty");
         }
@@ -180,7 +180,7 @@ public class SearchTools {
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
             String reasoning
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot search usages: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot search usages: CPG analyzer is not available.";
         if (symbols.isEmpty()) {
             throw new IllegalArgumentException("Cannot search usages: symbols list is empty");
         }
@@ -211,7 +211,7 @@ public class SearchTools {
             @P("List of fully qualified class names to use as seeds for finding related classes.")
             List<String> classNames
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot find related classes: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot find related classes: CPG analyzer is not available.";
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot search pagerank: classNames is empty");
         }
@@ -252,7 +252,7 @@ public class SearchTools {
             @P("Fully qualified class names to get the skeleton structures for")
             List<String> classNames
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot get skeletons: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get skeletons: Code analyzer is not available.";
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get skeletons: class names list is empty");
         }
@@ -280,7 +280,7 @@ public class SearchTools {
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
             String reasoning
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot get class sources: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get class sources: CPG analyzer is not available.";
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get class sources: class names list is empty");
         }
@@ -323,7 +323,7 @@ public class SearchTools {
             @P("Fully qualified method names (package name, class name, method name) to retrieve sources for")
             List<String> methodNames
     ) {
-         assert !getAnalyzer().isEmpty() : "Cannot get method sources: Code analyzer is not available.";
+         assert getAnalyzer().isCpg() : "Cannot get method sources: CPG analyzer is not available.";
         if (methodNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get method sources: method names list is empty");
         }
@@ -363,7 +363,7 @@ public class SearchTools {
             @P("Fully qualified method name (package name, class name, method name) to find callers for")
             String methodName
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot get call graph: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get call graph: CPG analyzer is not available.";
         if (methodName.isBlank()) {
             throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
@@ -384,7 +384,7 @@ public class SearchTools {
             @P("Fully qualified method name (package name, class name, method name) to find callees for")
             String methodName
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot get call graph: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get call graph: CPG analyzer is not available.";
         if (methodName.isBlank()) {
             throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }

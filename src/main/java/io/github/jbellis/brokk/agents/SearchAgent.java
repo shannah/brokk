@@ -86,12 +86,12 @@ public class SearchAgent {
         this.io = contextManager.getIo();
         this.toolRegistry = toolRegistry;
 
-        // Set initial state based on analyzer presence
-        allowSearch = !analyzer.isEmpty();
-        allowInspect = !analyzer.isEmpty();
-        allowPagerank = !analyzer.isEmpty();
-        allowAnswer = true; // Can always answer/abort initially if context exists
-        allowTextSearch = analyzer.isEmpty(); // Enable text search only if no analyzer
+        // Set initial state based on analyzer presence and capabilities
+        allowSearch = analyzer.isCpg();      // Needs CPG for searchSymbols, getUsages
+        allowInspect = analyzer.isCpg();     // Needs CPG for getSources, getCallGraph
+        allowPagerank = analyzer.isCpg();    // Needs CPG for getRelatedClasses
+        allowAnswer = true;                 // Can always answer/abort initially if context exists
+        allowTextSearch = !analyzer.isCpg(); // Enable text search only if no CPG analyzer
         symbolsFound = false;
         beastMode = false;
     }
@@ -605,8 +605,8 @@ public class SearchAgent {
      * Returns null if the forged request would ALSO be a duplicate (signals caller to skip).
      */
     private ToolExecutionRequest handleDuplicateRequestIfNeeded(ToolExecutionRequest request) { // Takes/returns ToolExecutionRequest
-        if (analyzer.isEmpty()) {
-            // No duplicate detection without analyzer
+        if (!analyzer.isCpg()) {
+            // No duplicate detection without CPG analyzer (as CPG tools are the ones likely duplicated)
             return request;
         }
 
@@ -707,8 +707,8 @@ public class SearchAgent {
         List<String> names = new ArrayList<>();
         if (beastMode) return names; // Only answer/abort in beast mode
 
-        // Add names based on analyzer presence and state flags
-        if (!analyzer.isEmpty()) {
+        // Add names based on CPG analyzer presence and state flags
+        if (analyzer.isCpg()) {
             if (allowSearch) {
                 names.add("searchSymbols");
                 names.add("getUsages");

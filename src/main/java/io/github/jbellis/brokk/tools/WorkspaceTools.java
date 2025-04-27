@@ -247,7 +247,7 @@ public class WorkspaceTools {
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
             String symbol
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add usages: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add usages: Code analyzer is not available.";
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("Cannot add usages: symbol cannot be empty");
         }
@@ -272,7 +272,7 @@ public class WorkspaceTools {
             @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get summaries for.")
             List<String> classNames
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add summary: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add summary: Code analyzer is not available.";
         if (classNames == null || classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot add summary: class names list is empty");
         }
@@ -322,7 +322,7 @@ public class WorkspaceTools {
             @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for")
             List<String> methodNames
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add method sources: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add method sources: Code analyzer is not available.";
         if (methodNames == null || methodNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot add method sources: method names list is empty");
         }
@@ -352,7 +352,7 @@ public class WorkspaceTools {
             @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util'])")
             List<String> classNames
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot get files: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get files: Code analyzer is not available.";
         if (classNames == null || classNames.isEmpty()) {
             throw new IllegalArgumentException("Class names list cannot be empty.");
         }
@@ -397,7 +397,7 @@ public class WorkspaceTools {
 //            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to retrieve the full source code for.")
 //            List<String> classNames
 //    ) {
-//        assert !getAnalyzer().isEmpty() : "Cannot add class sources: Code analyzer is not available.";
+//        assert getAnalyzer().isCpg() : "Cannot add class sources: Code analyzer is not available.";
 //        if (classNames == null || classNames.isEmpty()) {
 //            throw new IllegalArgumentException("Cannot add class sources: class names list is empty");
 //        }
@@ -433,7 +433,7 @@ public class WorkspaceTools {
             @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
             int depth // Added depth parameter
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add call graph: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add call graph: CPG analyzer is not available.";
         if (methodName == null || methodName.isBlank()) {
             throw new IllegalArgumentException("Cannot add call graph: method name is empty");
         }
@@ -477,7 +477,7 @@ public class WorkspaceTools {
             @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
             int depth // Added depth parameter
     ) {
-        assert !getAnalyzer().isEmpty() : "Cannot add call graph: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add call graph: CPG analyzer is not available.";
         if (methodName == null || methodName.isBlank()) {
             throw new IllegalArgumentException("Cannot add call graph: method name is empty");
         }

@@ -239,7 +239,7 @@ public class ArchitectAgent {
                                         "addCallGraphInToWorkspace",
                                         "addCallGraphOutToWorkspace",
                                         "getFiles");
-            if (!contextManager.getAnalyzer().isEmpty()) {
+            if (contextManager.getAnalyzer().isCpg()) {
                 toolSpecs.addAll(toolRegistry.getRegisteredTools(analyzerTools));
             }
             var genericTools = List.of("addFilesToWorkspace",
@@ -408,7 +408,7 @@ public class ArchitectAgent {
      * - A user message showing the current stack top, the entire stack,
      * the top-10 PageRank classes, and any relevant instructions.
      */
-    private List<ChatMessage> buildPrompt() {
+    private List<ChatMessage> buildPrompt() throws InterruptedException {
         // Concatenate system prompts (which should handle incorporating history) and the latest user message
         return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
                               Stream.of(new UserMessage(ArchitectPrompts.instance.getFinalInstructions(goal)))).toList();

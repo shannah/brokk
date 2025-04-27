@@ -822,7 +822,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public boolean summarizeClasses(Set<CodeUnit> classes) {
         IAnalyzer analyzer;
         analyzer = getAnalyzerUninterrupted();
-        if (analyzer.isEmpty()) {
+        if (!analyzer.isCpg()) {
             io.toolErrorRaw("Code Intelligence is empty; nothing to add");
             return false;
         }

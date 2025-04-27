@@ -749,23 +749,22 @@ public class ContextPanel extends JPanel {
      * Shows the symbol selection dialog and adds usage information for the selected symbol.
      */
     public Future<?> findSymbolUsageAsync() {
-        // Use contextManager's task submission
         return contextManager.submitContextTask("Find Symbol Usage", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
+                var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
-                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
+                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
                 }
 
                 String symbol = showSymbolSelectionDialog("Select Symbol", CodeUnitType.ALL);
                 if (symbol != null && !symbol.isBlank()) {
-                    contextManager.usageForIdentifier(symbol); // Use contextManager
+                    contextManager.usageForIdentifier(symbol);
                 } else {
-                    chrome.systemOutput("No symbol selected."); // Use chrome
+                    chrome.systemOutput("No symbol selected.");
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput("Symbol selection canceled."); // Use chrome
+                chrome.systemOutput("Symbol selection canceled.");
             }
             // No finally needed, submitContextTask handles enabling buttons
         });
@@ -775,24 +774,23 @@ public class ContextPanel extends JPanel {
      * Shows the method selection dialog and adds callers information for the selected method.
      */
     public Future<?> findMethodCallersAsync() {
-        // Use contextManager's task submission
         return contextManager.submitContextTask("Find Method Callers", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
+                var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
-                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
+                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
                 }
 
                 var dialog = showCallGraphDialog("Select Method", true);
                 if (dialog == null || !dialog.isConfirmed()) { // Check confirmed state
-                    chrome.systemOutput("No method selected."); // Use chrome
+                    chrome.systemOutput("No method selected.");
                 } else {
-                    // Use contextManager
+                   
                     contextManager.callersForMethod(dialog.getSelectedMethod(), dialog.getDepth(), dialog.getCallGraph());
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput("Method selection canceled."); // Use chrome
+                chrome.systemOutput("Method selection canceled.");
             }
             // No finally needed, submitContextTask handles enabling buttons
         });
@@ -802,24 +800,23 @@ public class ContextPanel extends JPanel {
      * Shows the call graph dialog and adds callees information for the selected method.
      */
     public Future<?> findMethodCalleesAsync() {
-        // Use contextManager's task submission
         return contextManager.submitContextTask("Find Method Callees", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
+                var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
-                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add"); // Use chrome
+                    chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
                 }
 
                 var dialog = showCallGraphDialog("Select Method for Callees", false);
                 if (dialog == null || !dialog.isConfirmed() || dialog.getSelectedMethod() == null || dialog.getSelectedMethod().isBlank()) {
-                    chrome.systemOutput("No method selected."); // Use chrome
+                    chrome.systemOutput("No method selected.");
                 } else {
-                    // Use contextManager
+                   
                     contextManager.calleesForMethod(dialog.getSelectedMethod(), dialog.getDepth(), dialog.getCallGraph());
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput("Method selection canceled."); // Use chrome
+                chrome.systemOutput("Method selection canceled.");
             }
             // No finally needed, submitContextTask handles enabling buttons
         });
@@ -829,12 +826,12 @@ public class ContextPanel extends JPanel {
      * Show the symbol selection dialog with a type filter
      */
     private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter) {
-        var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
+        var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
         var dialogRef = new AtomicReference<SymbolSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new SymbolSelectionDialog(chrome.getFrame(), analyzer, title, typeFilter); // Use chrome
-            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight()); // Use chrome
-            dialog.setLocationRelativeTo(chrome.getFrame()); // Use chrome
+            var dialog = new SymbolSelectionDialog(chrome.getFrame(), analyzer, title, typeFilter);
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight());
+            dialog.setLocationRelativeTo(chrome.getFrame());
             dialog.setVisible(true);
             dialogRef.set(dialog);
         });
@@ -853,12 +850,12 @@ public class ContextPanel extends JPanel {
      * Show the call graph dialog for configuring method and depth
      */
     private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph) {
-        var analyzer = contextManager.getProject().getAnalyzerUninterrupted(); // Use contextManager
+        var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
         var dialogRef = new AtomicReference<CallGraphDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new CallGraphDialog(chrome.getFrame(), analyzer, title, isCallerGraph); // Use chrome
-            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight()); // Use chrome
-            dialog.setLocationRelativeTo(chrome.getFrame()); // Use chrome
+            var dialog = new CallGraphDialog(chrome.getFrame(), analyzer, title, isCallerGraph);
+            dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight());
+            dialog.setLocationRelativeTo(chrome.getFrame());
             dialog.setVisible(true);
             dialogRef.set(dialog);
         });
@@ -1119,14 +1116,6 @@ public class ContextPanel extends JPanel {
     private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) {
         var project = contextManager.getProject(); // Qualify contextManager
         var analyzer = project.getAnalyzerWrapper();
-        try {
-            if (analyzer.getNonBlocking() != null && analyzer.get().isEmpty()) {
-                chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
-                return;
-            }
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         HashSet<CodeUnit> sources = new HashSet<>();
         if (selectedFragments.isEmpty()) {

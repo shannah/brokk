@@ -6,7 +6,10 @@ trait IAnalyzer {
   def isEmpty: Boolean =
     throw new UnsupportedOperationException()
 
-  def getAllClasses: util.List[CodeUnit] = 
+  def isCpg: Boolean =
+    throw new UnsupportedOperationException()
+
+  def getAllClasses: util.List[CodeUnit] =
     throw new UnsupportedOperationException()
 
   def getMembersInClass(fqClass: String): util.List[CodeUnit] = 

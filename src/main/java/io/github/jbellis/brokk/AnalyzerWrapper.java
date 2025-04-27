@@ -125,7 +125,6 @@ public class AnalyzerWrapper implements AutoCloseable {
         }
     }
 
-
     /**
      * Check if changes in this batch of events require a .git refresh and/or analyzer rebuild.
      */
@@ -172,7 +171,7 @@ public class AnalyzerWrapper implements AutoCloseable {
      */
     private IAnalyzer loadOrCreateAnalyzer() {
         logger.debug("Loading/creating analyzer for {}", project.getAnalyzerLanguage());
-        if (project.getAnalyzerLanguage() == Language.None) {
+        if (project.getAnalyzerLanguage() == Language.NONE) {
             return new DisabledAnalyzer();
         }
 
@@ -204,7 +203,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                 Code Intelligence by setting code_intelligence_language=%s in .brokk/project.properties.
                 Otherwise, Code Intelligence will refresh automatically when changes are made to tracked files.
                 You can change this with the code_intelligence_refresh parameter in .brokk/project.properties.
-                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration, Language.Java, Language.None);
+                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration, Language.JAVA, Language.NONE);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
                 startWatcher();
@@ -222,16 +221,26 @@ public class AnalyzerWrapper implements AutoCloseable {
         return analyzer;
     }
 
-    private JavaAnalyzer createAndSaveAnalyzer() {
-        JavaAnalyzer newAnalyzer = new JavaAnalyzer(root);
-        Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
-        newAnalyzer.writeCpg(analyzerPath);
+    public boolean isCpg() {
+        return project.getAnalyzerLanguage() == Language.JAVA;
+    }
+
+    private IAnalyzer createAndSaveAnalyzer() {
+        IAnalyzer newAnalyzer;
+        if (project.getAnalyzerLanguage() == Language.JAVA) {
+            newAnalyzer = new JavaAnalyzer(root);
+            Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
+            ((JavaAnalyzer) newAnalyzer).writeCpg(analyzerPath);
+        } else {
+            throw new AssertionError();
+        }
+
         logger.debug("Analyzer (re)build completed");
         return newAnalyzer;
     }
 
     /** Load a cached analyzer if it is up to date; otherwise return null. */
-    private JavaAnalyzer loadCachedAnalyzer(Path analyzerPath) {
+    private IAnalyzer loadCachedAnalyzer(Path analyzerPath) {
         if (!Files.exists(analyzerPath)) {
             return null;
         }

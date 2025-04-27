@@ -426,12 +426,12 @@ public class Project implements IProject, AutoCloseable {
     public Language getAnalyzerLanguage() {
         String lang = projectProps.getProperty("code_intelligence_language");
         if (lang == null || lang.isBlank()) {
-            return Language.Java;
+            return Language.JAVA;
         }
         try {
             return Language.valueOf(lang.toUpperCase());
         } catch (IllegalArgumentException e) {
-            return Language.None;
+            return Language.NONE;
         }
     }
 

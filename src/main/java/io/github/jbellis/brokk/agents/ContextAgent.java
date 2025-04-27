@@ -182,10 +182,10 @@ public class ContextAgent {
     private RecommendationResult executeWithSummaries(List<ProjectFile> filesToConsider, Integer topK, Object workspaceRepresentation) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
         // If the workspace isn't empty, use pagerank candidates for initial summaries
-        if (!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty()) {
+        if ((!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty())
+                && analyzer.isCpg())
+        {
            var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
-            logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
-                         ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
            logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
                         ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
            rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
