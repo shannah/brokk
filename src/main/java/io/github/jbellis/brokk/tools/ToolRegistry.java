@@ -87,7 +87,9 @@ public class ToolRegistry {
         var missingTools = toolNames.stream()
                 .filter(tool -> !toolMap.containsKey(tool))
                 .toList();
-        logger.error("Missing tools: '{}'", missingTools); // let it throw NPE below
+        if (!missingTools.isEmpty()) {
+            logger.error("Missing tools: '{}'", missingTools); // let it throw NPE below
+        }
         return toolNames.stream()
                 .map(toolMap::get)
                 .map(target -> ToolSpecifications.toolSpecificationFrom(target.method()))
