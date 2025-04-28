@@ -128,9 +128,49 @@ public class ContextAgent {
             return false;
         }
         io.llmOutput("\nReasoning for recommendations: " + recommendationResult.reasoning, ChatMessageType.CUSTOM);
+
+        // Final budget check
+        int totalTokens = calculateFragmentTokens(recommendationResult.fragments());
+        logger.debug("Total tokens for recommended context: {}", totalTokens);
+
+        if (totalTokens > finalBudget) {
+            logger.warn("Recommended context ({} tokens) exceeds final budget ({} tokens). Skipping context addition.", totalTokens, finalBudget);
+            logGiveUp("recommended context (exceeded final budget)");
+            // Optionally provide reasoning about exceeding budget
+            io.llmOutput("\nWarning: Recommended context exceeded the final budget and could not be added automatically.", ChatMessageType.CUSTOM);
+            return false; // Indicate failure due to budget
+        }
+
+        logger.debug("Recommended context fits within final budget.");
         addSelectedFragments(recommendationResult.fragments);
 
         return true;
+    }
+
+    /**
+     * Calculates the approximate token count for a list of ContextFragments.
+     */
+    private int calculateFragmentTokens(List<ContextFragment> fragments) {
+        int totalTokens = 0;
+
+        for (var fragment : fragments) {
+            if (fragment instanceof ContextFragment.ProjectPathFragment pathFragment) {
+                var file = pathFragment.file();
+                String content = null;
+                try {
+                    content = file.read();
+                } catch (IOException e) {
+                    logger.debug(e);
+                }
+                totalTokens += Messages.getApproximateTokens(content);
+            } else if (fragment instanceof ContextFragment.SkeletonFragment skeletonFragment) {
+                String skeletonsText = String.join("\n", skeletonFragment.skeletons().values());
+                totalTokens += Messages.getApproximateTokens(skeletonsText);
+            } else {
+                logger.warn("Unhandled ContextFragment type for token calculation: {}", fragment.getClass());
+            }
+        }
+        return totalTokens;
     }
 
     /**
@@ -303,21 +343,15 @@ public class ContextAgent {
 
             logger.debug("LLM recommended {} classes ({} tokens) and {} files ({} tokens). Total: {} tokens",
                          recommendedSummaries.size(), recommendedSummaryTokens,
+                         recommendedSummaries.size(), recommendedSummaryTokens,
                          recommendedFiles.size(), recommendedContentTokens, totalRecommendedTokens);
 
-            if (totalRecommendedTokens <= finalBudget) {
-                var skeletonFragments = skeletonPerSummary(recommendedSummaries);
-                var pathFragments = recommendedFiles.stream()
-                        .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
-                        .toList();
-                var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
-                logger.debug("Combined recommended context fits final budget.");
-                return new RecommendationResult(true, combinedFragments, llmRecommendation.reasoning);
-            } else {
-                String reason = llmRecommendation.reasoning + " (Result exceeded final budget)";
-                logGiveUp("recommended summaries/files combined");
-                return new RecommendationResult(false, List.of(), reason);
-            }
+            var skeletonFragments = skeletonPerSummary(recommendedSummaries);
+            var pathFragments = recommendedFiles.stream()
+                    .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
+                    .toList();
+            var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
+            return new RecommendationResult(true, combinedFragments, llmRecommendation.reasoning);
         }
 
         // If summaries are too large even for pruning, signal failure for this branch
@@ -387,19 +421,19 @@ public class ContextAgent {
         assert toolSpecs.size() == 1 : "Expected exactly one tool specification from ContextRecommendationTool";
 
         var systemPrompt = new StringBuilder("""
-             You are an assistant that identifies relevant code context (files and/or classes) based on a goal and available information.
-             You are given a goal, the current workspace contents (if any), and potentially a list of class summaries and/or file contents/paths.
-             Analyze the provided information and determine which items are most relevant to achieving the goal.
-             You MUST call the `recommendContext` tool to provide your recommendations.
-
-             Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
-             or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
-
-             Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
-
-             If no items of a certain type (files or classes) are relevant, pass an empty list for that argument.
-             Prioritize items most directly related to the goal, considering the current workspace.
-             """.stripIndent());
+                                                     You are an assistant that identifies relevant code context (files and/or classes) based on a goal and available information.
+                                                     You are given a goal, the current workspace contents (if any), and potentially a list of class summaries and/or file contents/paths.
+                                                     Analyze the provided information and determine which items are most relevant to achieving the goal.
+                                                     You MUST call the `recommendContext` tool to provide your recommendations.
+                                                     
+                                                     Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
+                                                     or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
+                                                     
+                                                     Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
+                                                     
+                                                     If no items of a certain type (files or classes) are relevant, pass an empty list for that argument.
+                                                     Prioritize items most directly related to the goal, considering the current workspace.
+                                                     """.stripIndent());
 
         if (topK != null) {
             // Apply topK loosely in the prompt, the tool enforces strictness if needed later (though not implemented here)
@@ -519,18 +553,10 @@ public class ContextAgent {
             logger.debug("LLM recommended {} files ({} tokens). Total: {} tokens",
                          recommendedFiles.size(), recommendedContentTokens, recommendedContentTokens);
 
-
-            if (recommendedContentTokens <= finalBudget) {
-                var fragments = recommendedFiles.stream()
-                        .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
-                        .toList();
-                logger.debug("Recommended file context fits final budget.");
-                return new RecommendationResult(true, fragments, llmRecommendation.reasoning);
-            } else {
-                String reason = llmRecommendation.reasoning + " (Result exceeded final budget)";
-                logGiveUp("recommended file contents");
-                return new RecommendationResult(false, List.of(), reason);
-            }
+            var fragments = recommendedFiles.stream()
+                    .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
+                    .toList();
+            return new RecommendationResult(true, fragments, llmRecommendation.reasoning);
         }
 
         String reason = "File contents too large for LLM pruning budget.";
@@ -581,15 +607,15 @@ public class ContextAgent {
                 .filter(Objects::nonNull)
                 .toList();
 
-        // Check size against *final* budget - if even pruned filenames are too large, we can't proceed
-        var recommendedFilenamesString = getFilenameString(recommendedFiles);
-        int recommendedFilenameTokens = Messages.getApproximateTokens(recommendedFilenamesString);
-
-        if (recommendedFilenameTokens > finalBudget) {
-            String reason = llmRecommendation.reasoning + " (Pruned filename list still exceeded final budget)";
-            logGiveUp("pruned filenames (still exceed final budget)");
-            return new RecommendationResult(false, List.of(), reason);
-        }
+        // Final budget check moved to execute()
+        // var recommendedFilenamesString = getFilenameString(recommendedFiles);
+        // int recommendedFilenameTokens = Messages.getApproximateTokens(recommendedFilenamesString);
+        //
+        // if (recommendedFilenameTokens > finalBudget) { // Check removed
+        //     String reason = llmRecommendation.reasoning + " (Pruned filename list still exceeded final budget)";
+        //     logGiveUp("pruned filenames (still exceed final budget)");
+        //     return new RecommendationResult(false, List.of(), reason);
+        // }
 
         var fragments = recommendedFiles.stream()
                 .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
