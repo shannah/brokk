@@ -594,9 +594,9 @@ public class SearchAgent {
     /**
      * Extracts class name from a symbol
      */
-    private Optional<String> extractClassNameFromSymbol(String symbol) {
+    private Optional<? extends String> extractClassNameFromSymbol(String symbol) {
         return analyzer.getDefinition(symbol)
-                .flatMap(cu -> Optional.of(cu.classUnit().fqName()));
+                .flatMap(cu -> cu.classUnit().flatMap(cu2 -> Optional.of(cu2.fqName())));
     }
 
     /**
@@ -1161,10 +1161,8 @@ public class SearchAgent {
         logger.debug("Combined tracked and LLM classes before normalize/coalesce: {}", combinedNames);
         // Transform to CodeUnit
         var codeUnits = combinedNames.stream()
-                .map(analyzer::getDefinition)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .map(CodeUnit::classUnit)
+                .flatMap(name -> analyzer.getDefinition(name).stream())
+                .flatMap(cu   -> cu.classUnit().stream())
                 .collect(Collectors.toSet());
         var coalesced = AnalyzerUtil.coalesceInnerClasses(codeUnits);
 
