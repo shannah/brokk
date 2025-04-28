@@ -238,10 +238,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var welcomeMessage = buildWelcomeMessage();
         var initialContext = project.loadContext(this, welcomeMessage);
         if (initialContext == null) {
-            initialContext = new Context(this, welcomeMessage); // Default autocontext size
-        } else {
-            // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization
-            initialContext = initialContext;
+            initialContext = new Context(this, welcomeMessage);
         }
         contextHistory.setInitialContext(initialContext);
         chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
