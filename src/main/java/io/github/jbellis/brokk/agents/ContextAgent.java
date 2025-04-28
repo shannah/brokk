@@ -18,7 +18,6 @@ import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -413,6 +412,18 @@ public class ContextAgent {
      * @param workspaceRepresentation String summary or List<ChatMessage> of workspace contents.
      * @return LlmRecommendation containing lists of recommended file paths and class FQNs.
      */
+    private boolean isFileInWorkspace(ProjectFile file) {
+        return contextManager.getEditableFiles().contains(file) ||
+                contextManager.getReadonlyFiles().contains(file);
+    }
+
+    private boolean isClassInWorkspace(String fqName) {
+        return contextManager.topContext().allFragments()
+                .anyMatch(f -> f instanceof ContextFragment.SkeletonFragment &&
+                        ((ContextFragment.SkeletonFragment)f).skeletons().keySet().stream()
+                                .anyMatch(cu -> cu.fqName().equals(fqName)));
+    }
+
     private LlmRecommendation askLlmToRecommendContext(@NotNull List<ProjectFile> filesToConsider,
                                                        @NotNull Map<CodeUnit, String> summaries,
                                                        @NotNull Map<ProjectFile, String> contentsMap,
@@ -518,9 +529,20 @@ public class ContextAgent {
         }
 
         String reasoning = aiMessage.text() != null ? aiMessage.text().strip() : "LLM provided recommendations via tool call.";
-        return new LlmRecommendation(contextTool.getRecommendedFiles(),
-                                     contextTool.getRecommendedClasses(),
-                                     reasoning);
+        // Filter out files/classes already in workspace
+        var stringToFileMap = filesToConsider.stream().collect(Collectors.toMap(ProjectFile::toString, Function.identity()));
+        var filteredFiles = contextTool.getRecommendedFiles().stream()
+                .map(stringToFileMap::get)
+                .filter(Objects::nonNull)
+                .filter(f -> !isFileInWorkspace(f))
+                .map(ProjectFile::toString)
+                .toList();
+
+        var filteredClasses = contextTool.getRecommendedClasses().stream()
+                .filter(c -> !isClassInWorkspace(c))
+                .toList();
+
+        return new LlmRecommendation(filteredFiles, filteredClasses, reasoning);
     }
 
 // --- Logic branch for using full file contents (when analyzer is not available or summaries failed) ---
