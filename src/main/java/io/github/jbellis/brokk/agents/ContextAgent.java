@@ -50,6 +50,9 @@ public class ContextAgent {
     // if our pruned context is larger than the Final target budget then we also give up
     private final int finalBudget;
 
+    // Rule 1: Use all available summaries if they fit the smallest budget and meet the limit (if not deepScan)
+    private int QUICK_TOPK = 10;
+
     public ContextAgent(ContextManager contextManager, StreamingChatLanguageModel model, String goal, boolean deepScan) throws InterruptedException {
         this.contextManager = contextManager;
         this.llm = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
@@ -303,7 +306,7 @@ public class ContextAgent {
         if ((!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty())
                 && analyzer.isCpg()) {
             var ac = contextManager.topContext().buildAutoContext(100);
-            logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
+            logger.debug("Non-empty context; using pagerank candidates {}",
                          ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
             rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
         } else {
@@ -314,8 +317,7 @@ public class ContextAgent {
         int summaryTokens = Messages.getApproximateTokens(String.join("\n", rawSummaries.values()));
         logger.debug("Total tokens for {} summaries (from {} files): {}", rawSummaries.size(), filesToConsider.size(), summaryTokens);
 
-        // Rule 1: Use all available summaries if they fit the smallest budget and meet the limit (if not deepScan)
-        boolean withinLimit = deepScan || rawSummaries.size() <= 10;
+        boolean withinLimit = deepScan || rawSummaries.size() <= QUICK_TOPK;
         if (summaryTokens <= skipPruningBudget && withinLimit) {
             var fragments = skeletonPerSummary(rawSummaries);
             return new RecommendationResult(true, fragments, "Using all summaries within budget and limits.");
@@ -323,7 +325,7 @@ public class ContextAgent {
 
         // Rule 2: Ask LLM to pick relevant summaries/files if all summaries fit the Pruning budget
         if (summaryTokens <= budgetPruning) {
-            var llmRecommendation = askLlmToRecommendContext(filesToConsider, rawSummaries, null, workspaceRepresentation);
+            var llmRecommendation = askLlmToRecommendContext(List.of(), rawSummaries, Map.of(), workspaceRepresentation);
 
             // Map recommended class names back to CodeUnit -> Summary map
             var recommendedSummaries = rawSummaries.entrySet().stream()
@@ -405,12 +407,15 @@ public class ContextAgent {
      * @param filesToConsider         List of candidate files.
      * @param summaries               Optional map of CodeUnit to summary string.
      * @param contentsMap             Optional map of ProjectFile to content string.
+     *
+     * Exactly one of the above should be non-empty.
+     *
      * @param workspaceRepresentation String summary or List<ChatMessage> of workspace contents.
      * @return LlmRecommendation containing lists of recommended file paths and class FQNs.
      */
-    private LlmRecommendation askLlmToRecommendContext(List<ProjectFile> filesToConsider,
-                                                       @Nullable Map<CodeUnit, String> summaries,
-                                                       @Nullable Map<ProjectFile, String> contentsMap,
+    private LlmRecommendation askLlmToRecommendContext(@NotNull List<ProjectFile> filesToConsider,
+                                                       @NotNull Map<CodeUnit, String> summaries,
+                                                       @NotNull Map<ProjectFile, String> contentsMap,
                                                        Object workspaceRepresentation) throws InterruptedException
     {
         var contextTool = new ContextRecommendationTool();
@@ -423,6 +428,7 @@ public class ContextAgent {
                          You are given a goal, the current workspace contents (if any), and either a list of class summaries, or a list of file paths and contents.
                          Analyze the provided information and determine which items are most relevant to achieving the goal.
                          You MUST call the `recommendContext` tool to provide your recommendations.
+                         DO NOT recommend files or classes that are already in the Workspace.
                          
                          Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
                          or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
@@ -436,15 +442,16 @@ public class ContextAgent {
                          You are given a goal, the current workspace contents (if any), and either a list of class summaries, or a list of file paths and contents.
                          Analyze the provided information and determine which items are most relevant to achieving the goal.
                          You MUST call the `recommendContext` tool to provide your recommendations.
+                         DO NOT recommend files or classes that are already in the Workspace.
                          
-                         If you are given full file contents, populate the `filesToAdd` argument with the full paths of 
-                         10 the most relevant files.
+                         If you are given full file contents, populate the `filesToAdd` argument with the full paths of
+                         the %d most relevant files.
                          
-                         If you are given class summaries, populate the `classesToSummarize` argument with the 
+                         If you are given class summaries, populate the `classesToSummarize` argument with the
                          fully-qualified names of the 10 most relevant classes.
                          
                          Exactly one of `recommendContext` or `classesToSummarize` should be non-empty.
-                         """;
+                         """.formatted(QUICK_TOPK);
 
         var finalSystemMessage = new SystemMessage(deepScan ? deepPrompt : quikPrompt);
         var userMessageText = new StringBuilder("<goal>\n%s\n</goal>\n\n".formatted(goal));
@@ -454,7 +461,7 @@ public class ContextAgent {
         }
 
         // Add summaries if available
-        if (summaries != null && !summaries.isEmpty()) {
+        if (!summaries.isEmpty()) {
             var summariesText = summaries.entrySet().stream()
                     .map(entry -> {
                         var cn = entry.getKey();
@@ -466,15 +473,12 @@ public class ContextAgent {
                     })
                     .collect(Collectors.joining("\n\n"));
             userMessageText.append("<available_summaries>\n%s\n</available_summaries>\n\n".formatted(summariesText));
-        }
-
-        // Add file contents or paths if available
-        if (contentsMap != null && !contentsMap.isEmpty()) {
+        } else if (!contentsMap.isEmpty()) {
             var filesText = contentsMap.entrySet().stream()
                     .map(entry -> "<file path='%s'>\n%s\n</file>".formatted(entry.getKey().toString(), entry.getValue()))
                     .collect(Collectors.joining("\n\n"));
             userMessageText.append("<available_files_content>\n%s\n</available_files_content>\n\n".formatted(filesText));
-        } else if (contentsMap == null && summaries == null) { // Only provide paths if contents/summaries aren't already there
+        } else { // Only provide paths if contents/summaries aren't already there
             var filesText = filesToConsider.stream()
                     .map(ProjectFile::toString)
                     .collect(Collectors.joining("\n"));
@@ -544,8 +548,7 @@ public class ContextAgent {
 
         // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
         if (contentTokens <= budgetPruning) {
-            // Call the unified recommender, expecting only files back in this path
-            var llmRecommendation = askLlmToRecommendContext(filesToConsider, null, contentsMap, workspaceRepresentation);
+            var llmRecommendation = askLlmToRecommendContext(List.of(), Map.of(), contentsMap, workspaceRepresentation);
 
             if (!llmRecommendation.recommendedClasses.isEmpty()) {
                 // This shouldn't happen if we didn't provide summaries
@@ -594,7 +597,7 @@ public class ContextAgent {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-// --- Logic for pruning based on filenames only (fallback) ---
+    // --- Logic for pruning based on filenames only (fallback) ---
 
     private RecommendationResult executeWithFilenamesOnly(List<ProjectFile> allFiles, Object workspaceRepresentation) throws InterruptedException {
         var filenameString = getFilenameString(allFiles);
@@ -607,7 +610,7 @@ public class ContextAgent {
         }
 
         // Ask LLM to recommend files based *only* on paths
-        var llmRecommendation = askLlmToRecommendContext(allFiles, null, null, workspaceRepresentation);
+        var llmRecommendation = askLlmToRecommendContext(allFiles, Map.of(), Map.of(), workspaceRepresentation);
 
         if (!llmRecommendation.recommendedClasses.isEmpty()) {
             logger.warn("LLM recommended classes ({}) unexpectedly during filename-only analysis.", llmRecommendation.recommendedClasses);
@@ -627,7 +630,7 @@ public class ContextAgent {
     }
 
 
-// --- Helper methods ---
+    // --- Helper methods ---
 
     private String getFilenameString(List<ProjectFile> files) {
         return files.stream()
