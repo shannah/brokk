@@ -72,6 +72,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
     private JPanel overlayPanel; // Panel used to initially disable command input
     private static ArchitectAgent.ArchitectOptions lastArchitectOptions = ArchitectAgent.ArchitectOptions.DEFAULTS; // Remember last selection
+    private boolean lowBalanceNotified = false; // Flag to track if the low balance warning has been shown
 
 
     public InstructionsPanel(Chrome chrome) {
@@ -790,6 +791,59 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // within DeepScanDialog.triggerDeepScan and its dialog callbacks.
     }
 
+
+    /**
+     * Checks the user's balance if using the Brokk proxy and displays a notification
+     * if the balance is low.
+     */
+    private void checkBalanceAndNotify() {
+        if (Project.getLlmProxySetting() != Project.LlmProxySetting.BROKK) {
+            return; // Only check balance when using Brokk proxy
+        }
+
+        var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
+
+        try {
+            float balance = models.getUserBalance();
+            logger.debug("Checked balance: ${}", String.format("%.2f", balance));
+
+            // If balance drops below the minimum paid threshold, reinitialize models to enforce free tier
+            if (balance < Models.MINIMUM_PAID_BALANCE) {
+                logger.warn("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Models.MINIMUM_PAID_BALANCE);
+                // This will refetch models and apply the lowBalance filter based on MINIMUM_PAID_BALANCE
+                models.reinit(contextManager.getProject().getDataRetentionPolicy());
+            }
+
+            // Check for the $2.00 warning threshold
+            if (balance < 2.00f) {
+                if (!lowBalanceNotified) { // Only show the dialog once unless balance recovers
+                    lowBalanceNotified = true; // Set the flag so we don't show it again
+                    SwingUtilities.invokeLater(() -> {
+                        var messagePanel = new JPanel(new BorderLayout(0, 5)); // Panel for text and link
+                        var balanceMessage = String.format("Low account balance: $%.2f.", balance);
+                    messagePanel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
+
+                        var browserLabel = new io.github.jbellis.brokk.gui.components.BrowserLabel(Models.TOP_UP_URL, "Top up at " + Models.TOP_UP_URL + " to avoid interruptions.");
+                    messagePanel.add(browserLabel, BorderLayout.SOUTH);
+
+                    JOptionPane.showMessageDialog(
+                            chrome.getFrame(),
+                            messagePanel, // Use the panel with the clickable label
+                                "Low Balance Warning",
+                                JOptionPane.WARNING_MESSAGE);
+                    });
+                }
+            } else {
+                // Balance is $2.00 or above, reset the notification flag
+                lowBalanceNotified = false;
+            }
+        } catch (java.io.IOException e) {
+            logger.error("Failed to check user balance", e);
+        }
+    }
+
+
     /**
      * Executes the core logic for the "Code" command.
      * This runs inside the Runnable passed to contextManager.submitUserTask.
@@ -1098,8 +1152,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 SwingUtilities.invokeLater(this::enableButtons);
                 return; // Exit the lambda
             }
-            // Proceed with execution using the selected options
-            executeAgentCommand(architectModel, goal, options);
+            try {
+                // Proceed with execution using the selected options
+                executeAgentCommand(architectModel, goal, options);
+            } finally {
+                checkBalanceAndNotify(); // Check balance after action completes
+            }
         });
     }
 
@@ -1127,7 +1185,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         // Submit the action directly, test checks are now non-blocking inside executeCodeCommand
-        chrome.getContextManager().submitAction("Code", input, () -> executeCodeCommand(codeModel, input));
+        chrome.getContextManager().submitAction("Code", input, () -> {
+            try {
+                executeCodeCommand(codeModel, input);
+            } finally {
+                checkBalanceAndNotify(); // Check balance after action completes
+            }
+        });
     }
 
     /**
@@ -1178,7 +1242,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        chrome.getContextManager().submitAction("Ask", input, () -> executeAskCommand(askModel, input));
+        chrome.getContextManager().submitAction("Ask", input, () -> {
+            try {
+                executeAskCommand(askModel, input);
+            } finally {
+                checkBalanceAndNotify(); // Check balance after action completes
+            }
+        });
     }
 
     public void runSearchCommand() {
@@ -1203,7 +1273,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        chrome.getContextManager().submitAction("Search", input, () -> executeSearchCommand(searchModel, input));
+        chrome.getContextManager().submitAction("Search", input, () -> {
+            try {
+                executeSearchCommand(searchModel, input);
+            } finally {
+                checkBalanceAndNotify(); // Check balance after action completes
+            }
+        });
     }
 
     public void runRunCommand() {

@@ -22,10 +22,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import javax.swing.*;
+import java.awt.Component;
+import io.github.jbellis.brokk.gui.components.BrowserLabel;
+
 /**
  * Manages dynamically loaded models via LiteLLM.
  */
 public final class Models {
+    public static final String TOP_UP_URL = "https://brokk.ai/dashboard";
+    public static float MINIMUM_PAID_BALANCE = 0.10f;
+
     /**
      * Represents the parsed Brokk API key components.
      */
@@ -103,16 +110,42 @@ public final class Models {
      * @param policy The data retention policy to apply when selecting models.
      */
     public void reinit(Project.DataRetentionPolicy policy) {
-        String proxyUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project setting
-        logger.info("Initializing models using policy: {} and proxy: {}", policy, proxyUrl);
-        try {
-            fetchAvailableModels(policy);
-        } catch (IOException e) {
+         String proxyUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project setting
+         logger.info("Initializing models using policy: {} and proxy: {}", policy, proxyUrl);
+         boolean lowBalance = false;
+         try {
+             lowBalance = fetchAvailableModels(policy);
+         } catch (IOException e) {
             logger.error("Failed to connect to LiteLLM at {} or parse response: {}",
                          proxyUrl, e.getMessage(), e); // Log the exception details
             modelLocations.clear();
             modelInfoMap.clear();
         }
+
+         // Display low balance warning if applicable
+         if (lowBalance) {
+             SwingUtilities.invokeLater(() -> {
+                 var panel = new JPanel();
+                 panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+                 panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+                 panel.add(new JLabel("Brokk is running in the free tier. Only low-cost models are available."));
+                 panel.add(Box.createVerticalStrut(5));
+                 var label = new JLabel("To enable smarter models, subscribe or top up at:");
+                 panel.add(label);
+                 var browserLabel = new BrowserLabel(TOP_UP_URL);
+                 browserLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                 label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                 panel.add(browserLabel);
+
+                 JOptionPane.showMessageDialog(
+                         null, // Center on screen
+                         panel,
+                         "Low Balance Warning",
+                         JOptionPane.WARNING_MESSAGE
+                 );
+             });
+         }
 
         // No models? LiteLLM must be down. Add a placeholder.
         if (modelLocations.isEmpty()) {
@@ -135,8 +168,44 @@ public final class Models {
         sttModel = new GeminiSTT("gemini/gemini-2.0-flash", httpClient, objectMapper);
     }
 
-    private void fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
+    public float getUserBalance() throws IOException {
+        var kp = parseKey(Project.getBrokkKey());
+        String url = "https://app.brokk.ai/api/payments/balance-lookup/" + kp.userId();
+        logger.debug(url);
+        Request request = new Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer " + kp.token())
+                .get()
+                .build();
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "(no body)";
+                throw new IOException("Failed to fetch user balance: " 
+                                        + response.code() + " - " + errorBody);
+            }
+            String responseBody = response.body() != null ? response.body().string() : "";
+            JsonNode rootNode = objectMapper.readTree(responseBody);
+            if (rootNode.has("available_balance") && rootNode.get("available_balance").isNumber()) {
+                return rootNode.get("available_balance").floatValue();
+            } else if (rootNode.isNumber()) {
+                return rootNode.floatValue();
+            } else {
+                throw new IOException("Unexpected balance response format: " + responseBody);
+            }
+        }
+    }
+ 
+    /**
+     * Fetches available models from the LLM proxy and applies filters.
+     * @param policy The data retention policy.
+     * @return true if the proxy is Brokk and the user balance is low, false otherwise.
+     * @throws IOException If network or parsing errors occur.
+     */
+    private boolean fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
         String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
+        boolean isBrokk = Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK;
+        boolean lowBalance = false; // Default to false
+ 
         // Pick correct Authorization header for model/info
         var authHeader = "Bearer dummy-key";
         if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
@@ -167,8 +236,22 @@ public final class Models {
             JsonNode dataNode = rootNode.path("data");
 
             if (dataNode.isArray()) {
-                modelLocations.clear();
-                modelInfoMap.clear();
+                 modelLocations.clear();
+                 modelInfoMap.clear();
+                 float balance = 0f;
+                 // Only check balance if using Brokk proxy
+                 if (isBrokk) {
+                     try {
+                         balance = getUserBalance();
+                         logger.info("User balance: {}", balance);
+                     } catch (IOException e) {
+                         logger.error("Failed to retrieve user balance: {}", e.getMessage());
+                         // Decide how to handle failure - perhaps treat as low balance?
+                         // For now, log and continue, assuming not low balance.
+                         // Alternatively, could re-throw or return an error state.
+                     }
+                    lowBalance = balance < MINIMUM_PAID_BALANCE;
+                }
 
                 for (JsonNode modelInfoNode : dataNode) {
                     String modelName = modelInfoNode.path("model_name").asText();
@@ -223,6 +306,13 @@ public final class Models {
                         }
 
                         // Store the complete model info
+                        if (lowBalance) {
+                            var freeEligible = (Boolean) modelInfo.getOrDefault("free_tier_eligible", false);
+                            if (!freeEligible) {
+                                logger.debug("Skipping model {} not eligible for free tier", modelName);
+                                continue;
+                            }
+                        }
                         modelLocations.put(modelName, modelLocation);
                         modelInfoMap.put(modelName, modelInfo);
 
@@ -232,11 +322,13 @@ public final class Models {
                 }
 
                 logger.info("Discovered {} models", modelLocations.size());
-            } else {
-                logger.error("/model/info did not return a data array. No models discovered.");
-            }
-        }
-    }
+             } else {
+                 logger.error("/model/info did not return a data array. No models discovered.");
+             }
+         }
+         // Return low balance status only if using Brokk
+         return isBrokk && lowBalance;
+     }
 
     /**
      * Gets a map of available model *names* to their full location strings, suitable for display in settings.

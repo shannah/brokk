@@ -608,6 +608,5 @@ public class ContextAgent {
 
     private void logGiveUp(String itemDescription) {
         logger.debug("Budget exceeded even for {}. Giving up on automatic context population.", itemDescription);
-        io.systemOutput("Could not automatically determine relevant context within budget. Architect will start with an empty workspace.");
     }
 }
