@@ -245,48 +245,27 @@ public class ContextPanel extends JPanel {
                         contextMenu.add(showContentsItem);
                         contextMenu.addSeparator();
 
-                        // If this is the AutoContext row, show AutoContext items
-                        if (fragmentToShow instanceof ContextFragment.AutoContext) {
-                            JMenuItem setAutoContext5Item = new JMenuItem("Set AutoContext to 5");
-                            setAutoContext5Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(5));
-
-                            JMenuItem setAutoContext10Item = new JMenuItem("Set AutoContext to 10");
-                            setAutoContext10Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(10));
-
-                            JMenuItem setAutoContext20Item = new JMenuItem("Set AutoContext to 20");
-                            setAutoContext20Item.addActionListener(e1 -> chrome.contextManager.setAutoContextFilesAsync(20));
-
-                            JMenuItem setAutoContextCustomItem = new JMenuItem("Set AutoContext...");
-                            setAutoContextCustomItem.addActionListener(e1 -> chrome.showSetAutoContextSizeDialog());
-
-                            contextMenu.add(setAutoContext5Item);
-                            contextMenu.add(setAutoContext10Item);
-                            contextMenu.add(setAutoContext20Item);
-                            contextMenu.add(setAutoContextCustomItem);
-
-                        } else {
-                            // Otherwise, show "View History" only if it's a ProjectPathFragment and Git is available
-                            boolean hasGit = contextManager != null && contextManager.getProject() != null
-                                    && contextManager.getProject().hasGit();
-                            if (hasGit && fragmentToShow instanceof ContextFragment.ProjectPathFragment ppf) {
-                                JMenuItem viewHistoryItem = new JMenuItem("View History");
-                                viewHistoryItem.addActionListener(ev -> {
-                                    // Already know it's a ProjectPathFragment here, use ppf captured by the outer if
-                                    chrome.getGitPanel().addFileHistoryTab(ppf.file());
-                                });
-                                contextMenu.add(viewHistoryItem);
-                            } else if (fragmentToShow instanceof ContextFragment.HistoryFragment cf) {
-                                // Add Compress History option for conversation fragment
-                                JMenuItem compressHistoryItem = new JMenuItem("Compress History");
-                                compressHistoryItem.addActionListener(e1 -> {
-                                    // Call ContextManager to compress history
-                                    contextManager.compressHistoryAsync();
-                                });
-                                contextMenu.add(compressHistoryItem);
-                                // Only enable if uncompressed entries exist
-                                var uncompressedExists = cf.entries().stream().anyMatch(entry -> !entry.isCompressed());
-                                compressHistoryItem.setEnabled(uncompressedExists);
-                            }
+                        // show "View History" only if it's a ProjectPathFragment and Git is available
+                        boolean hasGit = contextManager != null && contextManager.getProject() != null
+                                && contextManager.getProject().hasGit();
+                        if (hasGit && fragmentToShow instanceof ContextFragment.ProjectPathFragment ppf) {
+                            JMenuItem viewHistoryItem = new JMenuItem("View History");
+                            viewHistoryItem.addActionListener(ev -> {
+                                // Already know it's a ProjectPathFragment here, use ppf captured by the outer if
+                                chrome.getGitPanel().addFileHistoryTab(ppf.file());
+                            });
+                            contextMenu.add(viewHistoryItem);
+                        } else if (fragmentToShow instanceof ContextFragment.HistoryFragment cf) {
+                            // Add Compress History option for conversation fragment
+                            JMenuItem compressHistoryItem = new JMenuItem("Compress History");
+                            compressHistoryItem.addActionListener(e1 -> {
+                                // Call ContextManager to compress history
+                                contextManager.compressHistoryAsync();
+                            });
+                            contextMenu.add(compressHistoryItem);
+                            // Only enable if uncompressed entries exist
+                            var uncompressedExists = cf.entries().stream().anyMatch(entry -> !entry.isCompressed());
+                            compressHistoryItem.setEnabled(uncompressedExists);
                         }
 
                         // If the user right-clicked on the references column, show reference options
@@ -349,14 +328,7 @@ public class ContextPanel extends JPanel {
                         });
                         contextMenu.add(dropSelectionItem);
 
-                        if (contextManager.selectedContext().equals(contextManager.topContext())) {
-                            if (contextTable.getSelectedRowCount() == 1 && fragmentToShow instanceof ContextFragment.AutoContext) {
-                                // Check if AutoContext is enabled using the fragmentToShow variable
-                                dropSelectionItem.setEnabled(contextManager.selectedContext().isAutoContextEnabled());
-                            }
-                        } else {
-                            dropSelectionItem.setEnabled(false);
-                        }
+                        dropSelectionItem.setEnabled(contextManager.selectedContext().equals(contextManager.topContext()));
                     } else {
                         // No row selected - show the popup with all options
                         tablePopupMenu.show(contextTable, e.getX(), e.getY());
@@ -1090,8 +1062,6 @@ public class ContextPanel extends JPanel {
             for (var frag : selectedFragments) {
                 if (frag instanceof ContextFragment.HistoryFragment) {
                     clearHistory = true;
-                } else if (frag instanceof ContextFragment.AutoContext) {
-                    contextManager.setAutoContextFiles(0); // Qualify contextManager
                 } else if (frag instanceof ContextFragment.PathFragment pf) {
                     pathFragsToRemove.add(pf);
                 } else {

@@ -60,7 +60,6 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 /**
  * Manages the current and previous context, along with other state like prompts and message history.
@@ -239,10 +238,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var welcomeMessage = buildWelcomeMessage();
         var initialContext = project.loadContext(this, welcomeMessage);
         if (initialContext == null) {
-            initialContext = new Context(this, 10, welcomeMessage); // Default autocontext size
+            initialContext = new Context(this, welcomeMessage); // Default autocontext size
         } else {
             // Not sure why this is necessary -- for some reason AutoContext doesn't survive deserialization
-            initialContext = initialContext.refresh();
+            initialContext = initialContext;
         }
         contextHistory.setInitialContext(initialContext);
         chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
@@ -867,30 +866,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Update auto-context file count on the current executor thread (for background operations)
-     */
-    public void setAutoContextFiles(int fileCount)
-    {
-        pushContext(ctx -> ctx.setAutoContextFiles(fileCount));
-    }
-
-    /**
-     * Asynchronous version of setAutoContextFiles to avoid blocking the UI thread
-     */
-    public Future<?> setAutoContextFilesAsync(int fileCount)
-    {
-        return contextActionExecutor.submit(() -> {
-            try {
-                setAutoContextFiles(fileCount);
-            } catch (CancellationException cex) {
-                io.systemOutput("Auto-context update canceled.");
-            } finally {
-                io.enableUserActionButtons();
-            }
-        });
-    }
-
-    /**
      * @return A list containing two messages: a UserMessage with the string representation of the task history,
      * and an AiMessage acknowledging it. Returns an empty list if there is no history.
      */
@@ -1019,7 +994,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
      */
-    public Collection<ChatMessage> getWorkspaceContentsMessages(boolean withoutAutocontext) {
+    public Collection<ChatMessage> getWorkspaceContentsMessages() {
         var c = topContext();
         var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
 
@@ -1027,9 +1002,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var readOnlyTextFragments = new StringBuilder();
         var readOnlyImageFragments = new ArrayList<ImageContent>();
         var stream = Streams.concat(c.readonlyFiles(), c.virtualFragments());
-        if (!withoutAutocontext) {
-            stream = Streams.concat(stream, Stream.of(c.getAutoContext()));
-        }
         stream
                 .forEach(fragment -> {
                     try {
@@ -1116,12 +1088,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
     }
 
-    public String getReadOnlySummary(boolean includeAutocontext)
+    public String getReadOnlySummary()
     {
         var c = topContext();
         return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
-                              c.virtualFragments().map(vf -> "'" + vf.description() + "'"),
-                              Stream.of(includeAutocontext && !c.getAutoContext().isEmpty() ? c.getAutoContext().description() : ""))
+                              c.virtualFragments().map(vf -> "'" + vf.description() + "'"))
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining(", "));
     }
@@ -1265,7 +1236,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     var textContent = TextContent.from("Briefly describe this image in a few words (e.g., 'screenshot of code', 'diagram of system').");
                     var userMessage = UserMessage.from(textContent, imageContent);
                     List<ChatMessage> messages = List.of(userMessage);
-                    Llm.StreamingResult result = null;
+                    Llm.StreamingResult result;
                     try {
                         result = getLlm(models.quickModel(), "Summarize pasted image").sendRequest(messages);
                     } catch (InterruptedException e) {
@@ -1517,7 +1488,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Compress
         var historyString = entry.toString();
         var msgs = SummarizerPrompts.instance.compressHistory(historyString);
-        Llm.StreamingResult result = null;
+        Llm.StreamingResult result;
         try {
             result = getLlm(models.quickModel(), "Compress history entry").sendRequest(msgs);
         } catch (InterruptedException e) {

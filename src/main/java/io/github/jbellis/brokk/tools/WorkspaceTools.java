@@ -198,16 +198,11 @@ public class WorkspaceTools {
         var virtualToRemove = new ArrayList<ContextFragment.VirtualFragment>();
         var idsToDropSet = new HashSet<>(fragmentIds);
         List<Integer> foundIds = new ArrayList<>();
-        boolean autoContextDropped = false;
 
         for (var frag : allFragments) {
             if (idsToDropSet.contains(frag.id())) {
                 foundIds.add(frag.id());
-                if (frag instanceof ContextFragment.AutoContext) {
-                    // Special handling for AutoContext: disable it via ContextManager
-                    contextManager.setAutoContextFiles(0);
-                    autoContextDropped = true;
-                } else if (frag instanceof ContextFragment.PathFragment pf) {
+                if (frag instanceof ContextFragment.PathFragment pf) {
                     pathFragsToRemove.add(pf);
                 } else if (frag instanceof ContextFragment.VirtualFragment vf) {
                     virtualToRemove.add(vf);
@@ -231,7 +226,7 @@ public class WorkspaceTools {
             contextManager.drop(pathFragsToRemove, virtualToRemove);
         }
 
-        int droppedCount = pathFragsToRemove.size() + virtualToRemove.size() + (autoContextDropped ? 1 : 0);
+        int droppedCount = pathFragsToRemove.size() + virtualToRemove.size();
         if (droppedCount == 0) {
             // This can happen if only invalid IDs were provided, or only AutoContext was requested but failed to drop
              return "No valid fragments found to drop for the given IDs: " + fragmentIds;

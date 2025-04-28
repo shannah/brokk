@@ -828,50 +828,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return dialog;
     }
 
-    public void showSetAutoContextSizeDialog() {
-        var dialog = new JDialog(getFrame(), "Set AutoContext Size", true);
-        dialog.setLayout(new BorderLayout());
-
-        var panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        var label = new JLabel("Enter autocontext size (0-100):");
-        panel.add(label, BorderLayout.NORTH);
-
-        var spinner = new JSpinner(new SpinnerNumberModel(
-                contextManager.topContext().getAutoContextFileCount(),
-                0, 100, 1
-        ));
-        panel.add(spinner, BorderLayout.CENTER);
-
-        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        var okButton = new JButton("OK");
-        var cancelButton = new JButton("Cancel");
-
-        okButton.addActionListener(ev -> {
-            var newSize = (int) spinner.getValue();
-            contextManager.setAutoContextFilesAsync(newSize);
-            dialog.dispose();
-        });
-
-        cancelButton.addActionListener(ev -> dialog.dispose());
-        buttonPanel.add(okButton);
-        buttonPanel.add(cancelButton);
-        panel.add(buttonPanel, BorderLayout.SOUTH);
-
-        dialog.getRootPane().setDefaultButton(okButton);
-        dialog.getRootPane().registerKeyboardAction(
-                e -> dialog.dispose(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                JComponent.WHEN_IN_FOCUSED_WINDOW
-        );
-
-        dialog.add(panel);
-        dialog.pack();
-        dialog.setLocationRelativeTo(getFrame());
-        dialog.setVisible(true);
-    }
-
     /**
      * Disables the history panel via HistoryOutputPanel.
      */

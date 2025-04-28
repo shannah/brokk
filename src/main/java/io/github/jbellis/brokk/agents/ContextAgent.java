@@ -246,7 +246,7 @@ public class ContextAgent {
     private Object getWorkspaceRepresentation() {
         if (fullWorkspace) {
             // Return full messages if requested
-            return contextManager.getWorkspaceContentsMessages(false);
+            return contextManager.getWorkspaceContentsMessages();
         } else {
             // Return summary string otherwise
             return CodePrompts.formatWorkspaceSummary(contextManager, false);
@@ -261,7 +261,7 @@ public class ContextAgent {
         // If the workspace isn't empty, use pagerank candidates for initial summaries
         if ((!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty())
                 && analyzer.isCpg()) {
-            var ac = contextManager.topContext().setAutoContextFiles(100).buildAutoContext();
+            var ac = contextManager.topContext().buildAutoContext(100);
             logger.debug("Non-empty context, using pagerank candidates {} for ContextAgent",
                          ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
             rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
