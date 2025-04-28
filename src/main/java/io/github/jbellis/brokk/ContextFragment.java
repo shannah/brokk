@@ -94,10 +94,11 @@ public interface ContextFragment extends Serializable {
     String syntaxStyle();
 
     /**
-     * should AutoContext exclude classes found in this fragment?
+     * If false, the classes returned by sources() will be pruned from AutoContext suggestions.
+     * (Corollary: if sources() always returns empty, this doesn't matter.)
      */
     default boolean isEligibleForAutoContext() {
-        return isText();
+        return true;
     }
 
     static Set<ProjectFile> parseRepoFiles(String text, IProject project) {
@@ -177,6 +178,11 @@ public interface ContextFragment extends Serializable {
         public String toString() {
             return "ProjectPathFragment('%s')".formatted(file);
         }
+
+        @Override
+        public boolean isEligibleForAutoContext() {
+            return false;
+        }
     }
 
     /**
@@ -210,12 +216,6 @@ public interface ContextFragment extends Serializable {
         public Set<CodeUnit> sources(IProject project) {
             // Treat historical content as potentially different from current; don't claim sources
             return Set.of();
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            // Content is historical, not suitable for auto-context
-            return false;
         }
 
         @Override
@@ -254,11 +254,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public Set<CodeUnit> sources(IProject project) {
             return Set.of();
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return false;
         }
     }
 
@@ -400,11 +395,6 @@ public interface ContextFragment extends Serializable {
         public int hashCode() {
             // Use id for hashCode
             return Integer.hashCode(id());
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return isText();
         }
     }
 
@@ -888,11 +878,6 @@ public interface ContextFragment extends Serializable {
         @Override
         public String description() {
             return "Task History (" + history.size() + " task%s)".formatted(history.size() > 1 ? "s" : "");
-        }
-
-        @Override
-        public boolean isEligibleForAutoContext() {
-            return false;
         }
 
         @Override
