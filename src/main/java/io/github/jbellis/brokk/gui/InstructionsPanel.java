@@ -754,7 +754,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 var model = contextManager.getModels().quickestModel();
                 // Use summary context (fullContext=false) for quick suggestions
                 var agent = new ContextAgent(contextManager, model, goal, false);
-                var recommendations = agent.getRecommendations(10); // Limit quick suggestions
+                var recommendations = agent.getRecommendations(); // Limit quick suggestions
 
                 var fileRefs = recommendations.fragments().stream()
                         .flatMap(f -> f.files(contextManager.getProject()).stream())

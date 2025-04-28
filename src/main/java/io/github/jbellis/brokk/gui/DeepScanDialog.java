@@ -57,7 +57,7 @@ class DeepScanDialog {
                     var model = contextManager.getAskModel(); // Use ask model for quality context
                     // Use full workspace context for deep scan
                     var agent = new ContextAgent(contextManager, model, goal, true);
-                    var recommendations = agent.getRecommendations(20); // Increase limit for deep scan
+                    var recommendations = agent.getRecommendations(); // Increase limit for deep scan
                     logger.debug("Deep Scan: ContextAgent proposed {} fragments with reasoning: {}",
                                  recommendations.fragments().size(), recommendations.reasoning());
                     return recommendations;
