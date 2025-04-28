@@ -786,7 +786,7 @@ public class Llm {
 
         String aiMessageText;
         if (thinkReasoning.isEmpty()) {
-            aiMessageText = Messages.EMULATED_TOOL_CALLS;
+            aiMessageText = "";
         } else {
             aiMessageText = String.join("\n\n", thinkReasoning); // Merged reasoning becomes the message text
         }

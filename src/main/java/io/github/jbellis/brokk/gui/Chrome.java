@@ -435,10 +435,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     @Override
     public void llmOutput(String token, ChatMessageType type) {
-        // don't output our placeholder for emulated tool calls
-        if (token.equals(Messages.EMULATED_TOOL_CALLS)) {
-            return;
-        }
         // TODO: use messageSubType later on
         SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token, type));
     }
