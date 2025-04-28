@@ -1019,7 +1019,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         if (contextHasImages()) {
             var nonVisionModels = Stream.of(architectModel, editModel, searchModel)
                     .filter(m -> !models.supportsVision(m))
-                    .map(Models::nameOf)
+                    .map(models::nameOf)
                     .toList();
             if (!nonVisionModels.isEmpty()) {
                 showVisionSupportErrorDialog(String.join(", ", nonVisionModels));
@@ -1076,7 +1076,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var codeModel = contextManager.getCodeModel();
 
         if (contextHasImages() && !models.supportsVision(codeModel)) {
-            showVisionSupportErrorDialog(Models.nameOf(codeModel) + " (Code)");
+            showVisionSupportErrorDialog(models.nameOf(codeModel) + " (Code)");
             return; // Abort if model doesn't support vision and context has images
         }
 
@@ -1132,7 +1132,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // --- Vision Check ---
         if (contextHasImages() && !models.supportsVision(askModel)) {
-            showVisionSupportErrorDialog(Models.nameOf(askModel) + " (Ask)"); // Updated text
+            showVisionSupportErrorDialog(models.nameOf(askModel) + " (Ask)");
             return; // Abort if model doesn't support vision and context has images
         }
         // --- End Vision Check ---
@@ -1162,7 +1162,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var searchModel = contextManager.getSearchModel();
 
         if (contextHasImages() && !models.supportsVision(searchModel)) {
-            showVisionSupportErrorDialog(Models.nameOf(searchModel) + " (Search)");
+            showVisionSupportErrorDialog(models.nameOf(searchModel) + " (Search)");
             return; // Abort if model doesn't support vision and context has images
         }
 

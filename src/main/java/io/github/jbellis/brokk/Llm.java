@@ -255,14 +255,12 @@ public class Llm {
     {
         Throwable lastError = null;
         int attempt = 0;
-        // Get model name once using instance field
-        String modelName = Models.nameOf(model);
         var messages = Messages.forLlm(rawMessages);
 
         while (attempt++ < maxAttempts) {
             String description = Messages.getText(messages.getLast());
             logger.debug("Sending request to {} attempt {}: {}",
-                         modelName, attempt, LogDescription.getShortDescription(description, 12));
+                         contextManager.getModels().nameOf(model), attempt, LogDescription.getShortDescription(description, 12));
 
             if (echo) {
                 io.showOutputSpinner("Thinking...");
@@ -898,12 +896,12 @@ public class Llm {
 
         // Add the think tool only if the model is not a reasoning model
         if (!contextManager.getModels().isReasoning(this.model)) {
-            logger.debug("Adding 'think' tool for non-reasoning model {}", Models.nameOf(this.model));
+            logger.debug("Adding 'think' tool for non-reasoning model {}", contextManager.getModels().nameOf(this.model));
             var enhancedTools = new ArrayList<>(originalTools);
             enhancedTools.addAll(contextManager.getToolRegistry().getRegisteredTools(List.of("think")));
             return enhancedTools;
         }
-        logger.debug("Skipping 'think' tool for reasoning model {}", Models.nameOf(this.model));
+        logger.debug("Skipping 'think' tool for reasoning model {}", contextManager.getModels().nameOf(this.model));
         return originalTools;
     }
 
@@ -918,7 +916,7 @@ public class Llm {
         try {
             var timestamp = LocalDateTime.now(); // timestamp finished, not started
 
-            var formattedRequest = "# Request to %s:\n\n%s\n".formatted(Models.nameOf(model),
+            var formattedRequest = "# Request to %s:\n\n%s\n".formatted(contextManager.getModels().nameOf(model),
                                                                         TaskEntry.formatMessages(request.messages()));
             var formattedTools = request.toolSpecifications() == null ? "" : "# Tools:\n\n" + request.toolSpecifications().stream().map(ToolSpecification::name).collect(Collectors.joining("\n"));
             var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());

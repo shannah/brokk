@@ -82,9 +82,11 @@ public final class Models {
 
     public static final String UNAVAILABLE = "AI is unavailable";
 
-    // Core model storage - now instance fields
+    // Cached model storage
     private final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
+    // display name -> location
     private final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>();
+    // display name -> model info
     private final ConcurrentHashMap<String, Map<String, Object>> modelInfoMap = new ConcurrentHashMap<>();
 
     // Default models - now instance fields
@@ -99,8 +101,15 @@ public final class Models {
     /**
      * Returns the display name for a given model instance
      */
-    public static String nameOf(StreamingChatLanguageModel model) {
-        return model.defaultRequestParameters().modelName();
+    public String nameOf(StreamingChatLanguageModel model) {
+        // langchain4j "name" corresponds to our "location"
+        var location = model.defaultRequestParameters().modelName();
+        // Find the key (display name) in the modelLocations map corresponding to the location value
+        return modelLocations.entrySet().stream()
+                .filter(entry -> entry.getValue().equals(location))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Model location not found in known models: " + location));
     }
 
     /**
@@ -472,7 +481,7 @@ public final class Models {
         return b != null && b;
     }
 
-    public static boolean isLazy(StreamingChatLanguageModel model) {
+    public boolean isLazy(StreamingChatLanguageModel model) {
         String modelName = nameOf(model);
         return !(modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro"));
     }

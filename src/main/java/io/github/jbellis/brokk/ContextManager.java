@@ -945,7 +945,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         String askModelName = project.getAskModelName(); // Added Ask model
         String editModelName = project.getEditModelName();
         String searchModelName = project.getSearchModelName();
-        String quickModelName = Models.nameOf(models.quickModel());
+        String quickModelName = models.nameOf(models.quickModel());
 
         return """
                 %s
