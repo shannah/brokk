@@ -49,44 +49,50 @@ class DeepScanDialog {
         chrome.getInstructionsPanel().setCommandInputAndDeepScanEnabled(false);
         chrome.systemOutput("Starting Deep Scan");
 
+        // ContextAgent
+        Future<ContextAgent.RecommendationResult> contextFuture = contextManager.submitBackgroundTask("Deep Scan: ContextAgent", () -> {
+            logger.debug("Deep Scan: Running ContextAgent...");
+            var model = contextManager.getAskModel(); // Use ask model for quality context
+            // Use full workspace context for deep scan
+            var agent = new ContextAgent(contextManager, model, goal, true);
+            var recommendations = agent.getRecommendations(); // Increase limit for deep scan
+            logger.debug("Deep Scan: ContextAgent proposed {} fragments with reasoning: {}",
+                         recommendations.fragments().size(), recommendations.reasoning());
+            return recommendations;
+        });
+
+        // ValidationAgent
+        Future<List<ProjectFile>> validationFuture = contextManager.submitBackgroundTask("Deep Scan: ValidationAgent", () -> {
+            logger.debug("Deep Scan: Running ValidationAgent...");
+            var agent = new ValidationAgent(contextManager);
+            var relevantTestResults = agent.execute(goal); // ValidationAgent finds relevant tests
+            var files = relevantTestResults.stream()
+                    .distinct()
+                    .toList();
+            logger.debug("Deep Scan: ValidationAgent found {} relevant test files.", files.size());
+            return files;
+        });
+
         contextManager.submitUserTask("Deep Scan context analysis", () -> {
             try {
-                // ContextAgent
-                Future<ContextAgent.RecommendationResult> contextFuture = contextManager.submitBackgroundTask("Deep Scan: ContextAgent", () -> {
-                    logger.debug("Deep Scan: Running ContextAgent...");
-                    var model = contextManager.getAskModel(); // Use ask model for quality context
-                    // Use full workspace context for deep scan
-                    var agent = new ContextAgent(contextManager, model, goal, true);
-                    var recommendations = agent.getRecommendations(); // Increase limit for deep scan
-                    logger.debug("Deep Scan: ContextAgent proposed {} fragments with reasoning: {}",
-                                 recommendations.fragments().size(), recommendations.reasoning());
-                    return recommendations;
-                });
-
-                // ValidationAgent
-                Future<List<ProjectFile>> validationFuture = contextManager.submitBackgroundTask("Deep Scan: ValidationAgent", () -> {
-                    logger.debug("Deep Scan: Running ValidationAgent...");
-                    var agent = new ValidationAgent(contextManager);
-                    var relevantTestResults = agent.execute(goal); // ValidationAgent finds relevant tests
-                    var files = relevantTestResults.stream()
-                            .distinct()
-                            .toList();
-                    logger.debug("Deep Scan: ValidationAgent found {} relevant test files.", files.size());
-                    return files;
-                });
-
                 // Get results from futures - this will block until completion
-                var contextResult = contextFuture.get(); // Can throw ExecutionException or InterruptedException
+                ContextAgent.RecommendationResult contextResult;
+                List<ProjectFile> validationFiles;
+                try {
+                    contextResult = contextFuture.get();
+                    validationFiles = validationFuture.get();
+                } catch (ExecutionException ee) {
+                    if (ee.getCause() instanceof InterruptedException ie) {
+                        throw ie;
+                    } else {
+                        logger.error("Error during Deep Scan agent execution", ee.getCause());
+                        chrome.toolErrorRaw("Error during Deep Scan execution: " + ee.getCause().getMessage());
+                        return;
+                    }
+                }
+
                 var contextFragments = contextResult.fragments();
                 var reasoning = contextResult.reasoning();
-                var validationFiles = validationFuture.get(); // Can throw ExecutionException or InterruptedException
-
-                // Check for interruption *after* getting results (if get() didn't throw InterruptedException)
-                if (Thread.currentThread().isInterrupted()) {
-                    logger.debug("Deep Scan task interrupted after agent completion.");
-                    chrome.systemOutput("Deep Scan interrupted.");
-                    return;
-                }
 
                 // Convert validation files to ProjectPathFragments
                 var validationFragments = validationFiles.stream()
@@ -121,17 +127,10 @@ class DeepScanDialog {
                     chrome.systemOutput("Deep Scan complete: Found %d relevant fragments".formatted(allSuggestedFragments.size()));
                     SwingUtil.runOnEDT(() -> showDialog(chrome, allSuggestedFragments, reasoning));
                 }
-            } catch (ExecutionException ee) {
-                // Handle exceptions thrown by the background tasks (inside future.get())
-                if (ee.getCause() instanceof InterruptedException) {
-                    logger.debug("Deep Scan agent task interrupted during execution: {}", ee.getMessage());
-                    chrome.systemOutput("Deep Scan cancelled");
-                } else {
-                    logger.error("Error during Deep Scan agent execution", ee.getCause());
-                    chrome.toolErrorRaw("Error during Deep Scan execution: " + ee.getCause().getMessage());
-                }
             } catch (InterruptedException ie) {
                 // Handle interruption of the user task thread (e.g., while waiting on future.get())
+                contextFuture.cancel(true);
+                validationFuture.cancel(true);
                 logger.debug("Deep Scan user task explicitly interrupted: {}", ie.getMessage());
                 chrome.systemOutput("Deep Scan cancelled");
             } finally {
