@@ -84,9 +84,12 @@ public class ToolRegistry {
      * @return A list of ToolSpecification objects. Returns an empty list if a name is not found.
      */
     public List<ToolSpecification> getRegisteredTools(List<String> toolNames) {
+        var missingTools = toolNames.stream()
+                .filter(tool -> !toolMap.containsKey(tool))
+                .toList();
+        logger.error("Missing tools: '{}'", missingTools); // let it throw NPE below
         return toolNames.stream()
                 .map(toolMap::get)
-                .filter(Objects::nonNull)
                 .map(target -> ToolSpecifications.toolSpecificationFrom(target.method()))
                 .collect(Collectors.toList());
     }

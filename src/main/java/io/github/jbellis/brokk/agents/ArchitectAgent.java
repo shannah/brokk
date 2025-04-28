@@ -275,10 +275,10 @@ public class ArchitectAgent {
                 toolSpecs.addAll(toolRegistry.getRegisteredTools(genericTools));
             }
             if (options.includeCodeAgent()) {
-                toolSpecs.addAll(toolRegistry.getRegisteredTools(List.of("callCodeAgent")));
+                toolSpecs.addAll(toolRegistry.getTools(this, List.of("callCodeAgent")));
             }
             if (options.includeSearchAgent()) {
-                toolSpecs.addAll(toolRegistry.getRegisteredTools(List.of("callSearchAgent")));
+                toolSpecs.addAll(toolRegistry.getTools(this, List.of("callSearchAgent")));
             }
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject")));
 
