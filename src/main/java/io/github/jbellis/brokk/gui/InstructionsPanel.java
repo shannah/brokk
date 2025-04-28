@@ -1006,7 +1006,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public void runArchitectCommand() {
         var goal = commandInputField.getText();
         if (goal.isBlank()) {
-            chrome.toolErrorRaw("Please provide an initial goal or instruction for the Agent.");
+            chrome.toolErrorRaw("Please provide an initial goal or instruction for the Architect");
             return;
         }
 
