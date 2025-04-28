@@ -5,18 +5,18 @@ import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.ContextFragment.TaskFragment;
-import io.github.jbellis.brokk.agents.*;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.agents.ArchitectAgent;
+import io.github.jbellis.brokk.agents.CodeAgent;
+import io.github.jbellis.brokk.agents.ContextAgent;
+import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
-import io.github.jbellis.brokk.util.LogDescription;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
@@ -24,13 +24,11 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.util.*;
 import java.util.List;
-import java.util.function.BiFunction;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -72,7 +70,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
-    private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false);
     private JPanel overlayPanel; // Panel used to initially disable command input
     private static ArchitectAgent.ArchitectOptions lastArchitectOptions = ArchitectAgent.ArchitectOptions.DEFAULTS; // Remember last selection
 
@@ -378,7 +375,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
                 editItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
-                        suppressExternalSuggestionsTrigger.set(true);
+                        // suppressExternalSuggestionsTrigger.set(true); // No longer needed here
                         cm.editFiles(List.of(targetRef.getRepoFile()));
                     } else {
                         chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
@@ -395,7 +392,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
                 readItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
-                        suppressExternalSuggestionsTrigger.set(true);
+                        // suppressExternalSuggestionsTrigger.set(true); // No longer needed here
                         cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
                     } else {
                         chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
@@ -408,7 +405,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 summarizeItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
                         cm.submitContextTask("Summarize", () -> {
-                            suppressExternalSuggestionsTrigger.set(true);
+                            // suppressExternalSuggestionsTrigger.set(true); // No longer needed here
                             boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
                             if (success) {
                                 chrome.systemOutput("Summarized " + targetRef.getFullPath());
@@ -783,317 +780,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     /**
      * Triggered by the "Deep Scan" button click.
-     * Runs ContextAgent and ValidationAgent in parallel, then shows results in a dialog.
+     * Runs the Deep Scan agents and shows the results dialog.
+     * Delegates the core logic to the DeepScanDialog class.
      */
     private void triggerDeepScan(ActionEvent e) {
-        var contextManager = chrome.getContextManager();
         var goal = commandInputField.getText();
-        if (goal.isBlank() || contextManager == null || contextManager.getProject() == null) {
-            chrome.toolErrorRaw("Please enter instructions before running Deep Scan.");
-            return;
-        }
-
-        // Disable input and deep scan button while scanning
-        setCommandInputAndDeepScanEnabled(false);
-        chrome.systemOutput("Starting Deep Scan");
-
-        // Submit the overall task to the user action queue for cancellation handling.
-        // The individual agent tasks run via submitBackgroundTask.
-        contextManager.submitUserTask("Deep Scan context analysis", () -> {
-            try {
-                // Context Agent Task using submitBackgroundTask
-                Future<List<ProjectFile>> contextFuture = contextManager.submitBackgroundTask("Deep Scan: ContextAgent", () -> {
-                    logger.debug("Deep Scan: Running ContextAgent...");
-                    var model = contextManager.getAskModel(); // Use ask model for quality context
-                    // Use full workspace context for deep scan
-                    var agent = new ContextAgent(contextManager, model, goal, true);
-                    var recommendations = agent.getRecommendations(20); // Increase limit for deep scan
-                    var files = recommendations.stream()
-                            .flatMap(f -> f.files(contextManager.getProject()).stream())
-                            .distinct()
-                            .toList();
-                    logger.debug("Deep Scan: ContextAgent found {} files.", files.size());
-                    return files;
-                });
-
-                // Validation Agent Task using submitBackgroundTask
-                Future<List<ProjectFile>> validationFuture = contextManager.submitBackgroundTask("Deep Scan: ValidationAgent", () -> {
-                    logger.debug("Deep Scan: Running ValidationAgent...");
-                    var agent = new ValidationAgent(contextManager);
-                    var relevantTestResults = agent.execute(goal); // ValidationAgent finds relevant tests
-                    var files = relevantTestResults.stream()
-                            .distinct()
-                            .toList();
-                    logger.debug("Deep Scan: ValidationAgent found {} relevant test files.", files.size());
-                    return files;
-                });
-
-                // Get results from futures - this will block until completion
-                var contextFiles = contextFuture.get(); // Can throw ExecutionException or InterruptedException
-                var validationFiles = validationFuture.get(); // Can throw ExecutionException or InterruptedException
-
-                // Check for interruption *after* getting results (if get() didn't throw InterruptedException)
-                if (Thread.currentThread().isInterrupted()) {
-                    logger.debug("Deep Scan task interrupted after agent completion.");
-                    chrome.systemOutput("Deep Scan interrupted.");
-                    return;
-                } // <-- Added missing closing brace for the if block
-                // Combine and deduplicate results
-                var allSuggestedFiles = Stream.concat(contextFiles.stream(), validationFiles.stream())
-                        .distinct()
-                        .sorted(Comparator.comparing(ProjectFile::toString))
-                        .toList();
-
-                logger.debug("Deep Scan finished. Found {} unique files total.", allSuggestedFiles.size());
-
-                if (allSuggestedFiles.isEmpty()) {
-                    chrome.systemOutput("Deep Scan complete: No relevant files found.");
-                } else {
-                    chrome.systemOutput("Deep Scan complete: Found %d relevant files. Showing selection dialog...".formatted(allSuggestedFiles.size()));
-                    // Show the dialog on the EDT
-                    SwingUtil.runOnEDT(() -> showDeepScanDialog(allSuggestedFiles));
-                }
-            } // End of the try block
-            catch (ExecutionException ee) {
-                // Handle exceptions thrown by the background tasks (inside future.get())
-                if (ee.getCause() instanceof InterruptedException) {
-                    logger.debug("Deep Scan agent task interrupted during execution: {}", ee.getMessage());
-                    chrome.systemOutput("Deep Scan interrupted.");
-                    Thread.currentThread().interrupt(); // Re-interrupt the user task thread
-                } else {
-                    logger.error("Error during Deep Scan agent execution", ee.getCause());
-                    chrome.toolErrorRaw("Error during Deep Scan execution: " + ee.getCause().getMessage());
-                }
-            } catch (InterruptedException ie) {
-                // Handle interruption of the user task thread (e.g., while waiting on future.get())
-                logger.debug("Deep Scan user task explicitly interrupted: {}", ie.getMessage());
-                chrome.systemOutput("Deep Scan interrupted.");
-                Thread.currentThread().interrupt(); // Re-interrupt
-            } finally {
-                // Re-enable input components after task completion, error, or interruption
-                SwingUtilities.invokeLater(() -> setCommandInputAndDeepScanEnabled(true));
-            }
-        }); // End of submitUserTask lambda
+        DeepScanDialog.triggerDeepScan(chrome, goal);
+        // Button disabling/enabling and input field disabling/enabling are handled
+        // within DeepScanDialog.triggerDeepScan and its dialog callbacks.
     }
-
-    /**
-     * Shows a modal dialog for the user to select files suggested by Deep Scan.
-     * Files can be added as read-only, editable, or summarized.
- *
- * @param suggestedFiles List of unique ProjectFiles suggested by ContextAgent and ValidationAgent.
- */
-private void showDeepScanDialog(List<ProjectFile> suggestedFiles) {
-    var contextManager = chrome.getContextManager();
-    var testFiles = new HashSet<>(contextManager.getTestFiles());
-    boolean hasGit = contextManager.getProject() != null && contextManager.getProject().hasGit();
-
-    // Separate files into code and tests
-    var projectCodeFiles = suggestedFiles.stream()
-            .filter(f -> !testFiles.contains(f))
-            .toList();
-    var testCodeFiles = suggestedFiles.stream()
-            .filter(testFiles::contains)
-            .toList();
-
-    JDialog dialog = new JDialog(chrome.getFrame(), "Deep Scan Results", true); // Modal dialog
-    dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-    dialog.setLayout(new BorderLayout(10, 10));
-    dialog.setMinimumSize(new Dimension(400, 400)); // Increased width for dropdowns
-
-    // Main panel to hold the two sections
-    JPanel mainPanel = new JPanel();
-    mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-    mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-    // Maps to hold dropdowns and their corresponding files
-    Map<JComboBox<String>, ProjectFile> projectCodeComboboxMap = new LinkedHashMap<>();
-    Map<JComboBox<String>, ProjectFile> testCodeComboboxMap = new LinkedHashMap<>();
-
-    // Action options
-    final String OMIT = "Omit";
-    final String SUMMARIZE = "Summarize";
-    final String EDIT = "Edit";
-    final String READ_ONLY = "Read-only";
-
-    // Options for project code files
-    String[] projectOptions = {OMIT, SUMMARIZE, EDIT, READ_ONLY};
-    // Options for test code files (no Summarize)
-    String[] testOptions = {OMIT, EDIT, READ_ONLY};
-
-    // Helper function to create a file row panel
-    BiFunction<ProjectFile, String[], JPanel> createFileRow = (file, options) -> {
-        JPanel rowPanel = new JPanel(new BorderLayout(5, 0)); // Use BorderLayout for better alignment
-        rowPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0)); // Padding between rows
-
-        String fullPath = file.toString();
-        String fileName = file.getFileName();
-        JLabel fileLabel = new JLabel(fileName);
-        fileLabel.setToolTipText(fullPath); // Show full path in tooltip
-        fileLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 10)); // Right padding for label
-
-        JComboBox<String> comboBox = new JComboBox<>(options);
-        comboBox.setSelectedItem(OMIT); // Default action
-
-        if (!hasGit) {
-            comboBox.setToolTipText("'" + EDIT + "' option requires a Git repository");
-        }
-
-        // Set preferred width for the combo box
-        comboBox.setPreferredSize(new Dimension(120, comboBox.getPreferredSize().height));
-
-        rowPanel.add(fileLabel, BorderLayout.CENTER);
-        rowPanel.add(comboBox, BorderLayout.EAST);
-
-        return rowPanel;
-    };
-
-
-    // --- Project Code Section ---
-    JPanel projectCodeSection = new JPanel();
-    projectCodeSection.setLayout(new BoxLayout(projectCodeSection, BoxLayout.Y_AXIS));
-    projectCodeSection.setBorder(BorderFactory.createTitledBorder("Project Code"));
-    if (projectCodeFiles.isEmpty()) {
-        projectCodeSection.add(new JLabel("No relevant files found"));
-    } else {
-        for (ProjectFile file : projectCodeFiles) {
-            JPanel row = createFileRow.apply(file, projectOptions);
-            JComboBox<String> comboBox = (JComboBox<String>) row.getComponent(1); // Assuming combo is the second component
-            projectCodeComboboxMap.put(comboBox, file);
-            projectCodeSection.add(row);
-        }
-    }
-    // Wrap project code section in a scroll pane
-    JScrollPane projectCodeScrollPane = new JScrollPane(projectCodeSection);
-    projectCodeScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-    projectCodeScrollPane.setBorder(projectCodeSection.getBorder()); // Use the section's border for the scroll pane
-    projectCodeSection.setBorder(null); // Remove border from the section itself
-    mainPanel.add(projectCodeScrollPane);
-
-    // Add spacing between sections
-    mainPanel.add(Box.createRigidArea(new Dimension(0, 10)));
-
-    // --- Test Code Section ---
-    JPanel testCodeSection = new JPanel();
-    testCodeSection.setLayout(new BoxLayout(testCodeSection, BoxLayout.Y_AXIS));
-    testCodeSection.setBorder(BorderFactory.createTitledBorder("Tests"));
-    if (testCodeFiles.isEmpty()) {
-        testCodeSection.add(new JLabel("No relevant files found"));
-    } else {
-        for (ProjectFile file : testCodeFiles) {
-            JPanel row = createFileRow.apply(file, testOptions);
-            JComboBox<String> comboBox = (JComboBox<String>) row.getComponent(1); // Assuming combo is the second component
-            testCodeComboboxMap.put(comboBox, file);
-            testCodeSection.add(row);
-        }
-    }
-    // Wrap test code section in a scroll pane
-    JScrollPane testCodeScrollPane = new JScrollPane(testCodeSection);
-    testCodeScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-    testCodeScrollPane.setBorder(testCodeSection.getBorder()); // Use the section's border for the scroll pane
-    testCodeSection.setBorder(null); // Remove border from the section itself
-    mainPanel.add(testCodeScrollPane);
-
-    // Add the main panel (containing the scroll panes) to the dialog's center.
-    // No need for an extra outer scroll pane here anymore.
-    dialog.add(mainPanel, BorderLayout.CENTER);
-
-    // --- Button Panel ---
-    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-    JButton applyButton = new JButton("Apply Selections");
-    JButton cancelButton = new JButton("Cancel");
-
-    buttonPanel.add(applyButton);
-    buttonPanel.add(cancelButton);
-    dialog.add(buttonPanel, BorderLayout.SOUTH);
-
-    // --- Actions ---
-    applyButton.addActionListener(e -> {
-        Set<ProjectFile> filesToSummarize = new HashSet<>();
-        List<ProjectFile> filesToEdit = new ArrayList<>();
-        List<ProjectFile> filesToReadOnly = new ArrayList<>();
-
-        // Process project code selections
-        projectCodeComboboxMap.forEach((comboBox, file) -> {
-            String selectedAction = (String) comboBox.getSelectedItem();
-            switch (selectedAction) {
-                case SUMMARIZE:
-                    filesToSummarize.add(file);
-                    break;
-                case EDIT:
-                    if (hasGit) filesToEdit.add(file);
-                    // else: silently ignore if Git not present (button should ideally be disabled)
-                    break;
-                case READ_ONLY:
-                    filesToReadOnly.add(file);
-                    break;
-                case OMIT: // Do nothing
-                default:
-                    break;
-            }
-        });
-
-        // Process test code selections
-        testCodeComboboxMap.forEach((comboBox, file) -> {
-            String selectedAction = (String) comboBox.getSelectedItem();
-            switch (selectedAction) {
-                // SUMMARIZE is not an option for tests
-                case EDIT:
-                    if (hasGit) filesToEdit.add(file);
-                    break;
-                case READ_ONLY:
-                    filesToReadOnly.add(file);
-                    break;
-                case OMIT: // Do nothing
-                default:
-                    break;
-            }
-        });
-
-        int count = 0;
-        suppressExternalSuggestionsTrigger.set(true); // Suppress suggestions triggered by context changes below
-
-        if (!filesToSummarize.isEmpty()) {
-            contextManager.submitContextTask("Summarize Files", () -> {
-                boolean success = contextManager.addSummaries(filesToSummarize, Set.of());
-                if (!success) {
-                    chrome.toolErrorRaw("No summarizable code found in selected files");
-                }
-            });
-            chrome.systemOutput("Requested summarization for " + filesToSummarize.size() + " file(s) from Deep Scan.");
-            count += filesToSummarize.size();
-        }
-        if (!filesToEdit.isEmpty()) {
-            contextManager.editFiles(filesToEdit);
-            chrome.systemOutput("Added " + filesToEdit.size() + " file(s) as editable from Deep Scan.");
-            count += filesToEdit.size();
-        }
-        if (!filesToReadOnly.isEmpty()) {
-            contextManager.addReadOnlyFiles(filesToReadOnly);
-            chrome.systemOutput("Added " + filesToReadOnly.size() + " file(s) as read-only from Deep Scan.");
-            count += filesToReadOnly.size();
-        }
-
-        if (count == 0) {
-             chrome.systemOutput("No files selected for action from Deep Scan.");
-        }
-
-        dialog.dispose();
-        enableButtons(); // Re-enable buttons after dialog closes
-    });
-
-
-    cancelButton.addActionListener(e -> {
-        dialog.dispose();
-        enableButtons(); // Re-enable buttons after dialog closes
-    });
-
-        dialog.pack();
-        dialog.setLocationRelativeTo(chrome.getFrame());
-        disableButtons(); // Disable main buttons while dialog is showing
-        dialog.setVisible(true); // Blocks until closed
-        // Buttons are re-enabled by the apply/cancel listeners
-    }
-
 
     /**
      * Executes the core logic for the "Code" command.
@@ -1543,10 +1238,9 @@ private void showDeepScanDialog(List<ProjectFile> suggestedFiles) {
 
     @Override
     public void contextChanged(Context newCtx) {
-        // FIXME suppressExternalSuggestionsTrigger is race-y and error prone
-        if (!contextSuggestionTimer.isRunning() && !suppressExternalSuggestionsTrigger.get()) {
+        // No longer need to check suppressExternalSuggestionsTrigger here
+        if (!contextSuggestionTimer.isRunning()) {
             triggerContextSuggestion(null);
-            suppressExternalSuggestionsTrigger.set(false);
         }
     }
 
@@ -1574,8 +1268,18 @@ private void showDeepScanDialog(List<ProjectFile> suggestedFiles) {
      *
      * @param enabled true to enable, false to disable.
      */
-    private void setCommandInputAndDeepScanEnabled(boolean enabled) {
+    /*package*/ void setCommandInputAndDeepScanEnabled(boolean enabled) {
         commandInputField.setEnabled(enabled);
         this.deepScanButton.setEnabled(enabled);
+    }
+
+    // Provide access to the command input field for the new dialog class
+    /*package*/ JTextArea getCommandInputField() {
+        return commandInputField;
+    }
+
+    // Provide access to the deep scan button for the new dialog class
+    /*package*/ JButton getDeepScanButton() {
+        return deepScanButton;
     }
 }
