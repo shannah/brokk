@@ -1078,14 +1078,20 @@ private void showDeepScanDialog(List<ProjectFile> suggestedFiles) {
         }
 
         dialog.dispose();
+        enableButtons(); // Re-enable buttons after dialog closes
     });
 
 
-    cancelButton.addActionListener(e -> dialog.dispose());
+    cancelButton.addActionListener(e -> {
+        dialog.dispose();
+        enableButtons(); // Re-enable buttons after dialog closes
+    });
 
         dialog.pack();
         dialog.setLocationRelativeTo(chrome.getFrame());
+        disableButtons(); // Disable main buttons while dialog is showing
         dialog.setVisible(true); // Blocks until closed
+        // Buttons are re-enabled by the apply/cancel listeners
     }
 
 
