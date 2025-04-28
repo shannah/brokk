@@ -418,37 +418,52 @@ public class ContextAgent {
         var toolSpecs = ToolSpecifications.toolSpecificationsFrom(contextTool);
         assert toolSpecs.size() == 1 : "Expected exactly one tool specification from ContextRecommendationTool";
 
-        var systemPrompt = new StringBuilder("""
-                                             You are an assistant that identifies relevant code context (files and/or classes) based on a goal and available information.
-                                             You are given a goal, the current workspace contents (if any), and potentially a list of class summaries and/or file contents/paths.
-                                             Analyze the provided information and determine which items are most relevant to achieving the goal.
-                                             You MUST call the `recommendContext` tool to provide your recommendations.
-                                             
-                                             Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
-                                             or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
-                                             
-                                             Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
-                                             
-                                             Either of both of `filesToAdd` and `classesToSummarize` may be empty.
-                                             """.stripIndent());
+        var deepPrompt = """
+                         You are an assistant that identifies relevant code context based on a goal and available information.
+                         You are given a goal, the current workspace contents (if any), and either a list of class summaries, or a list of file paths and contents.
+                         Analyze the provided information and determine which items are most relevant to achieving the goal.
+                         You MUST call the `recommendContext` tool to provide your recommendations.
+                         
+                         Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
+                         or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
+                         
+                         Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
+                         
+                         Either of both of `filesToAdd` and `classesToSummarize` may be empty.
+                         """;
+        var quikPrompt = """
+                         You are an assistant that identifies relevant code context based on a goal and available information.
+                         You are given a goal, the current workspace contents (if any), and either a list of class summaries, or a list of file paths and contents.
+                         Analyze the provided information and determine which items are most relevant to achieving the goal.
+                         You MUST call the `recommendContext` tool to provide your recommendations.
+                         
+                         If you are given full file contents, populate the `filesToAdd` argument with the full paths of 
+                         10 the most relevant files.
+                         
+                         If you are given class summaries, populate the `classesToSummarize` argument with the 
+                         fully-qualified names of the 10 most relevant classes.
+                         
+                         Exactly one of `recommendContext` or `classesToSummarize` should be non-empty.
+                         """;
 
-        if (!deepScan) {
-            // Apply limit loosely in the prompt if not doing a deep scan
-            systemPrompt.append("\nAim to recommend around the top %d most relevant items in total (files + classes).".formatted(10));
-        }
-
-        var finalSystemMessage = new SystemMessage(systemPrompt.toString());
+        var finalSystemMessage = new SystemMessage(deepScan ? deepPrompt : quikPrompt);
         var userMessageText = new StringBuilder("<goal>\n%s\n</goal>\n\n".formatted(goal));
         // Add workspace representation
         if (workspaceRepresentation instanceof String workspaceSummary && !workspaceSummary.isBlank()) {
             userMessageText.append("<workspace_summary>\n%s\n</workspace_summary>\n\n".formatted(workspaceSummary));
         }
-        // Note: Full workspace messages are handled below by prepending them to the final list
 
         // Add summaries if available
         if (summaries != null && !summaries.isEmpty()) {
             var summariesText = summaries.entrySet().stream()
-                    .map(entry -> "Class: %s\n```java\n%s\n```".formatted(entry.getKey().fqName(), entry.getValue()))
+                    .map(entry -> {
+                        var cn = entry.getKey();
+                        var body = entry.getValue();
+                        return deepScan
+                               ? "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), analyzer.getFileFor(cn.fqName()), body)
+                               // avoid confusing quick model by giving it the filename
+                               : "<class fqcn='%s'>\n%s\n</class>".formatted(cn.fqName(), body);
+                    })
                     .collect(Collectors.joining("\n\n"));
             userMessageText.append("<available_summaries>\n%s\n</available_summaries>\n\n".formatted(summariesText));
         }
