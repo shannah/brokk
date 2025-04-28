@@ -218,7 +218,7 @@ public class ContextAgent {
     /**
      * Determines the best initial context based on project size and token budgets,
      * potentially using LLM inference, and returns recommended context fragments.
-     *
+     * <p>
      * potentially using LLM inference, and returns recommended context fragments.
      *
      * @return A RecommendationResult containing success status, fragments, and reasoning.
@@ -408,11 +408,10 @@ public class ContextAgent {
      * @param workspaceRepresentation String summary or List<ChatMessage> of workspace contents.
      * @return LlmRecommendation containing lists of recommended file paths and class FQNs.
      */
-    private LlmRecommendation askLlmToRecommendContext(
-            List<ProjectFile> filesToConsider,
-            @Nullable Map<CodeUnit, String> summaries,
-            @Nullable Map<ProjectFile, String> contentsMap,
-            Object workspaceRepresentation) throws InterruptedException
+    private LlmRecommendation askLlmToRecommendContext(List<ProjectFile> filesToConsider,
+                                                       @Nullable Map<CodeUnit, String> summaries,
+                                                       @Nullable Map<ProjectFile, String> contentsMap,
+                                                       Object workspaceRepresentation) throws InterruptedException
     {
         var contextTool = new ContextRecommendationTool();
         // Generate specifications from the annotated tool instance
@@ -420,19 +419,18 @@ public class ContextAgent {
         assert toolSpecs.size() == 1 : "Expected exactly one tool specification from ContextRecommendationTool";
 
         var systemPrompt = new StringBuilder("""
-                                                     You are an assistant that identifies relevant code context (files and/or classes) based on a goal and available information.
-                                                     You are given a goal, the current workspace contents (if any), and potentially a list of class summaries and/or file contents/paths.
-                                                     Analyze the provided information and determine which items are most relevant to achieving the goal.
-                                                     You MUST call the `recommendContext` tool to provide your recommendations.
-                                                     
-                                                     Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
-                                                     or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
-                                                     
-                                                     Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
-                                                     
-                                                     If no items of a certain type (files or classes) are relevant, pass an empty list for that argument.
-                                                     Prioritize items most directly related to the goal, considering the current workspace.
-                                                     """.stripIndent());
+                                             You are an assistant that identifies relevant code context (files and/or classes) based on a goal and available information.
+                                             You are given a goal, the current workspace contents (if any), and potentially a list of class summaries and/or file contents/paths.
+                                             Analyze the provided information and determine which items are most relevant to achieving the goal.
+                                             You MUST call the `recommendContext` tool to provide your recommendations.
+                                             
+                                             Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
+                                             or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary.
+                                             
+                                             Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
+                                             
+                                             Either of both of `filesToAdd` and `classesToSummarize` may be empty.
+                                             """.stripIndent());
 
         if (!deepScan) {
             // Apply limit loosely in the prompt if not doing a deep scan
