@@ -617,9 +617,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return contextActionExecutor.submit(() -> {
             try {
                 pushContext(ctx -> Context.createFrom(targetContext, ctx));
-                io.systemOutput("Reset context to match historical state!");
+                io.systemOutput("Reset workspace to historical state");
             } catch (CancellationException cex) {
-                io.systemOutput("Reset context canceled.");
+                io.systemOutput("Reset workspace canceled.");
             } finally {
                 io.enableUserActionButtons();
             }
