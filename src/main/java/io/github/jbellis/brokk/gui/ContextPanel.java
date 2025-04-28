@@ -718,10 +718,26 @@ public class ContextPanel extends JPanel {
     // ------------------------------------------------------------------
 
     /**
+     * Checks if analyzer is ready for operations, shows error message if not.
+     */
+    private boolean isAnalyzerReady() {
+        var analyzer = contextManager.getProject().getAnalyzerWrapper().getNonBlocking();
+        if (analyzer == null) {
+            chrome.systemOutput("Code Intelligence is still being built. Please wait until completion.");
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Shows the symbol selection dialog and adds usage information for the selected symbol.
      */
-    public Future<?> findSymbolUsageAsync() {
-        return contextManager.submitContextTask("Find Symbol Usage", () -> {
+    public void findSymbolUsageAsync() {
+        if (!isAnalyzerReady()) {
+            return;
+        }
+
+        contextManager.submitContextTask("Find Symbol Usage", () -> {
             try {
                 var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
@@ -745,8 +761,12 @@ public class ContextPanel extends JPanel {
     /**
      * Shows the method selection dialog and adds callers information for the selected method.
      */
-    public Future<?> findMethodCallersAsync() {
-        return contextManager.submitContextTask("Find Method Callers", () -> {
+    public void findMethodCallersAsync() {
+        if (!isAnalyzerReady()) {
+            return;
+        }
+
+        contextManager.submitContextTask("Find Method Callers", () -> {
             try {
                 var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
@@ -758,7 +778,7 @@ public class ContextPanel extends JPanel {
                 if (dialog == null || !dialog.isConfirmed()) { // Check confirmed state
                     chrome.systemOutput("No method selected.");
                 } else {
-                   
+
                     contextManager.callersForMethod(dialog.getSelectedMethod(), dialog.getDepth(), dialog.getCallGraph());
                 }
             } catch (CancellationException cex) {
@@ -771,8 +791,12 @@ public class ContextPanel extends JPanel {
     /**
      * Shows the call graph dialog and adds callees information for the selected method.
      */
-    public Future<?> findMethodCalleesAsync() {
-        return contextManager.submitContextTask("Find Method Callees", () -> {
+    public void findMethodCalleesAsync() {
+        if (!isAnalyzerReady()) {
+            return;
+        }
+
+        contextManager.submitContextTask("Find Method Callees", () -> {
             try {
                 var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
@@ -784,7 +808,7 @@ public class ContextPanel extends JPanel {
                 if (dialog == null || !dialog.isConfirmed() || dialog.getSelectedMethod() == null || dialog.getSelectedMethod().isBlank()) {
                     chrome.systemOutput("No method selected.");
                 } else {
-                   
+
                     contextManager.calleesForMethod(dialog.getSelectedMethod(), dialog.getDepth(), dialog.getCallGraph());
                 }
             } catch (CancellationException cex) {
@@ -1085,7 +1109,9 @@ public class ContextPanel extends JPanel {
 
     private void doSummarizeAction(List<? extends ContextFragment> selectedFragments) {
         var project = contextManager.getProject();
-        var analyzer = project.getAnalyzerWrapper(); // Keep analyzer check
+        if (!isAnalyzerReady()) {
+            return;
+        }
 
         HashSet<ProjectFile> selectedFiles = new HashSet<>();
         HashSet<CodeUnit> selectedClasses = new HashSet<>();
