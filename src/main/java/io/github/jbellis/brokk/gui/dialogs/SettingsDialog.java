@@ -9,11 +9,10 @@ import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import java.awt.*;
+import io.github.jbellis.brokk.gui.components.BrowserLabel;
+
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.net.URI;
 
 public class SettingsDialog extends JDialog {
     private static final Logger logger = LogManager.getLogger(SettingsDialog.class);
@@ -124,32 +123,13 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL; // Make field expand horizontally
         panel.add(brokkKeyField, gbc);
 
-        // Sign-up/login info
+        // Sign-up/login link using BrowserLabel
         gbc.gridx = 1;
         gbc.gridy = row++;
-        var url = "https://brokk.ai";
-        var loginLabel = new JLabel(
-            "<html><i>Sign up or login at <a href=\"" + url + "\">" + url + "</a></i></html>"
-        );
-        loginLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        loginLabel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                try {
-                        Desktop.getDesktop().browse(new URI(url));
-                    } catch (UnsupportedOperationException ex) {
-                        logger.error("Browser not supported: {}", url, ex);
-                        JOptionPane.showMessageDialog(
-                            SettingsDialog.this,
-                            "Sorry, unable to open browser automatically. This is a known problem on WSL.",
-                            "Browser Unsupported",
-                            JOptionPane.WARNING_MESSAGE
-                        );
-                    } catch (Exception ex) {
-                        logger.error("Failed to open URL: {}", url, ex);
-                    }
-            }
-        });
+        var signupUrl = "https://brokk.ai";
+        var loginLabel = new BrowserLabel(signupUrl, "Sign up or get your key at " + signupUrl);
+        // Make it look like the old italic label
+        loginLabel.setFont(loginLabel.getFont().deriveFont(Font.ITALIC));
         panel.add(loginLabel, gbc);
 
         // Reset fill after Brokk Key
@@ -1086,22 +1066,8 @@ public class SettingsDialog extends JDialog {
 
         // --- Signup URL Link ---
         gbc.gridy++;
-        var url = "https://brokk.ai";
-        var loginLabel = new JLabel("<html><a href=\"" + url + "\">" + url + "</a></html>");
-        loginLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        loginLabel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                try {
-                    Desktop.getDesktop().browse(new URI(url));
-                } catch (Exception ex) {
-                    logger.error("Failed to open signup URL: {}", url, ex);
-                    JOptionPane.showMessageDialog(dialog,
-                                                  "Could not open the browser. Please visit:\n" + url,
-                                                  "Browser Error", JOptionPane.WARNING_MESSAGE);
-                }
-            }
-        });
+        var signupUrl = "https://brokk.ai";
+        var loginLabel = new BrowserLabel(signupUrl, signupUrl); // Use new BrowserLabel
         panel.add(loginLabel, gbc);
 
         // --- Key Label ---
