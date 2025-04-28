@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.ContextAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
+import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -71,7 +72,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
     private JPanel overlayPanel; // Panel used to initially disable command input
-    private static ArchitectAgent.ArchitectOptions lastArchitectOptions = ArchitectAgent.ArchitectOptions.DEFAULTS; // Remember last selection
     private boolean lowBalanceNotified = false; // Flag to track if the low balance warning has been shown
 
 
@@ -1003,107 +1003,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     // --- Action Handlers ---
 
-    /**
-     * Shows a dialog to configure Architect tools and returns the chosen options, or null if cancelled.
-     * Remembers the last selection for the current session.
-     *
-     * @throws InterruptedException if the *calling* thread is interrupted while waiting for the dialog.
-     */
-    private ArchitectAgent.ArchitectOptions showArchitectOptionsDialog() throws InterruptedException
-    {
-        // Use last options as default for this session
-        var currentOptions = lastArchitectOptions;
-        // Use AtomicReference to pass result from EDT back to calling thread
-        var result = new AtomicReference<ArchitectAgent.ArchitectOptions>();
-
-        // Initial checks must happen *before* switching to EDT
-        var contextManager = chrome.getContextManager();
-        var isCpg = contextManager.getProject().getAnalyzerWrapper().isCpg();
-
-        SwingUtil.runOnEDT(() -> {
-            JDialog dialog = new JDialog(chrome.getFrame(), "Architect Tools", true); // Modal dialog, requires EDT
-            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-            dialog.setLayout(new BorderLayout(10, 10));
-
-            // --- Main Panel for Checkboxes ---
-            JPanel mainPanel = new JPanel();
-            mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-            mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-            JLabel explanationLabel = new JLabel("Select the sub-agents and tools that the Architect agent will have access to:");
-            explanationLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-            mainPanel.add(explanationLabel);
-
-            // Helper to create checkbox with description
-            java.util.function.BiFunction<String, String, JCheckBox> createCheckbox = (text, description) -> {
-                JCheckBox cb = new JCheckBox("<html>" + text + "<br><i><font size='-2'>" + description + "</font></i></html>");
-                cb.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0)); // Spacing below checkbox
-                mainPanel.add(cb);
-                return cb;
-            };
-
-            // Create checkboxes for each option
-            var codeCb = createCheckbox.apply("Code Agent", "Allow invoking the Code Agent to modify files");
-            codeCb.setSelected(currentOptions.includeCodeAgent());
-
-            var contextCb = createCheckbox.apply("Context Agent", "Suggest relevant workspace additions based on the goal");
-            contextCb.setSelected(currentOptions.includeContextAgent());
-
-            var validationCb = createCheckbox.apply("Validation Agent", "Suggest relevant test files for Code Agent");
-            validationCb.setSelected(currentOptions.includeValidationAgent());
-
-            var analyzerCb = createCheckbox.apply("Code Analyzer Tools", "Allow direct querying of code structure (e.g., find usages, call graphs)");
-            analyzerCb.setSelected(currentOptions.includeAnalyzerTools());
-            analyzerCb.setEnabled(isCpg); // Disable if not a CPG
-            if (!isCpg) {
-                analyzerCb.setToolTipText("Code Analyzer tools require a Code Property Graph (CPG) build.");
-            }
-
-            var workspaceCb = createCheckbox.apply("Workspace Management Tools", "Allow adding/removing files, URLs, or text to/from the workspace");
-            workspaceCb.setSelected(currentOptions.includeWorkspaceTools());
-
-            var searchCb = createCheckbox.apply("Search Agent", "Allow invoking the Search Agent to find information beyond the current workspace");
-            searchCb.setSelected(currentOptions.includeSearchAgent());
-
-            dialog.add(new JScrollPane(mainPanel), BorderLayout.CENTER); // Add scroll pane for potentially many options
-
-            // --- Button Panel ---
-            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            JButton okButton = new JButton("OK");
-            JButton cancelButton = new JButton("Cancel");
-            buttonPanel.add(okButton);
-            buttonPanel.add(cancelButton);
-            dialog.add(buttonPanel, BorderLayout.SOUTH);
-
-            // --- Actions ---
-            okButton.addActionListener(e -> {
-                var selectedOptions = new ArchitectAgent.ArchitectOptions(
-                        contextCb.isSelected(),
-                        validationCb.isSelected(),
-                        isCpg && analyzerCb.isSelected(), // Force false if not CPG
-                        workspaceCb.isSelected(),
-                        codeCb.isSelected(),
-                        searchCb.isSelected()
-                );
-                lastArchitectOptions = selectedOptions; // Remember for next time this session
-                result.set(selectedOptions);
-                dialog.dispose();
-            });
-
-            cancelButton.addActionListener(e -> {
-                result.set(null); // Indicate cancellation
-                dialog.dispose();
-            });
-
-            dialog.pack();
-            dialog.setLocationRelativeTo(chrome.getFrame());
-            dialog.setVisible(true);
-        });
-
-        return result.get(); // Return selected options or null from the AtomicReference
-    }
-
-
     public void runArchitectCommand() {
         var goal = commandInputField.getText();
         if (goal.isBlank()) {
@@ -1135,10 +1034,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Submit the action. The dialog and core logic run in the background.
         contextManager.submitAction("Architect", goal, () -> {
-            ArchitectAgent.ArchitectOptions options = null;
+            ArchitectAgent.ArchitectOptions options = null; // Initialize to null
             try {
-                // Show options dialog within the background task
-                options = showArchitectOptionsDialog();
+                // Show options dialog within the background task using the new static method
+                options = ArchitectOptionsDialog.showDialog(chrome, contextManager);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt(); // Re-interrupt the thread
                 logger.warn("Architect options dialog interrupted", e);
