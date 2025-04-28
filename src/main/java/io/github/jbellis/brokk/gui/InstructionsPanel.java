@@ -755,7 +755,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 var agent = new ContextAgent(contextManager, model, goal, false);
                 var recommendations = agent.getRecommendations(10); // Limit quick suggestions
 
-                var fileRefs = recommendations.stream()
+                var fileRefs = recommendations.fragments().stream()
                         .flatMap(f -> f.files(contextManager.getProject()).stream())
                         .distinct()
                         .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
