@@ -1029,7 +1029,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
             mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-            JLabel explanationLabel = new JLabel("Select the tools that the Architect agent will have access to:");
+            JLabel explanationLabel = new JLabel("Select the sub-agents and tools that the Architect agent will have access to:");
             explanationLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
             mainPanel.add(explanationLabel);
 
@@ -1042,23 +1042,26 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             };
 
             // Create checkboxes for each option
-            var contextCb = createCheckbox.apply("Context Agent", "Suggest relevant workspace additions based on the goal (runs first).");
+            var codeCb = createCheckbox.apply("Code Agent", "Allow invoking the Code Agent to modify files");
+            codeCb.setSelected(currentOptions.includeCodeAgent());
+
+            var contextCb = createCheckbox.apply("Context Agent", "Suggest relevant workspace additions based on the goal");
             contextCb.setSelected(currentOptions.includeContextAgent());
-            var validationCb = createCheckbox.apply("Validation Agent", "Suggest relevant test files before calling Code Agent.");
+
+            var validationCb = createCheckbox.apply("Validation Agent", "Suggest relevant test files for Code Agent");
             validationCb.setSelected(currentOptions.includeValidationAgent());
 
-            var analyzerCb = createCheckbox.apply("Code Analyzer Tools", "Allow direct querying of code structure (e.g., find usages, call graphs).");
+            var analyzerCb = createCheckbox.apply("Code Analyzer Tools", "Allow direct querying of code structure (e.g., find usages, call graphs)");
             analyzerCb.setSelected(currentOptions.includeAnalyzerTools());
             analyzerCb.setEnabled(isCpg); // Disable if not a CPG
             if (!isCpg) {
                 analyzerCb.setToolTipText("Code Analyzer tools require a Code Property Graph (CPG) build.");
             }
 
-            var workspaceCb = createCheckbox.apply("Workspace Management Tools", "Allow adding/removing files, URLs, or text to/from the workspace.");
+            var workspaceCb = createCheckbox.apply("Workspace Management Tools", "Allow adding/removing files, URLs, or text to/from the workspace");
             workspaceCb.setSelected(currentOptions.includeWorkspaceTools());
-            var codeCb = createCheckbox.apply("Code Agent", "Allow invoking the Code Agent to modify files.");
-            codeCb.setSelected(currentOptions.includeCodeAgent());
-            var searchCb = createCheckbox.apply("Search Agent", "Allow invoking the Search Agent to find information beyond the current workspace.");
+
+            var searchCb = createCheckbox.apply("Search Agent", "Allow invoking the Search Agent to find information beyond the current workspace");
             searchCb.setSelected(currentOptions.includeSearchAgent());
 
             dialog.add(new JScrollPane(mainPanel), BorderLayout.CENTER); // Add scroll pane for potentially many options
