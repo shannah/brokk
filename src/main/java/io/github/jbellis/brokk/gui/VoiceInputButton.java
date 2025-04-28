@@ -97,22 +97,10 @@ public class VoiceInputButton extends JButton {
         // Track recording state
         putClientProperty("isRecording", false);
         
-        // Configure the toggle behavior
-        addActionListener(e -> {
-            boolean isRecording = (boolean)getClientProperty("isRecording");
-            if (isRecording) {
-                // If recording, stop and transcribe
-                stopMicCaptureAndTranscribe();
-                putClientProperty("isRecording", false);
-            } else {
-                // Otherwise start recording
-                startMicCapture();
-                putClientProperty("isRecording", true);
-            }
-        });
 
-        // Enable the button only if a context manager is available (needed for transcription)
-        model.setEnabled(contextManager != null);
+        // Disable button for now - voice input coming next release
+        setEnabled(false);
+        setToolTipText("Voice input coming next release!");
     }
 
     /**
