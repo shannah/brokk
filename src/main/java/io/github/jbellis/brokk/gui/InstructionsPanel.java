@@ -1239,22 +1239,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     /**
-     * Sets the enabled state for both the command input field and the Deep Scan button.
+     * Sets the enabled state for both the command input field and the Deep Scan button
+     * when the user clicks on the input field.
      *
      * @param enabled true to enable, false to disable.
      */
-    /*package*/ void setCommandInputAndDeepScanEnabled(boolean enabled) {
+    void setCommandInputAndDeepScanEnabled(boolean enabled) {
         commandInputField.setEnabled(enabled);
         this.deepScanButton.setEnabled(enabled);
-    }
-
-    // Provide access to the command input field for the new dialog class
-    /*package*/ JTextArea getCommandInputField() {
-        return commandInputField;
-    }
-
-    // Provide access to the deep scan button for the new dialog class
-    /*package*/ JButton getDeepScanButton() {
-        return deepScanButton;
     }
 }

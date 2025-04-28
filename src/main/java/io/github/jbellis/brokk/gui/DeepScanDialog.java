@@ -46,7 +46,7 @@ class DeepScanDialog {
         }
 
         // Disable input and deep scan button while scanning
-        chrome.getInstructionsPanel().setCommandInputAndDeepScanEnabled(false);
+        chrome.disableUserActionButtons();
         chrome.systemOutput("Starting Deep Scan");
 
         // ContextAgent
@@ -135,7 +135,7 @@ class DeepScanDialog {
                 chrome.systemOutput("Deep Scan cancelled");
             } finally {
                 // Re-enable input components after task completion, error, or interruption
-                SwingUtilities.invokeLater(() -> chrome.getInstructionsPanel().setCommandInputAndDeepScanEnabled(true));
+                SwingUtilities.invokeLater(chrome::enableUserActionButtons);
             }
         });
     }
