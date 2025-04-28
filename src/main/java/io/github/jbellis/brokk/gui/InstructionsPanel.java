@@ -75,6 +75,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final AtomicReference<Future<?>> currentSuggestionTask = new AtomicReference<>(); // Holds the running suggestion task
     private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false);
     private JPanel overlayPanel; // Panel used to initially disable command input
+    private static ArchitectAgent.ArchitectOptions lastArchitectOptions = ArchitectAgent.ArchitectOptions.DEFAULTS; // Remember last selection
+
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2));
@@ -436,26 +438,26 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // ----- wrap in a scroll-pane and clamp its height -------------------------------------
         int rowHeight = referenceFileTable.getRowHeight();
         int fixedHeight = rowHeight + 2; // +2 for a tiny margin
-    
+
         var tableScrollPane = new JScrollPane(referenceFileTable);
         tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
         tableScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
-    
+
         // Create a container panel for the button and the table
         var suggestionAreaPanel = new JPanel(new BorderLayout(5, 0)); // 5px horizontal gap
         suggestionAreaPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0)); // Add vertical padding
-    
+
         // Add the Think button to the left
         suggestionAreaPanel.add(thinkButton, BorderLayout.WEST);
-    
+
         // Add the table scroll pane to the center (takes remaining space)
         suggestionAreaPanel.add(tableScrollPane, BorderLayout.CENTER);
-    
+
         // Apply height constraints to the container panel
         suggestionAreaPanel.setPreferredSize(new Dimension(600, fixedHeight));
         suggestionAreaPanel.setMinimumSize(new Dimension(100, fixedHeight));
         suggestionAreaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, fixedHeight));
-    
+
         // Insert the container panel beneath the command-input area (index 1)
         centerPanel.add(suggestionAreaPanel, 1);
     }
@@ -522,11 +524,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
         actionButtonsPanel.add(agentButton);
         actionButtonsPanel.add(codeButton);
-            actionButtonsPanel.add(askButton);
-            actionButtonsPanel.add(searchButton);
-            actionButtonsPanel.add(runButton);
-            // thinkButton is moved next to the reference table
-            return actionButtonsPanel;
+        actionButtonsPanel.add(askButton);
+        actionButtonsPanel.add(searchButton);
+        actionButtonsPanel.add(runButton);
+        // thinkButton is moved next to the reference table
+        return actionButtonsPanel;
     }
 
     /**
@@ -929,12 +931,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Executes the core logic for the "Agent" command.
      * This runs inside the Runnable passed to contextManager.submitAction.
      *
-     * @param goal The initial user instruction passed to the agent.
+     * @param goal    The initial user instruction passed to the agent.
+     * @param options The configured options for the agent's tools.
      */
-    private void executeAgentCommand(StreamingChatLanguageModel model, String goal) {
+    private void executeAgentCommand(StreamingChatLanguageModel model, String goal, ArchitectAgent.ArchitectOptions options) {
         var contextManager = chrome.getContextManager();
         try {
-            var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal);
+            // Pass options to the constructor
+            var agent = new ArchitectAgent(contextManager, model, contextManager.getToolRegistry(), goal, options);
             agent.execute();
             chrome.systemOutput("Architect complete!");
         } catch (InterruptedException e) {
@@ -998,6 +1002,104 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     // --- Action Handlers ---
 
+    /**
+     * Shows a dialog to configure Architect tools and returns the chosen options, or null if cancelled.
+     * Remembers the last selection for the current session.
+     *
+     * @throws InterruptedException if the *calling* thread is interrupted while waiting for the dialog.
+     */
+    private ArchitectAgent.ArchitectOptions showArchitectOptionsDialog() throws InterruptedException
+    {
+        // Use last options as default for this session
+        var currentOptions = lastArchitectOptions;
+        // Use AtomicReference to pass result from EDT back to calling thread
+        var result = new AtomicReference<ArchitectAgent.ArchitectOptions>();
+
+        // Initial checks must happen *before* switching to EDT
+        var contextManager = chrome.getContextManager();
+        var isCpg = contextManager.getProject().getAnalyzerWrapper().isCpg();
+
+        SwingUtil.runOnEDT(() -> {
+            JDialog dialog = new JDialog(chrome.getFrame(), "Architect Tools", true); // Modal dialog, requires EDT
+            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+            dialog.setLayout(new BorderLayout(10, 10));
+
+            // --- Main Panel for Checkboxes ---
+            JPanel mainPanel = new JPanel();
+            mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
+            mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+            JLabel explanationLabel = new JLabel("Select the tools that the Architect agent will have access to:");
+            explanationLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+            mainPanel.add(explanationLabel);
+
+            // Helper to create checkbox with description
+            java.util.function.BiFunction<String, String, JCheckBox> createCheckbox = (text, description) -> {
+                JCheckBox cb = new JCheckBox("<html>" + text + "<br><i><font size='-2'>" + description + "</font></i></html>");
+                cb.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0)); // Spacing below checkbox
+                mainPanel.add(cb);
+                return cb;
+            };
+
+            // Create checkboxes for each option
+            var contextCb = createCheckbox.apply("Context Agent", "Suggest relevant workspace additions based on the goal (runs first).");
+            contextCb.setSelected(currentOptions.includeContextAgent());
+            var validationCb = createCheckbox.apply("Validation Agent", "Suggest relevant test files before calling Code Agent.");
+            validationCb.setSelected(currentOptions.includeValidationAgent());
+
+            var analyzerCb = createCheckbox.apply("Code Analyzer Tools", "Allow direct querying of code structure (e.g., find usages, call graphs).");
+            analyzerCb.setSelected(currentOptions.includeAnalyzerTools());
+            analyzerCb.setEnabled(isCpg); // Disable if not a CPG
+            if (!isCpg) {
+                analyzerCb.setToolTipText("Code Analyzer tools require a Code Property Graph (CPG) build.");
+            }
+
+            var workspaceCb = createCheckbox.apply("Workspace Management Tools", "Allow adding/removing files, URLs, or text to/from the workspace.");
+            workspaceCb.setSelected(currentOptions.includeWorkspaceTools());
+            var codeCb = createCheckbox.apply("Code Agent", "Allow invoking the Code Agent to modify files.");
+            codeCb.setSelected(currentOptions.includeCodeAgent());
+            var searchCb = createCheckbox.apply("Search Agent", "Allow invoking the Search Agent to find information beyond the current workspace.");
+            searchCb.setSelected(currentOptions.includeSearchAgent());
+
+            dialog.add(new JScrollPane(mainPanel), BorderLayout.CENTER); // Add scroll pane for potentially many options
+
+            // --- Button Panel ---
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            JButton okButton = new JButton("OK");
+            JButton cancelButton = new JButton("Cancel");
+            buttonPanel.add(okButton);
+            buttonPanel.add(cancelButton);
+            dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+            // --- Actions ---
+            okButton.addActionListener(e -> {
+                var selectedOptions = new ArchitectAgent.ArchitectOptions(
+                        contextCb.isSelected(),
+                        validationCb.isSelected(),
+                        isCpg && analyzerCb.isSelected(), // Force false if not CPG
+                        workspaceCb.isSelected(),
+                        codeCb.isSelected(),
+                        searchCb.isSelected()
+                );
+                lastArchitectOptions = selectedOptions; // Remember for next time this session
+                result.set(selectedOptions);
+                dialog.dispose();
+            });
+
+            cancelButton.addActionListener(e -> {
+                result.set(null); // Indicate cancellation
+                dialog.dispose();
+            });
+
+            dialog.pack();
+            dialog.setLocationRelativeTo(chrome.getFrame());
+            dialog.setVisible(true);
+        });
+
+        return result.get(); // Return selected options or null from the AtomicReference
+    }
+
+
     public void runArchitectCommand() {
         var goal = commandInputField.getText();
         if (goal.isBlank()) {
@@ -1022,12 +1124,33 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
         }
 
+        // Disable buttons immediately to provide feedback
         disableButtons();
         chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
-        // Submit the action, calling the private execute method inside the lambda, passing the goal
-        contextManager.submitAction("Architect", goal, () -> executeAgentCommand(architectModel, goal));
+        // Submit the action. The dialog and core logic run in the background.
+        contextManager.submitAction("Architect", goal, () -> {
+            ArchitectAgent.ArchitectOptions options = null;
+            try {
+                // Show options dialog within the background task
+                options = showArchitectOptionsDialog();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // Re-interrupt the thread
+                logger.warn("Architect options dialog interrupted", e);
+                // options remains null, handled below
+            }
+
+            if (options == null) {
+                // User cancelled or dialog was interrupted
+                chrome.systemOutput("Architect command cancelled during option selection.");
+                // Re-enable buttons as the task is effectively aborted
+                SwingUtilities.invokeLater(this::enableButtons);
+                return; // Exit the lambda
+            }
+            // Proceed with execution using the selected options
+            executeAgentCommand(architectModel, goal, options);
+        });
     }
 
     // Methods for running commands. These prepare the input and model, then delegate
@@ -1393,6 +1516,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     /**
      * Sets the enabled state for both the command input field and the think button.
+     *
      * @param enabled true to enable, false to disable.
      */
     private void setCommandInputAndThinkEnabled(boolean enabled) {
