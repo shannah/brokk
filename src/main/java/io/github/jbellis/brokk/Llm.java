@@ -422,6 +422,11 @@ public class Llm {
                     throw new IllegalArgumentException("No 'tool_calls' found in JSON");
                 }
 
+                if (echo) {
+                    // output the thinking tool's contents
+                    contextManager.getIo().llmOutput(parseResult.chatResponse.aiMessage().text(), ChatMessageType.AI);
+                }
+
                 // we got tool calls, or they're optional -- we're done
                 finalResult = parseResult;
                 break;
@@ -745,12 +750,14 @@ public class Llm {
             throw new IllegalArgumentException("Response does not contain a 'tool_calls' array");
         }
 
-        // Transform json into list of tool execution requests
+        // Transform json into tool execution requests, special-casing "think" calls
         var toolExecutionRequests = new ArrayList<ToolExecutionRequest>();
+        var thinkReasoning = new ArrayList<String>();
+
         for (int i = 0; i < toolCallsNode.size(); i++) {
             JsonNode toolCall = toolCallsNode.get(i);
             if (!toolCall.has("name") || !toolCall.has("arguments")) {
-                throw new IllegalArgumentException("Tool call object is missing 'name' or 'arguments' field");
+                throw new IllegalArgumentException("Tool call object is missing 'name' or 'arguments' field at index " + i);
             }
 
             String toolName = toolCall.get("name").asText();
@@ -759,21 +766,38 @@ public class Llm {
             if (!arguments.isObject()) {
                 throw new IllegalArgumentException("tool_calls[" + i + "] provided non-object arguments " + arguments);
             }
-            String argsStr = arguments.toString();
+            String argsStr = arguments.toString(); // Preserve raw JSON for execution
+
+            if ("think".equals(toolName)) {
+                // Extract reasoning from the "think" tool
+                if (!arguments.has("reasoning") || !arguments.get("reasoning").isTextual()) {
+                    throw new IllegalArgumentException("Found 'think' tool call without a textual 'reasoning' argument at index " + i);
+                }
+                thinkReasoning.add(arguments.get("reasoning").asText());
+            }
             var toolExecutionRequest = ToolExecutionRequest.builder()
                     .id(String.valueOf(i))
                     .name(toolName)
                     .arguments(argsStr)
                     .build();
-
             toolExecutionRequests.add(toolExecutionRequest);
         }
-
         logger.trace("Generated tool execution requests: {}", toolExecutionRequests);
 
-        // Create a properly formatted AiMessage with tool execution requests
-        var aiMessage = new AiMessage(Messages.EMULATED_TOOL_CALLS, toolExecutionRequests);
+        String aiMessageText;
+        if (thinkReasoning.isEmpty()) {
+            aiMessageText = Messages.EMULATED_TOOL_CALLS;
+        } else {
+            aiMessageText = String.join("\n\n", thinkReasoning); // Merged reasoning becomes the message text
+        }
+
+        // Create a properly formatted AiMessage
+        var aiMessage = toolExecutionRequests.isEmpty()
+                ? AiMessage.from(aiMessageText)
+                : new AiMessage(aiMessageText, toolExecutionRequests);
+
         var cr = ChatResponse.builder().aiMessage(aiMessage).build();
+        // Pass the original raw response alongside the parsed one
         return new StreamingResult(cr, result.originalResponse, null);
     }
 
