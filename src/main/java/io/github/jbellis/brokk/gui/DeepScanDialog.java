@@ -220,8 +220,9 @@ class DeepScanDialog {
         String[] testOptions = {OMIT, EDIT, READ_ONLY}; // No SUMMARIZE for tests
 
         // Helper function to create a fragment row panel
+// Helper function to create a fragment row panel
         BiFunction<ContextFragment, String[], JPanel> createFragmentRow = (fragment, options) -> {
-            JPanel rowPanel = new JPanel(new BorderLayout(5, 0)); // Use BorderLayout for better alignment
+            JPanel rowPanel = new JPanel(new BorderLayout(5, 0));     // Use BorderLayout for better alignment
             rowPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0)); // Padding between rows
 
             // Get the display name and tooltip (full path) from the fragment's file
@@ -231,10 +232,10 @@ class DeepScanDialog {
                     .orElse(null); // Should not be null here based on earlier filtering
 
             String fileName = (pf != null) ? pf.getFileName() : fragment.shortDescription();
-            String toolTip = (pf != null) ? pf.toString() : fragment.description();
+            String toolTip  = (pf != null) ? pf.toString()    : fragment.description();
 
             JLabel fileLabel = new JLabel(fileName);
-            fileLabel.setToolTipText(toolTip); // Show full path or description in tooltip
+            fileLabel.setToolTipText(toolTip);                           // Show full path or description in tooltip
             fileLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 10)); // Right padding for label
 
             JComboBox<String> comboBox = new JComboBox<>(options);
@@ -243,25 +244,26 @@ class DeepScanDialog {
             if (fragment instanceof ContextFragment.SkeletonFragment) {
                 comboBox.setSelectedItem(SUMMARIZE);
             } else if (fragment instanceof ContextFragment.ProjectPathFragment) {
-                // Default to EDIT for both project and test files if PathFragment
-                comboBox.setSelectedItem(EDIT);
+                comboBox.setSelectedItem(EDIT);                          // Default to EDIT for both project & tests
             } else {
-                comboBox.setSelectedItem(OMIT); // Default for any other unexpected type
+                comboBox.setSelectedItem(OMIT);
             }
 
             if (!hasGit && EDIT.equals(comboBox.getSelectedItem())) {
-                // If default is Edit but no Git, maybe default to Read-only? Or keep Edit and show tooltip?
-                // Let's keep Edit default but add tooltip warning.
                 comboBox.setToolTipText("'" + EDIT + "' option requires a Git repository. Will be ignored if selected.");
             } else if (!hasGit) {
                 comboBox.setToolTipText("'" + EDIT + "' option requires a Git repository");
             }
 
-            // Set preferred width for the combo box
+            // Fix combo-box width & keep row height compact
             comboBox.setPreferredSize(new Dimension(120, comboBox.getPreferredSize().height));
 
             rowPanel.add(fileLabel, BorderLayout.CENTER);
             rowPanel.add(comboBox, BorderLayout.EAST);
+
+            // Prevent individual rows from “puffing up” to fill extra vertical space
+            Dimension pref = rowPanel.getPreferredSize();
+            rowPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
 
             return rowPanel;
         };
