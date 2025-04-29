@@ -52,10 +52,10 @@ class DeepScanDialog {
         // ContextAgent
         Future<ContextAgent.RecommendationResult> contextFuture = contextManager.submitBackgroundTask("Deep Scan: ContextAgent", () -> {
             logger.debug("Deep Scan: Running ContextAgent...");
-            var model = contextManager.getAskModel(); // Use ask model for quality context
+            var model = contextManager.getEditModel();
             // Use full workspace context for deep scan
             var agent = new ContextAgent(contextManager, model, goal, true);
-            var recommendations = agent.getRecommendations(); // Increase limit for deep scan
+            var recommendations = agent.getRecommendations();
             logger.debug("Deep Scan: ContextAgent proposed {} fragments with reasoning: {}",
                          recommendations.fragments().size(), recommendations.reasoning());
             return recommendations;
@@ -65,7 +65,7 @@ class DeepScanDialog {
         Future<List<ProjectFile>> validationFuture = contextManager.submitBackgroundTask("Deep Scan: ValidationAgent", () -> {
             logger.debug("Deep Scan: Running ValidationAgent...");
             var agent = new ValidationAgent(contextManager);
-            var relevantTestResults = agent.execute(goal); // ValidationAgent finds relevant tests
+            var relevantTestResults = agent.execute(goal);
             var files = relevantTestResults.stream()
                     .distinct()
                     .toList();
