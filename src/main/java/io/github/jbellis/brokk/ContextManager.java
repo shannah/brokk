@@ -186,7 +186,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             @Override
             public void onBlocked() {
                 if (Thread.currentThread() == userActionThread.get()) {
-                    SwingUtilities.invokeLater(() -> io.actionOutput("Waiting for Code Intelligence"));
+                    io.actionOutput("Waiting for Code Intelligence");
                 }
             }
 
@@ -202,7 +202,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         );
                     });
                 } else {
-                    SwingUtilities.invokeLater(() -> io.systemOutput(msg));
+                    io.systemOutput(msg);
                 }
             }
 
