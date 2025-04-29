@@ -188,11 +188,11 @@ public interface ContextFragment extends Serializable {
     /**
      * Represents a specific revision of a ProjectFile from Git history.
      */
-    record GitFileFragment(ProjectFile file, String revision, int id) implements PathFragment {
+    record GitFileFragment(ProjectFile file, String revision, String content, int id) implements PathFragment {
         private static final long serialVersionUID = 2L;
 
-        public GitFileFragment(ProjectFile file, String revision) {
-            this(file, revision, NEXT_ID.getAndIncrement());
+        public GitFileFragment(ProjectFile file, String revision, String content) {
+            this(file, revision, content, NEXT_ID.getAndIncrement());
         }
 
         private String shortRevision() {
@@ -216,6 +216,11 @@ public interface ContextFragment extends Serializable {
         public Set<CodeUnit> sources(IProject project) {
             // Treat historical content as potentially different from current; don't claim sources
             return Set.of();
+        }
+
+        @Override
+        public String text() {
+            return content;
         }
 
         @Override
