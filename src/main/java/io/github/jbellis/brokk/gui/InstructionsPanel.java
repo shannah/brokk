@@ -87,12 +87,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Initialize components
         commandInputField = buildCommandInputField(); // Build first to add listener
-        micButton = new VoiceInputButton(
-                commandInputField,
-                chrome.getContextManager(),
-                () -> chrome.actionOutput("Recording"),
-                chrome::toolError
-        );
+        micButton = new VoiceInputButton(commandInputField, chrome.getContextManager(), () -> {
+            activateCommandInput();
+            chrome.actionOutput("Recording");
+        },
+                                         chrome::toolError);
         systemArea = new JTextArea();
         systemScrollPane = buildSystemMessagesArea();
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
@@ -271,13 +270,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         overlayPanel.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
-                overlayPanel.setVisible(false); // Hide the overlay
-                setCommandInputAndDeepScanEnabled(true); // Enable input and deep scan button
-                // Clear placeholder only if it's still present
-                if (commandInputField.getText().equals(PLACEHOLDER_TEXT)) {
-                    clearCommandInput();
-                }
-                commandInputField.requestFocusInWindow(); // Give it focus
+                activateCommandInput();
             }
         });
 
@@ -1240,8 +1233,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     /**
-     * Sets the enabled state for both the command input field and the Deep Scan button
-     * when the user clicks on the input field.
+     * Hides the command input overlay, enables the input field and deep scan button,
+     * clears the placeholder text if present, and requests focus for the input field.
+     */
+    private void activateCommandInput() {
+        overlayPanel.setVisible(false); // Hide the overlay
+        setCommandInputAndDeepScanEnabled(true); // Enable input and deep scan button
+        // Clear placeholder only if it's still present
+        if (commandInputField.getText().equals(PLACEHOLDER_TEXT)) {
+            clearCommandInput();
+        }
+        commandInputField.requestFocusInWindow(); // Give it focus
+    }
+
+    /**
+     * Sets the enabled state for both the command input field and the Deep Scan button.
      *
      * @param enabled true to enable, false to disable.
      */

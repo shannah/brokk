@@ -481,8 +481,8 @@ public class PreviewTextPanel extends JPanel {
                 editArea,
                 contextManager,
                 () -> { /* no action on record start */ },
-                error -> { /* no special error handling */ },
-                symbolsFuture // Pass the Future<Set<String>>
+                symbolsFuture, error -> { /* no special error handling */ }
+                // Pass the Future<Set<String>>
         );
 
         // infoLabel at row=0
