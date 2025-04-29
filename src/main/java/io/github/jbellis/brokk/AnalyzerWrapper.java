@@ -352,6 +352,10 @@ public class AnalyzerWrapper implements AutoCloseable {
      * @return null if analyzer is not ready yet
      */
     public IAnalyzer getNonBlocking() {
+        if (currentAnalyzer != null) {
+            return currentAnalyzer;
+        }
+
         try {
             // Try to get with zero timeout - returns null if not done
             return future.get(0, TimeUnit.MILLISECONDS);
