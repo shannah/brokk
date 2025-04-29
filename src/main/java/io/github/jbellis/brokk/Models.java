@@ -166,14 +166,21 @@ public final class Models {
             });
         }
 
-        // No models? LiteLLM must be down. Add a placeholder.
         if (modelLocations.isEmpty()) {
+            // No models? LiteLLM must be down. Add a placeholder.
+            logger.warn("No chat models available, cannot set defaults or override.");
             modelLocations.put(UNAVAILABLE, "not_a_model");
             loadedModels.put(UNAVAILABLE, new UnavailableStreamingModel());
+        } else {
+            // Check configured models against available ones and temporarily override if needed
+            // Choose the first available chat model as the default fallback
+            var availableNames = getAvailableModels().keySet();
+            var defaultModelName = availableNames.stream().findFirst().orElse(UNAVAILABLE);
+             var warnings = project.overrideMissingModels(availableNames, defaultModelName);
+             warnings.forEach(logger::debug);
         }
 
         // these should always be available
-        // Initialize default models with DEFAULT reasoning level
         quickModel = get("gemini-2.0-flash", Project.ReasoningLevel.DEFAULT);
         if (quickModel == null) {
             quickModel = new UnavailableStreamingModel();
@@ -183,7 +190,7 @@ public final class Models {
             quickestModel = new UnavailableStreamingModel();
         }
 
-        // STT model will be initialized after checking available models
+        // STT model initialization
         var sttLocation = modelInfoMap.entrySet().stream()
                 .filter(entry -> "audio_transcription".equals(entry.getValue().get("mode")))
                 .map(entry -> entry.getKey())
