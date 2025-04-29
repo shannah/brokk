@@ -267,12 +267,13 @@ public class ArchitectAgent {
             if (options.includeAnalyzerTools()) {
                 toolSpecs.addAll(toolRegistry.getRegisteredTools(analyzerTools));
             }
-            var genericTools = List.of("addFilesToWorkspace",
-                                       "addUrlContentsToWorkspace",
-                                       "addTextToWorkspace",
-                                       "dropWorkspaceFragments");
+            var workspaceTools = List.of("addFilesToWorkspace",
+                                         "addFileSummariesToWorkspace",
+                                         "addUrlContentsToWorkspace",
+                                         "addTextToWorkspace",
+                                         "dropWorkspaceFragments");
             if (options.includeWorkspaceTools()) {
-                toolSpecs.addAll(toolRegistry.getRegisteredTools(genericTools));
+                toolSpecs.addAll(toolRegistry.getRegisteredTools(workspaceTools));
             }
             if (options.includeCodeAgent()) {
                 toolSpecs.addAll(toolRegistry.getTools(this, List.of("callCodeAgent")));

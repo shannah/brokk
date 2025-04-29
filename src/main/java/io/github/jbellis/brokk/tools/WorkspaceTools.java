@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.tools;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import io.github.jbellis.brokk.AnalyzerUtil;
+import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
@@ -19,6 +20,7 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -308,6 +310,56 @@ public class WorkspaceTools {
         return "Added summaries for %d class(es): [%s]".formatted(coalescedSkeletons.size(), addedClasses);
     }
 
+    @Tool(value = """
+    Retrieves summaries (fields and method signatures) for all classes defined within specified project files and adds them to the Workspace.
+    Supports glob patterns: '*' matches files in a single directory, '**' matches files recursively.
+    Faster and more efficient than reading entire files when you just need the API definitions.
+    (But if you don't know where what you want is located, you should use Search Agent instead.)
+    """)
+    public String addFileSummariesToWorkspace(
+            @P("List of file paths relative to the project root. Supports glob patterns (* for single directory, ** for recursive). E.g., ['src/main/java/com/example/util/*.java', 'tests/foo/**.py']")
+            List<String> filePaths
+    ) {
+        assert getAnalyzer().isCpg() : "Cannot add summaries: Code analyzer is not available.";
+        if (filePaths == null || filePaths.isEmpty()) {
+            return "Cannot add summaries: file paths list is empty";
+        }
+
+        var analyzer = getAnalyzer();
+        var project = contextManager.getProject();
+        List<ProjectFile> projectFiles = filePaths.stream()
+                .flatMap(pattern -> Completions.expandPath(project, pattern).stream())
+                .filter(ProjectFile.class::isInstance)
+                .map(ProjectFile.class::cast)
+                .distinct()
+                .toList();
+
+        if (projectFiles.isEmpty()) {
+            return "No project files found matching the provided patterns: " + String.join(", ", filePaths);
+        }
+
+        Map<CodeUnit, String> allSkeletons = new HashMap<>();
+        List<String> filesProcessed = new ArrayList<>();
+        for (var file : projectFiles) {
+            var skeletonsInFile = analyzer.getSkeletons(file);
+            if (!skeletonsInFile.isEmpty()) {
+                allSkeletons.putAll(skeletonsInFile);
+                filesProcessed.add(file.toString());
+            } else {
+                logger.debug("No skeletons found in file: {}", file);
+            }
+        }
+
+        if (allSkeletons.isEmpty()) {
+            return "No class summaries found in the matched files: " + String.join(", ", filesProcessed.stream().sorted().toList());
+        }
+
+        var fragment = new ContextFragment.SkeletonFragment(allSkeletons);
+        contextManager.addVirtualFragment(fragment);
+
+        String addedClasses = allSkeletons.keySet().stream().map(CodeUnit::identifier).sorted().collect(Collectors.joining(", "));
+        return "Added summaries for " + addedClasses;
+    }
 
     @Tool(value = """
     Retrieves the full source code of specific methods and adds to the Workspace each as a separate read-only text fragment.

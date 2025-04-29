@@ -473,12 +473,11 @@ public class SearchAgent {
             var arguments = historyEntry.argumentsMap(); // Use helper from ToolHistoryEntry
 
             return switch (request.name()) { // Use request.name()
-                case "searchSymbols", "searchSubstrings", "searchFilenames" ->
-                        formatListParameter(arguments, "patterns");
+                case "searchSymbols", "searchSubstrings", "searchFilenames" -> formatListParameter(arguments, "patterns");
                 case "getFileContents" -> formatListParameter(arguments, "filenames");
+                case "getFileSummaries" -> formatListParameter(arguments, "filePaths");
                 case "getUsages" -> formatListParameter(arguments, "symbols");
-                case "getRelatedClasses", "getClassSkeletons",
-                     "getClassSources" -> formatListParameter(arguments, "classNames");
+                case "getRelatedClasses", "getClassSkeletons", "getClassSources" -> formatListParameter(arguments, "classNames");
                 case "getMethodSources" -> formatListParameter(arguments, "methodNames");
                 case "getCallGraphTo", "getCallGraphFrom" ->
                         arguments.getOrDefault("methodName", "").toString(); // Added graph tools
@@ -509,6 +508,7 @@ public class SearchAgent {
                 case "searchSymbols", "searchSubstrings", "searchFilenames" ->
                         getParameterListSignatures(toolName, arguments, "patterns");
                 case "getFileContents" -> getParameterListSignatures(toolName, arguments, "filenames");
+                case "getFileSummaries" -> getParameterListSignatures(toolName, arguments, "filePaths");
                 case "getUsages" -> getParameterListSignatures(toolName, arguments, "symbols");
                 case "getRelatedClasses", "getClassSkeletons",
                      "getClassSources" -> getParameterListSignatures(toolName, arguments, "classNames");
@@ -939,12 +939,11 @@ public class SearchAgent {
             });
 
             return switch (request.name()) {
-                case "searchSymbols", "searchSubstrings", "searchFilenames" ->
-                        formatListParameter(arguments, "patterns");
-                case "getFileContents" -> formatListParameter(arguments, "filenames");
-                case "getUsages" -> formatListParameter(arguments, "symbols");
-                case "getRelatedClasses", "getClassSkeletons",
-                     "getClassSources" -> formatListParameter(arguments, "classNames");
+                 case "searchSymbols", "searchSubstrings", "searchFilenames" -> formatListParameter(arguments, "patterns");
+                 case "getFileContents" -> formatListParameter(arguments, "filenames");
+                 case "getFileSummaries" -> formatListParameter(arguments, "filePaths");
+                 case "getUsages" -> formatListParameter(arguments, "symbols");
+                 case "getRelatedClasses", "getClassSkeletons", "getClassSources" -> formatListParameter(arguments, "classNames");
                 case "getMethodSources" -> formatListParameter(arguments, "methodNames");
                 case "getCallGraphTo", "getCallGraphFrom" -> arguments.getOrDefault("methodName", "").toString();
                 case "answerSearch", "abortSearch" -> "";
@@ -971,10 +970,12 @@ public class SearchAgent {
 
         String toolName = request.name();
         String resultText = execResult.resultText(); // Null check done in factory/constructor
-        var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources", "searchSubstrings", "searchFilenames", "getFileContents", "getRelatedClasses");
+        var toolsRequiringSummaries = Set.of("searchSymbols", "getUsages", "getClassSources",
+                                             "searchSubstrings", "searchFilenames", "getFileContents", "getRelatedClasses",
+                                             "getFileSummaries");
 
         if (toolsRequiringSummaries.contains(toolName) && Messages.getApproximateTokens(resultText) > SUMMARIZE_THRESHOLD) {
-            logger.debug("Queueing summarization for tool {}", toolName);
+            logger.debug("Queueing summarization for tool {} (length {})", toolName, Messages.getApproximateTokens(resultText));
             historyEntry.summarizeFuture = summarizeResultAsync(query, historyEntry);
         } else if (toolName.equals("searchSymbols") || toolName.equals("getRelatedClasses")) {
             // Apply prefix compression if not summarizing for searchSymbols and getRelatedClasses
