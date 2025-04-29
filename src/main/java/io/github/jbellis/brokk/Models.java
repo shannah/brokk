@@ -88,7 +88,7 @@ public final class Models {
     private final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
     // display name -> location
     private final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>();
-    // display name -> model info
+    // location -> model info
     private final ConcurrentHashMap<String, Map<String, Object>> modelInfoMap = new ConcurrentHashMap<>();
 
     // Default models - now instance fields
@@ -193,7 +193,7 @@ public final class Models {
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 String errorBody = response.body() != null ? response.body().string() : "(no body)";
-                throw new IOException("Failed to fetch user balance: " 
+                throw new IOException("Failed to fetch user balance: "
                                         + response.code() + " - " + errorBody);
             }
             String responseBody = response.body() != null ? response.body().string() : "";
@@ -207,7 +207,7 @@ public final class Models {
             }
         }
     }
- 
+
     /**
      * Fetches available models from the LLM proxy, applies filters, and sets the low balance status.
      * @param policy The data retention policy.
@@ -330,8 +330,9 @@ public final class Models {
                             continue;
                         }
                     }
+                    // Store model location and info
                     modelLocations.put(modelName, modelLocation);
-                    modelInfoMap.put(modelName, modelInfo);
+                    modelInfoMap.put(modelLocation, modelInfo);
 
                     logger.debug("Discovered model: {} -> {} with info {})",
                                  modelName, modelLocation, modelInfo);
@@ -357,12 +358,12 @@ public final class Models {
 
     /**
      * Retrieves the maximum output tokens for the given model name.
-     * Returns -1 if the information is not available.
+     * Returns a default value if the information is not available.
      */
-    private int getMaxOutputTokens(String modelName) {
-        var info = modelInfoMap.get(modelName);
+    private int getMaxOutputTokens(String location) {
+        var info = modelInfoMap.get(location);
         if (info == null || !info.containsKey("max_output_tokens")) {
-            logger.warn("max_output_tokens not found for model: {}", modelName);
+            logger.warn("max_output_tokens not found for model location: {}", location);
             return 8192;
         }
         var value = info.get("max_output_tokens");
@@ -372,12 +373,13 @@ public final class Models {
 
     /**
      * Retrieves the maximum input tokens for the given model name.
-     * Returns -1 if the information is not available.
+     * Returns a default value if the information is not available.
      */
-    public int getMaxInputTokens(StreamingChatLanguageModel modelName) {
-        var info = modelInfoMap.get(nameOf(modelName));
+    public int getMaxInputTokens(StreamingChatLanguageModel model) {
+        var location = model.defaultRequestParameters().modelName();
+        var info = modelInfoMap.get(location);
         if (info == null || !info.containsKey("max_input_tokens")) {
-            logger.warn("max_input_tokens not found for model: {}", modelName);
+            logger.warn("max_input_tokens not found for model location: {}", location);
             return 65536;
         }
         var value = info.get("max_input_tokens");
@@ -392,9 +394,14 @@ public final class Models {
      * @return True if the model info contains `"supports_reasoning": true`, false otherwise.
      */
     public boolean supportsReasoning(String modelName) {
-        var info = modelInfoMap.get(modelName);
+        var location = modelLocations.get(modelName);
+        if (location == null) {
+            logger.warn("Location not found for model name {}, assuming no reasoning support.", modelName);
+            return false;
+        }
+        var info = modelInfoMap.get(location);
         if (info == null) {
-            logger.warn("Model info not found for {}, assuming no reasoning support.", modelName);
+            logger.warn("Model info not found for location {}, assuming no reasoning support.", location);
             return false; // Assume not supported if info is missing
         }
         var supports = info.get("supports_reasoning");
@@ -430,7 +437,7 @@ public final class Models {
                     .logRequests(true)
                     .logResponses(true)
                     .strictJsonSchema(true)
-                    .maxTokens(getMaxOutputTokens(modelName))
+                    .maxTokens(getMaxOutputTokens(location))
                     .baseUrl(baseUrl)
                     .timeout(Duration.ofMinutes(3)); // default 60s is not enough
 
@@ -471,22 +478,26 @@ public final class Models {
     }
 
     public boolean supportsJsonSchema(StreamingChatLanguageModel model) {
-        var info = modelInfoMap.get(nameOf(model));
-        if (nameOf(model).contains("gemini")) {
+        var location = model.defaultRequestParameters().modelName();
+        var info = modelInfoMap.get(location);
+
+        if (location.contains("gemini")) {
             // buildToolCallsSchema can't build a valid properties map for `arguments` without `oneOf` schema support.
             // o3mini is fine with this but gemini models are not.
             return false;
         }
         // hack for o3-mini not being able to combine json schema with argument descriptions in the text body
-        if (nameOf(model).contains("o3-mini")) {
+        if (location.contains("o3-mini")) {
             return false;
         }
 
         // default: believe the litellm metadata
-        // Check info is not null before accessing
-        if (info == null) return false; // Assume not supported if info is missing
-        var b = (Boolean) info.get("supports_response_schema");
-        return b != null && b;
+        if (info == null) {
+            logger.warn("Model info not found for location {}, assuming no JSON schema support.", location);
+            return false;
+        }
+        var b = info.get("supports_response_schema");
+        return b instanceof Boolean && (Boolean) b;
     }
 
     public boolean isLazy(StreamingChatLanguageModel model) {
@@ -495,23 +506,25 @@ public final class Models {
     }
 
     public boolean requiresEmulatedTools(StreamingChatLanguageModel model) {
-        var modelName = nameOf(model);
-        var info = modelInfoMap.get(modelName);
+        var location = model.defaultRequestParameters().modelName();
+        var info = modelInfoMap.get(location);
 
         // first check litellm metadata
-        // Check info is not null before accessing
-        if (info == null) return true; // Assume requires emulation if info is missing
+        if (info == null) {
+             logger.warn("Model info not found for location {}, assuming tool emulation required.", location);
+             return true;
+        }
         var b = info.get("supports_function_calling");
-        if (b == null || !(Boolean) b) {
+        if (!(b instanceof Boolean) || !(Boolean) b) {
             // if it doesn't support function calling then we need to emulate
             return true;
         }
 
         // gemini, o3, o4-mini, and grok-3 support function calling but not parallel calls so force them to emulation mode as well
-        return modelName.toLowerCase().contains("gemini")
-                || modelName.toLowerCase().contains("grok-3")
-                || modelName.toLowerCase().equals("o3")
-                || modelName.toLowerCase().equals("o4-mini");
+        return location.contains("gemini")
+                || location.contains("grok-3")
+                || location.contains("o3") // Check specific location for o3/o4-mini if possible
+                || location.contains("o4-mini"); // Adjust these checks based on actual location strings
     }
 
     /**
@@ -524,11 +537,11 @@ public final class Models {
      */
     // TODO clean this up
     public boolean isReasoning(StreamingChatLanguageModel model) {
-        var modelName = nameOf(model);
-        var info = modelInfoMap.get(modelName);
+        var location = model.defaultRequestParameters().modelName();
+        var info = modelInfoMap.get(location);
         if (info == null) {
-             logger.warn("Model info not found for {}, assuming not a reasoning model (old flag).", modelName);
-             return false;
+            logger.warn("Model info not found for {}, assuming not a reasoning model (old flag).", location);
+            return false;
         }
         var isReasoning = info.get("is_reasoning");
         // is_reasoning might not be present, treat null as false
@@ -545,16 +558,15 @@ public final class Models {
      * @return True if the model info contains `"supports_vision": true`, false otherwise.
      */
     public boolean supportsVision(StreamingChatLanguageModel model) {
-        var modelName = nameOf(model);
-        var info = modelInfoMap.get(modelName);
+        var location = model.defaultRequestParameters().modelName();
+        var info = modelInfoMap.get(location);
         if (info == null) {
-            logger.warn("Model info not found for {}, assuming no vision support.", modelName);
+            logger.warn("Model info not found for location {}, assuming no vision support.", location);
             return false;
         }
 
         var supports = info.get("supports_vision");
-        assert supports instanceof Boolean : supports;
-        return (Boolean) supports;
+        return supports instanceof Boolean && (Boolean) supports;
     }
 
     public StreamingChatLanguageModel quickestModel() {
