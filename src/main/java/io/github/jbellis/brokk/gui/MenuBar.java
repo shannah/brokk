@@ -178,19 +178,10 @@ public class MenuBar {
         });
         readFilesItem.setEnabled(hasProject);
         contextMenu.add(readFilesItem);
-
-        var summarizeFilesItem = new JMenuItem("Summarize Files");
-        summarizeFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        summarizeFilesItem.addActionListener(e -> {
-            chrome.getContextPanel().performContextActionAsync(
-                    ContextPanel.ContextAction.SUMMARIZE, List.of());
-        });
-        summarizeFilesItem.setEnabled(hasProject);
-        contextMenu.add(summarizeFilesItem);
-
-        var viewFileItem = new JMenuItem("View File");
-        viewFileItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        viewFileItem.addActionListener(e -> {
+    
+    var viewFileItem = new JMenuItem("View File");
+    viewFileItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+    viewFileItem.addActionListener(e -> {
             assert chrome.getContextManager() != null;
             assert chrome.getProject() != null;
             var cm = chrome.getContextManager();
@@ -233,7 +224,16 @@ public class MenuBar {
         viewFileItem.setEnabled(hasProject);
         contextMenu.add(viewFileItem);
 
-        contextMenu.addSeparator(); // Add separator before Symbol Usage
+        contextMenu.addSeparator(); // Add separator before Summarize / Symbol Usage
+
+        var summarizeItem = new JMenuItem("Summarize");
+        summarizeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        summarizeItem.addActionListener(e -> {
+            chrome.getContextPanel().performContextActionAsync(
+                    ContextPanel.ContextAction.SUMMARIZE, List.of());
+        });
+        summarizeItem.setEnabled(hasProject);
+        contextMenu.add(summarizeItem);
 
         var symbolUsageItem = new JMenuItem("Symbol Usage");
             symbolUsageItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
@@ -256,12 +256,14 @@ public class MenuBar {
             calleesItem.addActionListener(e -> {
                 chrome.getContextPanel().findMethodCalleesAsync(); // Call via ContextPanel
             });
-            calleesItem.setEnabled(hasProject);
-            contextMenu.add(calleesItem);
+    calleesItem.setEnabled(hasProject);
+    contextMenu.add(calleesItem);
 
-        var dropAllItem = new JMenuItem("Drop All");
-        dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        dropAllItem.addActionListener(e -> {
+    contextMenu.addSeparator(); // Add separator before Drop All
+
+    var dropAllItem = new JMenuItem("Drop All");
+    dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+    dropAllItem.addActionListener(e -> {
             chrome.getContextPanel().performContextActionAsync(
                     ContextPanel.ContextAction.DROP, List.of());
         });
