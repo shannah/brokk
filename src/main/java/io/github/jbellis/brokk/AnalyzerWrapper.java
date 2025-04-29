@@ -184,13 +184,21 @@ public class AnalyzerWrapper implements AutoCloseable {
             if (analyzer.isEmpty()) {
                 logger.info("Empty analyzer");
                 listener.afterFirstBuild("");
-            } else if (duration > 5000) {
+            } else if (duration > 3 * 6000) {
                 project.setCpgRefresh(CpgRefresh.MANUAL);
                 var msg = """
                 Code Intelligence found %d classes in %,d ms.
-                Since this was slow, code intelligence will only refresh when explicitly requested via File menu.
-                (Code intelligence will still refresh once automatically at startup.)
-                You can change this with the code_intelligence_refresh parameter in .brokk/project.properties.
+                Since this was slow, code intelligence will only refresh when explicitly requested via the Context menu.
+                You can change this in the Settings -> Project dialog.
+                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration);
+                listener.afterFirstBuild(msg);
+                logger.info(msg);
+            } else if (duration > 5000) {
+                project.setCpgRefresh(CpgRefresh.ON_RESTART);
+                var msg = """
+                Code Intelligence found %d classes in %,d ms.
+                Since this was slow, code intelligence will only refresh on restart, or when explicitly requested via the Context menu.
+                You can change this in the Settings -> Project dialog.
                 """.stripIndent().formatted(analyzer.getAllClasses().size(), duration);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
@@ -202,7 +210,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                 If this is not a useful subset of your project, the best option is to disable
                 Code Intelligence by setting code_intelligence_language=%s in .brokk/project.properties.
                 Otherwise, Code Intelligence will refresh automatically when changes are made to tracked files.
-                You can change this with the code_intelligence_refresh parameter in .brokk/project.properties.
+                You can change this in the Settings -> Project dialog.
                 """.stripIndent().formatted(analyzer.getAllClasses().size(), duration, Language.JAVA, Language.NONE);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
@@ -243,6 +251,17 @@ public class AnalyzerWrapper implements AutoCloseable {
     private IAnalyzer loadCachedAnalyzer(Path analyzerPath) {
         if (!Files.exists(analyzerPath)) {
             return null;
+        }
+        
+        // In MANUAL mode, always use cached data if it exists
+        if (project.getCpgRefresh() == CpgRefresh.MANUAL) {
+            logger.debug("MANUAL refresh mode - using cached analyzer");
+            try {
+                return new JavaAnalyzer(root, analyzerPath);
+            } catch (Throwable th) {
+                logger.info("Error loading analyzer", th);
+                return null;
+            }
         }
 
         var trackedFiles = project.getAllFiles();

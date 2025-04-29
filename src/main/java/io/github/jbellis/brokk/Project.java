@@ -536,6 +536,7 @@ public class Project implements IProject, AutoCloseable {
 
     public enum CpgRefresh {
         AUTO,
+        ON_RESTART,
         MANUAL,
         UNSET
     }

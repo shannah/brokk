@@ -326,7 +326,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = row;
         gbc.weightx = 0.0;
         otherPanel.add(new JLabel("Code Intelligence Refresh:"), gbc);
-        cpgRefreshComboBox = new JComboBox<>(new Project.CpgRefresh[]{Project.CpgRefresh.AUTO, Project.CpgRefresh.MANUAL});
+        cpgRefreshComboBox = new JComboBox<>(new Project.CpgRefresh[]{Project.CpgRefresh.AUTO, Project.CpgRefresh.ON_RESTART});
         var currentRefresh = project.getCpgRefresh();
         cpgRefreshComboBox.setSelectedItem(currentRefresh == Project.CpgRefresh.UNSET ? Project.CpgRefresh.AUTO : currentRefresh);
         gbc.gridx = 1;
