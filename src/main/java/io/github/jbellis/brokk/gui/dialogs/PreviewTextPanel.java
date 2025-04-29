@@ -289,7 +289,7 @@ public class PreviewTextPanel extends JPanel {
     public static void showFrame(ContextManager contextManager, String title, PreviewTextPanel previewPanel) {
         JFrame frame = Chrome.newFrame(title);
             frame.setContentPane(previewPanel);
-            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+        frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE); // Handle close manually
 
         var project = contextManager.getProject();
         assert project != null;
@@ -308,6 +308,16 @@ public class PreviewTextPanel extends JPanel {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
                 project.savePreviewWindowBounds(frame); // Save JFrame bounds
+            }
+        });
+
+        // Add a window listener to handle closing confirmation
+        frame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                if (previewPanel.confirmClose()) {
+                    frame.dispose();
+                }
             }
         });
 
@@ -837,15 +847,43 @@ public class PreviewTextPanel extends JPanel {
         getActionMap().put("closePreview", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                // Only close if search field doesn't have focus
+                // Only try to close if search field doesn't have focus
                 if (!searchField.hasFocus()) {
-                    Window window = SwingUtilities.getWindowAncestor(PreviewTextPanel.this);
-                    if (window != null) {
-                        window.dispose();
+                    if (confirmClose()) {
+                        Window window = SwingUtilities.getWindowAncestor(PreviewTextPanel.this);
+                        if (window != null) {
+                            window.dispose();
+                        }
                     }
-                }
+                 }
             }
         });
+    }
+
+    /**
+     * Checks for unsaved changes and prompts the user to save, discard, or cancel closing.
+     * @return true if the window should close, false otherwise.
+     */
+    private boolean confirmClose() {
+        if (saveButton == null || !saveButton.isEnabled()) {
+            return true; // No unsaved changes, okay to close
+        }
+
+        int choice = JOptionPane.showConfirmDialog(
+                SwingUtilities.getWindowAncestor(this),
+                "You have unsaved changes. Do you want to save them before closing?",
+                "Unsaved Changes",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+
+        if (choice == JOptionPane.YES_OPTION) {
+            performSave(saveButton); // Save the changes
+            return true; // Close the window
+        } else if (choice == JOptionPane.NO_OPTION) {
+            return true; // Close without saving
+        } else {
+            return false; // Cancel closing (JOptionPane.CANCEL_OPTION or closed dialog)
+        }
     }
 
     /**
