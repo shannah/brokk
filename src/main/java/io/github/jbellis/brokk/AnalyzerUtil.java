@@ -53,10 +53,13 @@ public class AnalyzerUtil {
                 for (var entry : groupedMethods.entrySet()) {
                     var methods = entry.getValue();
                     if (!methods.isEmpty()) {
-                        code.append("In ").append(entry.getKey()).append(":\n\n");
-                        for (String ms : methods) {
-                            code.append(ms).append("\n\n");
-                        }
+                        var fqcn = entry.getKey();
+                        var file = analyzer.getFileFor(fqcn).map(ProjectFile::toString).getOrElse(() -> "?");
+                        code.append("""
+                                <methods class="%s" file="%s">
+                                %s
+                                </methods>
+                                """.formatted(fqcn, file, String.join("\n\n", methods)));
                     }
                 }
             }
