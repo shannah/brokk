@@ -255,7 +255,7 @@ public class WorkspaceTools {
             return "No relevant usages found for symbol: " + symbol;
         }
 
-        var fragment = new ContextFragment.UsageFragment("Uses", symbol, result.sources(), result.code());
+        var fragment = new ContextFragment.UsageFragment(symbol, result.sources(), result.code());
         contextManager.addVirtualFragment(fragment);
 
         return "Added usages for symbol '%s'.".formatted(symbol);
@@ -507,7 +507,7 @@ public class WorkspaceTools {
 
         // Use UsageFragment to represent the call graph
         String type = "Callers (depth " + depth + ")";
-        var fragment = new ContextFragment.UsageFragment(type, methodName, sources, formattedGraph);
+        var fragment = new ContextFragment.CallGraphFragment(type, methodName, sources, formattedGraph);
         contextManager.addVirtualFragment(fragment);
 
         int totalCallSites = graphData.values().stream().mapToInt(List::size).sum();
@@ -551,7 +551,7 @@ public class WorkspaceTools {
 
         // Use UsageFragment to represent the call graph
         String type = "Callees (depth " + depth + ")";
-        var fragment = new ContextFragment.UsageFragment(type, methodName, sources, formattedGraph);
+        var fragment = new ContextFragment.CallGraphFragment(type, methodName, sources, formattedGraph);
         contextManager.addVirtualFragment(fragment);
 
         int totalCallSites = graphData.values().stream().mapToInt(List::size).sum();

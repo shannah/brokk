@@ -687,13 +687,55 @@ public interface ContextFragment extends Serializable {
     }
 
     class UsageFragment extends VirtualFragment {
-        private static final long serialVersionUID = 2L;
+        private static final long serialVersionUID = 3L;
+        private final String targetIdentifier;
+        private final Set<CodeUnit> classes;
+        private final String code;
+
+        public UsageFragment(String targetIdentifier, Set<CodeUnit> classes, String code) {
+            super();
+            assert targetIdentifier != null;
+            assert classes != null;
+            assert code != null;
+            this.targetIdentifier = targetIdentifier;
+            this.classes = classes;
+            this.code = code;
+        }
+
+        @Override
+        public String text() {
+            return code;
+        }
+
+        @Override
+        public Set<CodeUnit> sources(IProject project) {
+            return classes;
+        }
+
+        @Override
+        public Set<ProjectFile> files(IProject project) {
+            return classes.stream().map(CodeUnit::source).collect(java.util.stream.Collectors.toSet());
+        }
+
+        @Override
+        public String description() {
+            return "Uses of %s".formatted(targetIdentifier);
+        }
+
+        @Override
+        public String syntaxStyle() {
+            return SyntaxConstants.SYNTAX_STYLE_JAVA;
+        }
+    }
+
+    class CallGraphFragment extends VirtualFragment {
+        private static final long serialVersionUID = 1L;
         private final String type;
         private final String targetIdentifier;
         private final Set<CodeUnit> classes;
         private final String code;
 
-        public UsageFragment(String type, String targetIdentifier, Set<CodeUnit> classes, String code) {
+        public CallGraphFragment(String type, String targetIdentifier, Set<CodeUnit> classes, String code) {
             super();
             assert type != null;
             assert targetIdentifier != null;

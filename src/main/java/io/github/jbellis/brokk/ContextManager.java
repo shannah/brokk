@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk;
 
-import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.Content;
@@ -225,8 +224,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // For now, let's default to MINIMAL if unset. Consider prompting later.
             logger.warn("Data Retention Policy is UNSET for project {}. Defaulting to MINIMAL.", root.getFileName());
             dataRetentionPolicy = Project.DataRetentionPolicy.MINIMAL;
-            // Optionally save the default back to the project
-            // project.setDataRetentionPolicy(dataRetentionPolicy);
         }
         this.models.reinit(dataRetentionPolicy);
         this.toolRegistry = new ToolRegistry(this);
@@ -704,7 +701,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return;
         }
         var combined = result.code();
-        var fragment = new ContextFragment.UsageFragment("Uses", identifier, result.sources(), combined);
+        var fragment = new ContextFragment.UsageFragment(identifier, result.sources(), combined);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
     }
 
@@ -733,8 +730,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             sources.add(CodeUnit.cls(sourceFile.get(), className));
         }
 
-        // The output is similar to UsageFragment, so we'll use that
-        var fragment = new ContextFragment.UsageFragment("Callers (depth " + depth + ")", methodName, sources, formattedCallGraph);
+        var fragment = new ContextFragment.CallGraphFragment("Callers (depth " + depth + ")", methodName, sources, formattedCallGraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
 
         int totalCallSites = callgraph.values().stream().mapToInt(List::size).sum();
@@ -767,7 +763,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         // The output is similar to UsageFragment, so we'll use that
-        var fragment = new ContextFragment.UsageFragment("Callees (depth " + depth + ")", methodName, sources, formattedCallGraph);
+        var fragment = new ContextFragment.CallGraphFragment("Callees (depth " + depth + ")", methodName, sources, formattedCallGraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
 
         int totalCallSites = callgraph.values().stream().mapToInt(List::size).sum();

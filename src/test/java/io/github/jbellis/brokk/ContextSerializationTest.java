@@ -139,7 +139,7 @@ public class ContextSerializationTest {
 
         // Add fragment with usage
         context = context.addVirtualFragment(
-                new ContextFragment.UsageFragment("Uses", "Test.method", Set.of(CodeUnit.cls(mockFile, "com.test.Test")), "Test.method()")
+                new ContextFragment.UsageFragment("Test.method", Set.of(CodeUnit.cls(mockFile, "com.test.Test")), "Test.method()")
         );
 
         // Add stacktrace fragment
