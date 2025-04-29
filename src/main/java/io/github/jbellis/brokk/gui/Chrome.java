@@ -8,7 +8,6 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
-import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -355,7 +354,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Retrieves the current text from the command input.
      */
     public String getInputText() {
-        return instructionsPanel.getInputText();
+        return instructionsPanel.getInstructions();
     }
 
     public void disableUserActionButtons() {

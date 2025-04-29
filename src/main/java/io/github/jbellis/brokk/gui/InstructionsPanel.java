@@ -157,7 +157,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         contextSuggestionTimer.setRepeats(false);
         commandInputField.getDocument().addDocumentListener(new DocumentListener() {
             private void checkAndHandleSuggestions() {
-                if (commandInputField.getText().split("\\s+").length >= 2) {
+                if (getInstructions().split("\\s+").length >= 2) {
                     contextSuggestionTimer.restart();
                 } else {
                     // Input is blank, stop any pending timer and clear suggestions immediately
@@ -246,13 +246,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
 
         // Command Input Field
-        // Command Input Field with Overlay
         JScrollPane commandScrollPane = new JScrollPane(commandInputField);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Use preferred size for layout
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
 
-        // Transparent overlay panel
+        // Transparent input-overlay panel
         this.overlayPanel = new JPanel(); // Initialize the member variable
         overlayPanel.setOpaque(false); // Make it transparent
         overlayPanel.setCursor(Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)); // Hint text input
@@ -667,8 +666,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Gets the current user input text. If the placeholder is currently displayed,
      * it returns an empty string, otherwise it returns the actual text content.
      */
-    public String getInputText() {
-        return commandInputField.getText();
+    public String getInstructions() {
+        return commandInputField.getText().equals(PLACEHOLDER_TEXT)
+               ? ""
+               : commandInputField.getText();
     }
 
     /**
@@ -727,7 +728,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void triggerContextSuggestion(ActionEvent e) {
         var contextManager = chrome.getContextManager();
-        var goal = commandInputField.getText();
+        var goal = getInstructions();
         if (goal.isBlank() || contextManager == null || contextManager.getProject() == null || !commandInputField.isEnabled()) {
             // Clear quick recommendations if input is blank or project not ready
             SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
@@ -785,7 +786,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Delegates the core logic to the DeepScanDialog class.
      */
     private void triggerDeepScan(ActionEvent e) {
-        var goal = commandInputField.getText();
+        var goal = getInstructions();
         DeepScanDialog.triggerDeepScan(chrome, goal);
         // Button disabling/enabling and input field disabling/enabling are handled
         // within DeepScanDialog.triggerDeepScan and its dialog callbacks.
@@ -1004,7 +1005,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // --- Action Handlers ---
 
     public void runArchitectCommand() {
-        var goal = commandInputField.getText();
+        var goal = getInstructions();
         if (goal.isBlank()) {
             chrome.toolErrorRaw("Please provide an initial goal or instruction for the Architect");
             return;
@@ -1065,7 +1066,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // into the private execute* methods above.
 
     public void runCodeCommand() {
-        var input = commandInputField.getText();
+        var input = getInstructions();
         if (input.isBlank()) {
             chrome.toolErrorRaw("Please enter a command or text");
             return;
@@ -1120,7 +1121,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
 
     public void runAskCommand() {
-        var input = commandInputField.getText();
+        var input = getInstructions();
         if (input.isBlank()) {
             chrome.toolErrorRaw("Please enter a question");
             return;
@@ -1151,7 +1152,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     public void runSearchCommand() {
-        var input = commandInputField.getText();
+        var input = getInstructions();
         if (input.isBlank()) {
             chrome.toolErrorRaw("Please provide a search query");
             return;
@@ -1182,7 +1183,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     public void runRunCommand() {
-        var input = commandInputField.getText();
+        var input = getInstructions();
         if (input.isBlank()) {
             chrome.toolError("Please enter a command to run");
             return;
@@ -1248,4 +1249,5 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         commandInputField.setEnabled(enabled);
         this.deepScanButton.setEnabled(enabled);
     }
+
 }
