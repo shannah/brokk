@@ -31,18 +31,6 @@ public class MenuBar {
         // File menu
         var fileMenu = new JMenu("File");
 
-        var refreshItem = new JMenuItem("Refresh Code Intelligence");
-        refreshItem.addActionListener(e -> {
-            // Fixme ensure the menu item is disabled if no project is open
-            assert chrome.getContextManager() != null;
-            chrome.contextManager.requestRebuild();
-            chrome.systemOutput("Code intelligence will refresh in the background");
-        });
-        refreshItem.setEnabled(hasProject);
-        fileMenu.add(refreshItem);
-
-        fileMenu.addSeparator();
-
         var openProjectItem = new JMenuItem("Open Project...");
         openProjectItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         openProjectItem.addActionListener(e -> {
@@ -160,6 +148,18 @@ public class MenuBar {
 
         // Context menu
         var contextMenu = new JMenu("Context");
+
+        var refreshItem = new JMenuItem("Refresh Code Intelligence");
+        refreshItem.addActionListener(e -> {
+            // Fixme ensure the menu item is disabled if no project is open
+            assert chrome.getContextManager() != null;
+            chrome.contextManager.requestRebuild();
+            chrome.systemOutput("Code intelligence will refresh in the background");
+        });
+        refreshItem.setEnabled(hasProject);
+        contextMenu.add(refreshItem);
+
+        contextMenu.addSeparator();
 
         var editFilesItem = new JMenuItem("Edit Files");
         editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
