@@ -118,14 +118,22 @@ public final class Models {
      * Initializes models by fetching available models from LiteLLM.
      * Call this after constructing the Models instance.
      *
-     * @param policy The data retention policy to apply when selecting models.
+     * @param project The project whose settings (like data retention policy) should be used.
      */
-    public void reinit(Project.DataRetentionPolicy policy) {
+    public void reinit(Project project) {
+        // Get and handle data retention policy
+        var policy = project.getDataRetentionPolicy();
+        if (policy == Project.DataRetentionPolicy.UNSET) {
+            // Handle unset policy: default to MINIMAL for now. Consider prompting later.
+            logger.warn("Data Retention Policy is UNSET for project {}. Defaulting to MINIMAL.", project.getRoot().getFileName());
+            policy = Project.DataRetentionPolicy.MINIMAL;
+        }
+
         String proxyUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project setting
         logger.info("Initializing models using policy: {} and proxy: {}", policy, proxyUrl);
         // isLowBalance is now an instance field, set within fetchAvailableModels
         try {
-            fetchAvailableModels(policy); // This will set the isLowBalance field
+            fetchAvailableModels(policy);
         } catch (IOException e) {
             logger.error("Failed to connect to LiteLLM at {} or parse response: {}",
                          proxyUrl, e.getMessage(), e); // Log the exception details

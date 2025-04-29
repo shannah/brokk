@@ -835,14 +835,13 @@ public class SettingsDialog extends JDialog {
                 dataRetentionPanel.applyPolicy();
                 var newPolicy = project.getDataRetentionPolicy();
                 // Refresh models if the policy changed, as it might affect availability
-                if (oldPolicy != newPolicy && newPolicy != Project.DataRetentionPolicy.UNSET) {
-                    // Submit as background task so it doesn't block the settings dialog closing
-                    chrome.getContextManager().submitBackgroundTask("Refreshing models due to policy change", () -> {
-                        // Pass the new policy to reinit
-                        chrome.getContextManager().getModels().reinit(newPolicy);
-                    });
+                    if (oldPolicy != newPolicy && newPolicy != Project.DataRetentionPolicy.UNSET) {
+                        // Submit as background task so it doesn't block the settings dialog closing
+                        chrome.getContextManager().submitBackgroundTask("Refreshing models due to policy change", () -> {
+                            chrome.getContextManager().getModels().reinit(project);
+                        });
+                    }
                 }
-            }
 
             // Apply Model Selections and Reasoning Levels
             applyModelAndReasoning(project, architectModelComboBox, architectReasoningComboBox,

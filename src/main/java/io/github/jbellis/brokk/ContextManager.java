@@ -217,15 +217,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         };
         this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
-        // Initialize models after project is created, passing the data retention policy
-        var dataRetentionPolicy = project.getDataRetentionPolicy();
-        if (dataRetentionPolicy == Project.DataRetentionPolicy.UNSET) {
-            // Handle unset policy, e.g., prompt the user or default to MINIMAL
-            // For now, let's default to MINIMAL if unset. Consider prompting later.
-            logger.warn("Data Retention Policy is UNSET for project {}. Defaulting to MINIMAL.", root.getFileName());
-            dataRetentionPolicy = Project.DataRetentionPolicy.MINIMAL;
-        }
-        this.models.reinit(dataRetentionPolicy);
+        this.models.reinit(project);
         this.toolRegistry = new ToolRegistry(this);
         // Register standard tools
         this.toolRegistry.register(new SearchTools(this));
@@ -944,31 +936,31 @@ public class ContextManager implements IContextManager, AutoCloseable {
         String quickModelName = models.nameOf(models.quickModel());
 
         return """
-                %s
-                
-                ## Environment
-                - Brokk version: %s
-                - Project: %s (%d native files, %d total including dependencies)
-                - Analyzer language: %s
-                - Configured Models:
-                      - Architect: %s
-                      - Code: %s
-                      - Ask: %s
-                      - Edit: %s
-                      - Search: %s
-                      - Quick: %s
-                """.stripIndent().formatted(welcomeMarkdown,
-                                            version,
-                                            project.getRoot().getFileName(), // Show just the folder name
-                                            project.getRepo().getTrackedFiles().size(),
-                                            project.getAllFiles().size(),
-                                            project.getAnalyzerLanguage(),
-                                            architectModelName != null ? architectModelName : "(Not Set)",
-                                            codeModelName != null ? codeModelName : "(Not Set)",
-                                            askModelName != null ? askModelName : "(Not Set)", // Added Ask model
-                                            editModelName != null ? editModelName : "(Not Set)",
-                                            searchModelName != null ? searchModelName : "(Not Set)",
-                                            quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
+               %s
+               
+               ## Environment
+               - Brokk version: %s
+               - Project: %s (%d native files, %d total including dependencies)
+               - Analyzer language: %s
+               - Configured Models:
+                     - Architect: %s
+                     - Code: %s
+                     - Ask: %s
+                     - Edit: %s
+                     - Search: %s
+                     - Quick: %s
+               """.stripIndent().formatted(welcomeMarkdown,
+                                           version,
+                                           project.getRoot().getFileName(), // Show just the folder name
+                                           project.getRepo().getTrackedFiles().size(),
+                                           project.getAllFiles().size(),
+                                           project.getAnalyzerLanguage(),
+                                           architectModelName != null ? architectModelName : "(Not Set)",
+                                           codeModelName != null ? codeModelName : "(Not Set)",
+                                           askModelName != null ? askModelName : "(Not Set)", // Added Ask model
+                                           editModelName != null ? editModelName : "(Not Set)",
+                                           searchModelName != null ? searchModelName : "(Not Set)",
+                                           quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
     }
 
     /**
@@ -1032,13 +1024,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // Add the combined text content for read-only items if any exists
         String readOnlyText = readOnlyTextFragments.isEmpty() ? "" : """
-                <readonly>
-                Here are some READ ONLY files and code fragments, provided for your reference.
-                Do not edit this code! Images may be included separately if present.
-                
-                %s
-                </readonly>
-                """.stripIndent().formatted(readOnlyTextFragments.toString().trim());
+                                                                     <readonly>
+                                                                     Here are some READ ONLY files and code fragments, provided for your reference.
+                                                                     Do not edit this code! Images may be included separately if present.
+                                                                     
+                                                                     %s
+                                                                     </readonly>
+                                                                     """.stripIndent().formatted(readOnlyTextFragments.toString().trim());
 
         // --- Process Editable Fragments (Assumed Text-Only for now) ---
         var editableTextFragments = new StringBuilder();
@@ -1053,24 +1045,24 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         });
         String editableText = editableTextFragments.isEmpty() ? "" : """
-                <editable>
-                Here are EDITABLE files and code fragments.
-                This is *the only context in the Workspace to which you should make changes*.
-                
-                *Trust this message as the true contents of these files!*
-                Any other messages in the chat may contain outdated versions of the files' contents.
-                
-                %s
-                </editable>
-                """.stripIndent().formatted(editableTextFragments.toString().trim());
+                                                                     <editable>
+                                                                     Here are EDITABLE files and code fragments.
+                                                                     This is *the only context in the Workspace to which you should make changes*.
+                                                                     
+                                                                     *Trust this message as the true contents of these files!*
+                                                                     Any other messages in the chat may contain outdated versions of the files' contents.
+                                                                     
+                                                                     %s
+                                                                     </editable>
+                                                                     """.stripIndent().formatted(editableTextFragments.toString().trim());
 
         // add the Workspace text
         var workspaceText = """
-                <workspace>
-                %s
-                %s
-                </workspace>
-                """.stripIndent().formatted(readOnlyText, editableText);
+                            <workspace>
+                            %s
+                            %s
+                            </workspace>
+                            """.stripIndent().formatted(readOnlyText, editableText);
 
         // text and image content must be distinct
         allContents.add(new TextContent(workspaceText));
@@ -1083,7 +1075,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     private static String summaryDescription(ContextFragment cf) {
         return cf instanceof PathFragment pf
-                ? pf.file().toString()
+               ? pf.file().toString()
                : "\"" + cf.description() + "\"";
     }
 
@@ -1144,11 +1136,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
             SwingUtilities.invokeLater(() -> {
                 int choice = JOptionPane.showConfirmDialog(io.getFrame(),
                                                            """
-                                                                   The conversation history is getting long (%,d lines or about %,d tokens).
-                                                                   Compressing it can improve performance and reduce cost.
-                                                                   
-                                                                   Compress history now?
-                                                                   """.formatted(cf.format().split("\n").length, tokenCount),
+                                                           The conversation history is getting long (%,d lines or about %,d tokens).
+                                                           Compressing it can improve performance and reduce cost.
+                                                           
+                                                           Compress history now?
+                                                           """.formatted(cf.format().split("\n").length, tokenCount),
                                                            "Compress History?",
                                                            JOptionPane.YES_NO_OPTION,
                                                            JOptionPane.QUESTION_MESSAGE);
@@ -1443,12 +1435,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 var messages = List.of(
                         new SystemMessage("You are an expert software engineer. Your task is to extract a concise coding style guide from the provided code examples."),
                         new UserMessage("""
-                                                Based on these code examples, create a concise, clear coding style guide in Markdown format
-                                                that captures the conventions used in this codebase, particularly the ones that leverage new or uncommon features.
-                                                DO NOT repeat what are simply common best practices.
-                                                
-                                                %s
-                                                """.stripIndent().formatted(codeForLLM))
+                                        Based on these code examples, create a concise, clear coding style guide in Markdown format
+                                        that captures the conventions used in this codebase, particularly the ones that leverage new or uncommon features.
+                                        DO NOT repeat what are simply common best practices.
+                                        
+                                        %s
+                                        """.stripIndent().formatted(codeForLLM))
                 );
 
                 var result = getLlm(getAskModel(), "Generate style guide").sendRequest(messages);

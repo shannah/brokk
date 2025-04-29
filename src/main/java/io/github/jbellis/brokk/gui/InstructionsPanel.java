@@ -860,7 +860,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             if (balance < Models.MINIMUM_PAID_BALANCE) {
                 logger.warn("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Models.MINIMUM_PAID_BALANCE);
                 // This will refetch models and apply the lowBalance filter based on MINIMUM_PAID_BALANCE
-                models.reinit(contextManager.getProject().getDataRetentionPolicy());
+                models.reinit(contextManager.getProject());
             }
 
             // Check for the $2.00 warning threshold
