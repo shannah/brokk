@@ -72,7 +72,7 @@ public class ContextAgent {
      * Result record for context recommendation attempts.
      */
     public record RecommendationResult(boolean success, List<ContextFragment> fragments, String reasoning) {
-        static final RecommendationResult FAILED = new RecommendationResult(false, List.of(), "Failed to determine context.");
+        static final RecommendationResult FAILED_SINGLE_PASS = new RecommendationResult(false, List.of(), "Project too large to quickly determine context; try Deep Scan");
     }
 
     /**
@@ -243,6 +243,12 @@ public class ContextAgent {
                 return contentResult;
             }
             // If contents failed, fall through to filename-based pruning
+        }
+
+        if (!deepScan) {
+            // In quick mode, if we can't process in a single pass, exit immediately
+            logGiveUp("summaries (too large for pruning budget in quick mode)");
+            return RecommendationResult.FAILED_SINGLE_PASS;
         }
 
         // Fallback 1: Prune based on filenames only

@@ -29,10 +29,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+
+import io.github.jbellis.brokk.gui.mop.ThemeColors;
+
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -44,11 +48,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final String PLACEHOLDER_TEXT = """
-            Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them
-            to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
-            
-            More tips are available in the Getting Started section on the right -->
-            """;
+                                                   Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them
+                                                   to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
+                                                   
+                                                   More tips are available in the Getting Started section on the right -->
+                                                   """;
 
     private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
     private static final int TRUNCATION_LENGTH = 100;    // Characters
@@ -66,8 +70,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JTextArea systemArea;
     private final JScrollPane systemScrollPane;
     private final JLabel commandResultLabel;
-    private JTable referenceFileTable; // Table for quick suggestions
-    private final JButton deepScanButton; // Renamed from thinkButton
+    private JTable referenceFileTable;
+    private JScrollPane tableScrollPane;
+    private JLabel failureReasonLabel;
+    private JPanel suggestionContentPanel;
+    private CardLayout suggestionCardLayout;
+    private final JButton deepScanButton;
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
@@ -148,7 +156,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         JPanel bottomPanel = buildBottomPanel();
         add(bottomPanel, BorderLayout.SOUTH);
 
-        // Initialize the reference file table
+        // Initialize the reference file table and suggestion area
         initializeReferenceFileTable();
 
         // Initialize and configure the context suggestion timer
@@ -425,25 +433,35 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
         });
 
-        // ----- wrap in a scroll-pane and clamp its height -------------------------------------
-        int rowHeight = referenceFileTable.getRowHeight();
-        int fixedHeight = rowHeight + 2; // +2 for a tiny margin
-
-        var tableScrollPane = new JScrollPane(referenceFileTable);
+        // ----- wrap table in a scroll-pane ----------------------------------------------------
+        this.tableScrollPane = new JScrollPane(referenceFileTable);
         tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
         tableScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 
-        // Create a container panel for the button and the table
+        // ----- create failure reason label ----------------------------------------------------
+        this.failureReasonLabel = new JLabel();
+        failureReasonLabel.setFont(referenceFileTable.getFont()); // Use same font as table/badges
+        failureReasonLabel.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5)); // Add some padding
+        failureReasonLabel.setVisible(false); // Initially hidden
+
+        // ----- create content panel with CardLayout -------------------------------------------
+        this.suggestionCardLayout = new CardLayout();
+        this.suggestionContentPanel = new JPanel(suggestionCardLayout);
+        suggestionContentPanel.add(tableScrollPane, "TABLE");
+        suggestionContentPanel.add(failureReasonLabel, "LABEL");
+
+        // ----- create container panel for button and content (table/label) -------------------
         var suggestionAreaPanel = new JPanel(new BorderLayout(5, 0)); // 5px horizontal gap
         suggestionAreaPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0)); // Add vertical padding
 
         // Add the Deep Scan button to the left
         suggestionAreaPanel.add(deepScanButton, BorderLayout.WEST);
-
-        // Add the table scroll pane (for quick suggestions) to the center
-        suggestionAreaPanel.add(tableScrollPane, BorderLayout.CENTER);
+        // Add the card layout panel (containing table or label) to the center
+        suggestionAreaPanel.add(suggestionContentPanel, BorderLayout.CENTER);
 
         // Apply height constraints to the container panel
+        int rowHeight = referenceFileTable.getRowHeight();
+        int fixedHeight = rowHeight + 2; // +2 for a tiny margin (match table row height)
         suggestionAreaPanel.setPreferredSize(new Dimension(600, fixedHeight));
         suggestionAreaPanel.setMinimumSize(new Dimension(100, fixedHeight));
         suggestionAreaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, fixedHeight));
@@ -631,10 +649,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void showVisionSupportErrorDialog(String requiredModelsInfo) {
         String message = """
-                <html>The current operation involves images, but the following selected model(s) do not support vision:<br>
-                <b>%s</b><br><br>
-                Please select vision-capable models in the settings to proceed with image-based tasks.</html>
-                """.formatted(requiredModelsInfo);
+                         <html>The current operation involves images, but the following selected model(s) do not support vision:<br>
+                         <b>%s</b><br><br>
+                         Please select vision-capable models in the settings to proceed with image-based tasks.</html>
+                         """.formatted(requiredModelsInfo);
         Object[] options = {"Open Model Settings", "Cancel"};
         int choice = JOptionPane.showOptionDialog(
                 chrome.getFrame(),
@@ -723,8 +741,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var contextManager = chrome.getContextManager();
         var goal = getInstructions();
         if (goal.isBlank() || contextManager == null || contextManager.getProject() == null || !commandInputField.isEnabled()) {
-            // Clear quick recommendations if input is blank or project not ready
-            SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(List.of(), 0, 0));
+            // Clear quick recommendations and hide failure label if input is blank or project not ready
+            SwingUtilities.invokeLater(() -> {
+                referenceFileTable.setValueAt(List.of(), 0, 0);
+                failureReasonLabel.setVisible(false);
+                suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
+            });
             return;
         }
 
@@ -748,23 +770,55 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 var model = contextManager.getModels().quickestModel();
                 // Use summary context (fullContext=false) for quick suggestions
                 var agent = new ContextAgent(contextManager, model, goal, false);
-                var recommendations = agent.getRecommendations(); // Limit quick suggestions
+                var recommendations = agent.getRecommendations();
 
-                var fileRefs = recommendations.fragments().stream()
-                        .flatMap(f -> f.files(contextManager.getProject()).stream())
-                        .distinct()
-                        .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
-                                                         pf.toString(),
-                                                         pf))
-                        .toList();
+                if (recommendations.success()) {
+                    var fileRefs = recommendations.fragments().stream()
+                            .flatMap(f -> f.files(contextManager.getProject()).stream())
+                            .distinct()
+                            .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
+                                                             pf.toString(),
+                                                             pf))
+                            .toList();
 
-                logger.debug("Updating quick reference table with {} suggestions", fileRefs.size());
-                SwingUtilities.invokeLater(() -> referenceFileTable.setValueAt(fileRefs, 0, 0));
+                    logger.debug("Updating quick reference table with {} suggestions", fileRefs.size());
+                    SwingUtilities.invokeLater(() -> {
+                        referenceFileTable.setValueAt(fileRefs, 0, 0);
+                        failureReasonLabel.setVisible(false);
+                        suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show table
+                    });
+                } else if (!recommendations.success()) { // Handle any failure, including single pass
+                    logger.debug("Quick context suggestion failed: {}", recommendations.reasoning());
+                    SwingUtilities.invokeLater(() -> {
+                        boolean isDark = UIManager.getBoolean("laf.dark");
+                        failureReasonLabel.setForeground(ThemeColors.getColor(isDark, "badge_foreground"));
+                        failureReasonLabel.setText(recommendations.reasoning());
+                        failureReasonLabel.setVisible(true);
+                        tableScrollPane.setVisible(false); // Ensure table scrollpane is hidden just in case
+                        referenceFileTable.setValueAt(List.of(), 0, 0); // Clear table data
+                        suggestionCardLayout.show(suggestionContentPanel, "LABEL"); // Show label
+                    });
+                } else {
+                    // Handle other potential non-success cases, maybe clear or show generic message?
+                    logger.warn("Quick context suggestion returned unexpected state: {}", recommendations);
+                    SwingUtilities.invokeLater(() -> {
+                        referenceFileTable.setValueAt(List.of(), 0, 0);
+                        failureReasonLabel.setVisible(false);
+                        suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
+                    });
+                }
             } catch (InterruptedException interruptedException) {
                 // Task was cancelled via interrupt
                 logger.debug("Quick context suggestion task explicitly interrupted: {}", interruptedException.getMessage());
+                // Clear suggestions and hide label on interruption
+                SwingUtilities.invokeLater(() -> {
+                    referenceFileTable.setValueAt(List.of(), 0, 0);
+                    failureReasonLabel.setVisible(false);
+                    suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
+                });
             }
         });
+
         // Store the future of the newly submitted task
         if (!this.currentQuickSuggestionTask.compareAndSet(previousTask, newTask)) {
             // shouldn't happen, but just in case
@@ -816,14 +870,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     SwingUtilities.invokeLater(() -> {
                         var messagePanel = new JPanel(new BorderLayout(0, 5)); // Panel for text and link
                         var balanceMessage = String.format("Low account balance: $%.2f.", balance);
-                    messagePanel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
+                        messagePanel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
 
                         var browserLabel = new io.github.jbellis.brokk.gui.components.BrowserLabel(Models.TOP_UP_URL, "Top up at " + Models.TOP_UP_URL + " to avoid interruptions.");
-                    messagePanel.add(browserLabel, BorderLayout.SOUTH);
+                        messagePanel.add(browserLabel, BorderLayout.SOUTH);
 
-                    JOptionPane.showMessageDialog(
-                            chrome.getFrame(),
-                            messagePanel, // Use the panel with the clickable label
+                        JOptionPane.showMessageDialog(
+                                chrome.getFrame(),
+                                messagePanel, // Use the panel with the clickable label
                                 "Low Balance Warning",
                                 JOptionPane.WARNING_MESSAGE);
                     });
