@@ -8,15 +8,14 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
+import io.github.jbellis.brokk.util.SyntaxDetector;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.InputEvent;
-import java.awt.event.KeyEvent;
+import java.awt.event.*; // Added WindowAdapter, WindowEvent
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -285,6 +284,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         return panel;
     }
 
+
     /**
      * Lightweight method to preview a context without updating history
      * Only updates the LLM text area and context panel display
@@ -478,10 +478,11 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * @param title            The title for the JFrame.
      * @param contentComponent The JComponent to display within the frame.
      */
-    private void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
+    public void showPreviewFrame(ContextManager contextManager, String title, JComponent contentComponent) {
         JFrame previewFrame = newFrame(title);
         previewFrame.setContentPane(contentComponent);
-        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Dispose frame on close
+        // Set initial default close operation. This will be checked/modified by the WindowListener.
+        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         var project = contextManager.getProject();
         assert project != null;
@@ -510,7 +511,32 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             }
         });
 
-        // Add ESC key binding to close the window
+        // Add a WindowListener to handle the close ('X') button click
+        previewFrame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                // Check if the content is a PreviewTextPanel and if it has unsaved changes
+                if (contentComponent instanceof PreviewTextPanel ptp) {
+                    if (!ptp.confirmClose()) {
+                        // If confirmClose returns false (user cancelled), do nothing.
+                        // We must explicitly set the default close operation here because
+                        // the user might click 'X' multiple times.
+                        previewFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+                    } else {
+                        // If confirmClose returns true (Save/Don't Save), allow disposal.
+                        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                        // Note: The window listener only *vetoes* the close. If it doesn't veto,
+                        // the default close operation takes over. We don't need to call dispose() here.
+                    }
+                } else {
+                    // If not a PreviewTextPanel, just allow the default dispose operation
+                    previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                }
+            }
+        });
+
+
+        // Add ESC key binding to close the window (delegates to windowClosing)
         var rootPane = previewFrame.getRootPane();
         var actionMap = rootPane.getActionMap();
         var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
@@ -519,11 +545,50 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         actionMap.put("closeWindow", new AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                previewFrame.dispose();
+                // Simulate window closing event to trigger the WindowListener logic
+                previewFrame.dispatchEvent(new WindowEvent(previewFrame, WindowEvent.WINDOW_CLOSING));
             }
         });
 
         previewFrame.setVisible(true);
+    }
+
+    /**
+     * Centralized method to open a preview for a specific ProjectFile.
+     * Reads the file, determines syntax, creates PreviewTextPanel, and shows the frame.
+     *
+     * @param pf The ProjectFile to preview.
+     */
+    public void previewFile(ProjectFile pf) {
+        assert pf != null;
+        assert SwingUtilities.isEventDispatchThread() : "Preview must be initiated on EDT";
+
+        try {
+            // 1. Read file content
+            var content = pf.read();
+
+            // 2. Deduce syntax style
+            var syntax = SyntaxDetector.detect(pf);
+
+            // 3. Build the PTP
+            // 3. Build the PTP
+            // Pass null for the fragment when previewing a file directly.
+            // The fragment is primarily relevant when opened from the context table.
+            var panel = new PreviewTextPanel(
+                    contextManager, pf, content,
+                    syntax,
+                    themeManager, null); // Pass null fragment
+
+            // 4. Show in frame using toString for the title
+            showPreviewFrame(contextManager, "Preview: " + pf, panel);
+
+        } catch (IOException ex) {
+            toolErrorRaw("Error reading file for preview: " + ex.getMessage());
+            logger.error("Error reading file {} for preview", pf.absPath(), ex);
+        } catch (Exception ex) {
+            toolErrorRaw("Error opening file preview: " + ex.getMessage());
+            logger.error("Unexpected error opening preview for file {}", pf.absPath(), ex);
+        }
     }
 
     /**
@@ -578,19 +643,28 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
             // Handle text fragments
             String content = fragment.text();
-            if (fragment instanceof ContextFragment.GitFileFragment ghf) {
-                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ghf.file(), content, fragment.syntaxStyle(), themeManager, ghf);
-                showPreviewFrame(contextManager, title, previewPanel); // Use helper
-            } else if (fragment instanceof ContextFragment.ProjectPathFragment ppf) {
-                PreviewTextPanel previewPanel = new PreviewTextPanel(contextManager, ppf.file(), content, fragment.syntaxStyle(), themeManager, null);
-                showPreviewFrame(contextManager, title, previewPanel); // Use helper
-            } else {
-                // Use PreviewTextPanel for other virtual/plain text fragments
-                var previewPanel = new PreviewTextPanel(contextManager, null, content, fragment.syntaxStyle(), themeManager, null);
-                showPreviewFrame(contextManager, title, previewPanel); // Use helper
+            io.github.jbellis.brokk.analyzer.ProjectFile file = null;
+            // Handle PathFragment using the unified previewFile method
+            if (fragment instanceof ContextFragment.PathFragment pf) {
+                 // Ensure we are on the EDT before calling previewFile
+                if (!SwingUtilities.isEventDispatchThread()) {
+                    SwingUtilities.invokeLater(() -> previewFile((ProjectFile) pf.file()));
+                } else {
+                    previewFile((ProjectFile) pf.file());
+                }
+                return; // previewFile handles showing the frame
             }
-        } catch (IOException ex) {
+
+            // Handle other text-based fragments (e.g., VirtualFragment, GitFileFragment)
+            String syntaxStyle = fragment.syntaxStyle();
+            // Check specifically for GitFileFragment to get the associated file, otherwise null
+            file = (fragment instanceof ContextFragment.GitFileFragment gff) ? (ProjectFile) gff.file() : null;
+            var previewPanel = new PreviewTextPanel(contextManager, file, content, syntaxStyle, themeManager, fragment);
+            showPreviewFrame(contextManager, title, previewPanel); // Use helper for these too
+
+        } catch (IOException ex) { // IOException mainly from fragment.text()
             toolErrorRaw("Error reading fragment content: " + ex.getMessage());
+            logger.error("Error reading fragment content for preview", ex);
         } catch (Exception ex) {
             logger.debug("Error opening preview", ex);
             toolErrorRaw("Error opening preview: " + ex.getMessage());

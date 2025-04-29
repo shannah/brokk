@@ -3,10 +3,8 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
-import io.github.jbellis.brokk.gui.dialogs.PreviewTextPanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.util.Decompiler;
-import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import javax.swing.*;
 import java.awt.*;
@@ -208,18 +206,15 @@ public class MenuBar {
 
                 if (dialog.isConfirmed() && dialog.getSelectedFile() != null) {
                     var selectedBrokkFile = dialog.getSelectedFile();
-                        if (selectedBrokkFile.isText()) {
-                            if (selectedBrokkFile instanceof io.github.jbellis.brokk.analyzer.ProjectFile selectedFile) {
-                                PreviewTextPanel.showInFrame(chrome.getFrame(), cm, selectedFile, SyntaxConstants.SYNTAX_STYLE_JAVA, chrome.themeManager);
-                            } else {
-                                // Handle case where selected file is not a ProjectFile (e.g., external file if allowExternalFiles was true)
-                                chrome.toolErrorRaw("Cannot view non-project files this way.");
-                            }
-                        } else {
-                             PreviewImagePanel.showInFrame(chrome.getFrame(), cm, selectedBrokkFile, chrome.themeManager);
-                        }
+                    if (selectedBrokkFile instanceof io.github.jbellis.brokk.analyzer.ProjectFile selectedFile) {
+                        chrome.previewFile(selectedFile);
+                    } else if (!selectedBrokkFile.isText()) {
+                        PreviewImagePanel.showInFrame(chrome.getFrame(), cm, selectedBrokkFile, chrome.themeManager);
+                    } else {
+                        chrome.toolErrorRaw("Cannot view this type of file: " + selectedBrokkFile.getClass().getSimpleName());
                     }
-                });
+                }
+            });
         });
         viewFileItem.setEnabled(hasProject);
         contextMenu.add(viewFileItem);
