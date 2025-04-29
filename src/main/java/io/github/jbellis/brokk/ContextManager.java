@@ -1073,17 +1073,29 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
     }
 
-    private static String summaryDescription(ContextFragment cf) {
-        return cf instanceof PathFragment pf
-               ? pf.file().toString()
-               : "\"" + cf.description() + "\"";
+    private String readOnlySummaryDescription(ContextFragment cf) {
+        if (cf instanceof PathFragment pf) {
+            return pf.file().toString();
+        }
+
+        return "\"%s\"".formatted(cf.description());
+    }
+
+    private String editableSummaryDescription(ContextFragment cf) {
+        if (cf instanceof PathFragment pf) {
+            return pf.file().toString();
+        }
+
+        ContextFragment.UsageFragment uf = (ContextFragment.UsageFragment) cf;
+        var files = uf.files(project).stream().map(ProjectFile::toString).sorted().collect(Collectors.joining(", "));
+        return "[%s] (%s)".formatted(files, uf.description());
     }
 
     public String getReadOnlySummary()
     {
         var c = topContext();
         return c.getReadOnlyFragments()
-                .map(ContextManager::summaryDescription)
+                .map(this::readOnlySummaryDescription)
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining(", "));
     }
@@ -1091,7 +1103,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public String getEditableSummary()
     {
         return topContext().getEditableFragments()
-                .map(ContextManager::summaryDescription)
+                .map(this::editableSummaryDescription)
                 .collect(Collectors.joining(", "));
     }
 
