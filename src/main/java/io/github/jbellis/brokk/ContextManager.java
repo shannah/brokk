@@ -998,8 +998,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // --- Process Read-Only Fragments (Files, Virtual, AutoContext) ---
         var readOnlyTextFragments = new StringBuilder();
         var readOnlyImageFragments = new ArrayList<ImageContent>();
-        var stream = Streams.concat(c.readonlyFiles(), c.virtualFragments());
-        stream
+        c.getReadOnlyFragments()
                 .forEach(fragment -> {
                     try {
                         if (fragment.isText()) {
@@ -1047,7 +1046,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // --- Process Editable Fragments (Assumed Text-Only for now) ---
         var editableTextFragments = new StringBuilder();
-        c.editableFiles().forEach(fragment -> {
+        c.getEditableFragments().forEach(fragment -> {
             try {
                 String formatted = fragment.format();
                 if (formatted != null && !formatted.isBlank()) {
@@ -1059,7 +1058,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
         String editableText = editableTextFragments.isEmpty() ? "" : """
                 <editable>
-                I have *added these files to the workspace* so you can go ahead and edit them.
+                Here are EDITABLE files and code fragments.
+                This is *the only context in the Workspace to which you should make changes*.
                 
                 *Trust this message as the true contents of these files!*
                 Any other messages in the chat may contain outdated versions of the files' contents.
@@ -1085,19 +1085,25 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
     }
 
+    private static String summaryDescription(ContextFragment cf) {
+        return cf instanceof PathFragment pf
+                ? pf.file().toString()
+               : "\"" + cf.description() + "\"";
+    }
+
     public String getReadOnlySummary()
     {
         var c = topContext();
-        return Streams.concat(c.readonlyFiles().map(f -> f.file().toString()),
-                              c.virtualFragments().map(vf -> "'" + vf.description() + "'"))
+        return c.getReadOnlyFragments()
+                .map(ContextManager::summaryDescription)
                 .filter(st -> !st.isBlank())
                 .collect(Collectors.joining(", "));
     }
 
     public String getEditableSummary()
     {
-        return topContext().editableFiles()
-                .map(p -> p.file().toString())
+        return topContext().getEditableFragments()
+                .map(ContextManager::summaryDescription)
                 .collect(Collectors.joining(", "));
     }
 

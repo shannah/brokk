@@ -346,6 +346,26 @@ public class Context implements Serializable {
         return virtualFragments.stream();
     }
 
+    /**
+     * Returns readonly files and virtual fragments (excluding usage fragments) as a combined stream
+     */
+    public Stream<ContextFragment> getReadOnlyFragments() {
+        return Streams.concat(
+            readonlyFiles.stream(),
+            virtualFragments.stream().filter(f -> !(f instanceof ContextFragment.UsageFragment))
+        );
+    }
+
+    /**
+     * Returns editable files and usage fragments as a combined stream
+     */
+    public Stream<ContextFragment> getEditableFragments() {
+        return Streams.concat(
+            editableFiles.stream(),
+            virtualFragments.stream().filter(f -> f instanceof ContextFragment.UsageFragment)
+        );
+    }
+
     public Stream<? extends ContextFragment> allFragments() {
         return Streams.concat(editableFiles.stream(),
                               readonlyFiles.stream(),
