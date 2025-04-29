@@ -36,14 +36,14 @@ public final class Models {
     /**
      * Represents the parsed Brokk API key components.
      */
-    public record KeyParts(String token, java.util.UUID userId) {}
+    public record KeyParts(java.util.UUID userId, String proToken, String freeToken) {}
 
     /**
-     * Parses a Brokk API key of the form 'brk+<token>+<userId>'.
-     * The token must start with 'sk-' and userId must be a valid UUID.
+     * Parses a Brokk API key of the form 'brk+<userId>+<proToken>+<freeToken>'.
+     * The userId must be a valid UUID. The `sk-` prefix is added implicitly to tokens.
      *
      * @param key the raw key string
-     * @return KeyParts containing token and userId
+     * @return KeyParts containing userId, proToken, and freeToken
      * @throws IllegalArgumentException if the key is invalid
      */
     public static KeyParts parseKey(String key) {
@@ -51,20 +51,22 @@ public final class Models {
             throw new IllegalArgumentException("Key cannot be empty");
         }
         var parts = key.split("\\+");
-        if (parts.length != 3 || !"brk".equals(parts[0])) {
-            throw new IllegalArgumentException("Key must have format 'brk+<token>+<userId>'");
+        if (parts.length != 4 || !"brk".equals(parts[0])) {
+            throw new IllegalArgumentException("Key must have format 'brk+<userId>+<proToken>+<freeToken>'");
         }
-        var token = parts[1];
-        if (!token.startsWith("sk-")) {
-            throw new IllegalArgumentException("Token must start with 'sk-'");
-        }
+
         java.util.UUID userId;
         try {
-            userId = java.util.UUID.fromString(parts[2]);
+            userId = java.util.UUID.fromString(parts[1]);
         } catch (Exception e) {
-            throw new IllegalArgumentException("User ID must be a valid UUID", e);
+            throw new IllegalArgumentException("User ID (part 2) must be a valid UUID", e);
         }
-        return new KeyParts(token, userId);
+
+        // Tokens no longer have sk- prefix in the raw key, prepend it here
+        var proToken = "sk-" + parts[2];
+        var freeToken = "sk-" + parts[3];
+
+        return new KeyParts(userId, proToken, freeToken);
     }
 
     private final Logger logger = LogManager.getLogger(Models.class);
@@ -93,6 +95,7 @@ public final class Models {
     private StreamingChatLanguageModel quickModel;
     private volatile StreamingChatLanguageModel quickestModel = null;
     private volatile SpeechToTextModel sttModel = null;
+    private volatile boolean isLowBalance = false; // Store balance status
 
     // Constructor - could potentially take project-specific config later
     public Models() {
@@ -121,9 +124,9 @@ public final class Models {
     public void reinit(Project.DataRetentionPolicy policy) {
          String proxyUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project setting
          logger.info("Initializing models using policy: {} and proxy: {}", policy, proxyUrl);
-         boolean lowBalance = false;
+         // isLowBalance is now an instance field, set within fetchAvailableModels
          try {
-             lowBalance = fetchAvailableModels(policy);
+             fetchAvailableModels(policy); // This will set the isLowBalance field
          } catch (IOException e) {
             logger.error("Failed to connect to LiteLLM at {} or parse response: {}",
                          proxyUrl, e.getMessage(), e); // Log the exception details
@@ -132,7 +135,7 @@ public final class Models {
         }
 
          // Display low balance warning if applicable
-         if (lowBalance) {
+         if (isLowBalance) {
              SwingUtilities.invokeLater(() -> {
                  var panel = new JPanel();
                  panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -179,11 +182,12 @@ public final class Models {
 
     public float getUserBalance() throws IOException {
         var kp = parseKey(Project.getBrokkKey());
+        // Use proToken for balance lookup
         String url = "https://app.brokk.ai/api/payments/balance-lookup/" + kp.userId();
         logger.debug(url);
         Request request = new Request.Builder()
                 .url(url)
-                .header("Authorization", "Bearer " + kp.token())
+                .header("Authorization", "Bearer " + kp.proToken())
                 .get()
                 .build();
         try (Response response = httpClient.newCall(request).execute()) {
@@ -205,24 +209,24 @@ public final class Models {
     }
  
     /**
-     * Fetches available models from the LLM proxy and applies filters.
+     * Fetches available models from the LLM proxy, applies filters, and sets the low balance status.
      * @param policy The data retention policy.
-     * @return true if the proxy is Brokk and the user balance is low, false otherwise.
      * @throws IOException If network or parsing errors occur.
      */
-    private boolean fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
+    private void fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
         String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
         boolean isBrokk = Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK;
-        boolean lowBalance = false; // Default to false
- 
+        this.isLowBalance = false; // Reset/default to false before checking
+
         // Pick correct Authorization header for model/info
         var authHeader = "Bearer dummy-key";
-        if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+        if (isBrokk) {
             var kp = parseKey(Project.getBrokkKey());
-            authHeader = "Bearer " + kp.token();
+            // Use proToken to check available models and balance
+            authHeader = "Bearer " + kp.proToken();
         }
         Request request = new Request.Builder()
-                .url(baseUrl + "/model/info") // Use dynamic base URL
+                .url(baseUrl + "/model/info")
                 .header("Authorization", authHeader)
                 .get()
                 .build();
@@ -244,99 +248,98 @@ public final class Models {
             JsonNode rootNode = objectMapper.readTree(responseBody);
             JsonNode dataNode = rootNode.path("data");
 
-            if (dataNode.isArray()) {
-                 modelLocations.clear();
-                 modelInfoMap.clear();
-                 float balance = 0f;
-                 // Only check balance if using Brokk proxy
-                 if (isBrokk) {
-                     try {
-                         balance = getUserBalance();
-                         logger.info("User balance: {}", balance);
-                     } catch (IOException e) {
-                         logger.error("Failed to retrieve user balance: {}", e.getMessage());
-                         // Decide how to handle failure - perhaps treat as low balance?
-                         // For now, log and continue, assuming not low balance.
-                         // Alternatively, could re-throw or return an error state.
-                     }
-                    lowBalance = balance < MINIMUM_PAID_BALANCE;
+            if (!dataNode.isArray()) {
+                logger.error("/model/info did not return a data array. No models discovered.");
+                return;
+            }
+
+            modelLocations.clear();
+            modelInfoMap.clear();
+            float balance = 0f;
+            // Only check balance if using Brokk proxy
+            if (isBrokk) {
+                try {
+                    balance = getUserBalance();
+                    logger.info("User balance: {}", balance);
+                } catch (IOException e) {
+                    logger.error("Failed to retrieve user balance: {}", e.getMessage());
+                    // Decide how to handle failure - perhaps treat as low balance?
+                    // For now, log and continue, assuming not low balance.
+                    // For now, log and continue, assuming not low balance.
                 }
+                this.isLowBalance = balance < MINIMUM_PAID_BALANCE; // Set instance field
+            }
 
-                for (JsonNode modelInfoNode : dataNode) {
-                    String modelName = modelInfoNode.path("model_name").asText();
-                    String modelLocation = modelInfoNode
-                            .path("litellm_params")
-                            .path("model")
-                            .asText();
+            for (JsonNode modelInfoNode : dataNode) {
+                String modelName = modelInfoNode.path("model_name").asText();
+                String modelLocation = modelInfoNode
+                        .path("litellm_params")
+                        .path("model")
+                        .asText();
 
-                    // Process max_output_tokens from model_info
-                    JsonNode modelInfoData = modelInfoNode.path("model_info");
+                // Process max_output_tokens from model_info
+                JsonNode modelInfoData = modelInfoNode.path("model_info");
 
-                    // Store model location and max tokens
-                    if (!modelName.isBlank() && !modelLocation.isBlank()) {
-                        // Process and store all model_info fields
-                        Map<String, Object> modelInfo = new HashMap<>();
-                        if (modelInfoData.isObject()) {
-                            Iterator<Map.Entry<String, JsonNode>> fields = modelInfoData.fields();
-                            while (fields.hasNext()) {
-                                Map.Entry<String, JsonNode> field = fields.next();
-                                String key = field.getKey();
-                                JsonNode value = field.getValue();
+                // Store model location and max tokens
+                if (!modelName.isBlank() && !modelLocation.isBlank()) {
+                    // Process and store all model_info fields
+                    Map<String, Object> modelInfo = new HashMap<>();
+                    if (modelInfoData.isObject()) {
+                        Iterator<Map.Entry<String, JsonNode>> fields = modelInfoData.fields();
+                        while (fields.hasNext()) {
+                            Map.Entry<String, JsonNode> field = fields.next();
+                            String key = field.getKey();
+                            JsonNode value = field.getValue();
 
-                                // Convert JsonNode to appropriate Java type
-                                if (value.isNull()) {
-                                    modelInfo.put(key, null);
-                                } else if (value.isBoolean()) {
-                                    modelInfo.put(key, value.asBoolean());
-                                } else if (value.isInt()) {
-                                    modelInfo.put(key, value.asInt());
-                                } else if (value.isLong()) {
-                                    modelInfo.put(key, value.asLong());
-                                } else if (value.isDouble()) {
-                                    modelInfo.put(key, value.asDouble());
-                                } else if (value.isTextual()) {
-                                    modelInfo.put(key, value.asText());
-                                } else if (value.isArray() || value.isObject()) {
-                                    // Convert complex objects to String representation
-                                    modelInfo.put(key, value.toString());
-                                }
+                            // Convert JsonNode to appropriate Java type
+                            if (value.isNull()) {
+                                modelInfo.put(key, null);
+                            } else if (value.isBoolean()) {
+                                modelInfo.put(key, value.asBoolean());
+                            } else if (value.isInt()) {
+                                modelInfo.put(key, value.asInt());
+                            } else if (value.isLong()) {
+                                modelInfo.put(key, value.asLong());
+                            } else if (value.isDouble()) {
+                                modelInfo.put(key, value.asDouble());
+                            } else if (value.isTextual()) {
+                                modelInfo.put(key, value.asText());
+                            } else if (value.isArray() || value.isObject()) {
+                                // Convert complex objects to String representation
+                                modelInfo.put(key, value.toString());
                             }
                         }
-                        // Add model location to the info map
-                        modelInfo.put("model_location", modelLocation);
-
-                        // Apply data retention policy filter
-                        if (policy == Project.DataRetentionPolicy.MINIMAL) {
-                            boolean isPrivate = (Boolean) modelInfo.getOrDefault("is_private", false);
-                            if (!isPrivate) {
-                                logger.debug("Skipping non-private model {} due to MINIMAL data retention policy", modelName);
-                                continue; // Skip adding this model
-                            }
-                        }
-
-                        // Store the complete model info
-                        if (lowBalance) {
-                            var freeEligible = (Boolean) modelInfo.getOrDefault("free_tier_eligible", false);
-                            if (!freeEligible) {
-                                logger.debug("Skipping model {} not eligible for free tier", modelName);
-                                continue;
-                            }
-                        }
-                        modelLocations.put(modelName, modelLocation);
-                        modelInfoMap.put(modelName, modelInfo);
-
-                        logger.debug("Discovered model: {} -> {} with info {})",
-                                     modelName, modelLocation, modelInfo);
                     }
-                }
+                    // Add model location to the info map
+                    modelInfo.put("model_location", modelLocation);
 
-                logger.info("Discovered {} models", modelLocations.size());
-             } else {
-                 logger.error("/model/info did not return a data array. No models discovered.");
-             }
-         }
-         // Return low balance status only if using Brokk
-         return isBrokk && lowBalance;
+                    // Apply data retention policy filter
+                    if (policy == Project.DataRetentionPolicy.MINIMAL) {
+                        boolean isPrivate = (Boolean) modelInfo.getOrDefault("is_private", false);
+                        if (!isPrivate) {
+                            logger.debug("Skipping non-private model {} due to MINIMAL data retention policy", modelName);
+                            continue; // Skip adding this model
+                        }
+                    }
+
+                    // Store the complete model info, filtering if low balance
+                    if (isLowBalance) {
+                        var freeEligible = (Boolean) modelInfo.getOrDefault("free_tier_eligible", false);
+                        if (!freeEligible) {
+                            logger.debug("Skipping model {} - not eligible for free tier (low balance)", modelName);
+                            continue;
+                        }
+                    }
+                    modelLocations.put(modelName, modelLocation);
+                    modelInfoMap.put(modelName, modelInfo);
+
+                    logger.debug("Discovered model: {} -> {} with info {})",
+                                 modelName, modelLocation, modelInfo);
+                }
+            }
+
+            logger.info("Discovered {} models", modelLocations.size());
+        }
      }
 
     /**
@@ -433,11 +436,16 @@ public final class Models {
 
             if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
+                // Select token based on balance status
+                var selectedToken = isLowBalance ? kp.freeToken() : kp.proToken();
+                logger.debug("Using {} for model '{}' request (low balance: {})",
+                             isLowBalance ? "freeToken" : "proToken", modelName, isLowBalance);
                 builder = builder
-                        .apiKey(kp.token())
-                        .customHeaders(Map.of("Authorization", "Bearer " + kp.token()))
+                        .apiKey(selectedToken)
+                        .customHeaders(Map.of("Authorization", "Bearer " + selectedToken))
                         .user(kp.userId().toString());
             } else {
+                // Non-Brokk proxy
                 builder = builder.apiKey("dummy-key");
             }
 
@@ -630,21 +638,23 @@ public final class Models {
 
     /**
      * STT implementation using Gemini via LiteLLM.
-     * Now an instance class to access the parent Models' ObjectMapper.
-     */
-    public static class GeminiSTT implements SpeechToTextModel { // Removed static
-        private final Logger logger = LogManager.getLogger(GeminiSTT.class);
-        private final MediaType JSON = MediaType.get("application/json; charset=utf-8"); // Can be instance field
+     * Now an inner class to access the parent Models' state like `isLowBalance`.
+ */
+public class GeminiSTT implements SpeechToTextModel {
+    private final Logger logger = LogManager.getLogger(GeminiSTT.class);
+    private final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
         private final String modelLocation; // e.g., "gemini/gemini-2.0-flash-lite"
         private final OkHttpClient httpClient;
-        private final ObjectMapper objectMapper; // Added ObjectMapper field
+        private final ObjectMapper objectMapper;
 
         // Constructor now takes ObjectMapper
+        // GeminiSTT is an inner class and can access the parent's fields,
+        // but passing explicitly makes dependencies clearer.
         public GeminiSTT(String modelLocation, OkHttpClient httpClient, ObjectMapper objectMapper) {
-            this.modelLocation = modelLocation;
-            this.httpClient = httpClient;
-            this.objectMapper = objectMapper;
+             this.modelLocation = modelLocation;
+             this.httpClient = httpClient;
+             this.objectMapper = objectMapper;
         }
 
         private String getAudioFormat(String fileName) {
@@ -682,14 +692,18 @@ public final class Models {
 
             String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
             RequestBody body = RequestBody.create(jsonBody, JSON);
-            // Pick correct Authorization header
-            var authHeader = "Bearer dummy-key";
+            // Pick correct Authorization header based on balance
+            var authHeader = "Bearer dummy-key"; // Default for non-Brokk
             if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
-                authHeader = "Bearer " + kp.token();
+                // Access the parent Models instance's isLowBalance flag
+                var selectedToken = Models.this.isLowBalance ? kp.freeToken() : kp.proToken();
+                logger.debug("Using {} for STT request (low balance: {})",
+                             Models.this.isLowBalance ? "freeToken" : "proToken", Models.this.isLowBalance);
+                authHeader = "Bearer " + selectedToken;
             }
             Request request = new Request.Builder()
-                    .url(baseUrl + "/chat/completions")
+                    .url(baseUrl + "/chat/completions") // Use the Models instance's base URL logic
                     .header("Authorization", authHeader)
                     .post(body)
                     .build();
