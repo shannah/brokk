@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.ContextFragment.TaskFragment;
@@ -1076,7 +1077,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
 
         // Submit the action. The dialog and core logic run in the background.
-        contextManager.submitAction("Architect", goal, () -> {
+        submitAction("Architect", goal, () -> {
             ArchitectAgent.ArchitectOptions options = null; // Initialize to null
             try {
                 // Show options dialog within the background task using the new static method
@@ -1126,7 +1127,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        chrome.getContextManager().submitAction("Code", input, () -> {
+        submitAction("Code", input, () -> {
             try {
                 executeCodeCommand(codeModel, input);
             } finally {
@@ -1158,7 +1159,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        chrome.getContextManager().submitAction("Ask", input, () -> {
+        submitAction("Ask", input, () -> {
             try {
                 executeAskCommand(askModel, input);
             } finally {
@@ -1189,7 +1190,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        chrome.getContextManager().submitAction("Search", input, () -> {
+        submitAction("Search", input, () -> {
             try {
                 executeSearchCommand(searchModel, input);
             } finally {
@@ -1208,7 +1209,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
-        chrome.getContextManager().submitAction("Run", input, () -> executeRunCommand(input));
+        submitAction("Run", input, () -> executeRunCommand(input));
+    }
+
+    /**
+     * sets the llm output to indicate the action has started, and submits the task on the user pool
+     */
+    public Future<?> submitAction(String action, String input, Runnable task) {
+        var cm = chrome.getContextManager();
+        // need to set the correct parser here since we're going to append to the same fragment during the action
+        action = (action + " MODE").toUpperCase();
+        chrome.setLlmOutput(new ContextFragment.TaskFragment(cm.getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
+        return cm.submitUserTask(action, task, true);
     }
 
     // Methods to disable and enable buttons.

@@ -329,22 +329,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return models.get(modelName, reasoning);
     }
 
-    public Future<?> submitAction(String action, String input, Runnable task) {
-        // need to set the correct parser here since we're going to append to the same fragment during the action
-        action = (action + " MODE").toUpperCase();
-        io.setLlmOutput(new ContextFragment.TaskFragment(getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
-        return submitLlmTask(action, task);
-    }
-
-    public Future<?> submitLlmTask(String description, Runnable task) {
-        return submitUserTask(description, task, true);
-    }
-
     public Future<?> submitUserTask(String description, Runnable task) {
         return submitUserTask(description, task, false);
     }
 
-    private Future<?> submitUserTask(String description, Runnable task, boolean isLlmTask) {
+    public Future<?> submitUserTask(String description, Runnable task, boolean isLlmTask) {
         return userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
 
