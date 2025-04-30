@@ -35,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -80,6 +81,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
+    private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false); // Flag to prevent self-refresh from table actions
     private JPanel overlayPanel; // Panel used to initially disable command input
     private boolean lowBalanceNotified = false;
     private boolean freeTierNotified = false;
@@ -378,7 +380,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
                 editItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
-                        // suppressExternalSuggestionsTrigger.set(true); // No longer needed here
+                        suppressExternalSuggestionsTrigger.set(true);
                         cm.editFiles(List.of(targetRef.getRepoFile()));
                     } else {
                         chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
@@ -395,7 +397,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
                 readItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
-                        // suppressExternalSuggestionsTrigger.set(true); // No longer needed here
+                        suppressExternalSuggestionsTrigger.set(true);
                         cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
                     } else {
                         chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
@@ -407,6 +409,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
                 summarizeItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
+                        suppressExternalSuggestionsTrigger.set(true);
                         boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
                         if (success) {
                             chrome.systemOutput("Summarized " + targetRef.getFullPath());
@@ -1246,7 +1249,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     @Override
     public void contextChanged(Context newCtx) {
-        // No longer need to check suppressExternalSuggestionsTrigger here
+        // Check if the update was triggered by one of the table's own actions
+        if (suppressExternalSuggestionsTrigger.getAndSet(false)) {
+            logger.debug("Suppressing context suggestion due to internal table action.");
+            return;
+        }
+
+        // Otherwise, proceed with the normal suggestion logic
         if (!contextSuggestionTimer.isRunning()) {
             triggerContextSuggestion(null);
         }
