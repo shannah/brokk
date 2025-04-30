@@ -165,12 +165,28 @@ public class HistoryOutputPanel extends JPanel {
                     contextManager.setSelectedContext(ctx);
                     chrome.loadContext(ctx);
                 }
-            }
-        });
+             }
+         });
 
-        // Add right-click context menu for history operations
-        historyTable.addMouseListener(new MouseAdapter() {
-            @Override
+         // Add mouse listener for right-click context menu and double-click action
+         historyTable.addMouseListener(new MouseAdapter() {
+             @Override
+             public void mouseClicked(MouseEvent e) {
+                 if (e.getClickCount() == 2) { // Double-click
+                     int row = historyTable.rowAtPoint(e.getPoint());
+                     if (row >= 0) {
+                         Context context = (Context) historyModel.getValueAt(row, 2);
+                         var output = context.getParsedOutput();
+                         if (output != null) {
+                             // Open in new window
+                             new OutputWindow(HistoryOutputPanel.this, output,
+                                              chrome.themeManager != null && chrome.themeManager.isDarkTheme());
+                         }
+                     }
+                 }
+             }
+
+             @Override
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showContextHistoryPopupMenu(e);
