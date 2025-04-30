@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  */
 public final class Models {
     public static final String TOP_UP_URL = "https://brokk.ai/dashboard";
-    public static float MINIMUM_PAID_BALANCE = 0.10f;
+    public static float MINIMUM_PAID_BALANCE = 0.20f;
 
     /**
      * Represents the parsed Brokk API key components.
