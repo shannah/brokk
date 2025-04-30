@@ -218,16 +218,19 @@ public class SettingsDialog extends JDialog {
         lightRadio.putClientProperty("theme", false);
         darkRadio.putClientProperty("theme", true);
 
-        // Panel to hold radio buttons together
-        var themeRadioPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)); // No gaps
-        themeRadioPanel.add(lightRadio);
-        themeRadioPanel.add(darkRadio);
-
+        // Light radio on this row
         gbc.gridx = 1;
         gbc.gridy = row++;
-        gbc.weightx = 1.0; // Let the radio button panel take remaining space if needed
-        // No fill needed here as FlowLayout handles sizing
-        panel.add(themeRadioPanel, gbc);
+        gbc.weightx = 1.0; // Let radio take space
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(lightRadio, gbc);
+
+        // Dark radio on next line
+        gbc.gridy = row++;
+        panel.add(darkRadio, gbc);
+
+        // Reset fill for the next item
+        gbc.fill = GridBagConstraints.NONE;
 
         // Add vertical glue to push components to the top
         gbc.gridx = 0;
@@ -760,45 +763,25 @@ public class SettingsDialog extends JDialog {
 
 
         // -- Apply Theme --
-        // Find the themeRadioPanel (it's the component holding theme radio buttons)
-        Component themeComponent = null;
-        // Locate the panel holding the theme radio buttons based on content, not fixed grid coordinates
+        // -- Apply Theme --
+        // Find the selected theme radio button directly in the global panel
+        boolean foundSelectedTheme = false;
         for (Component comp : globalPanel.getComponents()) {
-            if (comp instanceof JPanel panel) {
-                // Check if the panel contains the light/dark radio buttons we created
-                boolean hasLight = false;
-                boolean hasDark = false;
-                for (Component child : panel.getComponents()) {
-                    if (child instanceof JRadioButton radio) {
-                        if ("Light".equals(radio.getText())) hasLight = true;
-                        if ("Dark".equals(radio.getText())) hasDark = true;
-                    }
+            if (comp instanceof JRadioButton radio && radio.isSelected() && radio.getClientProperty("theme") != null) {
+                boolean newIsDark = (Boolean) radio.getClientProperty("theme");
+                String newTheme = newIsDark ? "dark" : "light";
+                // Only switch theme if it actually changed
+                if (!newTheme.equals(Project.getTheme())) {
+                    chrome.switchTheme(newIsDark); // switchTheme calls Project.setTheme internally
+                    logger.debug("Applied Theme: {}", newTheme);
                 }
-                if (hasLight && hasDark) {
-                    themeComponent = comp;
-                    break;
-                }
+                foundSelectedTheme = true;
+                break;
             }
         }
-
-        if (themeComponent instanceof JPanel themeRadioPanel) {
-            for (Component radioComp : themeRadioPanel.getComponents()) {
-                if (radioComp instanceof JRadioButton radio && radio.isSelected()) {
-                    boolean useDark = (Boolean) radio.getClientProperty("theme");
-                    // Only switch theme if it actually changed
-                    boolean newIsDark = (Boolean) radio.getClientProperty("theme");
-                    String newTheme = newIsDark ? "dark" : "light";
-                    // Only switch theme if it actually changed
-                    if (!newTheme.equals(Project.getTheme())) {
-                        chrome.switchTheme(newIsDark); // switchTheme calls Project.setTheme internally
-                        logger.debug("Applied Theme: {}", newTheme);
-                    }
-                    break;
-                }
-            }
-        } else {
-            // Log error or handle case where theme panel wasn't found as expected
-            logger.error("Could not find theme radio button panel in SettingsDialog.");
+        if (!foundSelectedTheme) {
+             // This shouldn't happen if the ButtonGroup ensures one is always selected, but log just in case.
+            logger.warn("No theme radio button was selected in SettingsDialog.");
         }
 
         // Apply Project Settings (if project is open and tab is enabled)
