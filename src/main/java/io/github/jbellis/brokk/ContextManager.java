@@ -28,7 +28,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.NotNull;
-import scala.Option;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -332,10 +331,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public Future<?> submitUserTask(String description, Runnable task) {
-        return submitUserTask(description, task, false);
+        return submitUserTask(description, false, task);
     }
 
-    public Future<?> submitUserTask(String description, Runnable task, boolean isLlmTask) {
+    public Future<?> submitUserTask(String description, boolean isLlmTask, Runnable task) {
         return userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
             io.disableActionButtons();

@@ -134,7 +134,7 @@ public class SettingsDialog extends JDialog {
         gbc.anchor = GridBagConstraints.WEST;
         panel.add(new JLabel("Balance:"), gbc);
 
-        var balanceField = new JTextField("$?.??"); // Placeholder, update with actual logic later
+        var balanceField = new JTextField("Loading..."); // Initial loading text
         balanceField.setEditable(false);
         balanceField.setColumns(8); // Give it a reasonable minimum size
         gbc.gridx = 1;
@@ -144,15 +144,18 @@ public class SettingsDialog extends JDialog {
         // Create a sub-panel to hold balance and top-up link together
         var balancePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0)); // Left align, 5px horizontal gap
 
-        // Fetch and display balance
-        var models = chrome.getContextManager().getModels();
-        try {
-            float balance = models.getUserBalance();
-            balanceField.setText(String.format("$%.2f", balance));
-        } catch (java.io.IOException e) {
-            logger.debug("Failed to fetch user balance", e);
-            balanceField.setText("");
-        }
+        // Asynchronously fetch and display balance
+        var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
+        contextManager.submitBackgroundTask("Fetching user balance", () -> {
+            try {
+                float balance = models.getUserBalance();
+                SwingUtilities.invokeLater(() -> balanceField.setText(String.format("$%.2f", balance)));
+            } catch (java.io.IOException e) {
+                logger.debug("Failed to fetch user balance", e);
+                SwingUtilities.invokeLater(() -> balanceField.setText("Error")); // Indicate error
+            }
+        });
 
         balancePanel.add(balanceField);
 

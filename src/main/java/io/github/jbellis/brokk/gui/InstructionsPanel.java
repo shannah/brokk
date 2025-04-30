@@ -831,7 +831,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         try {
             DeepScanDialog.triggerDeepScan(chrome, goal);
         } finally {
-            checkBalanceAndNotify();
+            chrome.getContextManager().submitBackgroundTask("", this::checkBalanceAndNotify);
         }
     }
 
@@ -1225,11 +1225,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // need to set the correct parser here since we're going to append to the same fragment during the action
         action = (action + " MODE").toUpperCase();
         chrome.setLlmOutput(new ContextFragment.TaskFragment(cm.getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
-        try {
-            return cm.submitUserTask(action, task, true);
-        } finally {
-            checkBalanceAndNotify();
-        }
+        return cm.submitUserTask(action, true, () -> {
+            try {
+                task.run();
+            } finally {
+                checkBalanceAndNotify();
+            }
+        });
     }
 
     // Methods to disable and enable buttons.
