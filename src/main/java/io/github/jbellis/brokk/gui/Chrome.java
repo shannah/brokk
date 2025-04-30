@@ -154,7 +154,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      * Sets up .gitignore entries and adds .brokk project files to git
      */
     private void setupGitIgnore() {
-        contextManager.submitUserTask("Updating .gitignore", () -> {
+        contextManager.submitBackgroundTask("Updating .gitignore", () -> {
             try {
                 var gitRepo = (GitRepo) getProject().getRepo();
                 var root = getProject().getRoot();
