@@ -90,7 +90,7 @@ public final class Models {
     private StreamingChatLanguageModel quickModel;
     private volatile StreamingChatLanguageModel quickestModel = null;
     private volatile SpeechToTextModel sttModel = null;
-    private volatile boolean isLowBalance = false; // Store balance status
+    private volatile boolean isFreeTierOnly = false; // Store balance status
 
     // Constructor - could potentially take project-specific config later
     public Models() {
@@ -213,7 +213,7 @@ public final class Models {
     private void fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
         String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
         boolean isBrokk = Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK;
-        this.isLowBalance = false; // Reset/default to false before checking
+        this.isFreeTierOnly = false; // Reset/default to false before checking
 
         // Pick correct Authorization header for model/info
         var authHeader = "Bearer dummy-key";
@@ -264,7 +264,7 @@ public final class Models {
                     // For now, log and continue, assuming not low balance.
                     // For now, log and continue, assuming not low balance.
                 }
-                this.isLowBalance = balance < MINIMUM_PAID_BALANCE; // Set instance field
+                this.isFreeTierOnly = balance < MINIMUM_PAID_BALANCE; // Set instance field
             }
 
             for (JsonNode modelInfoNode : dataNode) {
@@ -320,7 +320,7 @@ public final class Models {
                     }
 
                     // Store the complete model info, filtering if low balance
-                    if (isLowBalance) {
+                    if (isFreeTierOnly) {
                         var freeEligible = (Boolean) modelInfo.getOrDefault("free_tier_eligible", false);
                         if (!freeEligible) {
                             logger.debug("Skipping model {} - not eligible for free tier (low balance)", modelName);
@@ -448,9 +448,9 @@ public final class Models {
             if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
                 // Select token based on balance status
-                var selectedToken = isLowBalance ? kp.freeToken() : kp.proToken();
+                var selectedToken = isFreeTierOnly ? kp.freeToken() : kp.proToken();
                 logger.debug("Using {} for model '{}' request (low balance: {})",
-                             isLowBalance ? "freeToken" : "proToken", modelName, isLowBalance);
+                             isFreeTierOnly ? "freeToken" : "proToken", modelName, isFreeTierOnly);
                 builder = builder
                         .apiKey(selectedToken)
                         .customHeaders(Map.of("Authorization", "Bearer " + selectedToken))
@@ -717,9 +717,9 @@ public final class Models {
             if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
                 // Access the parent Models instance's isLowBalance flag
-                var selectedToken = Models.this.isLowBalance ? kp.freeToken() : kp.proToken();
+                var selectedToken = Models.this.isFreeTierOnly ? kp.freeToken() : kp.proToken();
                 logger.debug("Using {} for STT request (low balance: {})",
-                             Models.this.isLowBalance ? "freeToken" : "proToken", Models.this.isLowBalance);
+                             Models.this.isFreeTierOnly ? "freeToken" : "proToken", Models.this.isFreeTierOnly);
                 authHeader = "Bearer " + selectedToken;
             }
 
