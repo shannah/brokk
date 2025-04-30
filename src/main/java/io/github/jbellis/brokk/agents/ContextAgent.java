@@ -22,7 +22,6 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -83,7 +82,7 @@ public class ContextAgent {
     /**
      * Result record for the LLM tool call, holding recommended files, class names, and the LLM's reasoning.
      */
-    private record LlmRecommendation(List<ProjectFile> recommendedFiles, List<String> recommendedClasses, String reasoning) {
+    private record LlmRecommendation(List<ProjectFile> recommendedFiles, List<CodeUnit> recommendedClasses, String reasoning) {
         static final LlmRecommendation EMPTY = new LlmRecommendation(List.of(), List.of(), "");
     }
 
@@ -338,36 +337,36 @@ public class ContextAgent {
         // Rule 2: Ask LLM to pick relevant summaries/files if all summaries fit the Pruning budget
         if (summaryTokens <= budgetPruning) {
             var llmRecommendation = askLlmToRecommendContext(List.of(), rawSummaries, Map.of(), workspaceRepresentation);
-
-            // Map recommended class names back to CodeUnit -> Summary map
             var recommendedSummaries = rawSummaries.entrySet().stream()
-                    .filter(entry -> llmRecommendation.recommendedClasses.contains(entry.getKey().fqName()))
+                    .filter(entry -> llmRecommendation.recommendedClasses.contains(entry.getKey()))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
             var recommendedFiles = llmRecommendation.recommendedFiles;
-
-            // Calculate combined token size
-            int recommendedSummaryTokens = Messages.getApproximateTokens(String.join("\n", recommendedSummaries.values()));
-            var recommendedContentsMap = readFileContents(recommendedFiles);
-            int recommendedContentTokens = Messages.getApproximateTokens(String.join("\n", recommendedContentsMap.values()));
-            int totalRecommendedTokens = recommendedSummaryTokens + recommendedContentTokens;
-
-            debug("LLM recommended {} classes ({} tokens) and {} files ({} tokens). Total: {} tokens",
-                  recommendedSummaries.size(), recommendedSummaryTokens,
-                  recommendedFiles.size(), recommendedContentTokens, totalRecommendedTokens);
-
-            var skeletonFragments = skeletonPerSummary(recommendedSummaries);
-            var pathFragments = recommendedFiles.stream()
-                    .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
-                    .toList();
-            var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
-            return new RecommendationResult(true, combinedFragments, llmRecommendation.reasoning);
+            return createResult(recommendedSummaries, recommendedFiles, llmRecommendation.reasoning);
         }
 
         // If summaries are too large even for pruning, signal failure for this branch
         String reason = "Summaries too large for LLM pruning budget.";
         logGiveUp("summaries (too large for pruning budget)");
         return new RecommendationResult(false, List.of(), reason);
+    }
+
+    private @NotNull RecommendationResult createResult(Map<CodeUnit, @NotNull String> recommendedSummaries, List<ProjectFile> recommendedFiles, String reasoning) {
+        // Calculate combined token size
+        int recommendedSummaryTokens = Messages.getApproximateTokens(String.join("\n", recommendedSummaries.values()));
+        var recommendedContentsMap = readFileContents(recommendedFiles);
+        int recommendedContentTokens = Messages.getApproximateTokens(String.join("\n", recommendedContentsMap.values()));
+        int totalRecommendedTokens = recommendedSummaryTokens + recommendedContentTokens;
+
+        debug("LLM recommended {} classes ({} tokens) and {} files ({} tokens). Total: {} tokens",
+              recommendedSummaries.size(), recommendedSummaryTokens,
+              recommendedFiles.size(), recommendedContentTokens, totalRecommendedTokens);
+
+        var skeletonFragments = skeletonPerSummary(recommendedSummaries);
+        var pathFragments = recommendedFiles.stream()
+                .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
+                .toList();
+        var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
+        return new RecommendationResult(true, combinedFragments, reasoning);
     }
 
     /**
@@ -393,12 +392,19 @@ public class ContextAgent {
         var projectClasses = files.stream().parallel()
                 .flatMap(f -> analyzer.getClassesInFile(f).stream())
                 .collect(Collectors.toSet());
-        var coalescedClasses = AnalyzerUtil.coalesceInnerClasses(projectClasses);
-        debug("Found {} top-level classes in {} files.",
-              coalescedClasses.size(), files.size());
+        return getSummaries(projectClasses, true);
+    }
+
+    private @NotNull Map<CodeUnit, @NotNull String> getSummaries(Collection<CodeUnit> classes, boolean parallel) {
+        var coalescedClasses = AnalyzerUtil.coalesceInnerClasses(Set.copyOf(classes));
+        debug("Found {} classes", coalescedClasses.size());
 
         // grab skeletons in parallel
-        return coalescedClasses.stream().parallel()
+        var stream = coalescedClasses.stream();
+        if (parallel) {
+            stream = stream.parallel();
+        }
+        return stream
                 .map(cu -> {
                     var skeletonOpt = analyzer.getSkeleton(cu.fqName());
                     String skeleton = skeletonOpt.isDefined() ? skeletonOpt.get() : "";
@@ -413,11 +419,10 @@ public class ContextAgent {
                 contextManager.getReadonlyFiles().contains(file);
     }
 
-    private boolean isClassInWorkspace(String fqName) {
+    private boolean isClassInWorkspace(CodeUnit cls) {
         return contextManager.topContext().allFragments()
                 .anyMatch(f -> f instanceof ContextFragment.SkeletonFragment &&
-                        ((ContextFragment.SkeletonFragment)f).skeletons().keySet().stream()
-                                .anyMatch(cu -> cu.fqName().equals(fqName)));
+                        ((ContextFragment.SkeletonFragment)f).skeletons().containsKey(cls));
     }
 
     private LlmRecommendation askLlmToRecommendContext(@NotNull List<ProjectFile> filesToConsider,
@@ -544,7 +549,9 @@ public class ContextAgent {
                 .toList();
 
         var filteredClasses = contextTool.getRecommendedClasses().stream()
-                .filter(c -> !isClassInWorkspace(c))
+                .map(fqcn -> CodeUnit.cls(analyzer, fqcn))
+                .flatMap(Optional::stream)
+                .filter(cu -> !isClassInWorkspace(cu))
                 .toList();
 
         return new LlmRecommendation(filteredFiles, filteredClasses, reasoning);
@@ -577,17 +584,8 @@ public class ContextAgent {
         if (contentTokens <= budgetPruning) {
             var llmRecommendation = askLlmToRecommendContext(List.of(), Map.of(), contentsMap, workspaceRepresentation);
             var recommendedFiles = llmRecommendation.recommendedFiles;
-
-            var recommendedContentsMap = readFileContents(recommendedFiles);
-            int recommendedContentTokens = Messages.getApproximateTokens(String.join("\n", recommendedContentsMap.values()));
-
-            debug("LLM recommended {} files ({} tokens). Total: {} tokens",
-                  recommendedFiles.size(), recommendedContentTokens, recommendedContentTokens);
-
-            var fragments = recommendedFiles.stream()
-                    .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
-                    .toList();
-            return new RecommendationResult(true, fragments, llmRecommendation.reasoning);
+            var recommendedSummaries = getSummaries(llmRecommendation.recommendedClasses, false);
+            return createResult(recommendedSummaries, recommendedFiles, llmRecommendation.reasoning);
         }
 
         String reason = "File contents too large for LLM pruning budget.";
@@ -627,11 +625,8 @@ public class ContextAgent {
         // Ask LLM to recommend files based *only* on paths
         var llmRecommendation = askLlmToRecommendContext(allFiles, Map.of(), Map.of(), workspaceRepresentation);
         var recommendedFiles = llmRecommendation.recommendedFiles;
-
-        var fragments = recommendedFiles.stream()
-                .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
-                .toList();
-        return new RecommendationResult(true, fragments, llmRecommendation.reasoning);
+        var recommendedSummaries = getSummaries(llmRecommendation.recommendedClasses, false);
+        return createResult(recommendedSummaries, recommendedFiles, llmRecommendation.reasoning);
     }
 
 
