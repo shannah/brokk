@@ -784,7 +784,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         failureReasonLabel.setVisible(false);
                         suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show table
                     });
-                } else if (!recommendations.success()) { // Handle any failure, including single pass
+                } else { // Handle any failure, including single pass
                     logger.debug("Quick context suggestion failed: {}", recommendations.reasoning());
                     SwingUtilities.invokeLater(() -> {
                         boolean isDark = UIManager.getBoolean("laf.dark");
@@ -794,14 +794,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         tableScrollPane.setVisible(false); // Ensure table scrollpane is hidden just in case
                         referenceFileTable.setValueAt(List.of(), 0, 0); // Clear table data
                         suggestionCardLayout.show(suggestionContentPanel, "LABEL"); // Show label
-                    });
-                } else {
-                    // Handle other potential non-success cases, maybe clear or show generic message?
-                    logger.warn("Quick context suggestion returned unexpected state: {}", recommendations);
-                    SwingUtilities.invokeLater(() -> {
-                        referenceFileTable.setValueAt(List.of(), 0, 0);
-                        failureReasonLabel.setVisible(false);
-                        suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
                     });
                 }
             } catch (InterruptedException interruptedException) {
