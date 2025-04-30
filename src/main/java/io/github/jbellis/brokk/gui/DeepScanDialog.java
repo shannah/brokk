@@ -238,16 +238,16 @@ class DeepScanDialog {
             if (fragment instanceof ContextFragment.SkeletonFragment) {
                 comboBox.setSelectedItem(SUMMARIZE);
             } else if (fragment instanceof ContextFragment.ProjectPathFragment) {
-                comboBox.setSelectedItem(EDIT);                          // Default to EDIT for both project & tests
-            } else {
-                comboBox.setSelectedItem(OMIT);
-            }
+                 // Default to EDIT if Git is present, otherwise READ_ONLY
+                 comboBox.setSelectedItem(hasGit ? EDIT : READ_ONLY);
+             } else {
+                 comboBox.setSelectedItem(OMIT);
+             }
 
-            if (!hasGit && EDIT.equals(comboBox.getSelectedItem())) {
-                comboBox.setToolTipText("'" + EDIT + "' option requires a Git repository. Will be ignored if selected.");
-            } else if (!hasGit) {
-                comboBox.setToolTipText("'" + EDIT + "' option requires a Git repository");
-            }
+             // Add tooltip warning if Git is not available, as Edit is still an option
+             if (!hasGit) {
+                 comboBox.setToolTipText("'" + EDIT + "' option requires a Git repository");
+             }
 
             // Fix combo-box width & keep row height compact
             comboBox.setPreferredSize(new Dimension(120, comboBox.getPreferredSize().height));
