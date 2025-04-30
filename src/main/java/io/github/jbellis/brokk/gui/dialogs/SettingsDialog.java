@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import io.github.jbellis.brokk.Models;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.Project.DataRetentionPolicy;
@@ -9,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
 import java.awt.*;
+
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 
 import java.awt.event.WindowAdapter;
@@ -732,11 +734,11 @@ public class SettingsDialog extends JDialog {
 
         // -- Apply Brokk Key --
         String currentBrokkKey = Project.getBrokkKey();
-        String newBrokkKey = brokkKeyField.getText().trim(); // Read from the new field
+        String newBrokkKey = brokkKeyField.getText().trim();
         if (!newBrokkKey.equals(currentBrokkKey)) {
             if (!newBrokkKey.isEmpty()) {
                 try {
-                    io.github.jbellis.brokk.Models.KeyParts kp = io.github.jbellis.brokk.Models.parseKey(newBrokkKey);
+                    Models.parseKey(newBrokkKey);
                 } catch (IllegalArgumentException ex) {
                     JOptionPane.showMessageDialog(this,
                                                   "Invalid Brokk Key: " + ex.getMessage(),
@@ -751,8 +753,8 @@ public class SettingsDialog extends JDialog {
 
         // -- Apply LLM Proxy Setting --
         Project.LlmProxySetting proxySetting = brokkProxyRadio.isSelected()
-                                                ? Project.LlmProxySetting.BROKK
-                                                : Project.LlmProxySetting.LOCALHOST;
+                                               ? Project.LlmProxySetting.BROKK
+                                               : Project.LlmProxySetting.LOCALHOST;
         Project.setLlmProxySetting(proxySetting);
         logger.debug("Applied LLM Proxy Setting: {}", proxySetting);
 
@@ -766,7 +768,7 @@ public class SettingsDialog extends JDialog {
                 // Check if the panel contains the light/dark radio buttons we created
                 boolean hasLight = false;
                 boolean hasDark = false;
-                for(Component child : panel.getComponents()) {
+                for (Component child : panel.getComponents()) {
                     if (child instanceof JRadioButton radio) {
                         if ("Light".equals(radio.getText())) hasLight = true;
                         if ("Dark".equals(radio.getText())) hasDark = true;
@@ -835,13 +837,13 @@ public class SettingsDialog extends JDialog {
                 dataRetentionPanel.applyPolicy();
                 var newPolicy = project.getDataRetentionPolicy();
                 // Refresh models if the policy changed, as it might affect availability
-                    if (oldPolicy != newPolicy && newPolicy != Project.DataRetentionPolicy.UNSET) {
-                        // Submit as background task so it doesn't block the settings dialog closing
-                        chrome.getContextManager().submitBackgroundTask("Refreshing models due to policy change", () -> {
-                            chrome.getContextManager().getModels().reinit(project);
-                        });
-                    }
+                if (oldPolicy != newPolicy && newPolicy != Project.DataRetentionPolicy.UNSET) {
+                    // Submit as background task so it doesn't block the settings dialog closing
+                    chrome.getContextManager().submitBackgroundTask("Refreshing models due to policy change", () -> {
+                        chrome.getContextManager().getModels().reinit(project);
+                    });
                 }
+            }
 
             // Apply Model Selections and Reasoning Levels
             applyModelAndReasoning(project, architectModelComboBox, architectReasoningComboBox,
@@ -898,7 +900,7 @@ public class SettingsDialog extends JDialog {
     /**
      * Updates the enabled state and selection of a reasoning combo box based on the selected model.
      */
-    private void updateReasoningComboBox(JComboBox<String> modelComboBox, JComboBox<Project.ReasoningLevel> reasoningComboBox, io.github.jbellis.brokk.Models models) {
+    private void updateReasoningComboBox(JComboBox<String> modelComboBox, JComboBox<Project.ReasoningLevel> reasoningComboBox, Models models) {
         if (modelComboBox == null || reasoningComboBox == null) return; // Not initialized yet
 
         String selectedModelName = (String) modelComboBox.getSelectedItem();
@@ -1060,7 +1062,7 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
         var infoLabel = new JLabel("<html>Please enter your Brokk Key to continue.<br>" +
-                                   "You can sign up for free at:</html>");
+                                           "You can sign up for free at:</html>");
         panel.add(infoLabel, gbc);
 
         // --- Signup URL Link ---
@@ -1089,15 +1091,15 @@ public class SettingsDialog extends JDialog {
         gbc.gridwidth = 2;
         gbc.anchor = GridBagConstraints.CENTER;
         gbc.fill = GridBagConstraints.NONE;
-        
+
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
-        
+
         var okButton = new JButton("OK");
         var exitButton = new JButton("Exit");
-        
+
         buttonPanel.add(okButton);
         buttonPanel.add(exitButton);
-        
+
         panel.add(buttonPanel, gbc);
 
         // --- Action Listeners for Buttons ---
@@ -1109,7 +1111,7 @@ public class SettingsDialog extends JDialog {
             }
             try {
                 // Validate the key structure
-                io.github.jbellis.brokk.Models.parseKey(newBrokkKey);
+                Models.parseKey(newBrokkKey);
                 // If valid, save it and close the dialog
                 Project.setBrokkKey(newBrokkKey);
                 logger.debug("Brokk Key successfully configured.");
@@ -1124,7 +1126,7 @@ public class SettingsDialog extends JDialog {
                 keyField.selectAll();
             }
         });
-        
+
         // Exit button action - exit the application
         exitButton.addActionListener(e -> {
             logger.debug("User chose to exit from signup dialog");
@@ -1152,12 +1154,12 @@ public class SettingsDialog extends JDialog {
 
         // Add Escape key binding to trigger OK button
         dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-              .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel");
+                .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "cancel");
         dialog.getRootPane().getActionMap().put("cancel", new AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                 // Treat Escape like clicking OK for validation purposes
-                 okButton.doClick();
+                // Treat Escape like clicking OK for validation purposes
+                okButton.doClick();
             }
         });
         // Set default button

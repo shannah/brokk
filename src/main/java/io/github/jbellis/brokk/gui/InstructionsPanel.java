@@ -34,7 +34,6 @@ import io.github.jbellis.brokk.gui.mop.ThemeColors;
 
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 
@@ -900,10 +899,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var contextManager = chrome.getContextManager();
         var project = contextManager.getProject();
 
-        // Simplified check: Log if test files exist but none are in context.
-        // Does not block the command anymore.
-        checkTestsPresence(contextManager);
-
         project.pauseAnalyzerRebuilds();
         try {
             var result = new CodeAgent(contextManager, model).runSession(input, false);
@@ -1131,7 +1126,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         disableButtons();
-        // Submit the action directly, test checks are now non-blocking inside executeCodeCommand
         chrome.getContextManager().submitAction("Code", input, () -> {
             try {
                 executeCodeCommand(codeModel, input);
@@ -1139,31 +1133,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 checkBalanceAndNotify(); // Check balance after action completes
             }
         });
-    }
-
-    /**
-     * Checks if test files exist in the project and if any are currently in context.
-     * Logs a debug message if tests exist but none are included.
-     * This check is non-blocking.
-     */
-    private void checkTestsPresence(ContextManager contextManager) {
-        var projectTestFiles = contextManager.getTestFiles();
-        if (projectTestFiles.isEmpty()) {
-            return; // No tests in project, nothing to check.
-        }
-
-        var contextFiles = Stream.concat(
-                contextManager.getEditableFiles().stream(),
-                contextManager.getReadonlyFiles().stream()
-        ).collect(Collectors.toSet());
-
-        boolean testsInContext = projectTestFiles.stream().anyMatch(contextFiles::contains);
-
-        if (!testsInContext) {
-            logger.debug("Initiating Code command, but no test files from the project are currently in the context.");
-            // Optionally add a subtle system message if desired:
-            // chrome.systemOutput("Note: No test files currently in context.");
-        }
     }
 
 
