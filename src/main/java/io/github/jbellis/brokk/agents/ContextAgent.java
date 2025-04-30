@@ -475,8 +475,10 @@ public class ContextAgent {
                     .map(entry -> {
                         var cn = entry.getKey();
                         var body = entry.getValue();
+                        // Map Optional<ProjectFile> to String filename, defaulting if not present
+                        var filename = analyzer.getFileFor(cn.fqName()).map(ProjectFile::toString).orElse("unknown");
                         return deepScan
-                               ? "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), analyzer.getFileFor(cn.fqName()), body)
+                               ? "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), filename, body)
                                // avoid confusing quick model by giving it the filename
                                : "<class fqcn='%s'>\n%s\n</class>".formatted(cn.fqName(), body);
                     })

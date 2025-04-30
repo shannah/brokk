@@ -45,7 +45,7 @@ public interface IAnalyzer {
         throw new UnsupportedOperationException();
     }
 
-    default Option<ProjectFile> getFileFor(String fqcn) {
+    default Optional<ProjectFile> getFileFor(String fqcn) {
         throw new UnsupportedOperationException();
     }
 

@@ -675,9 +675,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-        Option<ProjectFile> sourceFile;
-        sourceFile = getAnalyzerUninterrupted().getFileFor(className);
-        if (sourceFile.isDefined()) {
+        java.util.Optional<ProjectFile> sourceFile = getAnalyzerUninterrupted().getFileFor(className);
+        if (sourceFile.isPresent()) {
             sources.add(CodeUnit.cls(sourceFile.get(), className));
         }
 
@@ -707,9 +706,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-        Option<ProjectFile> sourceFile;
-        sourceFile = getAnalyzerUninterrupted().getFileFor(className);
-        if (sourceFile.isDefined()) {
+        java.util.Optional<ProjectFile> sourceFile = getAnalyzerUninterrupted().getFileFor(className);
+        if (sourceFile.isPresent()) {
             sources.add(CodeUnit.cls(sourceFile.get(), className));
         }
 
@@ -741,7 +739,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             if (methodSource.isDefined()) {
                 String className = ContextFragment.toClassname(methodFullName);
                 var sourceFile = analyzer.getFileFor(className);
-                if (sourceFile.isDefined()) {
+                if (sourceFile.isPresent()) { // Use isPresent() for Optional
                     sources.add(CodeUnit.cls(sourceFile.get(), className));
                 }
                 content.append(methodFullName).append(":\n");
