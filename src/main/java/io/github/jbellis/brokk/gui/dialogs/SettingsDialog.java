@@ -124,23 +124,60 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL; // Make field expand horizontally
         panel.add(brokkKeyField, gbc);
+        row++; // Increment row after adding the key field
 
-        // Sign-up/login link using BrowserLabel
-        gbc.gridx = 1;
-        gbc.gridy = row++;
-        var signupUrl = "https://brokk.ai";
-        var loginLabel = new BrowserLabel(signupUrl, "Sign up or get your key at " + signupUrl);
-        // Make it look like the old italic label
-        loginLabel.setFont(loginLabel.getFont().deriveFont(Font.ITALIC));
-        panel.add(loginLabel, gbc);
-
-        // Reset fill after Brokk Key
-        gbc.fill = GridBagConstraints.NONE;
-
-        // --- LLM Proxy Setting ---
-        row++;
+        // Balance Display
         gbc.gridx = 0;
         gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+        panel.add(new JLabel("Balance:"), gbc);
+
+        var balanceField = new JTextField("$?.??"); // Placeholder, update with actual logic later
+        balanceField.setEditable(false);
+        balanceField.setColumns(8); // Give it a reasonable minimum size
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 0.0; // Don't let balance field grow
+        gbc.fill = GridBagConstraints.NONE;
+        // Create a sub-panel to hold balance and top-up link together
+        var balancePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0)); // Left align, 5px horizontal gap
+
+        // Fetch and display balance
+        var models = chrome.getContextManager().getModels();
+        try {
+            float balance = models.getUserBalance();
+            balanceField.setText(String.format("$%.2f", balance));
+        } catch (java.io.IOException e) {
+            logger.debug("Failed to fetch user balance", e);
+            balanceField.setText("");
+        }
+
+        balancePanel.add(balanceField);
+
+        var topUpUrl = Models.TOP_UP_URL;
+        var topUpLabel = new BrowserLabel(topUpUrl, "Top Up");
+        balancePanel.add(topUpLabel);
+
+        panel.add(balancePanel, gbc); // Add the balance panel to the main panel
+        row++; // Increment row after adding the balance panel
+
+        // Sign-up/login link using BrowserLabel
+        gbc.gridx = 1; // Position under the balance panel (in the second column)
+        gbc.gridy = row++; // Use current row, then increment
+        var signupUrl = "https://brokk.ai";
+        var signupLabel = new BrowserLabel(signupUrl, "Sign up or get your key at " + signupUrl);
+        // Make it look like the old italic label
+        signupLabel.setFont(signupLabel.getFont().deriveFont(Font.ITALIC));
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Allow it to fill horizontally if needed
+        gbc.weightx = 1.0; // Allow horizontal expansion
+        panel.add(signupLabel, gbc);
+
+        // --- LLM Proxy Setting ---
+        // Reset constraints for the next section
+        gbc.gridx = 0;
+        gbc.gridy = row; // Use the incremented row
         gbc.weightx = 0.0;
         panel.add(new JLabel("LLM Proxy:"), gbc);
 
