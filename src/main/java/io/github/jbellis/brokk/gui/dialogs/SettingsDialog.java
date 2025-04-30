@@ -50,7 +50,7 @@ public class SettingsDialog extends JDialog {
         super(owner, "Settings", true); // Modal dialog
         this.chrome = chrome;
         setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        setSize(600, 400); // Increased width
+        setSize(600, 440);
         setLocationRelativeTo(owner);
 
         tabbedPane = new JTabbedPane(JTabbedPane.LEFT); // Tabs on the left
@@ -525,250 +525,214 @@ public class SettingsDialog extends JDialog {
     }
 
     /**
-     * Creates the panel containing the model selection dropdowns.
+     * Creates the panel that lets the user pick per-role models and – where
+     * supported – their “reasoning effort”.  The new layout keeps every row
+     * on a tidy four-column grid and lets both the model and reasoning
+     * combo-boxes grow with the window, so the dialog remains readable even
+     * when long model names are present.
      */
-    private JPanel createModelsPanel(Project project) {
-        var modelsPanel = new JPanel(new GridBagLayout());
-        modelsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        var gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 2, 2, 2);
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        int row = 0;
+    /**
+     * Builds the “Models” tab in a compact two-column grid:
+     *
+     *   Architect  [model-combo]
+     *   Reasoning  [reasoning-combo]
+     *               <explanation>
+     *
+     * Each model type gets its own block separated by extra vertical padding.
+     * Labels are right-aligned; we omit the words “Model:” / “Reasoning:” and all
+     * colons, per user request.  Combo-boxes keep their preferred size (no weightx).
+     */
+    private JPanel createModelsPanel(Project project)
+    {
+        var panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        var models = chrome.getContextManager().getModels(); // Get Models instance
-        var availableModels = models.getAvailableModels().keySet().stream().sorted().toList(); // Use new method
+        var gbc = new GridBagConstraints();
+        gbc.insets  = new Insets(4, 4, 4, 4);
+        gbc.anchor  = GridBagConstraints.EAST;      // right-align labels
+        gbc.fill    = GridBagConstraints.NONE;      // combos keep preferred width
+        gbc.weightx = 0.0;                          // “don’t weightx anything”
+
+        var models          = chrome.getContextManager().getModels();
+        var availableModels = models.getAvailableModels()
+                .keySet()
+                .stream()
+                .sorted()
+                .toArray(String[]::new);
         var reasoningLevels = Project.ReasoningLevel.values();
 
-        // Helper function to update reasoning combo box state
+        // will (de)activate reasoning dropdowns when model changes
         Runnable updateReasoningState = () -> {
             updateReasoningComboBox(architectModelComboBox, architectReasoningComboBox, models);
-            updateReasoningComboBox(codeModelComboBox, codeReasoningComboBox, models);
-            updateReasoningComboBox(askModelComboBox, askReasoningComboBox, models);
-            updateReasoningComboBox(editModelComboBox, editReasoningComboBox, models);
-            updateReasoningComboBox(searchModelComboBox, searchReasoningComboBox, models);
+            updateReasoningComboBox(codeModelComboBox,       codeReasoningComboBox,       models);
+            updateReasoningComboBox(askModelComboBox,        askReasoningComboBox,        models);
+            updateReasoningComboBox(editModelComboBox,       editReasoningComboBox,       models);
+            updateReasoningComboBox(searchModelComboBox,     searchReasoningComboBox,     models);
         };
 
-        // --- Architect Model ---
-        gbc.gridx = 0; // Label column
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST; // Align label right
-        modelsPanel.add(new JLabel("Architect Model:"), gbc);
+        int row = 0;   // running row counter
 
-        architectModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        /* ---------------- Architect -------------------------------------- */
+        architectModelComboBox = new JComboBox<>(availableModels);
         architectModelComboBox.setSelectedItem(project.getArchitectModelName());
-        architectModelComboBox.addActionListener(e -> updateReasoningState.run()); // Add listener
-
-        gbc.gridx = 1; // Model combo column
-        gbc.gridy = row;
-        gbc.weightx = 0.0; // Don't stretch combo box horizontally
-        gbc.fill = GridBagConstraints.NONE; // Use preferred size
-        gbc.anchor = GridBagConstraints.WEST; // Align left
-        modelsPanel.add(architectModelComboBox, gbc);
-
-        gbc.gridx = 2; // Reasoning Label column
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Reasoning:"), gbc);
+        architectModelComboBox.addActionListener(e -> updateReasoningState.run());
 
         architectReasoningComboBox = new JComboBox<>(reasoningLevels);
         architectReasoningComboBox.setSelectedItem(project.getArchitectReasoningLevel());
-        gbc.gridx = 3; // Reasoning Combo column
-        gbc.gridy = row;
-        gbc.weightx = 0.0; // Don't stretch
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(architectReasoningComboBox, gbc);
 
-        // Tooltip spans model and reasoning columns
-        JLabel architectTooltip = new JLabel("Plans and executes multi-step projects, calling other agents as needed");
-        architectTooltip.setFont(architectTooltip.getFont().deriveFont(Font.ITALIC, architectTooltip.getFont().getSize() * 0.9f));
-        gbc.gridx = 1;
-        gbc.gridy = row + 1; // Next row
-        gbc.gridwidth = 3;   // Span 3 columns (model combo, reasoning label, reasoning combo)
-        gbc.weightx = 1.0;   // Let tooltip fill space horizontally
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(architectTooltip, gbc);
-        row += 2; // Move down two rows (one for controls, one for tooltip)
+        row = addModelSection(panel, gbc, row,
+                              "Architect",
+                              architectModelComboBox,
+                              architectReasoningComboBox,
+                              "Plans and executes multi-step projects, calling other agents as needed");
 
-        // --- Code Model ---
-        gbc.gridwidth = 1; // Reset gridwidth
-        gbc.gridx = 0; // Label column
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Code Model:"), gbc); // Label changed
-
-        codeModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        /* ---------------- Code ------------------------------------------- */
+        codeModelComboBox = new JComboBox<>(availableModels);
         codeModelComboBox.setSelectedItem(project.getCodeModelName());
         codeModelComboBox.addActionListener(e -> updateReasoningState.run());
 
-        gbc.gridx = 1;
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(codeModelComboBox, gbc);
-
-        gbc.gridx = 2;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Reasoning:"), gbc);
-
         codeReasoningComboBox = new JComboBox<>(reasoningLevels);
         codeReasoningComboBox.setSelectedItem(project.getCodeReasoningLevel());
-        gbc.gridx = 3;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(codeReasoningComboBox, gbc);
 
-        JLabel codeTooltip = new JLabel("Used when invoking Code Agent manually");
-        codeTooltip.setFont(codeTooltip.getFont().deriveFont(Font.ITALIC, codeTooltip.getFont().getSize() * 0.9f));
-        gbc.gridx = 1;
-        gbc.gridy = row + 1;
-        gbc.gridwidth = 3;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(codeTooltip, gbc);
-        row += 2;
+        row = addModelSection(panel, gbc, row,
+                              "Code",
+                              codeModelComboBox,
+                              codeReasoningComboBox,
+                              "Used when invoking Code Agent manually");
 
-        // --- Ask Model --- Added
-        gbc.gridwidth = 1;
-        gbc.gridx = 0; // Label column
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Ask Model:"), gbc);
-
-        askModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
-        askModelComboBox.setSelectedItem(project.getAskModelName()); // Use getAskModelName
+        /* ---------------- Ask -------------------------------------------- */
+        askModelComboBox = new JComboBox<>(availableModels);
+        askModelComboBox.setSelectedItem(project.getAskModelName());
         askModelComboBox.addActionListener(e -> updateReasoningState.run());
-
-        gbc.gridx = 1;
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(askModelComboBox, gbc);
-
-        gbc.gridx = 2;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Reasoning:"), gbc);
 
         askReasoningComboBox = new JComboBox<>(reasoningLevels);
         askReasoningComboBox.setSelectedItem(project.getAskReasoningLevel());
-        gbc.gridx = 3;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(askReasoningComboBox, gbc);
 
-        JLabel askTooltip = new JLabel("Used when invoking the Ask command");
-        askTooltip.setFont(askTooltip.getFont().deriveFont(Font.ITALIC, askTooltip.getFont().getSize() * 0.9f));
-        gbc.gridx = 1;
-        gbc.gridy = row + 1;
-        gbc.gridwidth = 3;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(askTooltip, gbc);
-        row += 2;
+        row = addModelSection(panel, gbc, row,
+                              "Ask",
+                              askModelComboBox,
+                              askReasoningComboBox,
+                              "Used when invoking the Ask command");
 
-        // --- Edit Model ---
-        gbc.gridwidth = 1;
-        gbc.gridx = 0; // Label column
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Edit Model:"), gbc);
-
-        editModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        /* ---------------- Edit ------------------------------------------- */
+        editModelComboBox = new JComboBox<>(availableModels);
         editModelComboBox.setSelectedItem(project.getEditModelName());
         editModelComboBox.addActionListener(e -> updateReasoningState.run());
 
-        gbc.gridx = 1;
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(editModelComboBox, gbc);
-
-        gbc.gridx = 2;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Reasoning:"), gbc);
-
         editReasoningComboBox = new JComboBox<>(reasoningLevels);
         editReasoningComboBox.setSelectedItem(project.getEditReasoningLevel());
-        gbc.gridx = 3;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(editReasoningComboBox, gbc);
 
-        JLabel editTooltip = new JLabel("Used when invoking Code Agent from the Architect");
-        editTooltip.setFont(editTooltip.getFont().deriveFont(Font.ITALIC, editTooltip.getFont().getSize() * 0.9f));
-        gbc.gridx = 1;
-        gbc.gridy = row + 1;
-        gbc.gridwidth = 3;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(editTooltip, gbc);
-        row += 2;
+        row = addModelSection(panel, gbc, row,
+                              "Edit",
+                              editModelComboBox,
+                              editReasoningComboBox,
+                              "Used when invoking Code Agent from the Architect");
 
-        // --- Search Model ---
-        gbc.gridwidth = 1;
-        gbc.gridx = 0; // Label column
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Search Model:"), gbc);
-
-        searchModelComboBox = new JComboBox<>(availableModels.toArray(new String[0]));
+        /* ---------------- Search ----------------------------------------- */
+        searchModelComboBox = new JComboBox<>(availableModels);
         searchModelComboBox.setSelectedItem(project.getSearchModelName());
         searchModelComboBox.addActionListener(e -> updateReasoningState.run());
 
-        gbc.gridx = 1;
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(searchModelComboBox, gbc);
-
-        gbc.gridx = 2;
-        gbc.gridy = row;
-        gbc.anchor = GridBagConstraints.EAST;
-        modelsPanel.add(new JLabel("Reasoning:"), gbc);
-
         searchReasoningComboBox = new JComboBox<>(reasoningLevels);
         searchReasoningComboBox.setSelectedItem(project.getSearchReasoningLevel());
-        gbc.gridx = 3;
-        gbc.gridy = row;
+
+        row = addModelSection(panel, gbc, row,
+                              "Search",
+                              searchModelComboBox,
+                              searchReasoningComboBox,
+                              "Searches the project for information described in natural language");
+
+        /* push everything up */
+        gbc.gridx     = 0;
+        gbc.gridy     = row;
+        gbc.gridwidth = 3; // Span all three columns
+        gbc.weighty   = 1.0;
+        gbc.fill      = GridBagConstraints.VERTICAL;
+        panel.add(Box.createVerticalGlue(), gbc);
+
+        SwingUtilities.invokeLater(updateReasoningState);   // initial enable/disable
+
+        // Wrap the panel in a scroll pane
+        var scrollPane = new JScrollPane(panel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder()); // Remove scroll pane border if desired
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        // Need to return a JPanel for the tabbed pane, so wrap the scroll pane
+        var containerPanel = new JPanel(new BorderLayout());
+        containerPanel.add(scrollPane, BorderLayout.CENTER);
+        return containerPanel;
+    }
+
+    /**
+     * Adds one “model / reasoning / explanation” block to the grid-bag panel and
+     * returns the next free row index.
+     *
+     * Layout (three columns):
+     *   <label>        [model-combo]        <italic explanation (spans 2 rows)>
+     *   Reasoning      [reasoning-combo]
+     * (A 10-pixel top-margin separates blocks.)
+     */
+    private int addModelSection(JPanel panel,
+                                GridBagConstraints gbc,
+                                int startRow,
+                                String typeLabel,
+                                JComboBox<String> modelCombo,
+                                JComboBox<Project.ReasoningLevel> reasoningCombo,
+                                String explanation)
+    {
+        /* ---------- model row ------------------------------------------------ */
+        var savedInsets = gbc.insets;
+        gbc.insets  = new Insets(startRow == 0 ? 4 : 14, 4, 4, 4);   // extra top-pad
+        gbc.anchor  = GridBagConstraints.EAST;
+        gbc.gridx   = 0;
+        gbc.gridy   = startRow;
+        panel.add(new JLabel(typeLabel), gbc);
+
         gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(searchReasoningComboBox, gbc);
+        gbc.gridx  = 1;
+        panel.add(modelCombo, gbc);
 
-        JLabel searchTooltip = new JLabel("Searches the project for information described in natural language");
-        searchTooltip.setFont(searchTooltip.getFont().deriveFont(Font.ITALIC, searchTooltip.getFont().getSize() * 0.9f));
-        gbc.gridx = 1;
-        gbc.gridy = row + 1;
-        gbc.gridwidth = 3;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        /* ---------- reasoning row ------------------------------------------- */
+        gbc.insets  = new Insets(4, 4, 2, 4);
+        gbc.anchor  = GridBagConstraints.EAST;
+        gbc.gridx   = 0;
+        gbc.gridy   = startRow + 1;
+        panel.add(new JLabel("Reasoning"), gbc);
+
         gbc.anchor = GridBagConstraints.WEST;
-        modelsPanel.add(searchTooltip, gbc);
-        row += 2;
+        gbc.gridx  = 1;
+        panel.add(reasoningCombo, gbc);
+        gbc.insets = savedInsets;        // restore
 
-        // Initial state update for reasoning dropdowns
-        SwingUtilities.invokeLater(updateReasoningState);
+        /* ---------- explanatory text (wraps & centers) ---------------------- */
+        var tip = new JTextArea(explanation);
+        tip.setEditable(false);
+        tip.setFocusable(false);
+        tip.setLineWrap(true);
+        tip.setWrapStyleWord(true);
+        tip.setOpaque(false);
+        tip.setBorder(null);
+        tip.setFont(tip.getFont()
+                            .deriveFont(Font.ITALIC,
+                                        tip.getFont().getSize() * 0.9f));
 
-        // Add vertical glue
-        gbc.gridx = 0;
-        gbc.gridy = row; // Use final row value
-        gbc.gridwidth = 4; // Span all columns
-        gbc.weighty = 1.0;
-        gbc.fill = GridBagConstraints.VERTICAL;
-        modelsPanel.add(Box.createVerticalGlue(), gbc);
+        gbc.insets     = new Insets(startRow == 0 ? 4 : 14, 10, 2, 4);
+        gbc.gridx      = 2;                     // third column
+        gbc.gridy      = startRow;              // top row of the block
+        gbc.gridheight = 2;                     // span two rows
+        gbc.fill       = GridBagConstraints.HORIZONTAL;
+        gbc.weightx    = 1.0;
+        gbc.anchor     = GridBagConstraints.NORTHWEST;
+        panel.add(tip, gbc);
 
-        return modelsPanel;
+        /* ---------- restore defaults for caller ----------------------------- */
+        gbc.insets     = savedInsets;
+        gbc.gridheight = 1;
+        gbc.weightx    = 0.0;
+        gbc.fill       = GridBagConstraints.NONE;
+
+        return startRow + 2;   // next free row
     }
 
     private void applySettings() {
