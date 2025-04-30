@@ -405,15 +405,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
                 summarizeItem.addActionListener(e1 -> {
                     if (targetRef.getRepoFile() != null) {
-                        cm.submitContextTask("Summarize", () -> {
-                            // suppressExternalSuggestionsTrigger.set(true); // No longer needed here
-                            boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
-                            if (success) {
-                                chrome.systemOutput("Summarized " + targetRef.getFullPath());
-                            } else {
-                                chrome.toolErrorRaw("No summarizable code found");
-                            }
-                        });
+                        boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
+                        if (success) {
+                            chrome.systemOutput("Summarized " + targetRef.getFullPath());
+                        } else {
+                            chrome.toolErrorRaw("No summarizable code found");
+                        }
                     } else {
                         chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
                     }
@@ -1072,7 +1069,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         // Disable buttons immediately to provide feedback
-        disableButtons();
         chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
@@ -1091,15 +1087,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             if (options == null) {
                 // User cancelled or dialog was interrupted
                 chrome.systemOutput("Architect command cancelled during option selection.");
-                // Re-enable buttons as the task is effectively aborted
-                SwingUtilities.invokeLater(this::enableButtons);
-                return; // Exit the lambda
+                return;
             }
             try {
                 // Proceed with execution using the selected options
                 executeAgentCommand(architectModel, goal, options);
             } finally {
-                checkBalanceAndNotify(); // Check balance after action completes
+                // Check balance after action completes
+                checkBalanceAndNotify();
             }
         });
     }
@@ -1235,8 +1230,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             micButton.setEnabled(false);
             configureModelsButton.setEnabled(false); // Disable configure models button during action
             chrome.disableHistoryPanel();
-            // Disable command input and deep scan button during actions
-            setCommandInputAndDeepScanEnabled(false);
         });
     }
 
@@ -1256,14 +1249,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             codeButton.setEnabled(projectLoaded);
             askButton.setEnabled(projectLoaded);
             searchButton.setEnabled(projectLoaded);
-            runButton.setEnabled(true); // Run in shell is always available
+            runButton.setEnabled(true);
             stopButton.setEnabled(false);
-            // Mic button remains enabled unless an action is running.
             micButton.setEnabled(true);
-            configureModelsButton.setEnabled(projectLoaded); // Enable configure models if project loaded
+            configureModelsButton.setEnabled(projectLoaded);
             chrome.enableHistoryPanel();
-            // Enable command input and deep scan button only if project loaded and overlay is hidden
-            setCommandInputAndDeepScanEnabled(projectLoaded && !this.overlayPanel.isVisible());
         });
     }
 

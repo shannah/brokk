@@ -336,6 +336,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public Future<?> submitUserTask(String description, Runnable task, boolean isLlmTask) {
         return userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
+            io.disableActionButtons();
 
             try {
                 if (isLlmTask) {
@@ -349,7 +350,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
             } finally {
                 io.actionComplete();
-                io.enableUserActionButtons();
+                io.enableActionButtons();
                 // Unblock LLM output if this was an LLM task
                 if (isLlmTask) {
                     io.blockLlmOutput(false);
@@ -361,6 +362,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public <T> Future<T> submitUserTask(String description, Callable<T> task) {
         return userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
+            io.disableActionButtons();
 
             try {
                 return task.call();
@@ -373,7 +375,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 throw e;
             } finally {
                 io.actionComplete();
-                io.enableUserActionButtons();
+                io.enableActionButtons();
             }
         });
     }
@@ -387,8 +389,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (Exception e) {
                 logger.error("Error while " + description, e);
                 io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
-            } finally {
-                io.enableUserActionButtons();
             }
         });
     }
@@ -508,29 +508,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public Future<?> undoContextAsync()
     {
-        return undoContextAsync(1);
-    }
-
-    /**
-     * undo multiple context changes to reach a specific point in history
-     */
-    public Future<?> undoContextAsync(int stepsToUndo)
-    {
-        return contextActionExecutor.submit(() -> {
-            try {
-                UndoResult result = contextHistory.undo(stepsToUndo, io);
-                if (result.wasUndone()) {
-                    var currentContext = contextHistory.topContext();
-                    io.updateContextHistoryTable(currentContext);
-                    project.saveContext(currentContext);
-                    io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
-                } else {
-                    io.toolErrorRaw("no undo state available");
-                }
-            } catch (CancellationException cex) {
-                io.systemOutput("Undo canceled.");
-            } finally {
-                io.enableUserActionButtons();
+        return submitUserTask("Undo", () -> {
+            UndoResult result = contextHistory.undo(1, io);
+            if (result.wasUndone()) {
+                var currentContext = contextHistory.topContext();
+                io.updateContextHistoryTable(currentContext);
+                project.saveContext(currentContext);
+                io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
+            } else {
+                io.toolErrorRaw("no undo state available");
             }
         });
     }
@@ -540,21 +526,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public Future<?> undoContextUntilAsync(Context targetContext)
     {
-        return contextActionExecutor.submit(() -> {
-            try {
-                UndoResult result = contextHistory.undoUntil(targetContext, io);
-                if (result.wasUndone()) {
-                    var currentContext = contextHistory.topContext();
-                    io.updateContextHistoryTable(currentContext);
-                    project.saveContext(currentContext);
-                    io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
-                } else {
-                    io.toolErrorRaw("Context not found or already at that point");
-                }
-            } catch (CancellationException cex) {
-                io.systemOutput("Undo canceled.");
-            } finally {
-                io.enableUserActionButtons();
+        return submitUserTask("Undoing", () -> {
+            UndoResult result = contextHistory.undoUntil(targetContext, io);
+            if (result.wasUndone()) {
+                var currentContext = contextHistory.topContext();
+                io.updateContextHistoryTable(currentContext);
+                project.saveContext(currentContext);
+                io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
+            } else {
+                io.toolErrorRaw("Context not found or already at that point");
             }
         });
     }
@@ -562,23 +542,16 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * redo last undone context
      */
-    public Future<?> redoContextAsync()
-    {
-        return contextActionExecutor.submit(() -> {
-            try {
-                boolean wasRedone = contextHistory.redo(io);
-                if (wasRedone) {
-                    var currentContext = contextHistory.topContext();
-                    io.updateContextHistoryTable(currentContext);
-                    project.saveContext(currentContext);
-                    io.systemOutput("Redo!");
-                } else {
-                    io.toolErrorRaw("no redo state available");
-                }
-            } catch (CancellationException cex) {
-                io.systemOutput("Redo canceled.");
-            } finally {
-                io.enableUserActionButtons();
+    public Future<?> redoContextAsync() {
+        return submitUserTask("Redoing", () -> {
+            boolean wasRedone = contextHistory.redo(io);
+            if (wasRedone) {
+                var currentContext = contextHistory.topContext();
+                io.updateContextHistoryTable(currentContext);
+                project.saveContext(currentContext);
+                io.systemOutput("Redo!");
+            } else {
+                io.toolErrorRaw("no redo state available");
             }
         });
     }
@@ -586,16 +559,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * Reset the context to match the files and fragments from a historical context
      */
-    public Future<?> resetContextToAsync(Context targetContext)
-    {
-        return contextActionExecutor.submit(() -> {
+    public Future<?> resetContextToAsync(Context targetContext) {
+        return submitUserTask("Resetting context", () -> {
             try {
                 pushContext(ctx -> Context.createFrom(targetContext, ctx));
                 io.systemOutput("Reset workspace to historical state");
             } catch (CancellationException cex) {
                 io.systemOutput("Reset workspace canceled.");
-            } finally {
-                io.enableUserActionButtons();
             }
         });
     }
@@ -658,8 +628,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 }
             } catch (CancellationException cex) {
                 io.systemOutput("Capture canceled.");
-            } finally {
-                io.enableUserActionButtons();
             }
         });
     }

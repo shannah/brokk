@@ -4,7 +4,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -229,7 +228,6 @@ public class HistoryOutputPanel extends JPanel {
         undoButton.setMinimumSize(undoSize);
         undoButton.setMaximumSize(undoSize);
         undoButton.addActionListener(e -> {
-            chrome.disableUserActionButtons();
             contextManager.undoContextAsync();
         });
 
@@ -241,7 +239,6 @@ public class HistoryOutputPanel extends JPanel {
         redoButton.setMinimumSize(redoSize);
         redoButton.setMaximumSize(redoSize);
         redoButton.addActionListener(e -> {
-            chrome.disableUserActionButtons();
             contextManager.redoContextAsync();
         });
 
@@ -302,7 +299,6 @@ public class HistoryOutputPanel extends JPanel {
      * Restore context to a specific point in history
      */
     private void undoHistoryUntil(Context targetContext) {
-        chrome.disableUserActionButtons();
         contextManager.undoContextUntilAsync(targetContext);
     }
 
@@ -311,7 +307,6 @@ public class HistoryOutputPanel extends JPanel {
      * while preserving current conversation history
      */
     private void resetContextTo(Context targetContext) {
-        chrome.disableUserActionButtons();
         contextManager.resetContextToAsync(targetContext);
     }
 

@@ -45,8 +45,6 @@ class DeepScanDialog {
             return;
         }
 
-        // Disable input and deep scan button while scanning
-        chrome.disableUserActionButtons();
         chrome.systemOutput("Starting Deep Scan");
 
         // ContextAgent
@@ -133,9 +131,6 @@ class DeepScanDialog {
                 validationFuture.cancel(true);
                 logger.debug("Deep Scan user task explicitly interrupted: {}", ie.getMessage());
                 chrome.systemOutput("Deep Scan cancelled");
-            } finally {
-                // Re-enable input components after task completion, error, or interruption
-                SwingUtilities.invokeLater(chrome::enableUserActionButtons);
             }
         });
     }
@@ -396,12 +391,10 @@ class DeepScanDialog {
             });
 
             if (!filesToSummarize.isEmpty()) {
-                contextManager.submitContextTask("Summarize Files", () -> {
-                    boolean success = contextManager.addSummaries(filesToSummarize, Set.of());
-                    if (!success) {
-                        chrome.toolErrorRaw("No summarizable code found in selected files");
-                    }
-                });
+                boolean success = contextManager.addSummaries(filesToSummarize, Set.of());
+                if (!success) {
+                    chrome.toolErrorRaw("No summarizable code found in selected files");
+                }
                 chrome.systemOutput("Added summaries of " + filesToSummarize);
             }
             if (!filesToEdit.isEmpty()) {
