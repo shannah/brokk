@@ -116,7 +116,7 @@ public final class Models {
      *
      * @param project The project whose settings (like data retention policy) should be used.
      */
-    public void reinit(Project project) {
+    public void reinit(IProject project) {
         // Get and handle data retention policy
         var policy = project.getDataRetentionPolicy();
         if (policy == Project.DataRetentionPolicy.UNSET) {
