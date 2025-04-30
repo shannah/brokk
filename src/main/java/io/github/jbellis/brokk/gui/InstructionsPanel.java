@@ -1037,7 +1037,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             chrome.llmOutput("\n# Answer\n%s".formatted(((ContextFragment.SearchFragment) result.output()).explanation()), ChatMessageType.AI);
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
-            chrome.toolErrorRaw("Search agent interrupted without answering");
+            chrome.toolErrorRaw("Search agent cancelled without answering");
         }
     }
 
@@ -1241,8 +1241,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             stopButton.setEnabled(true);
-            micButton.setEnabled(false);
-            configureModelsButton.setEnabled(false); // Disable configure models button during action
             chrome.disableHistoryPanel();
         });
     }
@@ -1271,7 +1269,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             searchButton.setEnabled(projectLoaded);
             runButton.setEnabled(true);
             stopButton.setEnabled(false);
-            micButton.setEnabled(true);
             configureModelsButton.setEnabled(projectLoaded);
             chrome.enableHistoryPanel();
         });
