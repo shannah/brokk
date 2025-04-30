@@ -9,18 +9,14 @@ import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.swing.*;
-import java.awt.*;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -31,7 +27,7 @@ import java.util.stream.Collectors;
 public final class Models {
     public static final String TOP_UP_URL = "https://brokk.ai/dashboard";
     public static float MINIMUM_PAID_BALANCE = 0.20f;
-
+    public static float LOW_BALANCE_WARN_AT = 2.00f;
     /**
      * Represents the parsed Brokk API key components.
      */
@@ -139,31 +135,6 @@ public final class Models {
                          proxyUrl, e.getMessage(), e); // Log the exception details
             modelLocations.clear();
             modelInfoMap.clear();
-        }
-
-        // Display low balance warning if applicable
-        if (isLowBalance) {
-            SwingUtilities.invokeLater(() -> {
-                var panel = new JPanel();
-                panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-                panel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-                panel.add(new JLabel("Brokk is running in the free tier. Only low-cost models are available."));
-                panel.add(Box.createVerticalStrut(5));
-                var label = new JLabel("To enable smarter models, subscribe or top up at:");
-                panel.add(label);
-                var browserLabel = new BrowserLabel(TOP_UP_URL);
-                browserLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-                panel.add(browserLabel);
-
-                JOptionPane.showMessageDialog(
-                        null, // Center on screen
-                        panel,
-                        "Low Balance Warning",
-                        JOptionPane.WARNING_MESSAGE
-                );
-            });
         }
 
         if (modelLocations.isEmpty()) {

@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.ContextAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
+import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
@@ -80,7 +81,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
     private JPanel overlayPanel; // Panel used to initially disable command input
-    private boolean lowBalanceNotified = false; // Flag to track if the low balance warning has been shown
+    private boolean lowBalanceNotified = false;
+    private boolean freeTierNotified = false;
 
 
     public InstructionsPanel(Chrome chrome) {
@@ -823,17 +825,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void triggerDeepScan(ActionEvent e) {
         var goal = getInstructions();
-        DeepScanDialog.triggerDeepScan(chrome, goal);
-        // Button disabling/enabling and input field disabling/enabling are handled
-        // within DeepScanDialog.triggerDeepScan and its dialog callbacks.
+        try {
+            DeepScanDialog.triggerDeepScan(chrome, goal);
+        } finally {
+            checkBalanceAndNotify();
+        }
     }
-
 
     /**
      * Checks the user's balance if using the Brokk proxy and displays a notification
      * if the balance is low.
      */
-    private void checkBalanceAndNotify() {
+    public void checkBalanceAndNotify() {
         if (Project.getLlmProxySetting() != Project.LlmProxySetting.BROKK) {
             return; // Only check balance when using Brokk proxy
         }
@@ -841,43 +844,72 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var contextManager = chrome.getContextManager();
         var models = contextManager.getModels();
 
-        try {
-            float balance = models.getUserBalance();
-            logger.debug("Checked balance: ${}", String.format("%.2f", balance));
+        contextManager.submitBackgroundTask("", () -> {
+            try {
+                float balance = models.getUserBalance();
+                logger.debug("Checked balance: ${}", String.format("%.2f", balance));
 
-            // If balance drops below the minimum paid threshold, reinitialize models to enforce free tier
-            if (balance < Models.MINIMUM_PAID_BALANCE) {
-                logger.warn("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Models.MINIMUM_PAID_BALANCE);
-                // This will refetch models and apply the lowBalance filter based on MINIMUM_PAID_BALANCE
-                models.reinit(contextManager.getProject());
-            }
+                // If balance drops below the minimum paid threshold, reinitialize models to enforce free tier
+                if (balance < Models.MINIMUM_PAID_BALANCE) {
+                    logger.debug("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Models.MINIMUM_PAID_BALANCE);
+                    // This will refetch models and apply the lowBalance filter based on MINIMUM_PAID_BALANCE
+                    models.reinit(contextManager.getProject());
 
-            // Check for the $2.00 warning threshold
-            if (balance < 2.00f) {
-                if (!lowBalanceNotified) { // Only show the dialog once unless balance recovers
-                    lowBalanceNotified = true; // Set the flag so we don't show it again
                     SwingUtilities.invokeLater(() -> {
-                        var messagePanel = new JPanel(new BorderLayout(0, 5)); // Panel for text and link
-                        var balanceMessage = String.format("Low account balance: $%.2f.", balance);
-                        messagePanel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
+                        if (freeTierNotified) {
+                            // Only show the dialog once unless balance recovers
+                            return;
+                        }
 
-                        var browserLabel = new io.github.jbellis.brokk.gui.components.BrowserLabel(Models.TOP_UP_URL, "Top up at " + Models.TOP_UP_URL + " to avoid interruptions.");
-                        messagePanel.add(browserLabel, BorderLayout.SOUTH);
+                        var panel = new JPanel();
+                        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+                        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+                        panel.add(new JLabel("Brokk is running in the free tier. Only low-cost models are available."));
+                        panel.add(Box.createVerticalStrut(5));
+                        var label = new JLabel("To enable smarter models, subscribe or top up at:");
+                        panel.add(label);
+                        var browserLabel = new BrowserLabel(Models.TOP_UP_URL);
+                        browserLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                        panel.add(browserLabel);
 
                         JOptionPane.showMessageDialog(
                                 chrome.getFrame(),
-                                messagePanel, // Use the panel with the clickable label
+                                panel,
+                                "Balance Exhausted",
+                                JOptionPane.WARNING_MESSAGE
+                        );
+                    });
+                } else if (balance < Models.LOW_BALANCE_WARN_AT) {
+                    if (lowBalanceNotified) {
+                        // Only show the dialog once unless balance recovers
+                        return;
+                    }
+
+                    lowBalanceNotified = true;
+                    SwingUtilities.invokeLater(() -> {
+                        var panel = new JPanel(new BorderLayout(0, 5)); // Panel for text and link
+                        var balanceMessage = String.format("Low account balance: $%.2f.", balance);
+                        panel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
+
+                        var browserLabel = new io.github.jbellis.brokk.gui.components.BrowserLabel(Models.TOP_UP_URL, "Top up at " + Models.TOP_UP_URL + " to avoid interruptions.");
+                        panel.add(browserLabel, BorderLayout.SOUTH);
+
+                        JOptionPane.showMessageDialog(
+                                chrome.getFrame(),
+                                panel,
                                 "Low Balance Warning",
                                 JOptionPane.WARNING_MESSAGE);
                     });
+                } else {
+                    // reset the notification flag
+                    lowBalanceNotified = false;
                 }
-            } else {
-                // Balance is $2.00 or above, reset the notification flag
-                lowBalanceNotified = false;
+            } catch (java.io.IOException e) {
+                logger.error("Failed to check user balance", e);
             }
-        } catch (java.io.IOException e) {
-            logger.error("Failed to check user balance", e);
-        }
+        });
     }
 
 
@@ -1072,7 +1104,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 options = ArchitectOptionsDialog.showDialog(chrome, contextManager);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt(); // Re-interrupt the thread
-                logger.warn("Architect options dialog interrupted", e);
+                logger.debug("Architect options dialog interrupted", e);
                 // options remains null, handled below
             }
 
@@ -1081,13 +1113,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 chrome.systemOutput("Architect command cancelled during option selection.");
                 return;
             }
-            try {
-                // Proceed with execution using the selected options
-                executeAgentCommand(architectModel, goal, options);
-            } finally {
-                // Check balance after action completes
-                checkBalanceAndNotify();
-            }
+            // Proceed with execution using the selected options
+            executeAgentCommand(architectModel, goal, options);
         });
     }
 
@@ -1115,11 +1142,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
         disableButtons();
         submitAction("Code", input, () -> {
-            try {
-                executeCodeCommand(codeModel, input);
-            } finally {
-                checkBalanceAndNotify(); // Check balance after action completes
-            }
+            executeCodeCommand(codeModel, input);
         });
     }
 
@@ -1147,11 +1170,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
         submitAction("Ask", input, () -> {
-            try {
-                executeAskCommand(askModel, input);
-            } finally {
-                checkBalanceAndNotify(); // Check balance after action completes
-            }
+            executeAskCommand(askModel, input);
         });
     }
 
@@ -1178,11 +1197,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         disableButtons();
         // Submit the action, calling the private execute method inside the lambda
         submitAction("Search", input, () -> {
-            try {
-                executeSearchCommand(searchModel, input);
-            } finally {
-                checkBalanceAndNotify(); // Check balance after action completes
-            }
+            executeSearchCommand(searchModel, input);
         });
     }
 
@@ -1207,7 +1222,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // need to set the correct parser here since we're going to append to the same fragment during the action
         action = (action + " MODE").toUpperCase();
         chrome.setLlmOutput(new ContextFragment.TaskFragment(cm.getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
-        return cm.submitUserTask(action, task, true);
+        try {
+            return cm.submitUserTask(action, task, true);
+        } finally {
+            checkBalanceAndNotify();
+        }
     }
 
     // Methods to disable and enable buttons.

@@ -235,6 +235,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Ensure style guide and build details are loaded/generated asynchronously
         ensureStyleGuide();
         ensureBuildDetailsAsync(); // Changed from ensureBuildCommand
+
+        chrome.getInstructionsPanel().checkBalanceAndNotify();
     }
 
     @Override
@@ -1236,7 +1238,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public <T> Future<T> submitBackgroundTask(String taskDescription, Callable<T> task) {
         assert taskDescription != null;
-        assert !taskDescription.isBlank();
         Future<T> future = backgroundTasks.submit(() -> {
             try {
                 io.backgroundOutput(taskDescription);
