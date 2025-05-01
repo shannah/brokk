@@ -76,6 +76,10 @@ public final class Models {
 
     public static final String UNAVAILABLE = "AI is unavailable";
 
+    // these models are defined for low-ltency use cases that don't require high intelligence,
+    // they are not suitable for writing code
+    private static final Set<String> SYSTEM_ONLY_MODELS = Set.of("gemini-2.0-flash-lite", "gpt-4.1-nano");
+
     // Cached model storage
     private final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
     // display name -> location
@@ -153,7 +157,7 @@ public final class Models {
         if (quickModel == null) {
             quickModel = new UnavailableStreamingModel();
         }
-        quickestModel = get("gemini-2.0-flash-lite", Project.ReasoningLevel.DEFAULT);
+        quickestModel = get("gpt-4.1-nano", Project.ReasoningLevel.DEFAULT);
         if (quickestModel == null) {
             quickestModel = new UnavailableStreamingModel();
         }
@@ -350,10 +354,8 @@ public final class Models {
      * e.g. "deepseek-v3" -> "deepseek/deepseek-chat"
      */
     public Map<String, String> getAvailableModels() {
-        // flash-lite is defined for low-ltency use cases that don't require high intelligence,
-        // it's not suitible for writing code
         return modelLocations.entrySet().stream()
-                .filter(e -> !e.getKey().equals("gemini-2.0-flash-lite"))
+                .filter(e -> !SYSTEM_ONLY_MODELS.contains(e.getKey()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
