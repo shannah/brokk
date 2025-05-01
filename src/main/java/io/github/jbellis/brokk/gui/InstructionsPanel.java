@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
+import com.github.tjake.jlama.model.AbstractModel;
+import com.github.tjake.jlama.model.functions.Generator;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
@@ -27,6 +29,7 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,9 +37,9 @@ import java.util.concurrent.CompletableFuture;
 
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 
@@ -50,10 +53,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final String PLACEHOLDER_TEXT = """
-           Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
-           
-           More tips are available in the Getting Started section on the right -->
-           """;
+                                                   Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
+                                                   
+                                                   More tips are available in the Getting Started section on the right -->
+                                                   """;
 
     private static final int DROPDOWN_MENU_WIDTH = 1000; // Pixels
     private static final int TRUNCATION_LENGTH = 100;    // Characters
@@ -79,12 +82,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JButton deepScanButton;
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
-    private final AtomicReference<Future<?>> currentQuickSuggestionTask = new AtomicReference<>(); // Holds the running quick suggestion task
+    // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
+    private final ExecutorService suggestionWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = Executors.defaultThreadFactory().newThread(r);
+        t.setName("Brokk-Suggestion-Worker");
+        t.setDaemon(true);
+        return t;
+    });
+    // Generation counter to identify the latest suggestion request
+    private final AtomicLong suggestionGeneration = new AtomicLong(0);
     private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false); // Flag to prevent self-refresh from table actions
     private JPanel overlayPanel; // Panel used to initially disable command input
     private boolean lowBalanceNotified = false;
     private boolean freeTierNotified = false;
-
+    private String lastCheckedInputText = null;
+    private float[][] lastCheckedEmbeddings = null;
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2));
@@ -163,16 +175,33 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         initializeReferenceFileTable();
 
         // Initialize and configure the context suggestion timer
-        contextSuggestionTimer = new Timer(400, this::triggerContextSuggestion);
+        contextSuggestionTimer = new Timer(200, this::triggerContextSuggestion);
         contextSuggestionTimer.setRepeats(false);
         commandInputField.getDocument().addDocumentListener(new DocumentListener() {
             private void checkAndHandleSuggestions() {
                 if (getInstructions().split("\\s+").length >= 2) {
                     contextSuggestionTimer.restart();
                 } else {
-                    // Input is blank, stop any pending timer and clear suggestions immediately
+                    // Input is blank or too short: stop timer, invalidate generation, reset state, schedule UI clear.
                     contextSuggestionTimer.stop();
-                    referenceFileTable.setValueAt(List.of(), 0, 0);
+                    long myGen = suggestionGeneration.incrementAndGet(); // Invalidate any running/pending task
+                    logger.trace("Input cleared/shortened, stopping timer and invalidating suggestions (gen {})", myGen);
+
+                    // Reset internal state immediately
+                    InstructionsPanel.this.lastCheckedInputText = null;
+                    InstructionsPanel.this.lastCheckedEmbeddings = null;
+
+                    // Schedule UI update, guarded by generation check
+                    SwingUtilities.invokeLater(() -> {
+                        if (myGen == suggestionGeneration.get()) {
+                            logger.trace("Applying UI clear for gen {}", myGen);
+                            referenceFileTable.setValueAt(List.of(), 0, 0);
+                            failureReasonLabel.setVisible(false);
+                            suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
+                        } else {
+                            logger.trace("Skipping UI clear for gen {} (current gen {})", myGen, suggestionGeneration.get());
+                        }
+                    });
                 }
             }
 
@@ -735,89 +764,246 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // --- Private Execution Logic ---
 
     /**
-     * Called by the contextSuggestionTimer when the user stops typing (quick suggestion).
-     * Triggers a background task using the quickest model and summary context.
+     * Called by the contextSuggestionTimer or external events (like context changes)
+     * to initiate a context suggestion task. It increments the generation counter
+     * and submits the task to the sequential worker executor.
      */
-    private void triggerContextSuggestion(ActionEvent e) {
-        var contextManager = chrome.getContextManager();
-        var goal = getInstructions();
-        if (goal.isBlank() || contextManager == null || contextManager.getProject() == null || !commandInputField.isEnabled()) {
-            // Clear quick recommendations and hide failure label if input is blank or project not ready
-            SwingUtilities.invokeLater(() -> {
-                referenceFileTable.setValueAt(List.of(), 0, 0);
-                failureReasonLabel.setVisible(false);
-                suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
-            });
+    private void triggerContextSuggestion(ActionEvent e) { // ActionEvent will be null for external triggers
+        var goal = getInstructions(); // Capture snapshot on EDT
+
+        // Basic checks before submitting to worker
+        if (goal.isBlank()) {
+            // The DocumentListener handles clearing
+            logger.trace("triggerContextSuggestion called with empty goal, not submitting task.");
             return;
         }
 
-        // Cancel any previously running quick suggestion task
-        Future<?> previousTask = currentQuickSuggestionTask.get();
-        if (previousTask != null && !previousTask.isDone()) {
-            logger.debug("Cancelling previous quick context suggestion task.");
-            previousTask.cancel(true);
+        // Increment generation and submit the task
+        long myGen = suggestionGeneration.incrementAndGet();
+        logger.trace("Submitting suggestion task generation {}", myGen);
+        suggestionWorker.submit(() -> processInputSuggestions(myGen, goal));
+    }
+
+    /**
+     * Performs the actual context suggestion logic off the EDT.
+     * This method includes checks against the current `suggestionGeneration`
+     * to ensure only the latest task proceeds and updates the UI.
+     *
+     * @param myGen    The generation number of this specific task.
+     * @param snapshot The input text captured when this task was initiated.
+     */
+    private void processInputSuggestions(long myGen, String snapshot) {
+        logger.trace("Starting suggestion task generation {}", myGen);
+        var contextManager = chrome.getContextManager(); // Get latest context manager
+
+        // 0. Initial staleness check
+        if (myGen != suggestionGeneration.get()) {
+            logger.trace("Task {} is stale (current gen {}), aborting early.", myGen, suggestionGeneration.get());
+            return;
         }
 
-        // Submit the new quick suggestion task and store its Future
-        Future<?> newTask = contextManager.submitBackgroundTask("Suggesting quick context", () -> {
-            try {
-                // Check for interruption early
-                if (Thread.currentThread().isInterrupted()) {
-                    logger.debug("Context suggestion task interrupted before starting.");
-                    return;
-                }
+        // 1. Quick literal check
+        if (snapshot.equals(lastCheckedInputText)) {
+            logger.trace("Task {} input is literally unchanged, aborting.", myGen);
+            clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
+            return;
+        }
 
-                logger.debug("Fetching QUICK context recommendations (top 10) for: '{}'", goal);
-                var model = contextManager.getModels().quickestModel();
-                // Use summary context (fullContext=false) for quick suggestions
-                var agent = new ContextAgent(contextManager, model, goal, false);
-                var recommendations = agent.getRecommendations();
+        // 2. Embedding Model Check
+        if (!Brokk.embeddingModelFuture.isDone()) {
+            updateUI(myGen, () -> showFailureLabel("Waiting for model download"));
+            logger.trace("Task {} waiting for model.", myGen);
+            return; // Don't proceed further until model is ready
+        }
+        AbstractModel embeddingModel;
+        try {
+            embeddingModel = Brokk.embeddingModelFuture.get();
+        } catch (ExecutionException | InterruptedException ex) {
+            Thread.currentThread().interrupt(); // Preserve interrupt status
+            logger.error("Task {} failed to get embedding model", myGen, ex);
+            updateUI(myGen, () -> showFailureLabel("Error loading embedding model"));
+            return;
+        }
+        if (embeddingModel == null) {
+            logger.warn("Task {} embedding model is null", myGen);
+            updateUI(myGen, () -> showFailureLabel("Error loading embedding model"));
+            return;
+        }
 
-                if (recommendations.success()) {
-                    var fileRefs = recommendations.fragments().stream()
-                            .flatMap(f -> f.files(contextManager.getProject()).stream())
-                            .distinct()
-                            .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
-                                                             pf.toString(),
-                                                             pf))
-                            .toList();
 
-                    logger.debug("Updating quick reference table with {} suggestions", fileRefs.size());
-                    SwingUtilities.invokeLater(() -> {
-                        referenceFileTable.setValueAt(fileRefs, 0, 0);
-                        failureReasonLabel.setVisible(false);
-                        suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show table
-                    });
-                } else { // Handle any failure, including single pass
-                    logger.debug("Quick context suggestion failed: {}", recommendations.reasoning());
-                    SwingUtilities.invokeLater(() -> {
-                        boolean isDark = UIManager.getBoolean("laf.dark");
-                        failureReasonLabel.setForeground(ThemeColors.getColor(isDark, "badge_foreground"));
-                        failureReasonLabel.setText(recommendations.reasoning());
-                        failureReasonLabel.setVisible(true);
-                        tableScrollPane.setVisible(false); // Ensure table scrollpane is hidden just in case
-                        referenceFileTable.setValueAt(List.of(), 0, 0); // Clear table data
-                        suggestionCardLayout.show(suggestionContentPanel, "LABEL"); // Show label
-                    });
-                }
-            } catch (InterruptedException interruptedException) {
-                // Task was cancelled via interrupt
-                logger.debug("Quick context suggestion task explicitly interrupted: {}", interruptedException.getMessage());
-                // Clear suggestions and hide label on interruption
-                SwingUtilities.invokeLater(() -> {
-                    referenceFileTable.setValueAt(List.of(), 0, 0);
-                    failureReasonLabel.setVisible(false);
-                    suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show empty table
-                });
+        // 3. Staleness check before embedding
+        if (myGen != suggestionGeneration.get()) {
+            logger.trace("Task {} is stale before embedding, aborting.", myGen);
+            return;
+        }
+
+        // 4. Compute Embeddings
+        List<String> chunks = Arrays.stream(snapshot.split("[.\\n]"))
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        float[][] newEmbeddings = chunks.isEmpty()
+                                  ? new float[0][]
+                                  : chunks.stream()
+                                          .map(chunk -> embeddingModel.embed(chunk, Generator.PoolingType.AVG))
+                                          .toArray(float[][]::new);
+
+        // 5. Staleness check after embedding
+        if (myGen != suggestionGeneration.get()) {
+            logger.trace("Task {} is stale after embedding, aborting.", myGen);
+            return;
+        }
+
+        // 6. Semantic Comparison
+        boolean isDifferent = isSemanticallyDifferent(snapshot, newEmbeddings);
+
+        if (!isDifferent) {
+            logger.trace("Task {} input is semantically similar, aborting ContextAgent.", myGen);
+            clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
+            return;
+        }
+
+        // Update state
+        this.lastCheckedInputText = snapshot;
+        this.lastCheckedEmbeddings = newEmbeddings;
+        // No more staleness checks so that we don't throw away the suggestions for this one only to discover
+        // that the one that canceled it was not semantically different enough
+
+        // 8. Run ContextAgent
+        logger.debug("Task {} fetching QUICK context recommendations for: '{}'", myGen, snapshot);
+        var model = contextManager.getModels().quickestModel();
+        ContextAgent.RecommendationResult recommendations;
+        try {
+            ContextAgent agent = new ContextAgent(contextManager, model, snapshot, false);
+            recommendations = agent.getRecommendations();
+        } catch (InterruptedException ex) {
+            throw new RuntimeException();
+        }
+
+        // 10. Process results and schedule UI update
+        if (recommendations.success()) {
+            var fileRefs = recommendations.fragments().stream()
+                    .flatMap(f -> f.files(contextManager.getProject()).stream())
+                    .distinct()
+                    .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
+                                                     pf.toString(),
+                                                     pf))
+                    .toList();
+            logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
+            updateUI(myGen, () -> showSuggestionsTable(fileRefs));
+        } else {
+            logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
+            updateUI(myGen, () -> showFailureLabel(recommendations.reasoning()));
+        }
+    }
+
+    /**
+     * Checks if the new text/embeddings are semantically different from the
+     * last processed state (`lastCheckedInputText`, `lastCheckedEmbeddings`).
+     */
+    private boolean isSemanticallyDifferent(String currentText, float[][] newEmbeddings) {
+        if (lastCheckedInputText == null || lastCheckedEmbeddings == null) {
+            // First run or state was reset. Treat as different and store the new embeddings.
+            logger.debug("New embeddings input is trivially different from empty old");
+            return true;
+        }
+
+        // Compare lengths
+        if (newEmbeddings.length != lastCheckedEmbeddings.length) {
+            logger.debug("New embeddings length differs from last checked embeddings length.");
+            return true;
+        }
+
+        // Compare pairwise cosine similarity
+        final float SIMILARITY_THRESHOLD = 0.85f;
+        float minSimilarity = Float.MAX_VALUE;
+        for (int i = 0; i < newEmbeddings.length; i++) {
+            float similarity = cosine(newEmbeddings[i], lastCheckedEmbeddings[i]);
+            if (similarity < minSimilarity) {
+                minSimilarity = similarity;
+            }
+            if (similarity < SIMILARITY_THRESHOLD) {
+                var msg = """
+                New embeddings similarity = %.3f, triggering recompute
+                
+                # Old text
+                %s
+                
+                # New text
+                %s
+                """.formatted(similarity, lastCheckedInputText, currentText);
+                logger.debug(msg);
+                return true;
+            }
+        }
+
+        logger.debug("Minimum similarity was {}", minSimilarity);
+
+        // If lengths match and all similarities are above threshold, it's not different enough.
+        // Do NOT update lastCheckedEmbeddings here, keep the previous ones for the next comparison.
+        return false;
+    }
+
+    /**
+     * Schedules a UI update task on the EDT, but only executes the update
+     * if the task's generation (`taskGen`) matches the current global `suggestionGeneration`.
+     *
+     * @param taskGen   The generation number of the task requesting the update.
+     * @param uiUpdater The Runnable containing the UI update code.
+     */
+    private void updateUI(long taskGen, Runnable uiUpdater) {
+        SwingUtilities.invokeLater(() -> {
+            if (taskGen == suggestionGeneration.get()) {
+                logger.trace("Applying UI update for task gen {}", taskGen);
+                uiUpdater.run();
+            } else {
+                logger.trace("Skipping UI update for stale task gen {} (current gen {})", taskGen, suggestionGeneration.get());
             }
         });
+    }
 
-        // Store the future of the newly submitted task
-        if (!this.currentQuickSuggestionTask.compareAndSet(previousTask, newTask)) {
-            // shouldn't happen, but just in case
-            logger.warn("Failed to store the new quick suggestion task future; cancelling it.");
-            newTask.cancel(true);
-        }
+    /**
+     * Helper to clear transient failure messages (like "Waiting for model...") from the UI
+     * *only if* the current generation matches the provided `taskGen` (meaning no newer
+     * task has started) and the message indicates a known transient state.
+     * This prevents clearing a valid error message from a newer task.
+     */
+    private void clearTransientFailureLabelIfStale(long taskGen) {
+        SwingUtilities.invokeLater(() -> {
+            if (taskGen == suggestionGeneration.get() && failureReasonLabel.isVisible()) {
+                String currentLabelText = failureReasonLabel.getText();
+                // Add more transient message prefixes if needed
+                if (currentLabelText != null && currentLabelText.startsWith("Waiting for model")) {
+                    logger.trace("Clearing transient failure label '{}' as task {} determined input unchanged/similar.", currentLabelText, taskGen);
+                    failureReasonLabel.setVisible(false);
+                    // Optionally show the (likely empty) table again
+                    suggestionCardLayout.show(suggestionContentPanel, "TABLE");
+                }
+            }
+        });
+    }
+
+    /**
+     * Helper to show the failure label with a message.
+     */
+    private void showFailureLabel(String message) {
+        boolean isDark = UIManager.getBoolean("laf.dark");
+        failureReasonLabel.setForeground(ThemeColors.getColor(isDark, "badge_foreground"));
+        failureReasonLabel.setText(message);
+        failureReasonLabel.setVisible(true);
+        tableScrollPane.setVisible(false); // Ensure table scrollpane is hidden
+        referenceFileTable.setValueAt(List.of(), 0, 0); // Clear table data
+        suggestionCardLayout.show(suggestionContentPanel, "LABEL"); // Show label
+    }
+
+    /**
+     * Helper to show the suggestions table with file references.
+     */
+    private void showSuggestionsTable(List<FileReferenceData> fileRefs) {
+        referenceFileTable.setValueAt(fileRefs, 0, 0);
+        failureReasonLabel.setVisible(false);
+        tableScrollPane.setVisible(true); // Ensure table scrollpane is visible
+        suggestionCardLayout.show(suggestionContentPanel, "TABLE"); // Show table
     }
 
     /**
@@ -1148,7 +1334,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         });
     }
 
-
     public void runAskCommand() {
         var input = getInstructions();
         if (input.isBlank()) {
@@ -1254,10 +1439,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             return;
         }
 
-        // Otherwise, proceed with the normal suggestion logic
-        if (!contextSuggestionTimer.isRunning()) {
-            triggerContextSuggestion(null);
-        }
+        // Otherwise, proceed with the normal suggestion logic by submitting a task
+        logger.debug("Context changed externally, triggering suggestion check.");
+        triggerContextSuggestion(null); // Use null ActionEvent to indicate non-timer trigger
     }
 
     public void enableButtons() {
@@ -1299,4 +1483,34 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.deepScanButton.setEnabled(enabled);
     }
 
+    /**
+     * Returns cosine similarity of two equal-length vectors.
+     */
+    private static float cosine(float[] a, float[] b) {
+        if (a.length != b.length) {
+            throw new IllegalArgumentException("Vectors differ in length");
+        }
+        if (a.length == 0) {
+            throw new IllegalArgumentException("Vectors must have at least one element");
+        }
+
+        double dot = 0.0;
+        double magA = 0.0;
+        double magB = 0.0;
+
+        for (int i = 0; i < a.length; i++) {
+            double x = a[i];
+            double y = b[i];
+            dot += x * y;
+            magA += x * x;
+            magB += y * y;
+        }
+
+        double denominator = Math.sqrt(magA) * Math.sqrt(magB);
+        if (denominator == 0.0) {
+            throw new IllegalArgumentException("One of the vectors is zero-length");
+        }
+
+        return (float) (dot / denominator);
+    }
 }
