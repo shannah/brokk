@@ -260,7 +260,7 @@ public class CodeAgent {
         var finalMessages = forArchitect ? List.copyOf(io.getLlmRawMessages()) : getMessagesForHistory(parser);
         return new SessionResult("Code: " + finalActionDescription,
                                  new ContextFragment.TaskFragment(finalMessages, userInput),
-                                 Map.copyOf(originalContents),
+                                 originalContents,
                                  stopDetails);
     }
 
@@ -300,8 +300,7 @@ public class CodeAgent {
         // Process files in parallel using streams
         var futures = failuresByFile.stream().parallel().map(file -> CompletableFuture.supplyAsync(() -> {
              try {
-                 // Record original content *just before* replacement
-                 originalContents.putIfAbsent(file, file.read());
+                 assert originalContents.containsKey(file); // should have been added by diff attempt
 
                  // Prepare request
                  var goal = "The previous attempt to modify this file using SEARCH/REPLACE failed repeatedly. Original goal: " + originalUserInput;
