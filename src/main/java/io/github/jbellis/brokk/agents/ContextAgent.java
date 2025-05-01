@@ -504,7 +504,7 @@ public class ContextAgent {
             userMessageText.append("<%s>\n%s\n</%s>\n\n".formatted(contextTypeElement, filesText, contextTypeElement));
         }
 
-        userMessageText.append("Call the `recommendContext` tool with the most relevant items based on the goal and available context.");
+        userMessageText.append("Call the `recommendContext` tool with the appropriate entries from %s based on the goal and available context.".formatted(contextTypeElement));
         userMessageText.append("\n<goal>\n%s\n</goal>\n".formatted(goal));
 
         // Construct final message list including workspace representation
