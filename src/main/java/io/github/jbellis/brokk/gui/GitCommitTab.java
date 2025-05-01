@@ -617,7 +617,7 @@ public class GitCommitTab extends JPanel {
                 chrome.systemOutput("All changes stashed successfully: " + stashDescription);
             } else {
                 String fileList = selectedFiles.size() <= 3
-                                  ? selectedFiles.stream().map(Object::toString).collect(Collectors.joining(", "))
+                                  ? selectedFiles.stream().map(ProjectFile::getFileName).collect(Collectors.joining(", "))
                                   : selectedFiles.size() + " files";
                 chrome.systemOutput("Stashed " + fileList + ": " + stashDescription);
             }

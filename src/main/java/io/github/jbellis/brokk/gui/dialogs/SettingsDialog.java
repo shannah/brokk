@@ -584,7 +584,7 @@ public class SettingsDialog extends JDialog {
                               "Architect",
                               architectModelComboBox,
                               architectReasoningComboBox,
-                              "Plans and executes multi-step projects, calling other agents as needed");
+                              "The Architect plans and executes multi-step projects, calling other agents and tools as needed");
 
         /* ---------------- Code ------------------------------------------- */
         codeModelComboBox = new JComboBox<>(availableModels);
@@ -598,7 +598,7 @@ public class SettingsDialog extends JDialog {
                               "Code",
                               codeModelComboBox,
                               codeReasoningComboBox,
-                              "Used when invoking Code Agent manually");
+                              "Used when invoking the Code Agent manually");
 
         /* ---------------- Ask -------------------------------------------- */
         askModelComboBox = new JComboBox<>(availableModels);
@@ -612,7 +612,7 @@ public class SettingsDialog extends JDialog {
                               "Ask",
                               askModelComboBox,
                               askReasoningComboBox,
-                              "Used when invoking the Ask command");
+                              "Answers questions about the current Workspace contents");
 
         /* ---------------- Edit ------------------------------------------- */
         editModelComboBox = new JComboBox<>(availableModels);
@@ -626,7 +626,7 @@ public class SettingsDialog extends JDialog {
                               "Edit",
                               editModelComboBox,
                               editReasoningComboBox,
-                              "Used when invoking Code Agent from the Architect");
+                              "Used when invoking Code Agent from the Architect; also used for Deep Scan");
 
         /* ---------------- Search ----------------------------------------- */
         searchModelComboBox = new JComboBox<>(availableModels);
@@ -652,16 +652,8 @@ public class SettingsDialog extends JDialog {
 
         SwingUtilities.invokeLater(updateReasoningState);   // initial enable/disable
 
-        // Wrap the panel in a scroll pane
-        var scrollPane = new JScrollPane(panel);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder()); // Remove scroll pane border if desired
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-
-        // Need to return a JPanel for the tabbed pane, so wrap the scroll pane
-        var containerPanel = new JPanel(new BorderLayout());
-        containerPanel.add(scrollPane, BorderLayout.CENTER);
-        return containerPanel;
+        // Return the panel directly, without wrapping in a scroll pane
+        return panel;
     }
 
     /**
