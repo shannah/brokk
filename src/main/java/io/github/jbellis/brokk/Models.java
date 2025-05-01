@@ -31,7 +31,7 @@ public final class Models {
     /**
      * Represents the parsed Brokk API key components.
      */
-    public record KeyParts(java.util.UUID userId, String proToken, String freeToken) {}
+    public record KeyParts(java.util.UUID userId, String token) {}
 
     /**
      * Parses a Brokk API key of the form 'brk+<userId>+<proToken>+<freeToken>'.
@@ -46,8 +46,8 @@ public final class Models {
             throw new IllegalArgumentException("Key cannot be empty");
         }
         var parts = key.split("\\+");
-        if (parts.length != 4 || !"brk".equals(parts[0])) {
-            throw new IllegalArgumentException("Key must have format 'brk+<userId>+<proToken>+<freeToken>'");
+        if (parts.length != 3 || !"brk".equals(parts[0])) {
+            throw new IllegalArgumentException("Key must have format 'brk+<userId>+<token>'");
         }
 
         java.util.UUID userId;
@@ -58,10 +58,7 @@ public final class Models {
         }
 
         // Tokens no longer have sk- prefix in the raw key, prepend it here
-        var proToken = "sk-" + parts[2];
-        var freeToken = "sk-" + parts[3];
-
-        return new KeyParts(userId, proToken, freeToken);
+        return new KeyParts(userId, "sk-" + parts[2]);
     }
 
     private final Logger logger = LogManager.getLogger(Models.class);
@@ -164,7 +161,7 @@ public final class Models {
         // STT model initialization
         var sttLocation = modelInfoMap.entrySet().stream()
                 .filter(entry -> "audio_transcription".equals(entry.getValue().get("mode")))
-                .map(entry -> entry.getKey())
+                .map(Map.Entry::getKey)
                 .findFirst()
                 .orElse(null);
 
@@ -184,7 +181,7 @@ public final class Models {
         logger.debug(url);
         Request request = new Request.Builder()
                 .url(url)
-                .header("Authorization", "Bearer " + kp.proToken())
+                .header("Authorization", "Bearer " + kp.token())
                 .get()
                 .build();
         try (Response response = httpClient.newCall(request).execute()) {
@@ -220,7 +217,7 @@ public final class Models {
         if (isBrokk) {
             var kp = parseKey(Project.getBrokkKey());
             // Use proToken to check available models and balance
-            authHeader = "Bearer " + kp.proToken();
+            authHeader = "Bearer " + kp.token();
         }
         Request request = new Request.Builder()
                 .url(baseUrl + "/model/info")
@@ -448,12 +445,9 @@ public final class Models {
             if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
                 // Select token based on balance status
-                var selectedToken = isFreeTierOnly ? kp.freeToken() : kp.proToken();
-                logger.debug("Using {} for model '{}' request (low balance: {})",
-                             isFreeTierOnly ? "freeToken" : "proToken", modelName, isFreeTierOnly);
                 builder = builder
-                        .apiKey(selectedToken)
-                        .customHeaders(Map.of("Authorization", "Bearer " + selectedToken))
+                        .apiKey(kp.token)
+                        .customHeaders(Map.of("Authorization", "Bearer " + kp.token))
                         .user(kp.userId().toString());
             } else {
                 // Non-Brokk proxy
@@ -716,11 +710,7 @@ public final class Models {
             var authHeader = "Bearer dummy-key"; // Default for non-Brokk
             if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
-                // Access the parent Models instance's isLowBalance flag
-                var selectedToken = Models.this.isFreeTierOnly ? kp.freeToken() : kp.proToken();
-                logger.debug("Using {} for STT request (low balance: {})",
-                             Models.this.isFreeTierOnly ? "freeToken" : "proToken", Models.this.isFreeTierOnly);
-                authHeader = "Bearer " + selectedToken;
+                authHeader = "Bearer " + kp.token;
             }
 
             Request request = new Request.Builder()
