@@ -316,7 +316,7 @@ public class ContextAgent {
         // If the workspace isn't empty, use pagerank candidates for initial summaries
         if ((!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty())
                 && analyzer.isCpg()) {
-            var ac = contextManager.topContext().buildAutoContext(100);
+            var ac = contextManager.topContext().buildAutoContext(deepScan ? 100 : 50);
             debug("Non-empty context; using pagerank candidates {}",
                   ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
             rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
@@ -468,8 +468,9 @@ public class ContextAgent {
                          """.formatted(QUICK_TOPK);
 
         var finalSystemMessage = new SystemMessage(deepScan ? deepPrompt : quikPrompt);
-        var userMessageText = new StringBuilder("<goal>\n%s\n</goal>\n\n".formatted(goal));
+        var userMessageText = new StringBuilder();
         // Add workspace representation
+        // TODO give a better summary in quick mode
         if (workspaceRepresentation instanceof String workspaceSummary && !workspaceSummary.isBlank()) {
             userMessageText.append("<workspace_summary>\n%s\n</workspace_summary>\n\n".formatted(workspaceSummary));
         }
@@ -502,6 +503,7 @@ public class ContextAgent {
         }
 
         userMessageText.append("Call the `recommendContext` tool with the most relevant items based on the goal and available context.");
+        userMessageText.append("<goal>\n%s\n</goal>\n\n".formatted(goal));
 
         // Construct final message list
         List<ChatMessage> messages;
