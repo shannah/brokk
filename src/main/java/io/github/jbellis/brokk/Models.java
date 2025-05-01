@@ -157,7 +157,7 @@ public final class Models {
         if (quickModel == null) {
             quickModel = new UnavailableStreamingModel();
         }
-        quickestModel = get("gpt-4.1-nano", Project.ReasoningLevel.DEFAULT);
+        quickestModel = get("gemini-2.0-flash-lite", Project.ReasoningLevel.DEFAULT);
         if (quickestModel == null) {
             quickestModel = new UnavailableStreamingModel();
         }
