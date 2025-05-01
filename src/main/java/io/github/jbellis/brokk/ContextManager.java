@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk;
 
+import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.Content;
@@ -1029,6 +1030,34 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
     }
 
+    /**
+     * @return a summary of each fragment in the workspace; for most fragment types this is just the description,
+     * but for some (SearchFragment) it's the full text and for others (files, skeletons) it's the class summaries.
+     */
+    public Collection<ChatMessage> getWorkspaceSummaryMessages() {
+        var c = topContext();
+        IAnalyzer analyzer = getAnalyzerUninterrupted(); // Might block
+
+        // --- Process Read-Only Fragments ---
+        var summaries = Streams.concat(c.getReadOnlyFragments(), c.getEditableFragments())
+                .map(fragment -> fragment.formatSummary(analyzer))
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.joining("\n"));
+
+        if (summaries.isEmpty()) {
+            return List.of();
+        }
+
+        String summaryText = """
+                             <workspace-summary>
+                             %s
+                             </workspace-summary>
+                             """.stripIndent().formatted(summaries).trim();
+
+        var summaryUserMessage = new UserMessage(summaryText);
+        return List.of(summaryUserMessage, new AiMessage("Okay, I have the workspace summary."));
+    }
+
     private String readOnlySummaryDescription(ContextFragment cf) {
         if (cf instanceof PathFragment pf) {
             return pf.file().toString();
@@ -1145,6 +1174,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         logger.warn("Removing unreadable fragment {}", f.description(), th);
         io.toolErrorRaw("Removing unreadable fragment " + f.description());
+        // removeBadFragment takes IOException, but we caught Exception. Wrap it.
+        // Ideally removeBadFragment would take Exception or Throwable.
+        IOException wrapper = (th instanceof IOException ioe) ? ioe : new IOException("Error processing fragment: " + th.getMessage(), th);
         pushContext(c -> c.removeBadFragment(f));
     }
 
