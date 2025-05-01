@@ -131,7 +131,9 @@ public class EditBlock {
     /**
      * Parse the LLM response for SEARCH/REPLACE blocks and apply them.
      */
-    public static EditResult applyEditBlocks(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks) {
+    public static EditResult applyEditBlocks(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks)
+    throws IOException
+    {
         // Track which blocks succeed or fail during application
         List<FailedBlock> failed = new ArrayList<>();
         Map<SearchReplaceBlock, ProjectFile> succeeded = new HashMap<>();
@@ -156,26 +158,26 @@ public class EditBlock {
 
             // 2. Apply the edit using replaceInFile
             try {
-                // Save original content before attempting change
-                if (!changedFiles.containsKey(file)) {
-                    changedFiles.put(file, file.exists() ? file.read() : "");
-                }
+            // Save original content before attempting change
+            if (!changedFiles.containsKey(file)) {
+                changedFiles.put(file, file.exists() ? file.read() : "");
+            }
 
-                // Perform the replacement
-                replaceInFile(file, block.beforeText(), block.afterText());
+            // Perform the replacement
+            replaceInFile(file, block.beforeText(), block.afterText());
 
-                // If successful, add to succeeded list
-                succeeded.put(block, file);
-                if (isCreateNew) {
-                    try {
-                        contextManager.addToGit(List.of(file));
-                        io.systemOutput("Added to git " + file);
-                    } catch (IOException e) {
-                        io.systemOutput("Failed to git add " + file + ": " + e.getMessage());
-                        // Continue anyway, git add failure is not fatal here
-                    }
+            // If successful, add to succeeded list
+            succeeded.put(block, file);
+            if (isCreateNew) {
+                try {
+                    contextManager.addToGit(List.of(file));
+                    io.systemOutput("Added to git " + file);
+                } catch (IOException e) {
+                    io.systemOutput("Failed to git add " + file + ": " + e.getMessage());
+                    // Continue anyway, git add failure is not fatal here
                 }
-            } catch (NoMatchException | AmbiguousMatchException e) {
+            }
+        } catch(NoMatchException | AmbiguousMatchException e) {
                 assert changedFiles.containsKey(file);
                 var originalContent = changedFiles.get(file);
                 String commentary;
@@ -202,11 +204,11 @@ public class EditBlock {
                 var reason = e instanceof NoMatchException ? EditBlockFailureReason.NO_MATCH : EditBlockFailureReason.AMBIGUOUS_MATCH;
                 failed.add(new FailedBlock(block, reason, commentary));
             } catch (IOException e) {
-                logger.warn("IO error applying edit to file [{}]: {}", file, e.getMessage());
-                io.toolError("Failed reading/writing " + file + ": " + e.getMessage());
-                failed.add(new FailedBlock(block, EditBlockFailureReason.IO_ERROR));
+                var msg = "Error applying edit to " + file;
+                logger.warn("{}: {}", msg, e.getMessage());
+                throw new IOException(msg);
             }
-        } // End of for loop
+        }
 
         changedFiles.keySet().retainAll(succeeded.values());
         return new EditResult(changedFiles, failed);

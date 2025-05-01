@@ -173,7 +173,14 @@ public class CodeAgent {
             }
 
             // Apply all accumulated blocks
-            var editResult = EditBlock.applyEditBlocks(contextManager, io, blocks);
+            EditBlock.EditResult editResult;
+            try {
+                editResult = EditBlock.applyEditBlocks(contextManager, io, blocks);
+            } catch (IOException e) {
+                io.toolErrorRaw(e.getMessage());
+                stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.IO_ERROR, e.getMessage());
+                break;
+            }
             if (editResult.hadSuccessfulEdits()) {
                 int succeeded = blocks.size() - editResult.failedBlocks().size();
                 io.llmOutput("\n" + succeeded + " SEARCH/REPLACE blocks applied.", ChatMessageType.CUSTOM);
