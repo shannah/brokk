@@ -626,7 +626,7 @@ public class SettingsDialog extends JDialog {
                               "Edit",
                               editModelComboBox,
                               editReasoningComboBox,
-                              "Used when invoking Code Agent from the Architect; also used for Deep Scan");
+                              "Used when invoking the Code Agent from the Architect; also used for Deep Scan");
 
         /* ---------------- Search ----------------------------------------- */
         searchModelComboBox = new JComboBox<>(availableModels);
