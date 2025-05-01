@@ -224,16 +224,23 @@ public abstract class CodePrompts {
                     }
 
                     String failedBlocksXml = fileFailures.stream()
-                            .map(f -> """
-                                      <failed_block reason="%s">
-                                      <block>
-                                      %s
-                                      </block>
-                                      <commentary>
-                                      %s
-                                      </commentary>
-                                      </failed_block>
-                                      """.formatted(f.reason(), parser.repr(f.block()), f.commentary()).stripIndent())
+                            .map(f -> {
+                                var commentaryText = f.commentary().isBlank()
+                                                     ? ""
+                                                     : """
+                                                       <commentary>
+                                                       %s
+                                                       </commentary>
+                                                       """.formatted(f.commentary());
+                                return """
+                                       <failed_block reason="%s">
+                                       <block>
+                                       %s
+                                       %s
+                                       </block>
+                                       </failed_block>
+                                       """.formatted(f.reason(), parser.repr(f.block()), commentaryText).stripIndent();
+                            })
                             .collect(Collectors.joining("\n"));
 
                     return """
