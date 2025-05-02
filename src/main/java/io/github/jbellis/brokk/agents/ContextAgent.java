@@ -454,7 +454,7 @@ public class ContextAgent {
                                  Analyze the provided information and determine which items are most relevant to achieving the goal.
                                  You MUST call the `recommendContext` tool to provide your recommendations.
                                  DO NOT recommend files or classes that are already in the Workspace.
-                                 Populate the `filesToAdd` argument with the full paths of files that will need to be edited as part of the goal,
+                                 Populate the `filesToAdd` argument with the full (relative) paths of files that will need to be edited as part of the goal,
                                  or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary).
                                  
                                  Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
@@ -470,15 +470,12 @@ public class ContextAgent {
                                  You MUST call the `recommendContext` tool to provide your recommendations.
                                  DO NOT recommend files or classes that are already in the Workspace.
                                  
-                                 If you are given full file contents, populate the `filesToAdd` argument with the full paths of
-                                 the %d most relevant files.
-                                 
-                                 If you are given class summaries, populate the `classesToSummarize` argument with the
-                                 fully-qualified names of the 10 most relevant classes.
-                                 
-                                 Exactly one of `filesToAdd` or `classesToSummarize` should be non-empty.
+                                 %s
                                  """;
-         var quikPrompt = quikPromptTemplate.formatted(contextTypeDescription, contextTypeElement, QUICK_TOPK).stripIndent();
+        var quikToolInstructions = contextTypeElement.equals("available_summaries")
+                                   ? "Populate the `classesToSummarize` argument with the fully-qualified names of the 10 most relevant classes.\n"
+                                   : "Populate the `filesToAdd` argument with the full (relative) paths of the %d most relevant files.\n";
+         var quikPrompt = quikPromptTemplate.formatted(contextTypeDescription, contextTypeElement, QUICK_TOPK, quikToolInstructions).stripIndent();
 
          var finalSystemMessage = new SystemMessage(deepScan ? deepPrompt : quikPrompt);
          var userMessageText = new StringBuilder();
