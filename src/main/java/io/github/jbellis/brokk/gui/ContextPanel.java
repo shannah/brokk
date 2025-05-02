@@ -270,10 +270,12 @@ public class ContextPanel extends JPanel {
 
                         // If the user right-clicked on the references column, show reference options
                         var fileActionsAdded = false;
+                        TableUtils.FileReferenceList.FileReferenceData targetRef = null; // Declare outside the block
                         if (col == FILES_REFERENCED_COLUMN) {
                             @SuppressWarnings("unchecked") List<TableUtils.FileReferenceList.FileReferenceData> references = (List<TableUtils.FileReferenceList.FileReferenceData>) contextTable.getValueAt(row, col);
                             if (references != null && !references.isEmpty()) {
-                                TableUtils.FileReferenceList.FileReferenceData targetRef = findClickedReference(e.getPoint(), row, col, references);
+                                // Assign to the outer variable
+                                targetRef = findClickedReference(e.getPoint(), row, col, references);
                                 if (targetRef != null) {
                                     // If clicking on a specific file reference, show specific file options
                                     contextMenu.addSeparator();
@@ -281,35 +283,57 @@ public class ContextPanel extends JPanel {
                                     contextMenu.add(buildReadMenuItem(targetRef));
                                     contextMenu.add(buildSummarizeMenuItem(targetRef));
                                 }
+                                fileActionsAdded = true;
                             }
-                            fileActionsAdded = true;
                         }
 
-                        // If clicking in the row but not on a specific reference, show "all references" options
+                        // If clicking in the row but not on a specific reference badge
                         if (!fileActionsAdded) {
                             contextMenu.addSeparator();
+                            var selectedFragments = getSelectedFragments(); // Get selected fragments once
 
-                            JMenuItem editAllRefsItem = new JMenuItem("Edit All References");
-                            editAllRefsItem.addActionListener(e1 -> {
-                                var selectedFragments = getSelectedFragments();
-                                performContextActionAsync(ContextAction.EDIT, selectedFragments);
-                            });
+                            // Special case: Single ProjectPathFragment selected -> show specific actions for it
+                            if (selectedFragments.size() == 1 && selectedFragments.getFirst() instanceof ContextFragment.ProjectPathFragment ppf) {
+                                // Create FileReferenceData for this fragment's file
+                                var fileData = new TableUtils.FileReferenceList.FileReferenceData(
+                                        ppf.file().getFileName(),
+                                        ppf.file().toString(),
+                                        ppf.file()
+                                );
+                                // Add specific actions using existing helpers
+                                contextMenu.add(buildAddMenuItem(fileData));
+                                contextMenu.add(buildReadMenuItem(fileData));
+                                contextMenu.add(buildSummarizeMenuItem(fileData));
+                            } else {
+                                // Default: Show "All References" actions, enabled based on file presence
+                                var project = contextManager.getProject();
+                                Set<BrokkFile> allFiles = selectedFragments.stream()
+                                        .flatMap(frag -> frag.files(project).stream())
+                                        .collect(Collectors.toSet());
+                                boolean hasFiles = !allFiles.isEmpty();
 
-                            JMenuItem readAllRefsItem = new JMenuItem("Read All References");
-                            readAllRefsItem.addActionListener(e1 -> {
-                                var selectedFragments = getSelectedFragments();
-                                performContextActionAsync(ContextAction.READ, selectedFragments);
-                            });
+                                JMenuItem editAllRefsItem = new JMenuItem("Edit all References");
+                                editAllRefsItem.addActionListener(e1 -> {
+                                    performContextActionAsync(ContextAction.EDIT, selectedFragments);
+                                });
+                                editAllRefsItem.setEnabled(hasFiles); // Disable if no files associated
 
-                            JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize All References");
-                            summarizeAllRefsItem.addActionListener(e1 -> {
-                                var selectedFragments = getSelectedFragments();
-                                performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
-                            });
+                                JMenuItem readAllRefsItem = new JMenuItem("Read all References");
+                                readAllRefsItem.addActionListener(e1 -> {
+                                    performContextActionAsync(ContextAction.READ, selectedFragments);
+                                });
+                                readAllRefsItem.setEnabled(hasFiles); // Disable if no files associated
 
-                            contextMenu.add(editAllRefsItem);
-                            contextMenu.add(readAllRefsItem);
-                            contextMenu.add(summarizeAllRefsItem);
+                                JMenuItem summarizeAllRefsItem = new JMenuItem("Summarize all References");
+                                summarizeAllRefsItem.addActionListener(e1 -> {
+                                    performContextActionAsync(ContextAction.SUMMARIZE, selectedFragments);
+                                });
+                                summarizeAllRefsItem.setEnabled(hasFiles); // Disable if no files associated
+
+                                contextMenu.add(editAllRefsItem);
+                                contextMenu.add(readAllRefsItem);
+                                contextMenu.add(summarizeAllRefsItem);
+                            }
                         }
 
                         // Add Copy and Drop actions with a separator
