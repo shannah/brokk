@@ -159,7 +159,8 @@ public final class Models {
         if (quickModel == null) {
             quickModel = new UnavailableStreamingModel();
         }
-        quickestModel = get("gemini-2.0-flash-lite", Project.ReasoningLevel.DEFAULT);
+        // hardcode quickest temperature to 0 so that Quick Context inference is reproducible
+        quickestModel = get("gemini-2.0-flash-lite", Project.ReasoningLevel.DEFAULT, 0.0);
         if (quickestModel == null) {
             quickestModel = new UnavailableStreamingModel();
         }
@@ -419,10 +420,8 @@ public final class Models {
      * Retrieves or creates a StreamingChatLanguageModel for the given modelName and reasoning level.
      *
      * @param modelName      The display name of the model (e.g., "gemini-2.5-pro-exp-03-25").
-     * @param reasoningLevel The desired reasoning level.
-     * @return The configured model instance, or null if the model name is invalid.
      */
-    public StreamingChatLanguageModel get(String modelName, Project.ReasoningLevel reasoningLevel) {
+    public StreamingChatLanguageModel get(String modelName, Project.ReasoningLevel reasoningLevel, Double temperature) {
         // Use a composite key for the cache to include reasoning level if not default
         String cacheKey = modelName + (reasoningLevel == Project.ReasoningLevel.DEFAULT ? "" : ":" + reasoningLevel.name());
 
@@ -467,13 +466,15 @@ public final class Models {
 
             builder = builder.modelName(location);
 
+            // default request parameters
+            var params = OpenAiChatRequestParameters.builder()
+                    .temperature(temperature);
             // Apply reasoning effort if not default and supported
             logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
             if (supportsReasoning(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
-                builder.defaultRequestParameters(OpenAiChatRequestParameters.builder()
-                                                         .reasoningEffort(reasoningLevel.name().toLowerCase())
-                                                         .build());
+                params = params.reasoningEffort(reasoningLevel.name().toLowerCase());
             }
+            builder.defaultRequestParameters(params.build());
 
             if (modelName.contains("sonnet")) {
                 // "Claude 3.7 Sonnet may be less likely to make make parallel tool calls in a response,
@@ -484,6 +485,10 @@ public final class Models {
 
             return builder.build();
         });
+    }
+
+    public StreamingChatLanguageModel get(String modelName, Project.ReasoningLevel reasoningLevel) {
+        return get(modelName, reasoningLevel, null);
     }
 
     public boolean supportsJsonSchema(StreamingChatLanguageModel model) {
