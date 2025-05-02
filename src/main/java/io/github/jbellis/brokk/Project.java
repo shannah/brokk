@@ -685,13 +685,13 @@ public class Project implements IProject, AutoCloseable {
             if (json != null && !json.isEmpty()) {
                 List<String> result = objectMapper.readValue(json,
                                                              objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
-                logger.debug("Loaded {} history items", result.size());
+                logger.trace("Loaded {} history items", result.size());
                 return result;
             }
         } catch (Exception e) {
             logger.error("Error loading text history: {}", e.getMessage(), e);
         }
-        logger.debug("No text history found, returning empty list");
+        logger.trace("No text history found, returning empty list");
         return new ArrayList<>();
     }
 
@@ -743,7 +743,7 @@ public class Project implements IProject, AutoCloseable {
             node.put("width", window.getWidth());
             node.put("height", window.getHeight());
 
-            logger.debug("Saving {} bounds as {}", key, node);
+            logger.trace("Saving {} bounds as {}", key, node);
             workspaceProps.setProperty(key, objectMapper.writeValueAsString(node));
             saveWorkspaceProperties();
         } catch (Exception e) {
@@ -764,7 +764,7 @@ public class Project implements IProject, AutoCloseable {
 
         try {
             String json = workspaceProps.getProperty(key);
-            logger.debug("Loading {} bounds from {}", key, json);
+            logger.trace("Loading {} bounds from {}", key, json);
             if (json != null) {
                 var node = objectMapper.readValue(json, ObjectNode.class);
 

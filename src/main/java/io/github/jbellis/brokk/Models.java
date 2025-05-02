@@ -459,7 +459,7 @@ public final class Models {
             builder = builder.modelName(location); // Use the resolved location
 
             // Apply reasoning effort if not default and supported
-            logger.debug("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
+            logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
             if (supportsReasoning(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
                 builder.defaultRequestParameters(OpenAiChatRequestParameters.builder()
                                                          .reasoningEffort(reasoningLevel.name().toLowerCase())

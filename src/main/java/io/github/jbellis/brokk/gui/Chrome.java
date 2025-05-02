@@ -292,7 +292,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // This prevents stomping on an active llm output since it will only be the case
         // if the user is selecting a different context, as opposed to a background task
         // updating the summary or autocontext.
-        logger.debug("Loading context.  active={}, new={}", activeContext == null ? "null" : activeContext.getId(), ctx.getId());
+        logger.trace("Loading context.  active={}, new={}", activeContext == null ? "null" : activeContext.getId(), ctx.getId());
         boolean resetOutput = (activeContext == null || activeContext.getId() != ctx.getId());
         activeContext = ctx;
 
