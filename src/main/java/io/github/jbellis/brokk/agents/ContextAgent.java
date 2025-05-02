@@ -327,11 +327,7 @@ public class ContextAgent {
         // Rule 2: Ask LLM to pick relevant summaries/files if all summaries fit the Pruning budget
         if (summaryTokens <= budgetPruning) {
             var llmRecommendation = askLlmToRecommendContext(List.of(), rawSummaries, Map.of(), workspaceRepresentation);
-            var recommendedSummaries = rawSummaries.entrySet().stream()
-                    .filter(entry -> llmRecommendation.recommendedClasses.contains(entry.getKey()))
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            var recommendedFiles = llmRecommendation.recommendedFiles;
-            return createResult(recommendedSummaries, recommendedFiles, llmRecommendation.reasoning);
+            return createResult(llmRecommendation);
         }
 
         // If summaries are too large even for pruning, signal failure for this branch
@@ -340,7 +336,14 @@ public class ContextAgent {
         return new RecommendationResult(false, List.of(), reason);
     }
 
-    private @NotNull RecommendationResult createResult(Map<CodeUnit, @NotNull String> recommendedSummaries, List<ProjectFile> recommendedFiles, String reasoning) {
+    private @NotNull RecommendationResult createResult(@NotNull LlmRecommendation llmRecommendation) {
+        var recommendedFiles = llmRecommendation.recommendedFiles();
+        var recommendedClasses = llmRecommendation.recommendedClasses();
+        var reasoning = llmRecommendation.reasoning();
+
+        // Get summaries for recommended classes
+        var recommendedSummaries = getSummaries(recommendedClasses, false);
+
         // Calculate combined token size
         int recommendedSummaryTokens = Messages.getApproximateTokens(String.join("\n", recommendedSummaries.values()));
         var recommendedContentsMap = readFileContents(recommendedFiles);
@@ -351,11 +354,13 @@ public class ContextAgent {
               recommendedSummaries.size(), recommendedSummaryTokens,
               recommendedFiles.size(), recommendedContentTokens, totalRecommendedTokens);
 
+        // Create fragments
         var skeletonFragments = skeletonPerSummary(recommendedSummaries);
         var pathFragments = recommendedFiles.stream()
                 .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                 .toList();
         var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
+
         return new RecommendationResult(true, combinedFragments, reasoning);
     }
 
@@ -580,9 +585,7 @@ public class ContextAgent {
         // Rule 2: Ask LLM to pick relevant files if all content fits the Pruning budget
         if (contentTokens <= budgetPruning) {
             var llmRecommendation = askLlmToRecommendContext(List.of(), Map.of(), contentsMap, workspaceRepresentation);
-            var recommendedFiles = llmRecommendation.recommendedFiles;
-            var recommendedSummaries = getSummaries(llmRecommendation.recommendedClasses, false);
-            return createResult(recommendedSummaries, recommendedFiles, llmRecommendation.reasoning);
+            return createResult(llmRecommendation);
         }
 
         String reason = "File contents too large for LLM pruning budget.";
@@ -620,9 +623,7 @@ public class ContextAgent {
 
         // Ask LLM to recommend files based *only* on paths
         var llmRecommendation = askLlmToRecommendContext(allFiles, Map.of(), Map.of(), workspaceRepresentation);
-        var recommendedFiles = llmRecommendation.recommendedFiles;
-        var recommendedSummaries = getSummaries(llmRecommendation.recommendedClasses, false);
-        return createResult(recommendedSummaries, recommendedFiles, llmRecommendation.reasoning);
+        return createResult(llmRecommendation);
     }
 
 
