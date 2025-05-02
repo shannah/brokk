@@ -237,9 +237,11 @@ class DeepScanDialog {
             if (fragment instanceof ContextFragment.SkeletonFragment) {
                 comboBox.setSelectedItem(SUMMARIZE);
             } else if (fragment instanceof ContextFragment.ProjectPathFragment) {
-                // Default to EDIT if Git is present, otherwise READ_ONLY
-                comboBox.setSelectedItem(hasGit ? EDIT : READ_ONLY);
+                // EDIT if the file is in git, otherwise READ
+                var edit = hasGit && contextManager.getRepo().getTrackedFiles().contains(pf);
+                comboBox.setSelectedItem(edit ? EDIT : READ_ONLY);
             } else {
+                logger.error("Unexpected fragment {} returned to DeepScanDialog", fragment);
                 comboBox.setSelectedItem(OMIT);
             }
 

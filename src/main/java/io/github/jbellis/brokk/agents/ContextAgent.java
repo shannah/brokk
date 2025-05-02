@@ -234,7 +234,7 @@ public class ContextAgent {
         Collection<ChatMessage> workspaceRepresentation = deepScan
                                                           ? contextManager.getWorkspaceContentsMessages()
                                                           : contextManager.getWorkspaceSummaryMessages();
-        var allFiles = contextManager.getRepo().getTrackedFiles().stream().sorted().toList();
+        var allFiles = contextManager.getProject().getAllFiles().stream().sorted().toList();
 
         // Try summaries first if analyzer is available
         if (!analyzer.isEmpty()) {
@@ -303,15 +303,16 @@ public class ContextAgent {
 
     private RecommendationResult executeWithSummaries(List<ProjectFile> filesToConsider, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
-        // If the workspace isn't empty, use pagerank candidates for initial summaries
-        if ((!contextManager.getEditableFiles().isEmpty() || !contextManager.getReadonlyFiles().isEmpty())
-                && analyzer.isCpg()) {
+        // If the workspace isn't empty, use pagerank candidates for Quick context
+        var ctx = contextManager.topContext();
+        var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources(contextManager.getProject()).stream()).findAny().isPresent();
+        if (codeInWorkspace && !deepScan) {
             var ac = contextManager.topContext().buildAutoContext(deepScan ? 100 : 50);
             debug("Non-empty context; using pagerank candidates {}",
                   ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
             rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
         } else {
-            // If workspace is empty, get summaries for the provided files (all or pruned)
+            // Scan all the files
             rawSummaries = getProjectSummaries(filesToConsider);
         }
 
