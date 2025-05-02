@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.min;
+
 /**
  * Manages dynamically loaded models via LiteLLM.
  */
@@ -433,14 +435,21 @@ public final class Models {
                 return null;
             }
 
+            // OpenAI says, "Your rate limit is calculated as the maximum of max_tokens
+            // and the estimated number of tokens based on the character count of your request.
+            // https://platform.openai.com/docs/guides/rate-limits
+            // We don't have a good way to predict output size, but almost all of them are lower than 32k,
+            // and CodeAgent can pick up an request that stopped early from the last edit block
+            var maxTokens = min(32768, getMaxOutputTokens(location));
+
             // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
             // placeholder, LiteLLM manages actual keys
-            String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
+            String baseUrl = Project.getLlmProxy();
             var builder = OpenAiStreamingChatModel.builder()
                     .logRequests(true)
                     .logResponses(true)
                     .strictJsonSchema(true)
-                    .maxTokens(getMaxOutputTokens(location))
+                    .maxTokens(maxTokens)
                     .baseUrl(baseUrl)
                     .timeout(Duration.ofMinutes(3)); // default 60s is not enough
 
@@ -456,7 +465,7 @@ public final class Models {
                 builder = builder.apiKey("dummy-key");
             }
 
-            builder = builder.modelName(location); // Use the resolved location
+            builder = builder.modelName(location);
 
             // Apply reasoning effort if not default and supported
             logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
