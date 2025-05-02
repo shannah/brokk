@@ -103,7 +103,7 @@ public interface ContextFragment extends Serializable {
         return true;
     }
 
-    static Set<ProjectFile> parseRepoFiles(String text, IProject project) {
+    static Set<ProjectFile> parseProjectFiles(String text, IProject project) {
         var exactMatches = project.getAllFiles().stream().parallel()
                 .filter(f -> text.contains(f.toString()))
                 .collect(Collectors.toSet());
@@ -417,7 +417,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<ProjectFile> files(IProject project) {
-            return parseRepoFiles(text(), project);
+            return parseProjectFiles(text(), project);
         }
 
         @Override
