@@ -335,33 +335,24 @@ class DeepScanDialog {
             List<ProjectFile> filesToEdit = new ArrayList<>();
             List<ProjectFile> filesToReadOnly = new ArrayList<>();
 
-            // Helper to extract ProjectFile, handling potential issues
-            BiFunction<ContextFragment, JComboBox<String>, ProjectFile> getProjectFile = (frag, combo) ->
-                    frag.files(project).stream()
-                            .findFirst()
-                            .filter(ProjectFile.class::isInstance)
-                            .orElseGet(() -> {
-                                logger.error("Could not retrieve ProjectFile for fragment: {} / combo: {}", frag.shortDescription(), combo.getSelectedItem());
-                                return null; // Return null if file cannot be determined
-                            });
-
+            // this is clunky b/c we're returning ContextFragment (PathFragment or SkeletonFragment) from the Agent,
+            // and we use that to select the default action, but user can override the action so we need
+            // a common denominator of ProjectFile
 
             // Process project code selections
             projectCodeComboboxMap.forEach((comboBox, fragment) -> {
                 String selectedAction = (String) comboBox.getSelectedItem();
-                ProjectFile pf = getProjectFile.apply(fragment, comboBox);
-                if (pf == null) return; // Skip if file couldn't be determined
 
                 switch (selectedAction) {
                     case SUMMARIZE:
-                        filesToSummarize.add(pf);
+                        filesToSummarize.addAll(fragment.files(project));
                         break;
                     case EDIT:
-                        if (hasGit) filesToEdit.add(pf);
-                        else logger.warn("Edit action selected for {} but Git is not available. Ignoring.", pf);
+                        if (hasGit) filesToEdit.addAll(fragment.files(project));
+                        else logger.warn("Edit action selected for {} but Git is not available. Ignoring.", fragment);
                         break;
                     case READ_ONLY:
-                        filesToReadOnly.add(pf);
+                        filesToReadOnly.addAll(fragment.files(project));
                         break;
                     case OMIT: // Do nothing
                     default:
@@ -372,17 +363,15 @@ class DeepScanDialog {
             // Process test code selections
             testCodeComboboxMap.forEach((comboBox, fragment) -> {
                 String selectedAction = (String) comboBox.getSelectedItem();
-                ProjectFile pf = getProjectFile.apply(fragment, comboBox);
-                if (pf == null) return; // Skip if file couldn't be determined
 
                 switch (selectedAction) {
                     // SUMMARIZE is not an option for tests via UI
                     case EDIT:
-                        if (hasGit) filesToEdit.add(pf);
-                        else logger.warn("Edit action selected for test {} but Git is not available. Ignoring.", pf);
+                        if (hasGit) filesToEdit.addAll(fragment.files(project));
+                        else logger.warn("Edit action selected for test {} but Git is not available. Ignoring.", fragment);
                         break;
                     case READ_ONLY:
-                        filesToReadOnly.add(pf);
+                        filesToReadOnly.addAll(fragment.files(project));
                         break;
                     case OMIT: // Do nothing
                     default:
@@ -390,24 +379,28 @@ class DeepScanDialog {
                 }
             });
 
-            if (!filesToSummarize.isEmpty()) {
-                boolean success = contextManager.addSummaries(filesToSummarize, Set.of());
-                if (!success) {
-                    chrome.toolErrorRaw("No summarizable code found in selected files");
+            contextManager.submitContextTask("Adding Deep Scan recommendations", () -> {
+                if (!filesToSummarize.isEmpty()) {
+                    boolean success = contextManager.addSummaries(filesToSummarize, Set.of());
+                    if (!success) {
+                        chrome.toolErrorRaw("No summarizable code found in selected files");
+                    }
+                    chrome.systemOutput("Added summaries of " + filesToSummarize);
                 }
-                chrome.systemOutput("Added summaries of " + filesToSummarize);
-            }
-            if (!filesToEdit.isEmpty()) {
-                contextManager.editFiles(filesToEdit);
-                chrome.systemOutput("Edited " + filesToEdit.size());
-            }
-            if (!filesToReadOnly.isEmpty()) {
-                contextManager.addReadOnlyFiles(filesToReadOnly);
-                chrome.systemOutput("Added as read-only: " + filesToReadOnly);
-            }
+                if (!filesToEdit.isEmpty()) {
+                    contextManager.editFiles(filesToEdit);
+                    chrome.systemOutput("Edited " + filesToEdit.size());
+                }
+                if (!filesToReadOnly.isEmpty()) {
+                    contextManager.addReadOnlyFiles(filesToReadOnly);
+                    chrome.systemOutput("Added as read-only: " + filesToReadOnly);
+                }
 
-            dialog.dispose();
-            chrome.getInstructionsPanel().enableButtons(); // Re-enable buttons after dialog closes
+                SwingUtilities.invokeLater(() -> {
+                    dialog.dispose();
+                    chrome.getInstructionsPanel().enableButtons(); // Re-enable buttons after dialog closes
+                });
+            });
         });
 
 

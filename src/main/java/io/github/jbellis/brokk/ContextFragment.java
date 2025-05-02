@@ -13,10 +13,8 @@ import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Path;
-import java.util.Comparator;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -870,6 +868,14 @@ public interface ContextFragment extends Serializable {
                         return packageHeader + "\n\n" + pkgCode;
                     })
                     .collect(Collectors.joining("\n\n"));
+        }
+
+        public static SkeletonFragment merge(Collection<SkeletonFragment> fragments) {
+            var combinedSkeletons = new HashMap<CodeUnit, String>();
+            for (var fragment : fragments) {
+                combinedSkeletons.putAll(fragment.skeletons());
+            }
+            return new SkeletonFragment(combinedSkeletons);
         }
 
         private Set<CodeUnit> nonDummy() {
