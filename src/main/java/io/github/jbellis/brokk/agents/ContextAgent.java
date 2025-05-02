@@ -512,7 +512,7 @@ public class ContextAgent {
                                                    Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userMessageText.toString()))))
                 .toList();
 
-        int promptTokens = messages.stream().mapToInt(m -> Messages.getApproximateTokens(Messages.getText(m))).sum();
+        int promptTokens = Messages.getApproximateTokens(messages);
         debug("Invoking LLM to recommend context via tool call (prompt size ~{} tokens)", promptTokens);
 
         // *** Execute LLM call with required tool ***
