@@ -1013,9 +1013,16 @@ public class SettingsDialog extends JDialog {
      * This should be called early in the application startup process.
      */
     public static void showSignupDialog() {
-        if (!Project.getBrokkKey().isEmpty()) {
-            logger.debug("Brokk key already configured, skipping signup dialog.");
-            return; // Key already exists, nothing to do
+        var existingKey = Project.getBrokkKey();
+        if (!existingKey.isEmpty()) {
+            try {
+                Models.parseKey(existingKey);
+                // (parsing succeeded)
+                logger.debug("Brokk key already configured, skipping signup dialog.");
+                return;
+            } catch (IllegalArgumentException e) {
+                logger.debug("Invalid Brokk key {}, showing dialog to get a new one", existingKey);
+            }
         }
 
         // hardcode dark theme
@@ -1117,7 +1124,7 @@ public class SettingsDialog extends JDialog {
             @Override
             public void windowClosing(WindowEvent e) {
                 // Check if a valid key has been set *before* allowing close
-                if (Project.getBrokkKey().isEmpty()) {
+                if (existingKey.isEmpty()) {
                     JOptionPane.showMessageDialog(dialog,
                                                   "You must enter a valid Brokk Key to use Brokk.",
                                                   "Key Required",
