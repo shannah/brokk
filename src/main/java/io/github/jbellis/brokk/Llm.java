@@ -99,7 +99,13 @@ public class Llm {
      * is done or there's an error. If 'echo' is true, partial tokens go to console.
      */
     private StreamingResult doSingleStreamingCall(ChatRequest request, boolean echo) throws InterruptedException {
-        var result = doSingleStreamingCallInternal(request, echo);
+        StreamingResult result;
+        try {
+            result = doSingleStreamingCallInternal(request, echo);
+        } catch (InterruptedException e) {
+            logRequest(model, request, null);
+            throw e;
+        }
         logRequest(model, request, result);
         return result;
     }
@@ -936,9 +942,11 @@ public class Llm {
             var formattedRequest = "# Request to %s:\n\n%s\n".formatted(contextManager.getModels().nameOf(model),
                                                                         TaskEntry.formatMessages(request.messages()));
             var formattedTools = request.toolSpecifications() == null ? "" : "# Tools:\n\n" + request.toolSpecifications().stream().map(ToolSpecification::name).collect(Collectors.joining("\n"));
-            var formattedResponse = "# Response:\n\n%s".formatted(result.formatted());
+            var formattedResponse = result == null
+                                    ? "# Response:\n\nCancelled"
+                                    : "# Response:\n\n%s".formatted(result.formatted());
             String fileTimestamp = timestamp.format(DateTimeFormatter.ofPattern("HH-mm-ss"));
-            String shortDesc = LogDescription.getShortDescription(result.getDescription());
+            String shortDesc = result == null ? "Cancelled" : LogDescription.getShortDescription(result.getDescription());
             var filePath = sessionHistoryDir.resolve(String.format("%s %s.log", fileTimestamp, shortDesc));
             var options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE};
             logger.trace("Writing history to file {}", filePath);
