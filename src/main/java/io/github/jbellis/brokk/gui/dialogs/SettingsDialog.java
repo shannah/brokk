@@ -44,6 +44,8 @@ public class SettingsDialog extends JDialog {
     private JComboBox<String> searchModelComboBox;
     private JComboBox<Project.ReasoningLevel> searchReasoningComboBox;
     private JComboBox<Project.ReasoningLevel> architectReasoningComboBox;
+    // Project -> General tab specific fields
+    private JTextArea styleGuideArea;
 
 
     public SettingsDialog(Frame owner, Chrome chrome) {
@@ -379,13 +381,31 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 1.0;
         otherPanel.add(cpgRefreshComboBox, gbc);
 
-        // Add vertical glue to push components to the top
+        // --- Style Guide Editor ---
         gbc.gridx = 0;
-        gbc.gridy = row; // Use the incremented row
-        gbc.gridwidth = 2; // Span across both columns
-        gbc.weighty = 1.0; // Take up remaining vertical space
-        gbc.fill = GridBagConstraints.VERTICAL;
-        otherPanel.add(Box.createVerticalGlue(), gbc);
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.anchor = GridBagConstraints.NORTHWEST; // Align label top-left
+        gbc.fill = GridBagConstraints.NONE;
+        otherPanel.add(new JLabel("Style Guide:"), gbc);
+
+        styleGuideArea = new JTextArea(10, 40); // Initialize text area
+        styleGuideArea.setText(project.getStyleGuide()); // Load current style guide
+        styleGuideArea.setWrapStyleWord(true);
+        styleGuideArea.setLineWrap(true);
+        var styleScrollPane = new JScrollPane(styleGuideArea);
+        styleScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        styleScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        gbc.gridx = 1;
+        gbc.gridy = row++; // Increment row after adding style guide
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0; // Allow style guide area to grow vertically
+        gbc.fill = GridBagConstraints.BOTH; // Fill available space
+        otherPanel.add(styleScrollPane, gbc);
+
+        // Reset weighty for subsequent components if any were added below
+        gbc.weighty = 0.0;
 
 
         // Add General tab first, then Build tab
@@ -808,6 +828,14 @@ public class SettingsDialog extends JDialog {
             var selectedRefresh = (Project.CpgRefresh) cpgRefreshComboBox.getSelectedItem();
             if (selectedRefresh != project.getCpgRefresh()) {
                 project.setCpgRefresh(selectedRefresh);
+            }
+
+            // Apply Style Guide
+            var currentStyleGuide = project.getStyleGuide();
+            var newStyleGuide = styleGuideArea.getText(); // Get text from the text area
+            if (!newStyleGuide.equals(currentStyleGuide)) {
+                project.saveStyleGuide(newStyleGuide);
+                logger.debug("Applied Style Guide changes.");
             }
 
             // Apply Data Retention Policy
