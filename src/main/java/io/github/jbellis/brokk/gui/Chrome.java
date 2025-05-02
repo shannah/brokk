@@ -220,7 +220,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     private void initializeThemeManager() {
         assert getProject() != null;
 
-        logger.debug("Initializing theme manager");
+        logger.trace("Initializing theme manager");
         // JMHighlightPainter.initializePainters(); // Removed: Painters are now created dynamically with theme colors
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
@@ -228,7 +228,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
         // Apply current theme based on project settings
         String currentTheme = Project.getTheme();
-        logger.debug("Applying theme from project settings: {}", currentTheme);
+        logger.trace("Applying theme from project settings: {}", currentTheme);
         boolean isDark = THEME_DARK.equalsIgnoreCase(currentTheme);
         themeManager.applyTheme(isDark);
         historyOutputPanel.updateTheme(isDark);
