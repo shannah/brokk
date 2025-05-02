@@ -55,8 +55,11 @@ public class Llm {
     private static final Logger logger = LogManager.getLogger(Llm.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** Base directory where LLM interaction history logs are stored. */
+    public static final String HISTORY_DIR_NAME = "llm-history";
+
     private final IConsoleIO io;
-    private final Path sessionHistoryDir; // Directory for this session's history files
+    private final Path sessionHistoryDir; // Directory for this specific LLM session's history files
     final IContextManager contextManager;
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
     private final StreamingChatLanguageModel model;
@@ -65,22 +68,30 @@ public class Llm {
         this.model = model;
         this.contextManager = contextManager;
         this.io = contextManager.getIo();
-        var sourceRoot = contextManager.getProject().getRoot();
-        var historyBaseDir = sourceRoot.resolve(".brokk").resolve("llm-history");
+        var historyBaseDir = getHistoryBaseDir(contextManager.getProject().getRoot());
 
-        // Create session directory name
+        // Create session directory name for this specific LLM interaction
         var timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
-        // Use the static method from CodeAgent.SessionResult for consistency
         var sessionDesc = LogDescription.getShortDescription(taskDescription);
         var sessionDirName = String.format("%s %s", timestamp, sessionDesc);
         this.sessionHistoryDir = historyBaseDir.resolve(sessionDirName);
 
-        // Create the directory
+        // Create the specific directory for this session
         try {
             Files.createDirectories(this.sessionHistoryDir);
         } catch (IOException e) {
-            logger.error("Failed to create history directory {}", this.sessionHistoryDir, e);
+            logger.error("Failed to create session history directory {}", this.sessionHistoryDir, e);
+            // sessionHistoryDir might be null or unusable, logRequest checks for null
         }
+    }
+
+    /**
+     * Returns the base directory where all LLM session histories are stored for a project.
+     * @param projectRoot The root path of the project.
+     * @return The Path object representing the base history directory.
+     */
+    public static Path getHistoryBaseDir(Path projectRoot) {
+        return projectRoot.resolve(".brokk").resolve(HISTORY_DIR_NAME);
     }
 
     /**
