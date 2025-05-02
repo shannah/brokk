@@ -37,10 +37,6 @@ public class Project implements IProject, AutoCloseable {
     private final IGitRepo repo;
     private final Set<ProjectFile> dependencyFiles;
 
-    private static final int DEFAULT_AUTO_CONTEXT_FILE_COUNT = 10;
-    private static final int DEFAULT_WINDOW_WIDTH = 800;
-    private static final int DEFAULT_WINDOW_HEIGHT = 1200;
-
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
     private static final String BUILD_DETAILS_KEY = "buildDetailsJson";
@@ -125,24 +121,6 @@ public class Project implements IProject, AutoCloseable {
 
         // Create the analyzer wrapper
         this.analyzerWrapper = new AnalyzerWrapper(this, runner, analyzerListener);
-
-        // Set defaults for workspace properties if missing
-        if (workspaceProps.isEmpty()) {
-            workspaceProps.setProperty("autoContextFileCount", String.valueOf(DEFAULT_AUTO_CONTEXT_FILE_COUNT));
-            // Create default window positions
-            var mainFrame = objectMapper.createObjectNode();
-            mainFrame.put("x", -1);
-            mainFrame.put("y", -1);
-            mainFrame.put("width", DEFAULT_WINDOW_WIDTH);
-            mainFrame.put("height", DEFAULT_WINDOW_HEIGHT);
-
-            try {
-                workspaceProps.setProperty("mainFrame", objectMapper.writeValueAsString(mainFrame));
-            } catch (Exception e) {
-                logger.error("Error creating default window settings: {}", e.getMessage());
-            }
-            // Don't set default theme here anymore, it's global
-        }
     }
 
     // --- Static methods for global properties ---
@@ -787,9 +765,14 @@ public class Project implements IProject, AutoCloseable {
 
     /**
      * Gets the saved main window bounds
+     * @return Optional containing the saved bounds if valid, or empty if no valid bounds are saved
      */
-    public java.awt.Rectangle getMainWindowBounds() {
-        return getWindowBounds("mainFrame", DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
+    public java.util.Optional<java.awt.Rectangle> getMainWindowBounds() {
+        var bounds = getWindowBounds("mainFrame", 0, 0);
+        if (bounds.x == -1 && bounds.y == -1) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(bounds);
     }
 
     /**

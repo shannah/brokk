@@ -676,18 +676,38 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             return;
         }
 
-        var bounds = project.getMainWindowBounds();
-        if (bounds.width <= 0 || bounds.height <= 0) {
-            frame.setLocationRelativeTo(null);
-        } else {
-            frame.setSize(bounds.width, bounds.height);
-            if (bounds.x >= 0 && bounds.y >= 0 && isPositionOnScreen(bounds.x, bounds.y)) {
-                frame.setLocation(bounds.x, bounds.y);
+        var boundsOptional = project.getMainWindowBounds();
+        if (boundsOptional.isEmpty()) {
+            // No valid saved bounds, apply default placement logic
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            GraphicsDevice defaultScreen = ge.getDefaultScreenDevice();
+            Rectangle screenBounds = defaultScreen.getDefaultConfiguration().getBounds();
+
+            if (screenBounds.height <= 1080) {
+                // Maximize on smaller screens
+                frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
             } else {
+                // Right half on larger screens
+                int halfWidth = screenBounds.width / 2;
+                int x = screenBounds.x + halfWidth;
+                frame.setBounds(x, screenBounds.y, halfWidth, screenBounds.height);
+            }
+            logger.debug("Applying default window placement based on screen size.");
+        } else {
+            var bounds = boundsOptional.get();
+            // Valid bounds found, use them
+            frame.setSize(bounds.width, bounds.height);
+            if (isPositionOnScreen(bounds.x, bounds.y)) {
+                frame.setLocation(bounds.x, bounds.y);
+                logger.debug("Restoring window position from saved bounds.");
+            } else {
+                // Saved position is off-screen, center instead
                 frame.setLocationRelativeTo(null);
+                logger.debug("Saved window position is off-screen, centering window.");
             }
         }
 
+        // Listener to save bounds on move/resize
         frame.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
