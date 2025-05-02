@@ -897,7 +897,7 @@ public class ContextPanel extends JPanel {
     public Future<?> performContextActionAsync(ContextAction action, List<? extends ContextFragment> selectedFragments) // Use wildcard
     {
         // Use submitContextTask from ContextManager to run the action on the appropriate executor
-        return contextManager.submitContextTask(action + " action", () -> { // Qualify contextManager
+        return contextManager.submitContextTask(action + " action", () -> { 
             try {
                 switch (action) {
                     case EDIT -> doEditAction(selectedFragments);
@@ -908,7 +908,7 @@ public class ContextPanel extends JPanel {
                     case PASTE -> doPasteAction();
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput(action + " canceled."); // Qualify chrome
+                chrome.systemOutput(action + " canceled."); 
             }
             // No finally block needed here as submitContextTask handles enabling buttons
         });
@@ -917,7 +917,7 @@ public class ContextPanel extends JPanel {
 
     /** Edit Action: Only allows selecting Project Files */
     private void doEditAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
-        var project = contextManager.getProject(); // Qualify contextManager
+        var project = contextManager.getProject(); 
         if (selectedFragments.isEmpty()) {
             // Show dialog allowing ONLY file selection (no external)
             var selection = showMultiSourceSelectionDialog("Edit Files",
@@ -928,9 +928,7 @@ public class ContextPanel extends JPanel {
             if (selection != null && selection.files() != null && !selection.files().isEmpty()) {
                 // We disallowed external files, so this cast should be safe
                 var projectFiles = toProjectFilesUnsafe(selection.files());
-                contextManager.editFiles(projectFiles); // Qualify contextManager
-            } else {
-                chrome.systemOutput("No files selected for editing."); // Qualify chrome
+                contextManager.editFiles(projectFiles); 
             }
         } else {
             // Edit files from selected fragments
@@ -938,13 +936,13 @@ public class ContextPanel extends JPanel {
             for (var fragment : selectedFragments) {
                 files.addAll(fragment.files(project));
             }
-            contextManager.editFiles(files); // Qualify contextManager
+            contextManager.editFiles(files); 
         }
     }
 
     /** Read Action: Allows selecting Files (internal/external) */
     private void doReadAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
-        var project = contextManager.getProject(); // Qualify contextManager
+        var project = contextManager.getProject(); 
         if (selectedFragments.isEmpty()) {
             // Show dialog allowing ONLY file selection (internal + external)
             // TODO when we can extract a single class from a source file, enable classes as well
@@ -954,19 +952,18 @@ public class ContextPanel extends JPanel {
                                                            Set.of(SelectionMode.FILES)); // FILES mode only
 
             if (selection == null || selection.files() == null || selection.files().isEmpty()) {
-                chrome.systemOutput("No files selected."); // Qualify chrome
                 return;
             }
 
-            contextManager.addReadOnlyFiles(selection.files()); // Qualify contextManager
-            chrome.systemOutput("Added " + selection.files().size() + " file(s) as read-only context."); // Qualify chrome
+            contextManager.addReadOnlyFiles(selection.files()); 
+            chrome.systemOutput("Added " + selection.files().size() + " file(s) as read-only context."); 
         } else {
             // Add files from selected fragments
             var files = new HashSet<BrokkFile>();
             for (var fragment : selectedFragments) {
                 files.addAll(fragment.files(project));
             }
-            contextManager.addReadOnlyFiles(files); // Qualify contextManager
+            contextManager.addReadOnlyFiles(files); 
         }
     }
 
@@ -974,7 +971,7 @@ public class ContextPanel extends JPanel {
         String content;
         if (selectedFragments.isEmpty()) {
             // gather entire context
-            var msgs = CopyExternalPrompts.instance.collectMessages(contextManager); // Qualify contextManager
+            var msgs = CopyExternalPrompts.instance.collectMessages(contextManager); 
             var combined = new StringBuilder();
             for (var m : msgs) {
                 if (!(m instanceof AiMessage)) {
@@ -983,7 +980,7 @@ public class ContextPanel extends JPanel {
             }
 
             // Get instructions from context
-            combined.append("\n<goal>\n").append(chrome.getInputText()).append("\n</goal>"); // Qualify chrome
+            combined.append("\n<goal>\n").append(chrome.getInputText()).append("\n</goal>"); 
             content = combined.toString();
         } else {
             // copy only selected fragments
@@ -1004,7 +1001,7 @@ public class ContextPanel extends JPanel {
         var sel = new java.awt.datatransfer.StringSelection(content);
         var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
         cb.setContents(sel, sel);
-        chrome.systemOutput("Content copied to clipboard"); // Qualify chrome
+        chrome.systemOutput("Content copied to clipboard"); 
     }
 
     private void doPasteAction() {
@@ -1020,10 +1017,10 @@ public class ContextPanel extends JPanel {
             try {
                 var image = (java.awt.Image) contents.getTransferData(java.awt.datatransfer.DataFlavor.imageFlavor);
                 // Call ContextManager to handle the image paste
-                contextManager.addPastedImageFragment(image); // Qualify contextManager
-                chrome.systemOutput("Pasted image added to context"); // Qualify chrome
+                contextManager.addPastedImageFragment(image); 
+                chrome.systemOutput("Pasted image added to context"); 
             } catch (Exception e) {
-                logger.error("Failed to get image data from clipboard", e); // Qualify logger
+                logger.error("Failed to get image data from clipboard", e); 
                 if (e.getMessage().contains("INCR")) {
                     chrome.toolErrorRaw("Unable to paste image data from Windows to Brokk running under WSL. This is a limitation of WSL. You can write the image to a file and read it that way instead.");
                 } else {
@@ -1039,12 +1036,12 @@ public class ContextPanel extends JPanel {
             try {
                 clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
                 if (clipboardText.isBlank()) {
-                    chrome.toolErrorRaw("Clipboard text is empty"); // Qualify chrome
+                    chrome.toolErrorRaw("Clipboard text is empty"); 
                     return;
                 }
             } catch (Exception e) {
-                logger.error("Failed to get text data from clipboard", e); // Qualify logger
-                chrome.toolErrorRaw("Failed to read clipboard text: " + e.getMessage()); // Qualify chrome
+                logger.error("Failed to get text data from clipboard", e); 
+                chrome.toolErrorRaw("Failed to read clipboard text: " + e.getMessage()); 
                 return; // Return after handling the exception
             }
 
@@ -1055,15 +1052,15 @@ public class ContextPanel extends JPanel {
 
             if (isUrl(clipboardText)) {
                 try {
-                    chrome.systemOutput("Fetching " + clipboardText); // Qualify chrome
+                    chrome.systemOutput("Fetching " + clipboardText); 
                     // Use the static method from ContextTools
                     content = WorkspaceTools.fetchUrlContent(new URI(clipboardText));
                     // Use the standard HTML converter
                     content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                     wasUrl = true;
-                    chrome.actionComplete(); // Qualify chrome
+                    chrome.actionComplete(); 
                 } catch (IOException | URISyntaxException e) { // Catch URISyntaxException too
-                    chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage()); // Qualify chrome
+                    chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage()); 
                     // Continue with the URL as text if fetch fails
                     content = clipboardText; // Reset content to original URL string on error
                 }
@@ -1071,14 +1068,14 @@ public class ContextPanel extends JPanel {
 
             // Try to parse as stacktrace
             var stacktrace = StackTrace.parse(content);
-            if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) { // Qualify contextManager
+            if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) { 
                 return;
             }
 
             // Add as string fragment (possibly converted from HTML)
-            Future<String> summaryFuture = contextManager.submitSummarizePastedText(content); // Qualify contextManager
+            Future<String> summaryFuture = contextManager.submitSummarizePastedText(content); 
             String finalContent = content;
-            contextManager.pushContext(ctx -> { // Qualify contextManager
+            contextManager.pushContext(ctx -> { 
                 var fragment = new ContextFragment.PasteTextFragment(finalContent, summaryFuture);
                 // Using addVirtualFragment as PasteTextFragment extends VirtualFragment
                 return ctx.addVirtualFragment(fragment);
@@ -1086,22 +1083,22 @@ public class ContextPanel extends JPanel {
 
             // Inform the user about what happened
             String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-            chrome.systemOutput(message); // Qualify chrome
+            chrome.systemOutput(message); 
         } // End of text flavor handling
         else {
             // Neither image nor text flavor supported
-            chrome.toolErrorRaw("Unsupported clipboard content type"); // Qualify chrome
+            chrome.toolErrorRaw("Unsupported clipboard content type"); 
         }
     } // End of doPasteAction method
 
     private void doDropAction(List<? extends ContextFragment> selectedFragments) // Use wildcard
     {
         if (selectedFragments.isEmpty()) {
-            if (contextManager.topContext().isEmpty()) { // Qualify contextManager
-                chrome.toolErrorRaw("No context to drop"); // Qualify chrome
+            if (contextManager.topContext().isEmpty()) { 
+                chrome.toolErrorRaw("No context to drop"); 
                 return;
             }
-            contextManager.dropAll(); // Qualify contextManager
+            contextManager.dropAll(); 
         } else {
             var pathFragsToRemove = new ArrayList<PathFragment>();
             var virtualToRemove = new ArrayList<VirtualFragment>();
@@ -1123,7 +1120,7 @@ public class ContextPanel extends JPanel {
                 chrome.systemOutput("Cleared task history");
             }
 
-            contextManager.drop(pathFragsToRemove, virtualToRemove); // Qualify contextManager
+            contextManager.drop(pathFragsToRemove, virtualToRemove); 
 
             if (!pathFragsToRemove.isEmpty() || !virtualToRemove.isEmpty()) {
                 chrome.systemOutput("Dropped " + (pathFragsToRemove.size() + virtualToRemove.size()) + " items");
@@ -1232,10 +1229,10 @@ public class ContextPanel extends JPanel {
     private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Future<Set<ProjectFile>> projectCompletionsFuture, Set<SelectionMode> modes) {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), title, allowExternalFiles, projectCompletionsFuture, modes); // Qualify chrome and contextManager
+            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), title, allowExternalFiles, projectCompletionsFuture, modes); 
             // Use dialog's preferred size after packing, potentially adjust width
             dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));
-            dialog.setLocationRelativeTo(chrome.getFrame()); // Qualify chrome
+            dialog.setLocationRelativeTo(chrome.getFrame()); 
             dialog.setVisible(true);
             dialogRef.set(dialog);
         });

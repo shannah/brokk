@@ -49,7 +49,7 @@ import java.util.stream.Stream;
  * It also includes the system messages and command result areas.
  * All initialization and action code related to these components has been moved here.
  */
-public class InstructionsPanel extends JPanel implements IContextManager.ContextListener { // Qualify interface name
+public class InstructionsPanel extends JPanel implements IContextManager.ContextListener { 
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final String PLACEHOLDER_TEXT = """
