@@ -976,7 +976,10 @@ public class Llm {
 
         public String formatted() {
             if (error != null) {
-                return "Error: " + error.getMessage();
+                return """
+                       [Error: %s]
+                       %s
+                       """.formatted(error.getMessage(), originalResponse.toString());
             }
 
             return originalResponse.toString();
