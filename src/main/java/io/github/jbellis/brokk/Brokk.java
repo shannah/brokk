@@ -37,7 +37,9 @@ public class Brokk {
             var modelName = "sentence-transformers/all-MiniLM-L6-v2";
             File localModelPath = null;
             try {
-                localModelPath = SafeTensorSupport.maybeDownloadModel(".", modelName);
+                var cacheDir = System.getProperty("user.home") + "/.cache/brokk";
+                new File(cacheDir).mkdirs();
+                localModelPath = SafeTensorSupport.maybeDownloadModel(cacheDir, modelName);
             } catch (IOException e) {
                 logger.warn(e);
                 return null;
