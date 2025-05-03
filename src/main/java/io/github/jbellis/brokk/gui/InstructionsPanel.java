@@ -882,9 +882,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             var fileRefs = recommendations.fragments().stream()
                     .flatMap(f -> f.files(contextManager.getProject()).stream())
                     .distinct()
-                    .map(pf -> new FileReferenceData(pf.toString().substring(pf.toString().lastIndexOf('/') + 1),
-                                                     pf.toString(),
-                                                     pf))
+                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
                     .toList();
             logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
             updateUI(myGen, () -> showSuggestionsTable(fileRefs));
