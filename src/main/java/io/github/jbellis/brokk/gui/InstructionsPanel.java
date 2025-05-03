@@ -406,12 +406,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 // Edit option
                 JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
                 editItem.addActionListener(e1 -> {
-                    if (targetRef.getRepoFile() != null) {
-                        suppressExternalSuggestionsTrigger.set(true);
-                        cm.editFiles(List.of(targetRef.getRepoFile()));
-                    } else {
-                        chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
-                    }
+                    chrome.contextManager.submitContextTask("Edit files", () -> {
+                        if (targetRef.getRepoFile() != null) {
+                            suppressExternalSuggestionsTrigger.set(true);
+                            cm.editFiles(List.of(targetRef.getRepoFile()));
+                        } else {
+                            chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
+                        }
+                    });
                 });
                 // Disable for dependency projects
                 if (cm.getProject() != null && !cm.getProject().hasGit()) {
@@ -423,29 +425,33 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 // Read option
                 JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
                 readItem.addActionListener(e1 -> {
-                    if (targetRef.getRepoFile() != null) {
-                        suppressExternalSuggestionsTrigger.set(true);
-                        cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
-                    } else {
-                        chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
-                    }
+                    chrome.contextManager.submitContextTask("Read files", () -> {
+                        if (targetRef.getRepoFile() != null) {
+                            suppressExternalSuggestionsTrigger.set(true);
+                            cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
+                        } else {
+                            chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
+                        }
+                    });
                 });
                 menu.add(readItem);
 
                 // Summarize option
                 JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
                 summarizeItem.addActionListener(e1 -> {
-                    if (targetRef.getRepoFile() != null) {
-                        suppressExternalSuggestionsTrigger.set(true);
-                        boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
-                        if (success) {
-                            chrome.systemOutput("Summarized " + targetRef.getFullPath());
+                    chrome.contextManager.submitContextTask("Summarize files", () -> {
+                        if (targetRef.getRepoFile() != null) {
+                            suppressExternalSuggestionsTrigger.set(true);
+                            boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
+                            if (success) {
+                                chrome.systemOutput("Summarized " + targetRef.getFullPath());
+                            } else {
+                                chrome.toolErrorRaw("No summarizable code found");
+                            }
                         } else {
-                            chrome.toolErrorRaw("No summarizable code found");
+                            chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
                         }
-                    } else {
-                        chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
-                    }
+                    });
                 });
                 menu.add(summarizeItem);
 
