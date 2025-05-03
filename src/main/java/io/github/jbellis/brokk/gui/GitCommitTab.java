@@ -1,24 +1,21 @@
 package io.github.jbellis.brokk.gui;
 
-import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -241,18 +238,10 @@ public class GitCommitTab extends JPanel {
             Future<String> suggestionFuture = suggestMessageAsync(selectedFiles);
             contextManager.submitUserTask("Handling suggestion result", () -> {
                 try {
-                    String suggestedMessage = suggestionFuture.get(); // Wait for the result from the Future
-                    if (suggestedMessage != null && !suggestedMessage.isBlank()) {
-                        setCommitMessageText(suggestedMessage);
-                    }
-                } catch (ExecutionException ex) {
-                    logger.error("Error getting suggested commit message:", ex.getCause());
-                    SwingUtilities.invokeLater(() -> {
-                        chrome.toolErrorRaw("Error suggesting commit message: " + ex.getCause().getMessage());
-                    });
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    logger.warn("Interrupted while waiting for commit message suggestion");
+                    String suggestedMessage = suggestionFuture.get();
+                    setCommitMessageText(suggestedMessage);
+                } catch (InterruptedException | ExecutionException ex) {
+                    throw new RuntimeException(ex);
                 }
             });
         });
@@ -272,24 +261,17 @@ public class GitCommitTab extends JPanel {
                         Future<String> suggestionFuture = suggestMessageAsync(selectedFiles);
                         String suggestedMessage = suggestionFuture.get(); // Wait for suggestion
                         if (suggestedMessage == null || suggestedMessage.isBlank()) {
+                            logger.warn("No suggested commit message found");
                             suggestedMessage = "Stash created by Brokk"; // Fallback
                         }
                         String finalStashDescription = suggestedMessage;
                         // Perform stash with suggested message
                         performStash(selectedFiles, finalStashDescription);
+                    } catch (GitAPIException ex) {
+                        logger.error("Error stashing changes:", ex);
+                        SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error stashing changes: " + ex.getMessage()));
                     } catch (ExecutionException | InterruptedException ex) {
-                        logger.error("Error getting suggested message or stashing:", ex);
-                        SwingUtilities.invokeLater(() ->
-                            chrome.toolErrorRaw("Error during auto-stash: " + ex.getMessage())
-                        );
-                        if (ex instanceof InterruptedException) {
-                            Thread.currentThread().interrupt();
-                        }
-                    } catch (Exception ex) {
-                        logger.error("Error stashing changes with suggested message:", ex);
-                        SwingUtilities.invokeLater(() ->
-                            chrome.toolErrorRaw("Error stashing changes: " + ex.getMessage())
-                        );
+                        throw new RuntimeException(ex);
                     }
                 });
             } else {
@@ -301,11 +283,9 @@ public class GitCommitTab extends JPanel {
                 contextManager.submitUserTask("Stashing changes", () -> {
                     try {
                         performStash(selectedFiles, stashDescription.isEmpty() ? "Stash created by Brokk" : stashDescription);
-                    } catch (Exception ex) {
-                        logger.error("Error stashing changes with provided message:", ex);
-                        SwingUtilities.invokeLater(() ->
-                           chrome.toolErrorRaw("Error stashing changes: " + ex.getMessage())
-                        );
+                    } catch (GitAPIException ex) {
+                        logger.error("Error stashing changes:", ex);
+                        SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error stashing changes: " + ex.getMessage()));
                     }
                 });
             }
@@ -611,7 +591,7 @@ public class GitCommitTab extends JPanel {
     /**
      * Performs the actual stash operation and updates the UI.
      */
-    private void performStash(List<ProjectFile> selectedFiles, String stashDescription) throws Exception {
+    private void performStash(List<ProjectFile> selectedFiles, String stashDescription) throws GitAPIException {
         assert !SwingUtilities.isEventDispatchThread();
 
         if (selectedFiles.isEmpty()) {
@@ -641,28 +621,20 @@ public class GitCommitTab extends JPanel {
      * @return A Future containing the suggested message, or null if no changes or error.
      */
     private Future<String> suggestMessageAsync(List<ProjectFile> selectedFiles) {
-        Callable<String> suggestTask = () -> {
-            try {
-                String diff = selectedFiles.isEmpty()
-                              ? getRepo().diff()
-                              : getRepo().diffFiles(selectedFiles);
-
-                if (diff.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> chrome.systemOutput("No changes detected"));
-                    return null; // Indicate no changes
-                }
-                // Call the LLM logic
-                return inferCommitMessage(contextManager.getProject(), diff);
-            } catch (Exception ex) {
-                logger.error("Error generating commit message suggestion:", ex);
-                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error suggesting commit message: " + ex.getMessage()));
-                // Propagate the exception to the future
-                throw ex;
-            }
-        };
         // Submit the Callable to a background task executor managed by ContextManager
         // We use submitBackgroundTask to ensure it runs off the EDT and provides user feedback
-        return contextManager.submitBackgroundTask("Suggesting commit message", suggestTask);
+        return contextManager.submitBackgroundTask("Suggesting commit message", () -> {
+            String diff = selectedFiles.isEmpty()
+                          ? getRepo().diff()
+                          : getRepo().diffFiles(selectedFiles);
+
+            if (diff.isEmpty()) {
+                SwingUtilities.invokeLater(() -> chrome.systemOutput("No changes detected"));
+                return null; // Indicate no changes
+            }
+            // Call the LLM logic
+            return inferCommitMessage(contextManager.getProject(), diff);
+        });
     }
 
     /**
