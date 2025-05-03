@@ -878,18 +878,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         // 10. Process results and schedule UI update
-        if (recommendations.success()) {
-            var fileRefs = recommendations.fragments().stream()
-                    .flatMap(f -> f.files(contextManager.getProject()).stream())
-                    .distinct()
-                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
-                    .toList();
-            logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
-            SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
-        } else {
-            logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
-            SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
-        }
+         if (recommendations.success()) {
+             var fileRefs = recommendations.fragments().stream()
+                                       .flatMap(f -> f.files(contextManager.getProject()).stream())
+                                       .distinct()
+                                       .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
+                                       .toList();
+             if (fileRefs.isEmpty()) {
+                 logger.debug("Task {} found no relevant files.", myGen);
+                 SwingUtilities.invokeLater(() -> showFailureLabel("No quick suggestions"));
+             } else {
+                 logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
+                 SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
+             }
+         } else {
+             logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
+             SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
+         }
     }
 
     /**
