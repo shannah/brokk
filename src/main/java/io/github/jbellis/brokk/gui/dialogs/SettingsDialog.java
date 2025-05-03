@@ -953,7 +953,7 @@ public class SettingsDialog extends JDialog {
     public static void showStandaloneDataRetentionDialog(Project project, Frame owner) {
         var dialog = new JDialog(owner, "Data Retention Policy Required", true);
         dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE); // Prevent closing without selection initially
-        dialog.setSize(450, 350);
+        dialog.setSize(600, 400);
         dialog.setLocationRelativeTo(owner);
 
         var retentionPanel = new DataRetentionPanel(project);
