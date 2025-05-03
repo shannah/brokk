@@ -808,25 +808,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // 2. Embedding Model Check
         if (!Brokk.embeddingModelFuture.isDone()) {
-            updateUI(myGen, () -> showFailureLabel("Waiting for model download"));
+            SwingUtilities.invokeLater(() -> showFailureLabel("Waiting for model download"));
             logger.trace("Task {} waiting for model.", myGen);
             return; // Don't proceed further until model is ready
         }
         AbstractModel embeddingModel;
         try {
             embeddingModel = Brokk.embeddingModelFuture.get();
+            assert embeddingModel != null;
         } catch (ExecutionException | InterruptedException ex) {
-            Thread.currentThread().interrupt(); // Preserve interrupt status
             logger.error("Task {} failed to get embedding model", myGen, ex);
-            updateUI(myGen, () -> showFailureLabel("Error loading embedding model"));
+            SwingUtilities.invokeLater(() -> showFailureLabel("Error loading embedding model"));
             return;
         }
-        if (embeddingModel == null) {
-            logger.warn("Task {} embedding model is null", myGen);
-            updateUI(myGen, () -> showFailureLabel("Error loading embedding model"));
-            return;
-        }
-
 
         // 3. Staleness check before embedding
         if (myGen != suggestionGeneration.get()) {
@@ -885,10 +879,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
                     .toList();
             logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
-            updateUI(myGen, () -> showSuggestionsTable(fileRefs));
+            SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
         } else {
             logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
-            updateUI(myGen, () -> showFailureLabel(recommendations.reasoning()));
+            SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
         }
     }
 
@@ -937,24 +931,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // If lengths match and all similarities are above threshold, it's not different enough.
         // Do NOT update lastCheckedEmbeddings here, keep the previous ones for the next comparison.
         return false;
-    }
-
-    /**
-     * Schedules a UI update task on the EDT, but only executes the update
-     * if the task's generation (`taskGen`) matches the current global `suggestionGeneration`.
-     *
-     * @param taskGen   The generation number of the task requesting the update.
-     * @param uiUpdater The Runnable containing the UI update code.
-     */
-    private void updateUI(long taskGen, Runnable uiUpdater) {
-        SwingUtilities.invokeLater(() -> {
-            if (taskGen == suggestionGeneration.get()) {
-                logger.trace("Applying UI update for task gen {}", taskGen);
-                uiUpdater.run();
-            } else {
-                logger.trace("Skipping UI update for stale task gen {} (current gen {})", taskGen, suggestionGeneration.get());
-            }
-        });
     }
 
     /**
