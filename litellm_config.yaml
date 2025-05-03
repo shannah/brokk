@@ -75,6 +75,15 @@ model_list:
       # which is weighted the wrong way for typical coding tasks
       max_output_tokens: 32768
 
+  - model_name: claude-3-5-sonnet-latest
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-latest
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+    model_info:
+      is_reasoning: false
+      free_tier_eligible: false
+      is_private: true
+
   - model_name: deepseek-R1
     litellm_params:
       model: deepseek/deepseek-reasoner
