@@ -1004,22 +1004,47 @@ public class ContextPanel extends JPanel {
             return;
         }
 
-        // Prioritize Image Flavor
-        if (contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.imageFlavor)) {
+        // Log all available flavors for debugging
+        var flavors = contents.getTransferDataFlavors();
+        logger.debug("Clipboard flavors available: {}", java.util.Arrays.stream(flavors)
+                .map(f -> f.getMimeType())
+                .collect(Collectors.joining(", ")));
+
+        // Prioritize Image Flavors - check all available flavors for image compatibility
+        for (var flavor : flavors) {
             try {
-                var image = (java.awt.Image) contents.getTransferData(java.awt.datatransfer.DataFlavor.imageFlavor);
-                // Call ContextManager to handle the image paste
-                contextManager.addPastedImageFragment(image); 
-                chrome.systemOutput("Pasted image added to context"); 
+                // Check if it's the standard image flavor or has a MIME type indicating an image
+                if (flavor.isFlavorJavaFileListType() || flavor.getMimeType().startsWith("image/")) {
+                    logger.debug("Attempting to process flavor: {}", flavor.getMimeType());
+                    Object data = contents.getTransferData(flavor);
+                    java.awt.Image image = null;
+
+                    if (data instanceof java.awt.Image) {
+                        image = (java.awt.Image) data;
+                    } else if (data instanceof java.io.InputStream inputStream) {
+                        // Try to read the stream as an image using ImageIO
+                        image = javax.imageio.ImageIO.read(inputStream);
+                    } else if (data instanceof java.util.List<?> fileList && !fileList.isEmpty()) {
+                        // Handle file list (e.g., dragged image file from file manager)
+                        var file = fileList.get(0);
+                        if (file instanceof java.io.File f && f.getName().matches("(?i).*(png|jpg|jpeg|gif|bmp)$")) {
+                            image = javax.imageio.ImageIO.read(f);
+                        }
+                    }
+
+                    if (image != null) {
+                        contextManager.addPastedImageFragment(image);
+                        chrome.systemOutput("Pasted image added to context");
+                        return;
+                    }
+                }
             } catch (Exception e) {
-                logger.error("Failed to get image data from clipboard", e); 
-                if (e.getMessage().contains("INCR")) {
+                logger.error("Failed to process image flavor: {}", flavor.getMimeType(), e);
+                if (e.getMessage() != null && e.getMessage().contains("INCR")) {
                     chrome.toolErrorRaw("Unable to paste image data from Windows to Brokk running under WSL. This is a limitation of WSL. You can write the image to a file and read it that way instead.");
-                } else {
-                    chrome.toolErrorRaw("Unexpected error pasting image data; see debug log for details");
+                    return;
                 }
             }
-            return;
         }
 
         // Text Flavor
@@ -1028,13 +1053,13 @@ public class ContextPanel extends JPanel {
             try {
                 clipboardText = (String) contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
                 if (clipboardText.isBlank()) {
-                    chrome.toolErrorRaw("Clipboard text is empty"); 
+                    chrome.toolErrorRaw("Clipboard text is empty");
                     return;
                 }
             } catch (Exception e) {
-                logger.error("Failed to get text data from clipboard", e); 
-                chrome.toolErrorRaw("Failed to read clipboard text: " + e.getMessage()); 
-                return; // Return after handling the exception
+                logger.error("Failed to get text data from clipboard", e);
+                chrome.toolErrorRaw("Failed to read clipboard text: " + e.getMessage());
+                return;
             }
 
             // Process the clipboard text
@@ -1044,44 +1069,38 @@ public class ContextPanel extends JPanel {
 
             if (isUrl(clipboardText)) {
                 try {
-                    chrome.systemOutput("Fetching " + clipboardText); 
-                    // Use the static method from ContextTools
+                    chrome.systemOutput("Fetching " + clipboardText);
                     content = WorkspaceTools.fetchUrlContent(new URI(clipboardText));
-                    // Use the standard HTML converter
                     content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                     wasUrl = true;
-                    chrome.actionComplete(); 
-                } catch (IOException | URISyntaxException e) { // Catch URISyntaxException too
-                    chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage()); 
-                    // Continue with the URL as text if fetch fails
-                    content = clipboardText; // Reset content to original URL string on error
+                    chrome.actionComplete();
+                } catch (IOException | URISyntaxException e) {
+                    chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage());
+                    content = clipboardText;
                 }
             }
 
             // Try to parse as stacktrace
             var stacktrace = StackTrace.parse(content);
-            if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) { 
+            if (stacktrace != null && contextManager.addStacktraceFragment(stacktrace)) {
                 return;
             }
 
             // Add as string fragment (possibly converted from HTML)
-            Future<String> summaryFuture = contextManager.submitSummarizePastedText(content); 
+            Future<String> summaryFuture = contextManager.submitSummarizePastedText(content);
             String finalContent = content;
-            contextManager.pushContext(ctx -> { 
+            contextManager.pushContext(ctx -> {
                 var fragment = new ContextFragment.PasteTextFragment(finalContent, summaryFuture);
-                // Using addVirtualFragment as PasteTextFragment extends VirtualFragment
                 return ctx.addVirtualFragment(fragment);
             });
 
             // Inform the user about what happened
             String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-            chrome.systemOutput(message); 
-        } // End of text flavor handling
-        else {
-            // Neither image nor text flavor supported
-            chrome.toolErrorRaw("Unsupported clipboard content type"); 
+            chrome.systemOutput(message);
+        } else {
+            chrome.toolErrorRaw("Unsupported clipboard content type");
         }
-    } // End of doPasteAction method
+    }
 
     private void doDropAction(List<? extends ContextFragment> selectedFragments) // Use wildcard
     {
