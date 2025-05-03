@@ -357,7 +357,7 @@ public class ArchitectAgent {
                 return Integer.compare(rank1, rank2);
             });
             for (var req : otherReqs) {
-                var toolResult = toolRegistry.executeTool(req);
+                var toolResult = toolRegistry.executeTool(this, req);
                 architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }

@@ -128,23 +128,6 @@ public class ToolRegistry {
     }
 
     /**
-     * Executes a tool based on the provided ToolExecutionRequest.
-     * Handles argument parsing and method invocation via reflection.
-     * @param request The ToolExecutionRequest from the LLM.
-     * @return A ToolExecutionResult indicating success or failure.
-     */
-    public ToolExecutionResult executeTool(ToolExecutionRequest request) throws InterruptedException {
-        ToolInvocationTarget target = toolMap.get(request.name());
-        if (target == null) {
-            logger.error("Tool not found: {}", request.name());
-            // Return failure
-            return ToolExecutionResult.failure(request, "Tool not found: " + request.name());
-        }
-
-        return executeTool(request, target);
-    }
-
-    /**
      * Executes a tool defined as an instance method on the provided object.
      * @param instance The object instance containing the @Tool annotated method.
      * @param request The ToolExecutionRequest from the LLM.
@@ -155,7 +138,7 @@ public class ToolRegistry {
         Class<?> cls = instance.getClass();
         String toolName = request.name();
 
-        // Find the method matching the tool name within the instance's class
+        // Look for the method matching the tool name within the instance's class
         Method targetMethod = Arrays.stream(cls.getDeclaredMethods())
                 .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
                 .filter(m -> !Modifier.isStatic(m.getModifiers())) // Ensure it's an instance method
@@ -167,13 +150,18 @@ public class ToolRegistry {
                 .findFirst()
                 .orElse(null);
 
+        ToolInvocationTarget target;
         if (targetMethod == null) {
-            logger.error("Tool '{}' not found as an instance method on class {}", toolName, cls.getName());
-            return ToolExecutionResult.failure(request, "Tool not found: " + toolName);
+            // check globally registered tools
+            target = toolMap.get(request.name());
+        } else {
+            target = new ToolInvocationTarget(targetMethod, instance);
         }
 
-        // Create the target and execute
-        ToolInvocationTarget target = new ToolInvocationTarget(targetMethod, instance);
+        if (target == null) {
+            logger.error("Tool not found: {}", request.name());
+            return ToolExecutionResult.failure(request, "Tool not found: " + request.name());
+        }
         return executeTool(request, target);
     }
 
