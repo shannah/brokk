@@ -342,6 +342,18 @@ public class ContextAgent {
         var recommendedClasses = llmRecommendation.recommendedClasses();
         var reasoning = llmRecommendation.reasoning();
 
+        // We filter out duplicates in different ways depending on the request type:
+        // for Deep Scan, we filter out only exact matches, so if we have a full file and LLM recommends
+        // summary, we allow it, and vice versa; for Quick, we filter out anything that's already in the workspace in any form
+        if (deepScan) {
+            recommendedFiles = recommendedFiles.stream()
+                    .filter(f -> !isFileInWorkspace(f))
+                    .toList();
+            recommendedClasses = recommendedClasses.stream()
+                    .filter(c -> !isClassInWorkspace(c))
+                    .toList();
+        }
+
         // Get summaries for recommended classes
         var recommendedSummaries = getSummaries(recommendedClasses, false);
 
@@ -360,7 +372,17 @@ public class ContextAgent {
         var pathFragments = recommendedFiles.stream()
                 .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                 .toList();
-        var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
+        var combinedStream = Stream.concat(skeletonFragments.stream(), pathFragments.stream());
+        // deduplicate for Quick context
+        if (!deepScan) {
+            var project = contextManager.getProject();
+            var existingFiles = contextManager.topContext().allFragments()
+                    .flatMap(f -> f.files(project).stream())
+                    .collect(Collectors.toSet());
+            combinedStream = combinedStream
+                    .filter(f -> !existingFiles.containsAll(f.files(project)));
+        }
+        var combinedFragments = combinedStream.toList();
 
         return new RecommendationResult(true, combinedFragments, reasoning);
     }
@@ -535,7 +557,7 @@ public class ContextAgent {
 
         String reasoning = aiMessage.text() != null ? aiMessage.text().strip() : "LLM provided recommendations via tool call.";
         // Filter out files/classes already in workspace
-        var filteredFiles = contextTool.getRecommendedFiles().stream()
+        var projectFiles = contextTool.getRecommendedFiles().stream()
                 .map(fname -> {
                     try {
                         return contextManager.toFile(fname);
@@ -545,16 +567,14 @@ public class ContextAgent {
                     }
                 })
                 .filter(Objects::nonNull)
-                .filter(f -> !isFileInWorkspace(f))
                 .toList();
 
-        var filteredClasses = contextTool.getRecommendedClasses().stream()
+        var projectClasses = contextTool.getRecommendedClasses().stream()
                 .map(fqcn -> CodeUnit.cls(analyzer, fqcn))
                 .flatMap(Optional::stream)
-                .filter(cu -> !isClassInWorkspace(cu))
                 .toList();
 
-        return new LlmRecommendation(filteredFiles, filteredClasses, reasoning);
+        return new LlmRecommendation(projectFiles, projectClasses, reasoning);
     }
 
     // --- Logic branch for using full file contents (when analyzer is not available or summaries failed) ---
