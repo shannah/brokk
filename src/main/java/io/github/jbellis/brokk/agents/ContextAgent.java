@@ -307,10 +307,10 @@ public class ContextAgent {
         var ctx = contextManager.topContext();
         var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources(contextManager.getProject()).stream()).findAny().isPresent();
         if (codeInWorkspace && !deepScan) {
-            var ac = contextManager.topContext().buildAutoContext(deepScan ? 100 : 50);
+            var ac = contextManager.topContext().buildAutoContext(50);
             debug("Non-empty context; using pagerank candidates {}",
-                  ac.fragment().skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
-            rawSummaries = ac.isEmpty() ? Map.of() : ac.fragment().skeletons();
+                  ac.skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
+            rawSummaries = ac.skeletons();
         } else {
             // Scan all the files
             rawSummaries = getProjectSummaries(filesToConsider);

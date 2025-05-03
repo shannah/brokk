@@ -265,7 +265,7 @@ public class Context implements Serializable {
      * 3) Build a multiline skeleton text for the top autoContextFileCount results
      * 4) Return the new AutoContext instance
      */
-    public ContextFragment.AutoContext buildAutoContext(int topK) {
+    public SkeletonFragment buildAutoContext(int topK) {
         IAnalyzer analyzer;
         analyzer = contextManager.getAnalyzerUninterrupted();
 
@@ -292,11 +292,10 @@ public class Context implements Serializable {
 
         // If no seeds, we can't compute pagerank
         if (weightedSeeds.isEmpty()) {
-            return ContextFragment.AutoContext.EMPTY;
+            return new SkeletonFragment(Map.of());
         }
 
-        var sf = buildAutoContext(analyzer, weightedSeeds, ineligibleSources, topK);
-        return sf.skeletons.isEmpty() ? ContextFragment.AutoContext.EMPTY : new ContextFragment.AutoContext(sf);
+        return buildAutoContext(analyzer, weightedSeeds, ineligibleSources, topK);
     }
 
     public static SkeletonFragment buildAutoContext(IAnalyzer analyzer, Map<String, Double> weightedSeeds, Set<CodeUnit> ineligibleSources, int topK) {
