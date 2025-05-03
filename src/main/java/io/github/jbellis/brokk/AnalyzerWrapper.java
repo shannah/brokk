@@ -160,7 +160,7 @@ public class AnalyzerWrapper implements AutoCloseable {
             );
             rebuild();
         } else {
-            logger.debug("No tracked files changed; skipping analyzer rebuild");
+            logger.trace("No tracked files changed; skipping analyzer rebuild");
         }
     }
 
@@ -208,7 +208,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                 Code Intelligence found %d classes in %,d ms.
                 If this is fewer than expected, it's probably because Brokk only looks for %s files.
                 If this is not a useful subset of your project, the best option is to disable
-                Code Intelligence by setting code_intelligence_language=%s in .brokk/project.properties.
+                Code Intelligence by setting the Code Intelligence Language to NONE.
                 Otherwise, Code Intelligence will refresh automatically when changes are made to tracked files.
                 You can change this in the Settings -> Project dialog.
                 """.stripIndent().formatted(analyzer.getAllClasses().size(), duration, Language.JAVA, Language.NONE);
@@ -308,7 +308,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         }
 
         rebuildInProgress = true;
-        logger.debug("Rebuilding analyzer");
+        logger.trace("Rebuilding analyzer");
         future = runner.submit("Rebuilding code intelligence", () -> {
             try {
                 currentAnalyzer = createAndSaveAnalyzer();
@@ -319,7 +319,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                     // If another rebuild got requested while we were busy, immediately start a new one.
                     if (rebuildPending) {
                         rebuildPending = false;
-                        logger.debug("rebuilding immediately");
+                        logger.trace("rebuilding immediately");
                         rebuild();
                     } else {
                         externalRebuildRequested = false;

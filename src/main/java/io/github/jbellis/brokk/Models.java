@@ -183,9 +183,8 @@ public final class Models {
 
     public float getUserBalance() throws IOException {
         var kp = parseKey(Project.getBrokkKey());
-        // Use proToken for balance lookup
         String url = "https://app.brokk.ai/api/payments/balance-lookup/" + kp.userId();
-        logger.debug(url);
+        logger.trace(url);
         Request request = new Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer " + kp.token())
