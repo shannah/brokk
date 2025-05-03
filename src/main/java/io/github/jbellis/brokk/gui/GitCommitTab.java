@@ -81,15 +81,22 @@ public class GitCommitTab extends JPanel {
                 String path = (String) table.getModel().getValueAt(row, 1);
                 String fullPath = path.isEmpty() ? filename : path + "/" + filename;
                 String status = fileStatusMap.get(fullPath);
+                boolean darkTheme = UIManager.getLookAndFeel().getName().toLowerCase().contains("dark");
+                
                 if (!isSelected) {
+                    var newColor = io.github.jbellis.brokk.gui.mop.ThemeColors.getColor(darkTheme, "git_status_new");
+                    var modifiedColor = io.github.jbellis.brokk.gui.mop.ThemeColors.getColor(darkTheme, "git_status_modified");
+                    var deletedColor = io.github.jbellis.brokk.gui.mop.ThemeColors.getColor(darkTheme, "git_status_deleted");
+                    
                     switch (status) {
-                        case "new" -> cell.setForeground(java.awt.Color.GREEN);
-                        case "deleted" -> cell.setForeground(java.awt.Color.RED);
-                        case "modified" -> cell.setForeground(java.awt.Color.BLUE);
-                        default -> cell.setForeground(java.awt.Color.BLACK);
+                        case "new" -> cell.setForeground(newColor);
+                        case "deleted" -> cell.setForeground(deletedColor);
+                        case "modified" -> cell.setForeground(modifiedColor);
+                        default -> cell.setForeground(table.getForeground());
                     }
                 } else {
                     cell.setForeground(table.getSelectionForeground());
+                    cell.setBackground(table.getSelectionBackground());
                 }
                 return cell;
             }
