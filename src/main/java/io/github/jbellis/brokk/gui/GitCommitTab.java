@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.prompts.CommitPrompts;
@@ -650,8 +651,8 @@ public class GitCommitTab extends JPanel {
                     SwingUtilities.invokeLater(() -> chrome.systemOutput("No changes detected"));
                     return null; // Indicate no changes
                 }
-                // Call the LLM logic directly
-                return inferCommitMessage(diff);
+                // Call the LLM logic
+                return inferCommitMessage(contextManager.getProject(), diff);
             } catch (Exception ex) {
                 logger.error("Error generating commit message suggestion:", ex);
                 SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error suggesting commit message: " + ex.getMessage()));
@@ -668,14 +669,15 @@ public class GitCommitTab extends JPanel {
      * Infers a commit message based on the provided diff text using the quickest model.
      * This method performs the synchronous LLM call.
      *
-     * @param diffText The text difference to analyze for the commit message.
-     * @return The inferred commit message string, or null if no message could be generated or an error occurred.
-     */
-    private String inferCommitMessage(String diffText) {
-        var messages = CommitPrompts.instance.collectMessages(diffText);
-        if (messages.isEmpty()) {
-            SwingUtilities.invokeLater(() -> chrome.systemOutput("Nothing to commit for suggestion"));
-            return null;
+     * @param project  The current project, used to get configuration like commit format.
+ * @param diffText The text difference to analyze for the commit message.
+ * @return The inferred commit message string, or null if no message could be generated or an error occurred.
+ */
+private String inferCommitMessage(Project project, String diffText) {
+    var messages = CommitPrompts.instance.collectMessages(project, diffText);
+    if (messages.isEmpty()) {
+        SwingUtilities.invokeLater(() -> chrome.systemOutput("Nothing to commit for suggestion"));
+        return null;
         }
 
         // Use quickest model for commit messages via ContextManager

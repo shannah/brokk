@@ -50,6 +50,12 @@ public class Project implements IProject, AutoCloseable {
     private static final String ASK_REASONING_KEY = "askReasoning";
     private static final String EDIT_REASONING_KEY = "editReasoning";
     private static final String SEARCH_REASONING_KEY = "searchReasoning";
+    private static final String COMMIT_MESSAGE_FORMAT_KEY = "commitMessageFormat";
+
+    public static final String DEFAULT_COMMIT_MESSAGE_FORMAT = """
+            The commit message should be structured as follows: <type>: <description>
+            Use these for <type>: debug, fix, feat, chore, config, docs, style, refactor, perf, test, enh
+            """.stripIndent();
 
 
     // --- Static paths ---
@@ -396,6 +402,33 @@ public class Project implements IProject, AutoCloseable {
         workspaceProps.setProperty(SEARCH_MODEL_KEY, modelName);
         saveWorkspaceProperties();
     }
+
+    /**
+     * Gets the configured commit message format instruction string.
+     * @return The format string, or the default if not set.
+     */
+    public String getCommitMessageFormat() {
+        return projectProps.getProperty(COMMIT_MESSAGE_FORMAT_KEY, DEFAULT_COMMIT_MESSAGE_FORMAT);
+    }
+
+    /**
+     * Sets the commit message format instruction string.
+     * If the provided format is null, blank, or equal to the default, the property is removed.
+     */
+    public void setCommitMessageFormat(String format) {
+        if (format == null || format.isBlank() || format.trim().equals(DEFAULT_COMMIT_MESSAGE_FORMAT)) {
+            if (projectProps.containsKey(COMMIT_MESSAGE_FORMAT_KEY)) {
+                projectProps.remove(COMMIT_MESSAGE_FORMAT_KEY);
+                saveProjectProperties();
+                logger.debug("Removed commit message format, reverting to default.");
+            }
+        } else if (!format.trim().equals(projectProps.getProperty(COMMIT_MESSAGE_FORMAT_KEY))) {
+            projectProps.setProperty(COMMIT_MESSAGE_FORMAT_KEY, format.trim());
+            saveProjectProperties();
+            logger.debug("Set commit message format.");
+        }
+    }
+
 
     public Language getAnalyzerLanguage() {
         String lang = projectProps.getProperty("code_intelligence_language");

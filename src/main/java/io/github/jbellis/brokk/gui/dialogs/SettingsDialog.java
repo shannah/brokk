@@ -46,6 +46,7 @@ public class SettingsDialog extends JDialog {
     private JComboBox<Project.ReasoningLevel> architectReasoningComboBox;
     // Project -> General tab specific fields
     private JTextArea styleGuideArea;
+    private JTextArea commitFormatArea;
 
 
     public SettingsDialog(Frame owner, Chrome chrome) {
@@ -389,7 +390,7 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.NONE;
         otherPanel.add(new JLabel("Style Guide:"), gbc);
 
-        styleGuideArea = new JTextArea(10, 40); // Initialize text area
+        styleGuideArea = new JTextArea(5, 40); // Reduced height
         styleGuideArea.setText(project.getStyleGuide()); // Load current style guide
         styleGuideArea.setWrapStyleWord(true);
         styleGuideArea.setLineWrap(true);
@@ -402,10 +403,65 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 1.0;
         gbc.weighty = 1.0; // Allow style guide area to grow vertically
         gbc.fill = GridBagConstraints.BOTH; // Fill available space
+        gbc.weighty = 0.5; // Give it half the vertical weight
         otherPanel.add(styleScrollPane, gbc);
+        row++; // Move to next row
+
+        // --- Style Guide Explanation ---
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.0; // No vertical weight for label
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+        var styleGuideInfo = new JLabel("<html>The Style Guide is used by the Code Agent to help it conform to your project's style.</html>");
+        styleGuideInfo.setFont(styleGuideInfo.getFont().deriveFont(Font.ITALIC, styleGuideInfo.getFont().getSize() * 0.9f));
+        gbc.insets = new Insets(0, 2, 8, 2); // Add bottom margin
+        otherPanel.add(styleGuideInfo, gbc);
+
+        // --- Commit Message Format ---
+        gbc.insets = new Insets(2, 2, 2, 2); // Reset insets
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.anchor = GridBagConstraints.NORTHWEST; // Align label top-left
+        gbc.fill = GridBagConstraints.NONE;
+        otherPanel.add(new JLabel("Commit Format:"), gbc);
+
+        commitFormatArea = new JTextArea(5, 40); // Same height as style guide initially
+        commitFormatArea.setText(project.getCommitMessageFormat());
+        commitFormatArea.setWrapStyleWord(true);
+        commitFormatArea.setLineWrap(true);
+        var commitFormatScrollPane = new JScrollPane(commitFormatArea);
+        commitFormatScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        commitFormatScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        // Use a sub-panel to hold the text area and reset button together
+        var commitFormatPanel = new JPanel(new BorderLayout(5, 0)); // 5px horizontal gap
+        commitFormatPanel.add(commitFormatScrollPane, BorderLayout.CENTER);
+
+        gbc.gridx = 1;
+        gbc.gridy = row++; // Increment row
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.5; // Give it the other half of vertical weight
+        gbc.fill = GridBagConstraints.BOTH; // Fill available space
+        otherPanel.add(commitFormatPanel, gbc); // Add the sub-panel
+
+        // --- Commit Format Explanation ---
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.0; // No vertical weight for label
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+        var commitFormatInfo = new JLabel("<html>This informs the LLM how to structure the commit message suggestions it makes.</html>");
+        commitFormatInfo.setFont(commitFormatInfo.getFont().deriveFont(Font.ITALIC, commitFormatInfo.getFont().getSize() * 0.9f));
+        gbc.insets = new Insets(0, 2, 2, 2); // Small bottom margin
+        otherPanel.add(commitFormatInfo, gbc);
 
         // Reset weighty for subsequent components if any were added below
         gbc.weighty = 0.0;
+        gbc.insets = new Insets(2, 2, 2, 2); // Reset insets
 
 
         // Add General tab first, then Build tab
@@ -837,6 +893,23 @@ public class SettingsDialog extends JDialog {
                 project.saveStyleGuide(newStyleGuide);
                 logger.debug("Applied Style Guide changes.");
             }
+
+            // Apply Commit Message Format
+            var currentCommitFormat = project.getCommitMessageFormat();
+            var newCommitFormat = commitFormatArea.getText(); // Get text from the text area
+            // The setter handles checking for changes and null/blank/default values
+            project.setCommitMessageFormat(newCommitFormat);
+            if (!newCommitFormat.trim().equals(currentCommitFormat)
+                && !newCommitFormat.trim().equals(Project.DEFAULT_COMMIT_MESSAGE_FORMAT)
+                && !newCommitFormat.isBlank())
+            {
+                logger.debug("Applied Commit Message Format changes.");
+            } else if (!newCommitFormat.trim().equals(currentCommitFormat)
+                       && (newCommitFormat.isBlank() || newCommitFormat.trim().equals(Project.DEFAULT_COMMIT_MESSAGE_FORMAT)))
+            {
+                logger.debug("Reset Commit Message Format to default.");
+            }
+
 
             // Apply Data Retention Policy
             if (dataRetentionPanel != null) { // Check if the panel was created
