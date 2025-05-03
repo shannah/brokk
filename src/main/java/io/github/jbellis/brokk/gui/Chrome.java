@@ -340,7 +340,6 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     private JComponent buildBackgroundStatusLabel() {
         backgroundStatusLabel = new JLabel(BGTASK_EMPTY);
-        backgroundStatusLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         backgroundStatusLabel.setBorder(new EmptyBorder(2, 5, 2, 5));
         backgroundLabelPreferredSize = backgroundStatusLabel.getPreferredSize();
         return backgroundStatusLabel;

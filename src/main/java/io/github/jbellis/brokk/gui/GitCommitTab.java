@@ -101,7 +101,6 @@ public class GitCommitTab extends JPanel {
                 return cell;
             }
         });
-        uncommittedFilesTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         uncommittedFilesTable.setRowHeight(18);
         uncommittedFilesTable.getColumnModel().getColumn(0).setPreferredWidth(150);
         uncommittedFilesTable.getColumnModel().getColumn(1).setPreferredWidth(450);

@@ -232,7 +232,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     private JTextArea buildCommandInputField() {
         var area = new JTextArea(3, 40);
-        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         area.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Color.GRAY),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
@@ -579,7 +578,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         systemArea.getCaret().setVisible(false); // Hide the edit caret
         systemArea.setLineWrap(true);
         systemArea.setWrapStyleWord(true);
-        systemArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         systemArea.setRows(4);
 
         // Create scroll pane with border and title
@@ -602,7 +600,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private JLabel buildCommandResultLabel() {
         var label = new JLabel(" "); // Start with a space to ensure height
-        label.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         label.setBorder(new EmptyBorder(2, 5, 2, 5));
         return label;
     }

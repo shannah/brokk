@@ -107,7 +107,6 @@ public class ContextPanel extends JPanel {
                 };
             }
         });
-        contextTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
         // Add custom cell renderer for the "Description" column
         contextTable.getColumnModel().getColumn(1).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
@@ -457,16 +456,9 @@ public class ContextPanel extends JPanel {
 
         // Build summary panel
         var contextSummaryPanel = new JPanel(new BorderLayout());
-        locSummaryLabel = new
-
-                JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        locSummaryLabel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         JLabel innerLabel = new JLabel(" ");
-        innerLabel.setFont(new
-
-                                   Font(Font.MONOSPACED, Font.PLAIN, 12));
-        innerLabel.setBorder(new
-
-                                     EmptyBorder(5, 5, 5, 5));
+        innerLabel.setBorder(new EmptyBorder(5, 5, 5, 5));
         locSummaryLabel.add(innerLabel);
         locSummaryLabel.setBorder(BorderFactory.createEmptyBorder());
         contextSummaryPanel.add(locSummaryLabel, BorderLayout.NORTH);
