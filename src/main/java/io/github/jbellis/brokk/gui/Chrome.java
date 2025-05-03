@@ -724,7 +724,7 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             if (topSplitPos > 0) {
                 topSplitPane.setDividerLocation(topSplitPos);
             } else {
-                topSplitPane.setDividerLocation(0.2);
+                topSplitPane.setDividerLocation(0.4); // Sensible default: 40% for instructions panel
             }
             topSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
                 if (topSplitPane.isShowing()) {
