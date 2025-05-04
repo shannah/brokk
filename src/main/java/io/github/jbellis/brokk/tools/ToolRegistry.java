@@ -206,8 +206,11 @@ public class ToolRegistry {
 
             return ToolExecutionResult.success(request, resultString);
         } catch (InvocationTargetException e) {
-            if (e.getCause() instanceof InterruptedException) {
-                throw (InterruptedException) e.getCause();
+            // some code paths will wrap IE in RuntimeException, so check the entire Cause hierarchy
+            for (var e2 = (Throwable) e; e2 != null; e2 = e2.getCause()) {
+                if (e2 instanceof InterruptedException ie) {
+                    throw ie;
+                }
             }
             throw new RuntimeException(e);
         } catch (JsonProcessingException e) {
