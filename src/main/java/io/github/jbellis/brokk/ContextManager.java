@@ -1709,7 +1709,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 logger.warn("Summarization failed or was cancelled.");
                 return "Summarization failed.";
             }
-            return result.chatResponse().aiMessage().text();
+            return result.chatResponse().aiMessage().text().trim();
         }
     }
 }
