@@ -744,10 +744,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-        java.util.Optional<ProjectFile> sourceFile = getAnalyzerUninterrupted().getFileFor(className);
-        if (sourceFile.isPresent()) {
-            sources.add(CodeUnit.cls(sourceFile.get(), className));
-        }
+        // Use getDefinition to find the class CodeUnit and add it to sources
+        getAnalyzerUninterrupted().getDefinition(className)
+                .filter(CodeUnit::isClass)
+                .ifPresent(sources::add);
 
         var fragment = new ContextFragment.CallGraphFragment("Callers (depth " + depth + ")", methodName, sources, formattedCallGraph);
         pushContext(ctx -> ctx.addVirtualFragment(fragment));
@@ -775,10 +775,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-        java.util.Optional<ProjectFile> sourceFile = getAnalyzerUninterrupted().getFileFor(className);
-        if (sourceFile.isPresent()) {
-            sources.add(CodeUnit.cls(sourceFile.get(), className));
-        }
+        // Use getDefinition to find the class CodeUnit and add it to sources
+        getAnalyzerUninterrupted().getDefinition(className)
+                .filter(CodeUnit::isClass)
+                .ifPresent(sources::add);
 
         // The output is similar to UsageFragment, so we'll use that
         var fragment = new ContextFragment.CallGraphFragment("Callees (depth " + depth + ")", methodName, sources, formattedCallGraph);
@@ -807,10 +807,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
             var methodSource = analyzer.getMethodSource(methodFullName);
             if (methodSource.isDefined()) {
                 String className = ContextFragment.toClassname(methodFullName);
-                var sourceFile = analyzer.getFileFor(className);
-                if (sourceFile.isPresent()) { // Use isPresent() for Optional
-                    sources.add(CodeUnit.cls(sourceFile.get(), className));
-                }
+                // Use getDefinition to find the class CodeUnit and add it to sources
+                analyzer.getDefinition(className)
+                        .filter(CodeUnit::isClass) // Ensure it's a class
+                        .ifPresent(sources::add); // Add the CodeUnit directly
+
                 content.append(methodFullName).append(":\n");
                 content.append(methodSource.get()).append("\n\n");
             }

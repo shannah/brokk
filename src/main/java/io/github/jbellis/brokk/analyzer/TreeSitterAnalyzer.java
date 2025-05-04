@@ -24,8 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * which file extensions, which query, and how to map a capture to a {@link CodeUnit}.
  */
 public abstract class TreeSitterAnalyzer implements IAnalyzer {
-
-    private static final Logger log = LoggerFactory.getLogger(TreeSitterAnalyzer.class);
+    protected static final Logger log = LoggerFactory.getLogger(TreeSitterAnalyzer.class);
 
     // Native library loading is assumed automatic by the io.github.bonede.tree_sitter library.
 
@@ -104,6 +103,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     public scala.Option<String> getSkeleton(String fqName) {
         for (var fileSkeletons : skeletons.values()) {
             for (var entry : fileSkeletons.entrySet()) {
+                // Compute the fqName from the CodeUnit's components before comparing
                 if (entry.getKey().fqName().equals(fqName)) {
                     return scala.Option.apply(entry.getValue());
                 }

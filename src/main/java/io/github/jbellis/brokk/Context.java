@@ -4,6 +4,7 @@ import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
+import io.github.jbellis.brokk.analyzer.AbstractAnalyzer;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -312,8 +313,22 @@ public class Context implements Serializable {
             }
             var sourceFile = sourceFileOption.get();
             // Check if the class or its parent is in ineligible classnames
-            boolean eligible = !(ineligibleSources.contains(codeUnit)
-                    || (fqcn.contains("$") && ineligibleSources.contains(CodeUnit.cls(sourceFile, fqcn.substring(0, fqcn.indexOf('$'))))));
+            boolean eligible = !(ineligibleSources.contains(codeUnit));
+            if (fqcn.contains("$")) {
+                var parentFqcn = fqcn.substring(0, fqcn.indexOf('$'));
+                // FIXME generalize this
+                // Check if the analyzer supports cuClass and cast if necessary
+                if (analyzer instanceof AbstractAnalyzer aa) {
+                    // Use the analyzer helper method which handles splitting correctly
+                    var parentUnitOpt = aa.cuClass(parentFqcn, sourceFile); // Returns scala.Option
+                    if (parentUnitOpt.isDefined() && ineligibleSources.contains(parentUnitOpt.get())) {
+                        eligible = false;
+                    }
+                } else {
+                    logger.warn("Analyzer of type {} does not support direct CodeUnit creation, skipping parent eligibility check for {}",
+                                analyzer.getClass().getSimpleName(), fqcn);
+                }
+            }
 
             if (eligible) {
                 var opt = analyzer.getSkeleton(fqcn);

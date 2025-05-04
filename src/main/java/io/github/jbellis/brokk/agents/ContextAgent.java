@@ -568,9 +568,11 @@ public class ContextAgent {
                 .toList();
 
         var projectClasses = contextTool.getRecommendedClasses().stream()
-                .map(fqcn -> CodeUnit.cls(analyzer, fqcn))
-                .flatMap(Optional::stream)
-                .toList();
+                 // Use getDefinition to get the CodeUnit directly, which handles file lookup
+                 .map(analyzer::getDefinition)
+                 .flatMap(Optional::stream) // Convert java.util.Optional to Stream
+                 .filter(CodeUnit::isClass) // Ensure it's actually a class
+                 .toList();
 
         return new LlmRecommendation(projectFiles, projectClasses, reasoning);
     }

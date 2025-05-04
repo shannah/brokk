@@ -48,7 +48,8 @@ public class WorkspaceTools {
     public String addFilesToWorkspace(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java'). Must not be empty.")
             List<String> relativePaths
-    ) {
+    )
+    {
         if (relativePaths == null || relativePaths.isEmpty()) {
             return "File paths list cannot be empty.";
         }
@@ -81,7 +82,8 @@ public class WorkspaceTools {
     public String addClassesToWorkspace(
             @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util']). Must not be empty.")
             List<String> classNames
-    ) {
+    )
+    {
         if (classNames == null || classNames.isEmpty()) {
             return "Class names list cannot be empty.";
         }
@@ -126,7 +128,8 @@ public class WorkspaceTools {
     public String addUrlContentsToWorkspace(
             @P("The full URL to fetch content from (e.g., 'https://example.com/docs/page').")
             String urlString
-    ) {
+    )
+    {
         if (urlString == null || urlString.isBlank()) {
             return "URL cannot be empty.";
         }
@@ -147,8 +150,8 @@ public class WorkspaceTools {
             logger.error("Failed to fetch or process URL content: {}", urlString, e);
             throw new RuntimeException("Failed to fetch URL content for " + urlString + ": " + e.getMessage(), e);
         } catch (Exception e) {
-             logger.error("Unexpected error processing URL: {}", urlString, e);
-             throw new RuntimeException("Unexpected error processing URL " + urlString + ": " + e.getMessage(), e);
+            logger.error("Unexpected error processing URL: {}", urlString, e);
+            throw new RuntimeException("Unexpected error processing URL " + urlString + ": " + e.getMessage(), e);
         }
 
         if (content.isBlank()) {
@@ -170,7 +173,8 @@ public class WorkspaceTools {
             String content,
             @P("A short, descriptive label for this text fragment (e.g., 'User Requirements', 'API Key Snippet')")
             String description
-    ) {
+    )
+    {
         if (content == null || content.isBlank()) {
             return "Content cannot be empty.";
         }
@@ -189,7 +193,8 @@ public class WorkspaceTools {
     public String dropWorkspaceFragments(
             @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove. Must not be empty.")
             List<Integer> fragmentIds
-    ) {
+    )
+    {
         if (fragmentIds == null || fragmentIds.isEmpty()) {
             return "Fragment IDs list cannot be empty.";
         }
@@ -219,7 +224,7 @@ public class WorkspaceTools {
                 .toList();
 
         if (!notFoundIds.isEmpty()) {
-             // Throw error if *any* requested ID wasn't found? Or just log? Let's throw.
+            // Throw error if *any* requested ID wasn't found? Or just log? Let's throw.
             return "Fragment IDs not found in current workspace: " + notFoundIds;
         }
 
@@ -231,19 +236,20 @@ public class WorkspaceTools {
         int droppedCount = pathFragsToRemove.size() + virtualToRemove.size();
         if (droppedCount == 0) {
             // This can happen if only invalid IDs were provided, or only AutoContext was requested but failed to drop
-             return "No valid fragments found to drop for the given IDs: " + fragmentIds;
+            return "No valid fragments found to drop for the given IDs: " + fragmentIds;
         }
 
         return "Dropped %d fragment(s) with IDs: [%s]".formatted(droppedCount, foundIds.stream().map(String::valueOf).collect(Collectors.joining(", ")));
     }
 
     @Tool(value = """
-    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace. Only call when you have identified specific symbols.")
-    """)
+                  Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace. Only call when you have identified specific symbols.")
+                  """)
     public String addSymbolUsagesToWorkspace(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
             String symbol
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot add usages: Code analyzer is not available.";
         if (symbol == null || symbol.isBlank()) {
             return "Cannot add usages: symbol cannot be empty";
@@ -262,14 +268,15 @@ public class WorkspaceTools {
     }
 
     @Tool(value = """
-    Retrieves summaries (fields and method signatures) for specified classes and adds them to the Workspace.
-    Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
-    Only call when you have identified specific class names.")
-    """)
+                  Retrieves summaries (fields and method signatures) for specified classes and adds them to the Workspace.
+                  Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
+                  Only call when you have identified specific class names.")
+                  """)
     public String addClassSummariesToWorkspace(
             @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get summaries for. Must not be empty.")
             List<String> classNames
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot add summary: Code analyzer is not available.";
         if (classNames == null || classNames.isEmpty()) {
             return "Cannot add summary: class names list is empty";
@@ -300,8 +307,8 @@ public class WorkspaceTools {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
         if (coalescedSkeletons.isEmpty()) {
-             // This could happen if only inner classes were requested and their parents were also found
-             return "No primary summaries found after coalescing for classes: " + String.join(", ", classNames);
+            // This could happen if only inner classes were requested and their parents were also found
+            return "No primary summaries found after coalescing for classes: " + String.join(", ", classNames);
         }
 
         var fragment = new ContextFragment.SkeletonFragment(coalescedSkeletons);
@@ -312,15 +319,16 @@ public class WorkspaceTools {
     }
 
     @Tool(value = """
-    Retrieves summaries (fields and method signatures) for all classes defined within specified project files and adds them to the Workspace.
-    Supports glob patterns: '*' matches files in a single directory, '**' matches files recursively.
-    Faster and more efficient than reading entire files when you just need the API definitions.
-    (But if you don't know where what you want is located, you should use Search Agent instead.)
-    """)
+                  Retrieves summaries (fields and method signatures) for all classes defined within specified project files and adds them to the Workspace.
+                  Supports glob patterns: '*' matches files in a single directory, '**' matches files recursively.
+                  Faster and more efficient than reading entire files when you just need the API definitions.
+                  (But if you don't know where what you want is located, you should use Search Agent instead.)
+                  """)
     public String addFileSummariesToWorkspace(
             @P("List of file paths relative to the project root. Supports glob patterns (* for single directory, ** for recursive). E.g., ['src/main/java/com/example/util/*.java', 'tests/foo/**.py']. Must not be empty.")
             List<String> filePaths
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot add summaries: Code analyzer is not available.";
         if (filePaths == null || filePaths.isEmpty()) {
             return "Cannot add summaries: file paths list is empty";
@@ -363,13 +371,14 @@ public class WorkspaceTools {
     }
 
     @Tool(value = """
-    Retrieves the full source code of specific methods and adds to the Workspace each as a separate read-only text fragment.
-    Faster and more efficient than including entire files or classes when you only need a few methods.
-    """)
+                  Retrieves the full source code of specific methods and adds to the Workspace each as a separate read-only text fragment.
+                  Faster and more efficient than including entire files or classes when you only need a few methods.
+                  """)
     public String addMethodSourcesToWorkspace(
             @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for. Must not be empty.")
             List<String> methodNames
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot add method sources: Code analyzer is not available.";
         if (methodNames == null || methodNames.isEmpty()) {
             return "Cannot add method sources: method names list is empty";
@@ -399,7 +408,8 @@ public class WorkspaceTools {
     public String getFiles(
             @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util']). Must not be empty.")
             List<String> classNames
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot get files: Code analyzer is not available.";
         if (classNames == null || classNames.isEmpty()) {
             return "Class names list cannot be empty.";
@@ -424,7 +434,7 @@ public class WorkspaceTools {
         });
 
         if (foundFiles.isEmpty()) {
-             return "Could not find files for any of the provided class names: " + String.join(", ", classNames);
+            return "Could not find files for any of the provided class names: " + String.join(", ", classNames);
         }
 
         String resultMessage = "Files found: " + String.join(", ", foundFiles.stream().sorted().toList()); // Sort for consistent output
@@ -472,21 +482,22 @@ public class WorkspaceTools {
 //    }
 
     @Tool(value = """
-    Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it to the Workspace.
-    The single line of the call sites (but not full method sources) are included
-    """)
+                  Generates a call graph showing methods that call the specified target method (callers) up to a certain depth, and adds it to the Workspace.
+                  The single line of the call sites (but not full method sources) are included
+                  """)
     public String addCallGraphInToWorkspace(
             @P("Fully qualified target method name (e.g., 'com.example.MyClass.targetMethod') to find callers for.")
             String methodName,
             @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
             int depth // Added depth parameter
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot add call graph: CPG analyzer is not available.";
         if (methodName == null || methodName.isBlank()) {
             return "Cannot add call graph: method name is empty";
         }
         if (depth <= 0) {
-             return "Cannot add call graph: depth must be positive";
+            return "Cannot add call graph: depth must be positive";
         }
 
         var graphData = getAnalyzer().getCallgraphTo(methodName, depth);
@@ -497,17 +508,18 @@ public class WorkspaceTools {
         String formattedGraph = AnalyzerUtil.formatCallGraph(graphData, methodName, false); // false = callers (arrows point TO method)
         if (formattedGraph.isEmpty()) {
             // Should not happen if graphData is not empty, but check defensively
-             return "Failed to format non-empty call graph (callers) for method: " + methodName;
+            return "Failed to format non-empty call graph (callers) for method: " + methodName;
         }
 
-        // Extract the class from the method name for sources
+        // Extract the class from the method name for sources using getDefinition
         Set<CodeUnit> sources = new HashSet<>();
         String className = ContextFragment.toClassname(methodName);
-         var sourceFile = getAnalyzer().getFileFor(className);
-         sourceFile.ifPresent(pf -> sources.add(CodeUnit.cls(pf, className)));
- 
-         // Use UsageFragment to represent the call graph
-         String type = "Callers (depth " + depth + ")";
+        getAnalyzer().getDefinition(className)
+                .filter(CodeUnit::isClass)
+                .ifPresent(sources::add);
+
+        // Use CallGraphFragment to represent the call graph
+        String type = "Callers (depth " + depth + ")";
         var fragment = new ContextFragment.CallGraphFragment(type, methodName, sources, formattedGraph);
         contextManager.addVirtualFragment(fragment);
 
@@ -515,43 +527,41 @@ public class WorkspaceTools {
         return "Added call graph fragment (%d sites) for callers of '%s' (depth %d).".formatted(totalCallSites, methodName, depth);
     }
 
-     @Tool(value = """
-    Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it to the workspace
-    The single line of the call sites (but not full method sources) are included
-    """)
+    @Tool(value = """
+                  Generates a call graph showing methods called by the specified source method (callees) up to a certain depth, and adds it to the workspace
+                  The single line of the call sites (but not full method sources) are included
+                  """)
     public String addCallGraphOutToWorkspace(
             @P("Fully qualified source method name (e.g., 'com.example.MyClass.sourceMethod') to find callees for.")
             String methodName,
             @P("Maximum depth of the call graph to retrieve (e.g., 3 or 5). Higher depths can be large.")
             int depth // Added depth parameter
-    ) {
+    )
+    {
         assert getAnalyzer().isCpg() : "Cannot add call graph: CPG analyzer is not available.";
         if (methodName == null || methodName.isBlank()) {
             return "Cannot add call graph: method name is empty";
         }
-         if (depth <= 0) {
-             return "Cannot add call graph: depth must be positive";
+        if (depth <= 0) {
+            return "Cannot add call graph: depth must be positive";
         }
 
-         var graphData = getAnalyzer().getCallgraphFrom(methodName, depth);
+        var graphData = getAnalyzer().getCallgraphFrom(methodName, depth);
         if (graphData.isEmpty()) {
             return "No call graph available (callees) for method: " + methodName;
         }
 
         String formattedGraph = AnalyzerUtil.formatCallGraph(graphData, methodName, true); // true = callees (arrows point FROM method)
         if (formattedGraph.isEmpty()) {
-             // Should not happen if graphData is not empty, but check defensively
-             return "Failed to format non-empty call graph (callees) for method: " + methodName;
+            // Should not happen if graphData is not empty, but check defensively
+            return "Failed to format non-empty call graph (callees) for method: " + methodName;
         }
 
         // Extract the class from the method name for sources
         Set<CodeUnit> sources = new HashSet<>();
-        String className = ContextFragment.toClassname(methodName);
-         var sourceFile = getAnalyzer().getFileFor(className);
-         sourceFile.ifPresent(pf -> sources.add(CodeUnit.cls(pf, className)));
- 
-         // Use UsageFragment to represent the call graph
-         String type = "Callees (depth " + depth + ")";
+        getAnalyzer().getDefinition(methodName).ifPresent(cu -> sources.add(cu));
+        // Use UsageFragment to represent the call graph
+        String type = "Callees (depth " + depth + ")";
         var fragment = new ContextFragment.CallGraphFragment(type, methodName, sources, formattedGraph);
         contextManager.addVirtualFragment(fragment);
 
@@ -563,6 +573,7 @@ public class WorkspaceTools {
 
     /**
      * Fetches content from a given URL. Public static for reuse.
+     *
      * @param url The URL to fetch from.
      * @return The content as a String.
      * @throws IOException If fetching fails.

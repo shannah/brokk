@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows
 import org.junit.jupiter.api.Test
 
 import java.nio.file.Path
+import scala.jdk.OptionConverters.* // Import for Optional conversion
 import scala.jdk.javaapi.*
 import scala.jdk.javaapi.CollectionConverters.asScala
 
@@ -255,7 +256,11 @@ class AnalyzerTest {
     val analyzer = getAnalyzer
     val file = analyzer.toFile("D.java").get
     val classes = analyzer.getClassesInFile(file)
-    val expected = Set("D", "D$DSub", "D$DSubStatic").map(name => CodeUnit.cls(file, name))
+    val expected = Set(
+      CodeUnit.cls(file, "", "D"),
+      CodeUnit.cls(file, "", "D$DSub"),
+      CodeUnit.cls(file, "", "D$DSubStatic")
+    )
     assertEquals(expected, asScala(classes).toSet)
   }
 
@@ -264,7 +269,7 @@ class AnalyzerTest {
     val analyzer = getAnalyzer
     val file = analyzer.toFile("Packaged.java").get
     val classes = analyzer.getClassesInFile(file)
-    assertEquals(Set(CodeUnit.cls(file, "io.github.jbellis.brokk.Foo")), asScala(classes).toSet)
+    assertEquals(Set(CodeUnit.cls(file, "io.github.jbellis.brokk", "Foo")), asScala(classes).toSet)
   }
 
   @Test
@@ -547,6 +552,60 @@ class AnalyzerTest {
     val location = analyzer.getFunctionLocation("B.<init>", java.util.Collections.emptyList())
     assertTrue(location.startLine > 0 && location.endLine > 0)
     assertTrue(location.code.contains("public B()"), s"Constructor code:\n${location.code}")
+  }
+
+  @Test
+  def codeUnitShortNameTest(): Unit = {
+    val analyzer = getAnalyzer
+    val file = analyzer.toFile("A.java").get
+
+    // Class
+    val classA = CodeUnit.cls(file, "", "A")
+    assertEquals("A", classA.shortName())
+    assertEquals("A", classA.fqName()) // No package
+    assertEquals("A", classA.identifier())
+    assertTrue(classA.classUnit().toScala.contains(classA))
+
+    // Nested Class
+    val innerInner = CodeUnit.cls(file, "", "A$AInner$AInnerInner")
+    assertEquals("A$AInner$AInnerInner", innerInner.shortName())
+    assertEquals("A$AInner$AInnerInner", innerInner.fqName()) // No package
+    assertEquals("A$AInner$AInnerInner", innerInner.identifier())
+    assertTrue(innerInner.classUnit().toScala.contains(innerInner))
+
+    // Method in top-level class
+    val method1 = CodeUnit.fn(file, "", "A.method1")
+    assertEquals("A.method1", method1.shortName())
+    assertEquals("A.method1", method1.fqName())
+    assertEquals("method1", method1.identifier())
+    val method1Class = CodeUnit.cls(file, "", "A")
+    assertTrue(method1.classUnit().toScala.contains(method1Class))
+
+    // Method in deeply nested class
+    val method7 = CodeUnit.fn(file, "", "A$AInner$AInnerInner.method7")
+    assertEquals("A$AInner$AInnerInner.method7", method7.shortName())
+    assertEquals("A$AInner$AInnerInner.method7", method7.fqName())
+    assertEquals("method7", method7.identifier())
+    val method7Class = CodeUnit.cls(file, "", "A$AInner$AInnerInner")
+    assertTrue(method7.classUnit().toScala.contains(method7Class))
+
+    // Field in class with package
+    val filePackaged = analyzer.toFile("Packaged.java").get
+    val fieldF = CodeUnit.field(filePackaged, "io.github.jbellis.brokk", "Foo.f")
+    assertEquals("Foo.f", fieldF.shortName())
+    assertEquals("io.github.jbellis.brokk.Foo.f", fieldF.fqName())
+    assertEquals("f", fieldF.identifier())
+    val fieldFClass = CodeUnit.cls(filePackaged, "io.github.jbellis.brokk", "Foo")
+    assertTrue(fieldF.classUnit().toScala.contains(fieldFClass))
+
+    // Field in class without package
+    val fileD = analyzer.toFile("D.java").get
+    val field1 = CodeUnit.field(fileD, "", "D.field1")
+    assertEquals("D.field1", field1.shortName())
+    assertEquals("D.field1", field1.fqName())
+    assertEquals("field1", field1.identifier())
+    val field1Class = CodeUnit.cls(fileD, "", "D")
+    assertTrue(field1.classUnit().toScala.contains(field1Class))
   }
 
   /** Helper to get a prebuilt analyzer */

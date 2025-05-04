@@ -103,14 +103,26 @@ public final class TreeSitterAnalyzerTest {
 
         ProjectFile fileA = new ProjectFile(project.getRoot(), "a/A.py");
         var skelA = analyzer.getSkeletons(fileA);
-        assertFalse(skelA.isEmpty());
+        assertFalse(skelA.isEmpty(), "Skeletons map for file A should not be empty.");
 
-        var classA = CodeUnit.cls(fileA, "a.A.A");
-        assertTrue(skelA.containsKey(classA));
+        // Use the 3-parameter factory methods with corrected Python structure:
+        // Package path is directory-based (e.g., "a").
+        // Class shortName is just the class name ("A"). fqName = "a.A".
+        // Function shortName includes module ("A.funcA"). fqName = "a.A.funcA".
+
+        var classA = CodeUnit.cls(fileA, "a", "A"); // package="a", shortName="A"
+        assertEquals("A", classA.shortName(), "Class A shortName mismatch");
+        assertEquals("a.A", classA.fqName(), "Class A fqName mismatch"); // Corrected fqName
+        assertTrue(skelA.containsKey(classA), "Skeleton map should contain class A.");
         assertTrue(skelA.get(classA).contains("class A:"));
 
-        var funcA = CodeUnit.fn(fileA, "a.A.funcA");
+        // Function shortName includes module name ("A.funcA")
+        var funcA = CodeUnit.fn(fileA, "a", "A.funcA"); // package="a", shortName="A.funcA"
+        assertEquals("A.funcA", funcA.shortName(), "Function funcA shortName mismatch"); // Corrected shortName
+        assertEquals("a.A.funcA", funcA.fqName(), "Function funcA fqName mismatch"); // fqName remains the same
+        assertTrue(skelA.containsKey(funcA), "Skeleton map should contain function funcA.");
         assertTrue(skelA.get(funcA).contains("def funcA():"));
+
 
         // Expected skeleton for the top-level function funcA
         var funcASummary = """
@@ -131,14 +143,14 @@ public final class TreeSitterAnalyzerTest {
           def method5(self) -> None: …
           def method6(self) -> None: …
         }""".stripIndent(); // Using stripIndent for cleaner comparison
-        assertEquals(classASummary.trim(), skelA.get(classA).trim());
+        assertEquals(classASummary.trim(), skelA.get(classA).trim(), "Class A skeleton mismatch");
 
         // test getClassesInFile
-        assertEquals(Set.of(classA), analyzer.getClassesInFile(fileA));
+        assertEquals(Set.of(classA), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A");
         // non-py files are now filtered out during construction, so no need to check ignore.md
 
-        // test getSummary
-        assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA.fqName()).get());
+        // test getSummary - use fqName() method
+        assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA.fqName()).get(), "getSkeleton mismatch for funcA");
     }
 
 

@@ -24,19 +24,29 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected CodeUnit createCodeUnit(ProjectFile file, String captureName, String simpleName) {
-        // C# query captures: class.name, interface.name, method.name, field.name, property.name
-        // Declaration captures: class.declaration, interface.declaration, method.declaration, field.declaration, property.declaration, constructor.declaration
-        // Ignore @annotation explicitly
+        // C# doesn't have standard package structure like Java/Python based on folders.
+        // Namespaces are declared in code. Deriving the 'package' equivalent (namespace)
+        // from TreeSitter requires querying the namespace node, which is complex here.
+        // Defaulting to empty package name for now. FQ name will rely solely on shortName.
+        String packageName = ""; // TODO: Derive from namespace node if possible/needed
+
+        // Simple name is the identifier (class name, method name, field name).
+        // For methods/fields, the shortName should ideally include the class.
+        // For constructors, simpleName is the class name.
+        // We need to construct the appropriate shortName based on the context (which isn't fully available here).
+        // Let's use simpleName as shortName for now, similar to Python, understanding this might be incomplete for members.
+        String shortName = simpleName;
+
         return switch (captureName) {
-            case "class.declaration", "interface.declaration" -> CodeUnit.cls(file, simpleName);
-            case "method.declaration" -> CodeUnit.fn(file, simpleName);
-            // Constructor name extraction might need special handling if base class logic isn't enough,
-            // but for now, assume it works or can be improved there. Tree-sitter usually identifies constructor nodes.
-            // If the base class `extractSimpleName` can't find 'identifier', we might need to override it or adjust the query.
-            // Append a unique suffix to the constructor's simple name to avoid collision with class name in the map.
-            case "constructor.declaration" -> CodeUnit.fn(file, simpleName + ".<init>");
-            case "field.declaration", "property.declaration" -> CodeUnit.field(file, simpleName);
-            // Ignore other captures like *.name or annotations handled by getIgnoredCaptures
+            // Pass packageName and simpleName as shortName
+            case "class.declaration", "interface.declaration" -> CodeUnit.cls(file, packageName, shortName);
+            // Use simpleName (method identifier) as shortName. Class prefix missing.
+            case "method.declaration" -> CodeUnit.fn(file, packageName, shortName);
+            // simpleName is class name. Use "ClassName.<init>" as shortName for constructor function.
+            case "constructor.declaration" -> CodeUnit.fn(file, packageName, shortName + ".<init>");
+            // Use simpleName (field/property identifier) as shortName. Class prefix missing.
+            case "field.declaration", "property.declaration" -> CodeUnit.field(file, packageName, shortName);
+            // Ignore other captures
             default -> null;
         };
     }
