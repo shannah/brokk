@@ -954,7 +954,22 @@ public class Llm {
             var filePath = sessionHistoryDir.resolve(String.format("%s %s.log", fileTimestamp, shortDesc));
             var options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE};
             logger.trace("Writing history to file {}", filePath);
-            Files.writeString(filePath, formattedRequest + formattedTools + formattedResponse, options);
+            // Ensure the filename is unique before writing
+            var uniqueFilePath = filePath;
+            int suffix = 1;
+            while (Files.exists(uniqueFilePath)) {
+                var newFilePath = filePath.toString();
+                int dotIndex = newFilePath.lastIndexOf('.');
+                if (dotIndex > 0) {
+                    newFilePath = newFilePath.substring(0, dotIndex) + "-" + suffix + newFilePath.substring(dotIndex);
+                } else {
+                    newFilePath += "-" + suffix;
+                }
+                uniqueFilePath = Path.of(newFilePath);
+                suffix++;
+            }
+            logger.trace("Writing history to file {}", uniqueFilePath);
+            Files.writeString(uniqueFilePath, formattedRequest + formattedTools + formattedResponse, options);
         } catch (IOException e) {
             logger.error("Failed to write LLM history file", e);
         }
