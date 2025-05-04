@@ -63,7 +63,7 @@ model_list:
       free_tier_eligible: true
       is_private: true
 
-  - model_name: claude-3-7-sonnet-latest
+  - model_name: claude-3.7-sonnet
     litellm_params:
       model: anthropic/claude-3-7-sonnet-latest
       api_key: "os.environ/ANTHROPIC_API_KEY"
@@ -75,7 +75,7 @@ model_list:
       # which is weighted the wrong way for typical coding tasks
       max_output_tokens: 32768
 
-  - model_name: claude-3-5-sonnet-latest
+  - model_name: claude-3.5-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-latest
       api_key: "os.environ/ANTHROPIC_API_KEY"
