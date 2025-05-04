@@ -979,7 +979,7 @@ public class Llm {
                 return """
                        [Error: %s]
                        %s
-                       """.formatted(error.getMessage(), originalResponse.toString());
+                       """.formatted(error.getMessage(), originalResponse == null ? "[Null response]" : originalResponse.toString());
             }
 
             return originalResponse.toString();

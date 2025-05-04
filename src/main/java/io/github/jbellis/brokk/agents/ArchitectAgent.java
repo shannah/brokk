@@ -300,7 +300,7 @@ public class ArchitectAgent {
                 return;
             }
             // show thinking
-            if (!result.chatResponse().aiMessage().text().isBlank()) {
+            if (result.chatResponse().aiMessage().text() != null && !result.chatResponse().aiMessage().text().isBlank()) {
                 io.llmOutput("\n" + result.chatResponse().aiMessage().text(), ChatMessageType.AI);
             }
 
