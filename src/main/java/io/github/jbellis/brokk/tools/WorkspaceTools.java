@@ -44,9 +44,9 @@ public class WorkspaceTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Edit project files to the Workspace. Use this when you intend to make changes to these files, or if you need to read the full source.")
+    @Tool("Edit project files to the Workspace. Use this when you intend to make changes to these files, or if you need to read the full source. Only call when you have identified specific filenames.")
     public String addFilesToWorkspace(
-            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java')")
+            @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java'). Must not be empty.")
             List<String> relativePaths
     ) {
         if (relativePaths == null || relativePaths.isEmpty()) {
@@ -77,9 +77,9 @@ public class WorkspaceTools {
         return result;
     }
 
-    @Tool("Add classes to the Workspace by their fully qualified names. This maps class names to their containing files and adds those files for editing.")
+    @Tool("Add classes to the Workspace by their fully qualified names. This maps class names to their containing files and adds those files for editing. Only call when you have identified specific class names.\")")
     public String addClassesToWorkspace(
-            @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util'])")
+            @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util']). Must not be empty.")
             List<String> classNames
     ) {
         if (classNames == null || classNames.isEmpty()) {
@@ -187,7 +187,7 @@ public class WorkspaceTools {
 
     @Tool("Remove specified fragments (files, text snippets, task history, analysis results) from the Workspace using their unique integer IDs")
     public String dropWorkspaceFragments(
-            @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove")
+            @P("List of integer IDs corresponding to the fragments visible in the workspace that you want to remove. Must not be empty.")
             List<Integer> fragmentIds
     ) {
         if (fragmentIds == null || fragmentIds.isEmpty()) {
@@ -238,7 +238,7 @@ public class WorkspaceTools {
     }
 
     @Tool(value = """
-    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace.
+    Finds usages of a specific symbol (class, method, field) and adds the full source of the calling methods to the Workspace. Only call when you have identified specific symbols.")
     """)
     public String addSymbolUsagesToWorkspace(
             @P("Fully qualified symbol name (e.g., 'com.example.MyClass', 'com.example.MyClass.myMethod', 'com.example.MyClass.myField') to find usages for.")
@@ -264,9 +264,10 @@ public class WorkspaceTools {
     @Tool(value = """
     Retrieves summaries (fields and method signatures) for specified classes and adds them to the Workspace.
     Faster and more efficient than reading entire files or classes when you just need the API and not the full source code.
+    Only call when you have identified specific class names.")
     """)
     public String addClassSummariesToWorkspace(
-            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get summaries for.")
+            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to get summaries for. Must not be empty.")
             List<String> classNames
     ) {
         assert getAnalyzer().isCpg() : "Cannot add summary: Code analyzer is not available.";
@@ -317,7 +318,7 @@ public class WorkspaceTools {
     (But if you don't know where what you want is located, you should use Search Agent instead.)
     """)
     public String addFileSummariesToWorkspace(
-            @P("List of file paths relative to the project root. Supports glob patterns (* for single directory, ** for recursive). E.g., ['src/main/java/com/example/util/*.java', 'tests/foo/**.py']")
+            @P("List of file paths relative to the project root. Supports glob patterns (* for single directory, ** for recursive). E.g., ['src/main/java/com/example/util/*.java', 'tests/foo/**.py']. Must not be empty.")
             List<String> filePaths
     ) {
         assert getAnalyzer().isCpg() : "Cannot add summaries: Code analyzer is not available.";
@@ -366,7 +367,7 @@ public class WorkspaceTools {
     Faster and more efficient than including entire files or classes when you only need a few methods.
     """)
     public String addMethodSourcesToWorkspace(
-            @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for")
+            @P("List of fully qualified method names (e.g., ['com.example.ClassA.method1', 'org.another.ClassB.processData']) to retrieve sources for. Must not be empty.")
             List<String> methodNames
     ) {
         assert getAnalyzer().isCpg() : "Cannot add method sources: Code analyzer is not available.";
@@ -396,7 +397,7 @@ public class WorkspaceTools {
 
     @Tool("Returns the file paths relative to the project root for the given fully-qualified class names.")
     public String getFiles(
-            @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util'])")
+            @P("List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util']). Must not be empty.")
             List<String> classNames
     ) {
         assert getAnalyzer().isCpg() : "Cannot get files: Code analyzer is not available.";

@@ -1001,7 +1001,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
      */
-    public Collection<ChatMessage> getWorkspaceContentsMessages() {
+    public Collection<ChatMessage> getWorkspaceContentsMessages(boolean includeRelatedClasses) {
         var c = topContext();
         var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
 
@@ -1078,13 +1078,32 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                                                      </editable>
                                                                      """.stripIndent().formatted(editableTextFragments.toString().trim());
 
+        // optional: related classes
+        String topClassesText = "";
+        if (includeRelatedClasses && getProject().getAnalyzerWrapper().isCpg()) {
+            var ac = topContext().buildAutoContext(10);
+            String topClassesRaw = ac.text();
+            if (!topClassesRaw.isBlank()) {
+                topClassesText = topClassesRaw.isBlank() ? "" : """
+                    <related_classes>
+                    Here are some classes that may be related to what is in your Workspace. They are not yet part of the Workspace!
+                    If relevant, you should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
+                    visible to Code Agent. If they are not relevant, just ignore them.
+                    
+                    %s
+                    </related_classes>
+                    """.stripIndent().formatted(topClassesRaw);
+            }
+        }
+
         // add the Workspace text
         var workspaceText = """
                             <workspace>
                             %s
                             %s
                             </workspace>
-                            """.stripIndent().formatted(readOnlyText, editableText);
+                            %s
+                            """.stripIndent().formatted(readOnlyText, editableText, topClassesText);
 
         // text and image content must be distinct
         allContents.add(new TextContent(workspaceText));
@@ -1093,6 +1112,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Create the main UserMessage
         var workspaceUserMessage = UserMessage.from(allContents);
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
+    }
+
+    public Collection<ChatMessage> getWorkspaceContentsMessages() {
+        return getWorkspaceContentsMessages(false);
     }
 
     /**
@@ -1420,7 +1443,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .collect(Collectors.joining("\n"));
         return EditBlockParser.getParserFor(allText);
     }
-
 
     @FunctionalInterface
     public interface TaskRunner {
