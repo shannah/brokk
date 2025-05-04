@@ -364,8 +364,12 @@ public class Llm {
         if (!tools.isEmpty()) {
             logger.debug("Performing native tool calls");
             var paramsBuilder = OpenAiChatRequestParameters.builder()
-                    .toolSpecifications(tools)
-                    .parallelToolCalls(true);
+                    .toolSpecifications(tools);
+            if (contextManager.getModels().supportsParallelCalls(model)) {
+                // can't just blindly call .parallelToolCalls(boolean), litellm will barf if it sees the option at all
+                paramsBuilder = paramsBuilder
+                        .parallelToolCalls(true);
+            }
             var effort = ((OpenAiChatRequestParameters) model.defaultRequestParameters()).reasoningEffort();
             if (toolChoice == ToolChoice.REQUIRED && effort == null) {
                 // Anthropic only supports TC.REQUIRED with reasoning off
