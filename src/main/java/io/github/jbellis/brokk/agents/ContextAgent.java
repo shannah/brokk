@@ -139,7 +139,7 @@ public class ContextAgent {
         // Final budget check
         int totalTokens = calculateFragmentTokens(recommendationResult.fragments());
         debug("Total tokens for recommended context: {}", totalTokens);
- 
+
         if (totalTokens > finalBudget) {
             logger.warn("Recommended context ({} tokens) exceeds final budget ({} tokens). Skipping context addition.", totalTokens, finalBudget);
             logGiveUp("recommended context (exceeded final budget)");
@@ -406,11 +406,9 @@ public class ContextAgent {
      * 3. Ask the analyzer for a skeleton of each class and keep the non-empty ones.
      */
     private Map<CodeUnit, String> getProjectSummaries(Collection<ProjectFile> files) {
-        // turn file list into class list
-        var projectClasses = files.stream().parallel()
-                .flatMap(f -> analyzer.getClassesInFile(f).stream())
-                .collect(Collectors.toSet());
-        return getSummaries(projectClasses, true);
+        return files.stream().parallel()
+                .flatMap(f -> analyzer.getSkeletons(f).entrySet().stream())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     private @NotNull Map<CodeUnit, @NotNull String> getSummaries(Collection<CodeUnit> classes, boolean parallel) {

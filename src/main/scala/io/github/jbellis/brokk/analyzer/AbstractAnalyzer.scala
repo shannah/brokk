@@ -70,6 +70,8 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
    */
   def this(sourcePath: Path, maybeUnused: Language) = this(sourcePath)
 
+  override def isCpg: Boolean = true
+
   /**
    * Return the method signature as a language-appropriate String,
    * e.g. for Java: "public int foo(String bar)"

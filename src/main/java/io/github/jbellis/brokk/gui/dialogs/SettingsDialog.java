@@ -12,6 +12,7 @@ import javax.swing.*;
 import java.awt.*;
 
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
+import java.util.Arrays; // Import the Arrays class
 
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -47,6 +48,7 @@ public class SettingsDialog extends JDialog {
     // Project -> General tab specific fields
     private JTextArea styleGuideArea;
     private JTextArea commitFormatArea;
+    private JComboBox<io.github.jbellis.brokk.analyzer.Language> languageComboBox; // Project language selector
 
 
     public SettingsDialog(Frame owner, Chrome chrome) {
@@ -381,6 +383,23 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = row++; // Increment row after adding combo box
         gbc.weightx = 1.0;
         otherPanel.add(cpgRefreshComboBox, gbc);
+
+        // --- Project Language ---
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        otherPanel.add(new JLabel("Code Intelligence:"), gbc);
+        // Populate with all languages except NONE
+        var availableLanguages = Arrays.stream(io.github.jbellis.brokk.analyzer.Language.values())
+                .filter(lang -> lang != io.github.jbellis.brokk.analyzer.Language.NONE)
+                .toArray(io.github.jbellis.brokk.analyzer.Language[]::new);
+        languageComboBox = new JComboBox<>(availableLanguages);
+        languageComboBox.setSelectedItem(project.getAnalyzerLanguage());
+        gbc.gridx = 1;
+        gbc.gridy = row++; // Increment row after adding combo box
+        gbc.weightx = 1.0;
+        otherPanel.add(languageComboBox, gbc);
+
 
         // --- Style Guide Editor ---
         gbc.gridx = 0;
@@ -883,7 +902,13 @@ public class SettingsDialog extends JDialog {
             // Apply CPG Refresh Setting
             var selectedRefresh = (Project.CpgRefresh) cpgRefreshComboBox.getSelectedItem();
             if (selectedRefresh != project.getCpgRefresh()) {
-                project.setCpgRefresh(selectedRefresh);
+                project.setAnalyzerRefresh(selectedRefresh);
+            }
+
+            // Apply Project Language
+            var selectedLanguage = (io.github.jbellis.brokk.analyzer.Language) languageComboBox.getSelectedItem();
+            if (selectedLanguage != null && selectedLanguage != project.getAnalyzerLanguage()) {
+                project.setAnalyzerLanguage(selectedLanguage); // This might trigger analyzer rebuild
             }
 
             // Apply Style Guide

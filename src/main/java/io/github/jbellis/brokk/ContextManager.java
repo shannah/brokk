@@ -836,12 +836,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public boolean addSummaries(Set<ProjectFile> files, Set<CodeUnit> classes) {
         IAnalyzer analyzer;
         analyzer = getAnalyzerUninterrupted();
-        if (!analyzer.isCpg() && files.isEmpty() && classes.isEmpty()) { // Check if analyzer is needed
+        if (analyzer.isEmpty()) {
             io.toolErrorRaw("Code Intelligence is empty; nothing to add");
-            // If analyzer isn't ready and we have inputs, warn but allow proceeding if possible
-            // (e.g., if only files are provided and getSkeletons doesn't strictly require CPG)
-            // For now, we require CPG for any summarization.
-            io.toolErrorRaw("Code Intelligence is not ready; cannot generate summaries.");
             return false;
         }
 
