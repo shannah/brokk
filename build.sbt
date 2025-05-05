@@ -2,7 +2,7 @@ import sbt.*
 import sbt.Keys.*
 
 scalaVersion := "3.5.2"
-version := "0.8.0-SNAPSHOT"
+version := "0.9.0"
 organization := "io.github.jbellis"
 name := "brokk"
 
@@ -24,7 +24,6 @@ scalacOptions ++= Seq(
 )
 
 val jlamaVersion = "1.0.0-beta3" // Assuming this matches langchain4j-jlama
-
 // Additional repositories
 resolvers ++= Seq(
   "Gradle Libs" at "https://repo.gradle.org/gradle/libs-releases",

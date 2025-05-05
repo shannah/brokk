@@ -4,6 +4,13 @@
     "brokk": {
       "script-ref": "https://github.com/jbellis/brokk/releases/download/0.7.2/brokk-assembly-0.7.2.jar",
       "java": "21"
+    },
+    "brokk-0.9": {
+      "script-ref": "https://github.com/jbellis/brokk/releases/download/0.7.2/brokk-assembly-0.7.2.jar",
+      "java": "21",
+      "java-options": [
+        "--add-modules=jdk.incubator.vector"
+      ]
     }
   },
   "templates": {}
