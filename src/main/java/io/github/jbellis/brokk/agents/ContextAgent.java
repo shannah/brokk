@@ -441,7 +441,7 @@ public class ContextAgent {
                         ((ContextFragment.SkeletonFragment)f).skeletons().containsKey(cls));
     }
 
-    private LlmRecommendation askLlmToRecommendContext(@NotNull List<ProjectFile> filesToConsider,
+    private LlmRecommendation askLlmToRecommendContext(List<String> filenames,
                                                        @NotNull Map<CodeUnit, String> summaries,
                                                        @NotNull Map<ProjectFile, String> contentsMap,
                                                        @NotNull Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
@@ -459,7 +459,7 @@ public class ContextAgent {
             contextTypeElement = "available_file_paths";
             contextTypeDescription = "a list of file paths";
         }
-        assert !summaries.isEmpty() || !contentsMap.isEmpty() || !filesToConsider.isEmpty();
+        assert !summaries.isEmpty() || !contentsMap.isEmpty() || !filenames.isEmpty();
 
         // exactly one of filesToConsider, summaries, and contentsMap should be non-empty, depending on whether
         // we're recommending based on filenames, summaries, or full file contents, respectively
@@ -521,9 +521,7 @@ public class ContextAgent {
                     .collect(Collectors.joining("\n\n"));
             userMessageText.append("<%s>\n%s\n</%s>\n\n".formatted(contextTypeElement, filesText, contextTypeElement));
         } else { // Only provide paths if contents/summaries aren't already there
-            var filesText = filesToConsider.stream()
-                    .map(ProjectFile::toString)
-                    .collect(Collectors.joining("\n"));
+            var filesText = String.join("\n", filenames);
             userMessageText.append("<%s>\n%s\n</%s>\n\n".formatted(contextTypeElement, filesText, contextTypeElement));
         }
 
@@ -640,7 +638,7 @@ public class ContextAgent {
         }
 
         // Ask LLM to recommend files based *only* on paths
-        var llmRecommendation = askLlmToRecommendContext(allFiles, Map.of(), Map.of(), workspaceRepresentation);
+        var llmRecommendation = askLlmToRecommendContext(allFiles.stream().map(ProjectFile::toString).toList(), Map.of(), Map.of(), workspaceRepresentation);
         return createResult(llmRecommendation);
     }
 
