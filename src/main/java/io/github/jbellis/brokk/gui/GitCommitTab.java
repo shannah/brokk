@@ -235,7 +235,7 @@ public class GitCommitTab extends JPanel {
             List<ProjectFile> selectedFiles = getSelectedFilesFromTable();
             // Execute the suggestion task and handle the result on the EDT
             Future<String> suggestionFuture = suggestMessageAsync(selectedFiles);
-            contextManager.submitUserTask("Handling suggestion result", () -> {
+            contextManager.submitContextTask("Handling suggestion result", () -> {
                 try {
                     String suggestedMessage = suggestionFuture.get();
                     setCommitMessageText(suggestedMessage);
