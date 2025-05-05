@@ -147,6 +147,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         stopButton = new JButton("Stop");
         stopButton.setToolTipText("Cancel the current operation");
+        stopButton.setEnabled(false); // Start disabled, enabled when an action runs
         stopButton.addActionListener(e -> chrome.getContextManager().interruptUserActionThread());
 
         configureModelsButton = new JButton("Configure Models...");
@@ -995,9 +996,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void triggerDeepScan(ActionEvent e) {
         var goal = getInstructions();
+        deepScanButton.setEnabled(false);
         try {
             DeepScanDialog.triggerDeepScan(chrome, goal);
         } finally {
+            deepScanButton.setEnabled(true);
             chrome.getContextManager().submitBackgroundTask("", this::checkBalanceAndNotify);
         }
     }
@@ -1403,6 +1406,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
+            deepScanButton.setEnabled(false);
             stopButton.setEnabled(true);
             chrome.disableHistoryPanel();
         });
@@ -1429,7 +1433,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             codeButton.setEnabled(projectLoaded);
             askButton.setEnabled(projectLoaded);
             searchButton.setEnabled(projectLoaded);
-            runButton.setEnabled(true);
+            runButton.setEnabled(true); // Run button is always enabled
+            deepScanButton.setEnabled(projectLoaded && commandInputField.isEnabled()); // Enable deep scan if input is active
             stopButton.setEnabled(false);
             configureModelsButton.setEnabled(projectLoaded);
             chrome.enableHistoryPanel();
