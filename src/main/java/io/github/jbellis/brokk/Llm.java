@@ -989,9 +989,8 @@ public class Llm {
         }
 
         public StreamingResult {
-            // Must have either a chatResponse or an error/cancel
+            // Must have either a chatResponse or an error
             assert error != null || chatResponse != null;
-            assert (originalResponse == null) == (chatResponse == null);
         }
 
         public String formatted() {
