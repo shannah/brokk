@@ -560,6 +560,7 @@ public class ContextAgent {
                     }
                 })
                 .filter(Objects::nonNull)
+                .filter(ProjectFile::exists)
                 .toList();
 
         var projectClasses = contextTool.getRecommendedClasses().stream()
