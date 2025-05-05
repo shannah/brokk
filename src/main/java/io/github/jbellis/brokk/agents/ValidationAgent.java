@@ -95,7 +95,7 @@ public class ValidationAgent {
 
         // send the request
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
-        logger.debug("Invoking quickModel via Coder for initial test file filtering. Prompt:\n{}", userMessage);
+        logger.trace("Invoking quickModel via Coder for initial test file filtering. Prompt:\n{}", userMessage);
         var result = llm.sendRequest(messages);
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
@@ -104,7 +104,7 @@ public class ValidationAgent {
         }
 
         var llmResponse = result.chatResponse().aiMessage().text();
-        logger.debug("Coder response for initial filtering:\n{}", llmResponse);
+        logger.trace("Coder response for initial filtering:\n{}", llmResponse);
 
         return parseSuggestedFiles(llmResponse, allTestFiles);
     }
@@ -145,10 +145,9 @@ public class ValidationAgent {
     private RelevanceResult isFileRelevant(ProjectFile file, String instructions, Llm llm) {
         String fileContent;
         try {
-            // Use Files.readString to read content; handle potential IOException
-            fileContent = Files.readString(file.absPath());
+            fileContent = file.read();
         } catch (IOException e) {
-            logger.debug("Could not read content of test file: {}", file, e);
+            logger.warn("Could not read content of test file: {}", file, e);
             return new RelevanceResult(file, false); // Assume irrelevant if unreadable
         }
 
@@ -174,7 +173,7 @@ public class ValidationAgent {
         var messages = List.of(new SystemMessage(systemMessage), new UserMessage(userMessage));
 
         for (int attempt = 1; attempt <= MAX_RELEVANCE_TRIES; attempt++) {
-            logger.debug("Invoking quickModel via Coder for relevance check of file: {} (Attempt {}/{})", file, attempt, MAX_RELEVANCE_TRIES);
+            logger.trace("Invoking quickModel via Coder for relevance check of file: {} (Attempt {}/{})", file, attempt, MAX_RELEVANCE_TRIES);
             // Use Coder to send the request
             Llm.StreamingResult result;
             try {
@@ -191,7 +190,7 @@ public class ValidationAgent {
             }
 
             var llmResponse = result.chatResponse().aiMessage().text().strip();
-            logger.debug("Coder response for relevance check of {} (Attempt {}): {}", file, attempt, llmResponse);
+            logger.trace("Coder response for relevance check of {} (Attempt {}): {}", file, attempt, llmResponse);
 
             // Check if the response contains exactly one of the markers
             boolean containsRelevant = llmResponse.contains(RELEVANT_MARKER);
@@ -203,7 +202,7 @@ public class ValidationAgent {
                 return new RelevanceResult(file, false);
             }
 
-            logger.warn("Ambiguous response for relevance check of {} (Attempt {}): {}", file, attempt, llmResponse);
+            logger.debug("Ambiguous response for relevance check of {} (Attempt {}): {}", file, attempt, llmResponse);
             messages.add(result.chatResponse().aiMessage());
             messages.add(new UserMessage("You must respond with exactly one of the markers {%s, %s}".formatted(RELEVANT_MARKER, IRRELEVANT_MARKER)));
         }
