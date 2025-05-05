@@ -11,8 +11,8 @@ import java.awt.geom.RoundRectangle2D;
  * Base component for chat message panels with common styling and structure.
  * Provides a standardized layout with header (icon + title) and content area.
  */
-public class BaseChatMessagePanel extends JPanel {
-    private static final Logger logger = LogManager.getLogger(BaseChatMessagePanel.class);
+public class MessageBubble extends JPanel {
+    private static final Logger logger = LogManager.getLogger(MessageBubble.class);
 
     /**
      * A panel that draws a rounded background and a highlight bar on the left.
@@ -89,9 +89,9 @@ public class BaseChatMessagePanel extends JPanel {
      * @param messageBgColor   The background color for the message (optional)
      * @param chatBgColor      The background color for the chat panel (optional)
      */
-    public BaseChatMessagePanel(String title, String iconText, Component contentComponent,
-                                boolean isDarkTheme, Color highlightColor, 
-                                Color messageBgColor, Color chatBgColor)
+    public MessageBubble(String title, String iconText, Component contentComponent,
+                         boolean isDarkTheme, Color highlightColor,
+                         Color messageBgColor, Color chatBgColor)
     {
         initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
                    messageBgColor, chatBgColor);
@@ -107,8 +107,8 @@ public class BaseChatMessagePanel extends JPanel {
      * @param highlightColor   The color to use for the left highlight bar
      * @param messageBgColor   The background color for the message (optional)
      */
-    public BaseChatMessagePanel(String title, String iconText, Component contentComponent,
-                                boolean isDarkTheme, Color highlightColor, Color messageBgColor)
+    public MessageBubble(String title, String iconText, Component contentComponent,
+                         boolean isDarkTheme, Color highlightColor, Color messageBgColor)
     {
         initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
                    messageBgColor, null);
@@ -123,8 +123,8 @@ public class BaseChatMessagePanel extends JPanel {
      * @param isDarkTheme      Whether dark theme is active
      * @param highlightColor   The color to use for the left highlight bar
      */
-    public BaseChatMessagePanel(String title, String iconText, Component contentComponent,
-                                boolean isDarkTheme, Color highlightColor)
+    public MessageBubble(String title, String iconText, Component contentComponent,
+                         boolean isDarkTheme, Color highlightColor)
     {
         initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
                    null, null);

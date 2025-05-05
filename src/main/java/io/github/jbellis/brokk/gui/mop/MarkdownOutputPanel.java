@@ -4,13 +4,11 @@ import dev.langchain4j.data.message.*;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -223,7 +221,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         messageRenderers.add(renderer);
         
         // Create the base panel with the renderer's root component
-        var basePanel = new BaseChatMessagePanel(
+        var basePanel = new MessageBubble(
             title, 
             iconText, 
             renderer.getRoot(), 
