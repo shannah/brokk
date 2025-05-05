@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui.mop;
 import dev.langchain4j.data.message.*;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.TaskEntry;
+import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
@@ -41,6 +42,9 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
 
     // Parallel list of UI components for each message (1:1 mapping with messages)
     private final List<Component> messageComponents = new ArrayList<>();
+    
+    // Track renderers for each message (parallel to messageComponents)
+    private final List<IncrementalBlockRenderer> messageRenderers = new ArrayList<>();
 
     // Listeners to notify whenever text changes
     private final List<Runnable> textChangeListeners = new ArrayList<>();
@@ -52,15 +56,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     public MarkdownOutputPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(true);
-        
-        // Initialize message renderers
-        aiRenderer = new io.github.jbellis.brokk.gui.mop.AIMessageRenderer();
-        userRenderer = new io.github.jbellis.brokk.gui.mop.UserMessageRenderer();
-        customRenderer = new io.github.jbellis.brokk.gui.mop.CustomMessageRenderer();
-    }
-
-    public void setParser(EditBlockParser parser) {
-        aiRenderer.setParser(parser);
     }
 
     /**
@@ -128,6 +123,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
     private void internalClear() {
         messages.clear();
         messageComponents.clear();
+        messageRenderers.clear();
         removeAll();
         spinnerPanel = null;
     }
@@ -167,33 +163,14 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         var lastMessage = messages.getLast();
         var newText = Messages.getRepr(lastMessage) + additionalText;
         var type = lastMessage.type();
-
-        // Create a new message with the combined text
+        
+        // Get the renderer for the last message
+        var lastRenderer = messageRenderers.getLast();
+        lastRenderer.update(newText);
+        
+        // Create a new message with the combined text and update our model
         ChatMessage updatedMessage = Messages.create(newText, type);
-
-        // Replace the last message
         messages.set(messages.size() - 1, updatedMessage);
-
-        // Remove the last component
-        Component lastComponent = messageComponents.getLast();
-        remove(lastComponent);
-
-        // If spinner is showing, remove it temporarily
-        boolean spinnerWasVisible = false;
-        if (spinnerPanel != null) {
-            remove(spinnerPanel);
-            spinnerWasVisible = true;
-        }
-
-        // Create new component and update the lists
-        Component newComponent = renderMessageComponent(updatedMessage);
-        messageComponents.set(messageComponents.size() - 1, newComponent);
-        add(newComponent);
-
-        // Re-add spinner if it was visible
-        if (spinnerWasVisible) {
-            add(spinnerPanel);
-        }
 
         revalidate();
         repaint();
@@ -213,10 +190,53 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             spinnerWasVisible = true;
         }
 
-        // Create component for this message
-        Component component = renderMessageComponent(message);
-        messageComponents.add(component);
-        add(component);
+        // Determine styling based on message type
+        String title = null;
+        String iconText = null;
+        Color highlightColor = null;
+        
+        switch (message.type()) {
+            case AI:
+                title = "Brokk";
+                iconText = "\uD83D\uDCBB"; // Unicode for computer emoji
+                highlightColor = ThemeColors.getColor(isDarkTheme, "message_border_ai");
+                break;
+            case USER:
+                title = "You";
+                iconText = "\uD83D\uDCBB"; // Unicode for computer emoji
+                highlightColor = ThemeColors.getColor(isDarkTheme, "message_border_user");
+                break;
+            case CUSTOM:
+            case SYSTEM:
+                title = "System";
+                iconText = "\uD83D\uDCBB"; // Unicode for computer emoji
+                highlightColor = ThemeColors.getColor(isDarkTheme, "message_border_custom");
+                break;
+            default:
+                title = message.type().toString();
+                iconText = "\uD83D\uDCBB"; // Unicode for computer emoji
+                highlightColor = ThemeColors.getColor(isDarkTheme, "message_border_custom");
+        }
+        
+        // Create a new renderer for this message
+        var renderer = new IncrementalBlockRenderer(isDarkTheme);
+        messageRenderers.add(renderer);
+        
+        // Create the base panel with the renderer's root component
+        var basePanel = new BaseChatMessagePanel(
+            title, 
+            iconText, 
+            renderer.getRoot(), 
+            isDarkTheme, 
+            highlightColor
+        );
+        
+        // Add the component to our UI
+        messageComponents.add(basePanel);
+        add(basePanel);
+        
+        // Update the renderer with the message content
+        renderer.update(Messages.getText(message));
 
         // Re-add spinner if it was visible
         if (spinnerWasVisible) {
@@ -242,7 +262,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             return;
         }
 
-        setParser(newOutput.parser());
         setText(newOutput.messages());
     }
 
@@ -254,10 +273,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         }
         
         for (var message : messages) {
-            Component component = renderMessageComponent(message);
-            this.messages.add(message);
-            messageComponents.add(component);
-            add(component);
+            addNewMessage(message);
         }
 
         revalidate();
@@ -283,7 +299,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             setText(List.of(Messages.customSystem(taskEntry.summary())));
         } else {
             var taskFragment = taskEntry.log();
-            setParser(taskFragment.parser());
             setText(taskFragment.messages());
         }
     }
@@ -315,55 +330,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         textChangeListeners.add(listener);
     }
 
-    // Message renderers for different message types
-    private final AIMessageRenderer aiRenderer;
-    private final UserMessageRenderer userRenderer;
-    private final CustomMessageRenderer customRenderer;
-
-    /**
-         * Renders a single message component based on its type
-         */
-        private Component renderMessageComponent(ChatMessage message) {
-            return switch (message.type()) {
-                case AI -> aiRenderer.renderComponent(message, isDarkTheme);
-                case USER -> userRenderer.renderComponent(message, isDarkTheme);
-                case CUSTOM -> customRenderer.renderComponent(message, isDarkTheme);
-                default -> {
-                    // Default case for other message types
-                        JPanel messagePanel = new JPanel();
-                        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
-                        messagePanel.setBackground(ThemeColors.getColor(isDarkTheme, "message_background"));
-                        messagePanel.setAlignmentX(LEFT_ALIGNMENT);
-                        messagePanel.add(createPlainTextPane(Messages.getRepr(message)));
-                        messagePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, messagePanel.getPreferredSize().height));
-                        yield messagePanel;
-                }
-            };
-        }
-
-    /**
-             * Creates a JEditorPane configured for plain text display.
-             * Ensures background color matches the theme.
-             */
-            private JEditorPane createPlainTextPane(String text) {
-                var plainPane = new JEditorPane();
-                DefaultCaret caret = (DefaultCaret) plainPane.getCaret();
-                caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
-                plainPane.setContentType("text/plain"); // Set content type to plain text
-                plainPane.setText(text); // Set text directly
-                plainPane.setEditable(false);
-                plainPane.setAlignmentX(LEFT_ALIGNMENT);
-                plainPane.setBackground(ThemeColors.getColor(isDarkTheme, "message_background"));
-                plainPane.setForeground(ThemeColors.getColor(isDarkTheme, "plain_text_foreground"));
-            
-            // Configure text wrapping correctly
-                        plainPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-                        plainPane.putClientProperty("caretWidth", 0); // Hide caret
-                        // Don't constrain height, let component determine its own preferred size based on content
-                        plainPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
-            
-            return plainPane;
-        }
 
     // --- Spinner Logic ---
 
