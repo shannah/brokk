@@ -45,6 +45,7 @@ public class GitLogTab extends JPanel {
     // Commits
     private JTable commitsTable;
     private DefaultTableModel commitsTableModel;
+    private JButton pullButton; // Used for local branches
     private JButton pushButton; // Used for local branches
 
     // Changes tree
@@ -399,6 +400,12 @@ public class GitLogTab extends JPanel {
 
         // Buttons below commits table
         JPanel commitsPanelButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        pullButton = new JButton("Pull");
+        pullButton.setToolTipText("Pull changes from remote repository");
+        pullButton.setEnabled(false);
+        pullButton.addActionListener(e -> pullBranch());
+        commitsPanelButtons.add(pullButton);
+
         pushButton = new JButton("Push");
         pushButton.setToolTipText("Push commits to remote repository");
         pushButton.setEnabled(false);
@@ -406,7 +413,7 @@ public class GitLogTab extends JPanel {
         commitsPanelButtons.add(pushButton);
         commitsPanel.add(commitsPanelButtons, BorderLayout.SOUTH);
 
-        // ============ Changes Panel (right ~25%) ============ 
+        // ============ Changes Panel (right ~25%) ============
 
         JPanel changesPanel = new JPanel(new BorderLayout());
         changesPanel.setBorder(BorderFactory.createTitledBorder("Changes"));
@@ -872,6 +879,7 @@ public class GitLogTab extends JPanel {
                 List<CommitInfo> commits;
                 Set<String> unpushedCommitIds = new HashSet<>();
                 boolean canPush = false;
+                boolean canPull = false;
 
                 // Special handling for stashes virtual branch
                 if ("stashes".equals(branchName)) {
@@ -886,9 +894,10 @@ public class GitLogTab extends JPanel {
                     commits = getRepo().listCommitsDetailed(branchName);
                     var isLocalBranch = branchName.equals(getRepo().getCurrentBranch()) || !branchName.contains("/");
                     if (isLocalBranch) {
+                        canPull = getRepo().hasUpstreamBranch(branchName);
                         try {
                             unpushedCommitIds.addAll(getRepo().getUnpushedCommitIds(branchName));
-                            canPush = !unpushedCommitIds.isEmpty() && getRepo().hasUpstreamBranch(branchName);
+                            canPush = !unpushedCommitIds.isEmpty() && canPull; // Can only push if upstream exists
                         } catch (GitAPIException e) {
                             logger.warn("Could not check for unpushed commits: {}", e.getMessage());
                         }
@@ -896,6 +905,7 @@ public class GitLogTab extends JPanel {
                 }
 
                 boolean finalCanPush = canPush;
+                boolean finalCanPull = canPull;
                 int unpushedCount = unpushedCommitIds.size();
                 List<CommitInfo> finalCommits = commits; // Keep final reference
 
@@ -920,6 +930,12 @@ public class GitLogTab extends JPanel {
                     commitsTableModel.setRowCount(0);
                     changesRootNode.removeAllChildren();
                     changesTreeModel.reload();
+
+                    pullButton.setEnabled(finalCanPull);
+                    pullButton.setToolTipText(finalCanPull
+                                               ? "Pull changes from remote for " + branchName
+                                               : "No upstream branch configured for " + branchName);
+                    pullButton.setVisible(!branchName.equals("stashes")); // Hide pull button for stashes
 
                     pushButton.setEnabled(finalCanPush);
                     pushButton.setToolTipText(finalCanPush
@@ -1053,6 +1069,53 @@ public class GitLogTab extends JPanel {
                 SwingUtilities.invokeLater(() ->
                                                    chrome.toolErrorRaw("Error performing soft reset: " + e.getMessage()));
             }
+        });
+    }
+
+    /**
+     * Pull changes from the remote for the current branch.
+     */
+    private void pullBranch() {
+        int selectedRow = branchTable.getSelectedRow();
+        if (selectedRow == -1) return;
+        String branchName = (String) branchTableModel.getValueAt(selectedRow, 1);
+
+        // Verify it's a local branch and has an upstream
+        boolean isLocalBranch = !branchName.contains("/") && !"stashes".equals(branchName);
+        if (!isLocalBranch) {
+            logger.warn("Attempted to pull non-local branch: {}", branchName);
+            return;
+        }
+
+        contextManager.submitBackgroundTask("Checking upstream for " + branchName, () -> {
+            boolean hasUpstream = getRepo().hasUpstreamBranch(branchName);
+            if (!hasUpstream) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        this,
+                        "The selected local branch '" + branchName + "' has no upstream branch configured.\n" +
+                                "You need to set an upstream (e.g., using `git branch --set-upstream-to=origin/" + branchName + "`) " +
+                                "before you can pull.",
+                        "No Upstream Branch",
+                        JOptionPane.WARNING_MESSAGE));
+                return null;
+            }
+
+            // Proceed with pull
+            contextManager.submitUserTask("Pulling changes for " + branchName, () -> {
+                try {
+                    getRepo().pull();
+                    SwingUtilities.invokeLater(() -> {
+                        chrome.systemOutput("Successfully pulled changes for " + branchName);
+                        updateCommitsForBranch(branchName); // Refresh commits after pull
+                        // Potentially refresh other parts of the UI if needed, e.g., uncommitted files
+                        chrome.getGitPanel().updateCommitPanel();
+                    });
+                } catch (GitAPIException e) {
+                    logger.error("Error pulling branch: {}", branchName, e);
+                    SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error pulling changes: " + e.getMessage()));
+                }
+            });
+            return null;
         });
     }
 

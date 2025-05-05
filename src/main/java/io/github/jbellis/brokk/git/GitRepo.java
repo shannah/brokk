@@ -266,6 +266,13 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
+     * Pull changes from the remote repository for the current branch
+     */
+    public void pull() throws GitAPIException {
+        git.pull().call();
+    }
+
+    /**
      * Get a set of commit IDs that exist in the local branch but not in its remote tracking branch
      */
     public Set<String> getUnpushedCommitIds(String branchName) throws GitAPIException {
