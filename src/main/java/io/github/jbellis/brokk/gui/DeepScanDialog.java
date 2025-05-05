@@ -241,7 +241,7 @@ class DeepScanDialog {
             JComboBox<String> comboBox = new JComboBox<>(options);
 
             // Determine default action based on fragment type
-            if (fragment instanceof ContextFragment.SkeletonFragment) {
+            if (fragment instanceof ContextFragment.SkeletonFragment && Arrays.asList(options).contains(SUMMARIZE)) {
                 comboBox.setSelectedItem(SUMMARIZE);
             } else if (fragment instanceof ContextFragment.ProjectPathFragment) {
                 // EDIT if the file is in git, otherwise READ
