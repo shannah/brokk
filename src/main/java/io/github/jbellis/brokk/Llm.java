@@ -275,6 +275,7 @@ public class Llm {
         int attempt = 0;
         var messages = Messages.forLlm(rawMessages);
 
+        StreamingResult response = null;
         while (attempt++ < maxAttempts) {
             String description = Messages.getText(messages.getLast());
             logger.debug("Sending request to {} attempt {}: {}",
@@ -284,7 +285,7 @@ public class Llm {
                 io.showOutputSpinner("Thinking...");
             }
 
-            var response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
+            response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
             if (response.error == null) {
                 // Check if we got a non-empty response
                 var cr = response.chatResponse;
@@ -329,7 +330,7 @@ public class Llm {
         }
         // Return last error - log error to the current request's file
         var cr = ChatResponse.builder().aiMessage(new AiMessage("Error: " + lastError.getMessage())).build();
-        return new StreamingResult(cr, lastError);
+        return new StreamingResult(cr, response.originalResponse(), lastError);
     }
 
     /**
