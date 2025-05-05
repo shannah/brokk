@@ -1009,7 +1009,7 @@ public class SettingsDialog extends JDialog {
         if (modelComboBox == null || reasoningComboBox == null) return; // Not initialized yet
 
         String selectedModelName = (String) modelComboBox.getSelectedItem();
-        boolean supportsReasoning = selectedModelName != null && models.supportsReasoning(selectedModelName);
+        boolean supportsReasoning = selectedModelName != null && models.supportsReasoningEffort(selectedModelName);
 
         reasoningComboBox.setEnabled(supportsReasoning);
         reasoningComboBox.setToolTipText(supportsReasoning ? "Select reasoning effort" : "Reasoning effort not supported by this model");

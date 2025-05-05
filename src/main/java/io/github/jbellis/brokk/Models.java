@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.CollectionType;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -304,8 +305,17 @@ public final class Models {
                                 modelInfo.put(key, value.asDouble());
                             } else if (value.isTextual()) {
                                 modelInfo.put(key, value.asText());
-                            } else if (value.isArray() || value.isObject()) {
-                                // Convert complex objects to String representation
+                            } else if (value.isArray()) {
+                                // Special handling for supported_openai_params
+                                try {
+                                    var type = objectMapper.getTypeFactory().constructCollectionType(List.class, String.class);
+                                    List<String> paramsList = objectMapper.convertValue(value, type);
+                                    modelInfo.put(key, paramsList);
+                                } catch (IllegalArgumentException e) {
+                                    logger.error("Could not parse array for model {}: {}", modelName, value.toString(), e);
+                                }
+                            } else if (value.isObject()) {
+                                // Convert objects to String representation
                                 modelInfo.put(key, value.toString());
                             }
                         }
@@ -393,27 +403,29 @@ public final class Models {
     }
 
     /**
-     * Checks if the model supports reasoning effort based on its metadata.
+     * Checks if the model supports reasoning effort by checking if "reasoning_effort"
+     * is listed in its "supported_openai_params" metadata.
      *
-     * @param modelName The display name of the model (e.g., "gemini-2.5-pro-exp-03-25").
-     * @return True if the model info contains `"supports_reasoning": true`, false otherwise.
+     * @param modelName The display name of the model (e.g., "gemini-2.5-pro-preview").
+     * @return True if "reasoning_effort" is in "supported_openai_params", false otherwise.
      */
-    public boolean supportsReasoning(String modelName) {
+    public boolean supportsReasoningEffort(String modelName) {
         var location = modelLocations.get(modelName);
         if (location == null) {
-            logger.warn("Location not found for model name {}, assuming no reasoning support.", modelName);
+            logger.warn("Location not found for model name {}, assuming no reasoning effort support.", modelName);
             return false;
         }
         var info = modelInfoMap.get(location);
         if (info == null) {
-            logger.warn("Model info not found for location {}, assuming no reasoning support.", location);
-            return false; // Assume not supported if info is missing
+            logger.warn("Model info not found for location {}, assuming no reasoning effort support.", location);
+            return false;
         }
-        var supports = info.get("supports_reasoning");
-        // supports_reasoning might not be present, treat null as false
-        return supports instanceof Boolean && (Boolean) supports;
-    }
 
+        //noinspection unchecked
+        var supportedParamsList = (List<String>) info.get("supported_openai_params");
+        return supportedParamsList.stream()
+                .anyMatch("reasoning_effort"::equals);
+    }
 
     /**
      * Retrieves or creates a StreamingChatLanguageModel for the given modelName and reasoning level.
@@ -470,7 +482,7 @@ public final class Models {
                     .temperature(temperature);
             // Apply reasoning effort if not default and supported
             logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
-            if (supportsReasoning(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
+            if (supportsReasoningEffort(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
                 params = params.reasoningEffort(reasoningLevel.name().toLowerCase());
             }
             builder.defaultRequestParameters(params.build());
