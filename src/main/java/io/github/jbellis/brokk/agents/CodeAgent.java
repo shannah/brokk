@@ -760,7 +760,7 @@ public class CodeAgent {
         // Build failed
         io.llmOutput("""
                      \n**Verification Failed:** %s
-                     ```
+                     ```bash
                      %s
                      ```
                      """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM);

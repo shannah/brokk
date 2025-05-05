@@ -1,15 +1,6 @@
 package io.github.jbellis.brokk.gui.mop.stream;
 
-import io.github.jbellis.brokk.git.GitStatus;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.CodeBlockComponentData;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.CodeBlockFactory;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentData;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentDataFactory;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.CompositeComponentData;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.EditBlockComponentData;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.EditBlockFactory;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownFactory;
+import io.github.jbellis.brokk.gui.mop.stream.blocks.*;
 import io.github.jbellis.brokk.gui.mop.stream.flex.IdProvider;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;

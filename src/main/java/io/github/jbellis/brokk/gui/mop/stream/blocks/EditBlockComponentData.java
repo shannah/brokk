@@ -23,7 +23,7 @@ public record EditBlockComponentData(int id, int adds, int dels, int changed, St
      */
     private String symbolFor(GitStatus status) {
         return switch (status) {
-            case UNKNOWN -> "?";
+            case UNKNOWN -> "";
             case ADDED -> "A";
             case MODIFIED -> "M";
             case DELETED -> "D";

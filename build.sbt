@@ -104,6 +104,7 @@ assembly / assemblyMergeStrategy := {
   case _ => MergeStrategy.first
 }
 assembly / mainClass := Some("io.github.jbellis.brokk.Brokk")
+Compile / mainClass := Some("io.github.jbellis.brokk.Brokk")
 
 testFrameworks += new TestFramework("com.github.sbt.junit.JupiterFramework")
 
