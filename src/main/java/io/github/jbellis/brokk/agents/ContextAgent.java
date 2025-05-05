@@ -443,13 +443,27 @@ public class ContextAgent {
 
     private LlmRecommendation askLlmToRecommendContext(List<String> filenames,
                                                        @NotNull Map<CodeUnit, String> summaries,
-                                                       @NotNull Map<ProjectFile, String> contentsMap,
-                                                       @NotNull Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
+                                                         @NotNull Map<ProjectFile, String> contentsMap,
+                                                         @NotNull Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
     {
-        // Determine the type of context being provided
+        if (deepScan) {
+            return askLlmDeepRecommendContext(filenames, summaries, contentsMap, workspaceRepresentation);
+        } else {
+            return askLlmQuickRecommendContext(filenames, summaries, contentsMap, workspaceRepresentation);
+        }
+    }
+
+    // --- Deep Scan (Tool-based) Recommendation ---
+
+    private LlmRecommendation askLlmDeepRecommendContext(List<String> filenames,
+                                                         @NotNull Map<CodeUnit, String> summaries,
+                                                         @NotNull Map<ProjectFile, String> contentsMap,
+                                                         @NotNull Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
+    {
+         // Determine the type of context being provided
         String contextTypeElement;
         String contextTypeDescription;
-        if (!summaries.isEmpty()) {
+         if (!summaries.isEmpty()) {
             contextTypeElement = "available_summaries";
             contextTypeDescription = "a list of class summaries";
         } else if (!contentsMap.isEmpty()) {
@@ -480,27 +494,12 @@ public class ContextAgent {
                                  Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
                                  
                                  Either or both of `filesToAdd` and `classesToSummarize` may be empty.
-                                 """;
-         var deepPrompt = deepPromptTemplate.formatted(contextTypeDescription, contextTypeElement).stripIndent();
+                                 """.formatted(contextTypeDescription, contextTypeElement).stripIndent();
 
-        var quikPromptTemplate = """
-                                 You are an assistant that identifies relevant code context based on a goal and available information.
-                                 You are given a goal, the current workspace contents (if any), and %s (within <%s> tags).
-                                 Analyze the provided information and determine which items are most relevant to achieving the goal.
-                                 You MUST call the `recommendContext` tool to provide your recommendations.
-                                 DO NOT recommend files or classes that are already in the Workspace.
-                                 
-                                 %s
-                                 """;
-        var quikToolInstructions = contextTypeElement.equals("available_summaries")
-                                   ? "Populate the `classesToSummarize` argument with the fully-qualified names of the 10 most relevant classes.\n"
-                                   : "Populate the `filesToAdd` argument with the full (relative) paths of the %d most relevant files.\n";
-         var quikPrompt = quikPromptTemplate.formatted(contextTypeDescription, contextTypeElement, QUICK_TOPK, quikToolInstructions).stripIndent();
+        var finalSystemMessage = new SystemMessage(deepPromptTemplate);
+        var userMessageText = new StringBuilder();
 
-         var finalSystemMessage = new SystemMessage(deepScan ? deepPrompt : quikPrompt);
-         var userMessageText = new StringBuilder();
-
-        // Add context data based on type
+        // Add context data based on type (Deep Scan version)
         if (!summaries.isEmpty()) {
             var summariesText = summaries.entrySet().stream()
                     .map(entry -> {
@@ -508,10 +507,8 @@ public class ContextAgent {
                         var body = entry.getValue();
                         // Map Optional<ProjectFile> to String filename, defaulting if not present
                         var filename = analyzer.getFileFor(cn.fqName()).map(ProjectFile::toString).orElse("unknown");
-                        return deepScan
-                               ? "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), filename, body)
-                               // avoid confusing quick model by giving it the filename
-                               : "<class fqcn='%s'>\n%s\n</class>".formatted(cn.fqName(), body);
+                        // Always include filename for deep scan
+                        return "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), filename, body);
                     })
                     .collect(Collectors.joining("\n\n"));
             userMessageText.append("<%s>\n%s\n</%s>\n\n".formatted(contextTypeElement, summariesText, contextTypeElement));
@@ -545,7 +542,7 @@ public class ContextAgent {
         }
         var aiMessage = result.chatResponse().aiMessage();
         var toolRequests = aiMessage.toolExecutionRequests();
-        logger.trace(toolRequests);
+        debug("LLM ToolRequests: %s", toolRequests);
         // only one call is necessary but handle LLM making multiple calls
         for (var request : toolRequests) {
             contextManager.getToolRegistry().executeTool(contextTool, request);
@@ -572,7 +569,156 @@ public class ContextAgent {
                  .filter(CodeUnit::isClass) // Ensure it's actually a class
                  .toList();
 
+        debug("Tool recommended files: %s", projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
+        debug("Tool recommended classes: %s", projectClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
         return new LlmRecommendation(projectFiles, projectClasses, reasoning);
+    }
+
+    // --- Quick Scan (Simple Prompt) Recommendation ---
+
+    /**
+     * Enum to define the type of context input being provided to the simple LLM prompt.
+     */
+    private enum ContextInputType {
+        SUMMARIES("available_summaries", "code summaries", "classes", "fully qualified names"),
+        FILES_CONTENT("available_files_content", "files with their content", "files", "full paths"),
+        FILE_PATHS("available_file_paths", "file paths", "files", "full paths");
+
+        final String xmlTag;
+        final String description; // e.g., "code summaries"
+        final String itemTypePlural; // e.g., "classes" or "files"
+        final String identifierDescription; // e.g., "fully qualified names" or "full paths"
+
+        ContextInputType(String xmlTag, String description, String itemTypePlural, String identifierDescription) {
+            this.xmlTag = xmlTag;
+            this.description = description;
+            this.itemTypePlural = itemTypePlural;
+            this.identifierDescription = identifierDescription;
+        }
+    }
+
+    private LlmRecommendation askLlmQuickRecommendContext(List<String> filenames,
+                                                          @NotNull Map<CodeUnit, String> summaries,
+                                                          @NotNull Map<ProjectFile, String> contentsMap,
+                                                          @NotNull Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
+    {
+        String reasoning = "LLM recommended via simple prompt.";
+        List<ProjectFile> recommendedFiles = List.of();
+        List<CodeUnit> recommendedClasses = List.of();
+        List<String> responseLines;
+
+        if (!summaries.isEmpty()) {
+            var summariesText = summaries.entrySet().stream()
+                    .map(entry -> "<class fqcn='%s'>\n%s\n</class>".formatted(entry.getKey().fqName(), entry.getValue()))
+                    .collect(Collectors.joining("\n\n"));
+            responseLines = simpleRecommendItems(ContextInputType.SUMMARIES, summariesText, QUICK_TOPK, workspaceRepresentation);
+
+            // Find original CodeUnit objects matching the response lines
+            recommendedClasses = summaries.keySet().stream()
+                    .filter(cu -> responseLines.contains(cu.fqName()))
+                    .toList();
+            debug("LLM simple suggested {} relevant classes", recommendedClasses.size());
+
+            // Apply topK limit *after* matching
+            if (recommendedClasses.size() > QUICK_TOPK) {
+                recommendedClasses = recommendedClasses.subList(0, QUICK_TOPK);
+            }
+        } else if (!contentsMap.isEmpty()) {
+            var filesText = contentsMap.entrySet().stream()
+                    .map(entry -> "<file path='%s'>\n%s\n</file>".formatted(entry.getKey().toString(), entry.getValue()))
+                    .collect(Collectors.joining("\n\n"));
+            responseLines = simpleRecommendItems(ContextInputType.FILES_CONTENT, filesText, QUICK_TOPK, workspaceRepresentation);
+
+            // Find original ProjectFile objects matching the response lines
+            recommendedFiles = contentsMap.keySet().stream()
+                    .filter(pf -> responseLines.contains(pf.toString()))
+                    .toList();
+            debug("LLM simple suggested {} relevant files", recommendedFiles.size());
+
+            // Apply topK limit *after* matching
+            if (recommendedFiles.size() > QUICK_TOPK) {
+                recommendedFiles = recommendedFiles.subList(0, QUICK_TOPK);
+            }
+        } else { // Filenames only
+            var filenameString = String.join("\n", filenames);
+            responseLines = simpleRecommendItems(ContextInputType.FILE_PATHS, filenameString, null, workspaceRepresentation); // No topK for pruning
+
+            // Convert response strings back to ProjectFile objects
+            var allFilesMap = contextManager.getProject().getAllFiles().stream()
+                    .collect(Collectors.toMap(ProjectFile::toString, pf -> pf));
+            recommendedFiles = responseLines.stream()
+                    .map(allFilesMap::get)
+                    .filter(Objects::nonNull)
+                    .toList();
+            debug("LLM simple suggested {} relevant files after pruning", recommendedFiles.size());
+        }
+
+        debug("Quick scan recommended files: %s", recommendedFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
+        debug("Quick scan recommended classes: %s", recommendedClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
+        return new LlmRecommendation(recommendedFiles, recommendedClasses, reasoning);
+    }
+
+
+    /**
+     * Generic method to ask the LLM (Quick mode) to select relevant items (classes or files) based on input data.
+     *
+     * @param inputType The type of input being provided (summaries, file contents, or file paths).
+     * @param inputBlob A string containing the formatted input data (e.g., XML-like structure of summaries or file contents).
+     * @param topK      Optional limit on the number of items to return.
+     * @param workspaceRepresentation Messages representing the current workspace state.
+     * @return A list of strings representing the identifiers (FQNs or paths) recommended by the LLM.
+     */
+    private List<String> simpleRecommendItems(ContextInputType inputType,
+                                              String inputBlob,
+                                              Integer topK,
+                                              Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
+    {
+        var systemMessage = new StringBuilder("""
+                                              You are an assistant that identifies relevant %s based on a goal.
+                                              Given a list of %s and a goal, identify which %s are most relevant to achieving the goal.
+                                              Output *only* the %s of the relevant %s, one per line, ordered from most to least relevant.
+                                              Do not include any other text, explanations, or formatting.
+                                              """.formatted(inputType.itemTypePlural, inputType.description, inputType.itemTypePlural, inputType.identifierDescription, inputType.itemTypePlural).stripIndent());
+
+        if (topK != null) {
+            systemMessage.append("\nLimit your response to the top %d most relevant %s.".formatted(topK, inputType.itemTypePlural));
+        }
+
+        var finalSystemMessage = new SystemMessage(systemMessage.toString());
+        var userPrompt = """
+                         <goal>
+                         %s
+                         </goal>
+                         
+                         <%s>
+                         %s
+                         </%s>
+                         
+                         Which of these %s are most relevant to the goal? Take into consideration what is already in the workspace (provided as prior messages), and list their %s, one per line.
+                         """.formatted(goal, inputType.xmlTag, inputBlob, inputType.xmlTag, inputType.itemTypePlural, inputType.identifierDescription).stripIndent();
+
+        List<ChatMessage> messages = Stream.concat(Stream.of(finalSystemMessage),
+                                                   Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userPrompt))))
+                .toList();
+        int promptTokens = Messages.getApproximateTokens(messages);
+        debug("Invoking LLM (Quick) to select relevant %s (prompt size ~%d tokens)", inputType.itemTypePlural, promptTokens);
+        var result = llm.sendRequest(messages); // No tools
+
+        if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
+            logger.warn("Error or empty response from LLM during quick %s selection: {}. Returning empty.",
+                        inputType.itemTypePlural, result.error() != null ? result.error().getMessage() : "Empty response");
+            return List.of();
+        }
+
+        var responseText = result.chatResponse().aiMessage().text();
+        if (responseText == null || responseText.isBlank()) {
+            logger.warn("Empty text response from LLM during quick %s selection. Returning empty.", inputType.itemTypePlural);
+            return List.of();
+        }
+
+        var responseLines = responseText.lines().map(String::strip).filter(s -> !s.isEmpty()).toList();
+        debug("LLM simple response lines (%s): %s", inputType.itemTypePlural, responseLines);
+        return responseLines;
     }
 
     // --- Logic branch for using full file contents (when analyzer is not available or summaries failed) ---
@@ -590,11 +736,21 @@ public class ContextAgent {
         debug("Total tokens for {} files' content: {}", contentsMap.size(), contentTokens);
 
         // Rule 1: Use all available files if content fits the smallest budget and meet the limit (if not deepScan)
-        boolean withinLimit = deepScan || filesToConsider.size() <= 10;
+        boolean withinLimit = deepScan || filesToConsider.size() <= QUICK_TOPK; // Use QUICK_TOPK here
         if (contentTokens <= skipPruningBudget && withinLimit) {
             var fragments = filesToConsider.stream()
                     .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f))
                     .toList();
+            // Need to filter here too for quick mode if skipping LLM
+            if (!deepScan) {
+                 var project = contextManager.getProject();
+                 var existingFiles = contextManager.topContext().allFragments()
+                         .flatMap(f -> f.files(project).stream())
+                         .collect(Collectors.toSet());
+                 fragments = fragments.stream()
+                         .filter(frag -> !existingFiles.contains(((ContextFragment.ProjectPathFragment)frag).file()))
+                         .toList();
+            }
             return new RecommendationResult(true, fragments, "Using all file contents within budget and limits.");
         }
 
@@ -639,6 +795,10 @@ public class ContextAgent {
 
         // Ask LLM to recommend files based *only* on paths
         var llmRecommendation = askLlmToRecommendContext(allFiles.stream().map(ProjectFile::toString).toList(), Map.of(), Map.of(), workspaceRepresentation);
+        // For filename-only, the result is created inside askLlm (both deep and quick)
+        // If quick mode failed inside askLlm (e.g. empty response), it returns EMPTY, createResult handles this.
+        // If deep mode failed, it also returns EMPTY.
+        // createResult now handles the final budget check implicitly.
         return createResult(llmRecommendation);
     }
 
