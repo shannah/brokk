@@ -49,7 +49,7 @@ import java.util.stream.Stream;
  * It also includes the system messages and command result areas.
  * All initialization and action code related to these components has been moved here.
  */
-public class InstructionsPanel extends JPanel implements IContextManager.ContextListener { 
+public class InstructionsPanel extends JPanel implements IContextManager.ContextListener {
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final String PLACEHOLDER_TEXT = """
@@ -878,23 +878,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         // 10. Process results and schedule UI update
-         if (recommendations.success()) {
-             var fileRefs = recommendations.fragments().stream()
-                                       .flatMap(f -> f.files(contextManager.getProject()).stream())
-                                       .distinct()
-                                       .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
-                                       .toList();
-             if (fileRefs.isEmpty()) {
-                 logger.debug("Task {} found no relevant files.", myGen);
-                 SwingUtilities.invokeLater(() -> showFailureLabel("No quick suggestions"));
-             } else {
-                 logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
-                 SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
-             }
-         } else {
-             logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
-             SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
-         }
+        if (recommendations.success()) {
+            var fileRefs = recommendations.fragments().stream()
+                    .flatMap(f -> f.files(contextManager.getProject()).stream())
+                    .distinct()
+                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
+                    .toList();
+            if (fileRefs.isEmpty()) {
+                logger.debug("Task {} found no relevant files.", myGen);
+                SwingUtilities.invokeLater(() -> showFailureLabel("No quick suggestions"));
+            } else {
+                logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
+                SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
+            }
+        } else {
+            logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
+            SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
+        }
     }
 
     /**
@@ -1266,23 +1266,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
-        // Submit the action. The dialog and core logic run in the background.
-        submitAction("Architect", goal, () -> {
-            ArchitectAgent.ArchitectOptions options = null; // Initialize to null
-            try {
-                // Show options dialog within the background task using the new static method
-                options = ArchitectOptionsDialog.showDialog(chrome, contextManager);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt(); // Re-interrupt the thread
-                logger.debug("Architect options dialog interrupted", e);
-                // options remains null, handled below
-            }
+        // Show the options dialog synchronously on the EDT. This blocks until the user clicks OK/Cancel.
+        ArchitectAgent.ArchitectOptions options = ArchitectOptionsDialog.showDialogAndWait(chrome, contextManager);
 
-            if (options == null) {
-                // User cancelled or dialog was interrupted
-                chrome.systemOutput("Architect command cancelled during option selection.");
-                return;
-            }
+        // If the user cancelled the dialog, options will be null.
+        if (options == null) {
+            chrome.systemOutput("Architect command cancelled during option selection.");
+            enableButtons(); // Re-enable buttons since the action was cancelled before submission
+            return;
+        }
+
+        // User confirmed options, now submit the actual agent execution to the background.
+        submitAction("Architect", goal, () -> {
             // Proceed with execution using the selected options
             executeAgentCommand(architectModel, goal, options);
         });

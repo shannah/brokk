@@ -2,11 +2,16 @@ package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
+import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.SwingUtil;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -17,26 +22,28 @@ public class ArchitectOptionsDialog {
     private static ArchitectAgent.ArchitectOptions lastArchitectOptions = ArchitectAgent.ArchitectOptions.DEFAULTS;
 
     /**
-     * Shows a modal dialog to configure Architect tools and returns the chosen options, or null if cancelled.
+     * Shows a modal dialog synchronously on the Event Dispatch Thread (EDT) to configure
+     * Architect tools and returns the chosen options, or null if cancelled.
+     * This method blocks the calling thread until the dialog is closed.
      * Remembers the last selection for the current session.
      *
      * @param chrome         The main application window reference for positioning and theme.
      * @param contextManager The context manager to check project capabilities (e.g., CPG).
-     * @throws InterruptedException if the *calling* thread is interrupted while waiting for the dialog.
+     * @return The selected ArchitectOptions, or null if the dialog was cancelled.
      */
-    public static ArchitectAgent.ArchitectOptions showDialog(Chrome chrome, ContextManager contextManager) throws InterruptedException
-    {
-        // Use last options as default for this session
-        var currentOptions = lastArchitectOptions;
-        // Use AtomicReference to pass result from EDT back to calling thread
-        var result = new AtomicReference<ArchitectAgent.ArchitectOptions>();
+    public static ArchitectAgent.ArchitectOptions showDialogAndWait(Chrome chrome, ContextManager contextManager) {
+        // Use AtomicReference to capture the result from the EDT lambda
+        var resultHolder = new AtomicReference<ArchitectAgent.ArchitectOptions>();
 
-        // Initial checks must happen *before* switching to EDT
-        var isCpg = contextManager.getProject().getAnalyzerWrapper().isCpg();
-
+        // Use invokeAndWait to run the dialog logic on the EDT and wait for completion
         SwingUtil.runOnEDT(() -> {
-            JDialog dialog = new JDialog(chrome.getFrame(), "Architect Tools", true); // Modal dialog, requires EDT
-            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+            // Initial checks must happen *inside* the EDT task now
+            var isCpg = contextManager.getProject().getAnalyzerWrapper().isCpg();
+            // Use last options as default for this session
+            var currentOptions = lastArchitectOptions;
+
+            JDialog dialog = new JDialog(chrome.getFrame(), "Architect Tools", true); // Modal dialog
+            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE); // Dispose on close
             dialog.setLayout(new BorderLayout(10, 10));
 
             // --- Main Panel for Checkboxes ---
@@ -79,7 +86,7 @@ public class ArchitectOptionsDialog {
             var searchCb = createCheckbox.apply("Search Agent", "Allow invoking the Search Agent to find information beyond the current workspace");
             searchCb.setSelected(currentOptions.includeSearchAgent());
 
-            dialog.add(new JScrollPane(mainPanel), BorderLayout.CENTER); // Add scroll pane for potentially many options
+            dialog.add(new JScrollPane(mainPanel), BorderLayout.CENTER); // Add scroll pane
 
             // --- Button Panel ---
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -100,40 +107,29 @@ public class ArchitectOptionsDialog {
                         searchCb.isSelected()
                 );
                 lastArchitectOptions = selectedOptions; // Remember for next time this session
-                result.set(selectedOptions);
-                dialog.dispose();
+                resultHolder.set(selectedOptions); // Set result
+                dialog.dispose(); // Close dialog
             });
 
             cancelButton.addActionListener(e -> {
-                result.set(null); // Indicate cancellation
-                dialog.dispose();
+                resultHolder.set(null); // Indicate cancellation
+                dialog.dispose(); // Close dialog
             });
 
-            // Apply theme using the public helper method in Chrome
+            // Handle window close button (X) as cancel
+            dialog.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosing(WindowEvent e) {
+                    resultHolder.compareAndSet(null, null); // Ensure null if not already set by OK/Cancel
+                }
+            });
+
             dialog.pack();
-            dialog.setLocationRelativeTo(chrome.getFrame());
-            dialog.setVisible(true); // This blocks until the dialog is closed
-        });
+            dialog.setLocationRelativeTo(chrome.getFrame()); // Center relative to parent
+            dialog.setVisible(true); // Show the modal dialog and block EDT until closed
+        }); // invokeAndWait ends here
 
-        // Wait for EDT task to complete (dialog closed)
-        // This can throw InterruptedException if the calling thread is interrupted
-        while (result.get() == null && !Thread.currentThread().isInterrupted()) {
-            try {
-                // Check frequently to respond to interrupts
-                Thread.sleep(50);
-                // Check if the dialog might have set the result in the meantime
-                if (result.get() != null) break;
-                // Check again if the dialog was closed without setting a result (e.g. window close button)
-                // We rely on SwingUtil.runOnEDT completing eventually. If the EDT task itself hangs, this won't help.
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt(); // Re-interrupt
-                throw e; // Propagate immediately
-            }
-        }
-        if (Thread.currentThread().isInterrupted()) {
-             throw new InterruptedException("Architect options dialog interrupted while waiting.");
-        }
-
-        return result.get(); // Return selected options or null from the AtomicReference
+        // Return the result captured from the EDT lambda
+        return resultHolder.get();
     }
 }
