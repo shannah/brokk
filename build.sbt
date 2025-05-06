@@ -1,5 +1,8 @@
 import sbt.*
 import sbt.Keys.*
+import sbtbuildinfo.BuildInfoPlugin
+import sbtbuildinfo.BuildInfoPlugin.autoImport.*
+import sbtbuildinfo.BuildInfoOption
 
 scalaVersion := "3.5.2"
 version := "0.9.0"
@@ -80,19 +83,11 @@ libraryDependencies ++= Seq(
   "com.jetbrains.intellij.java" % "java-decompiler-engine" % "243.25659.59",
 )
 
-Compile / unmanagedResources := {
-  val resources = (Compile / unmanagedResources).value
-  resources.filterNot(_.getName == "version.properties")
-}
+enablePlugins(BuildInfoPlugin)
 
-Compile / resourceGenerators += Def.task {
-  val sourceFile = (Compile / resourceDirectory).value / "version.properties"
-  val targetDir = (Compile / resourceManaged).value
-  val targetFile = targetDir / "version.properties"
-  val updatedProperties = IO.read(sourceFile).replaceAll("version=.*", s"version=${version.value}")
-  IO.write(targetFile, updatedProperties)
-  Seq(targetFile)
-}.taskValue
+buildInfoKeys := Seq[BuildInfoKey](version)
+buildInfoPackage := "io.github.jbellis.brokk"
+buildInfoObject := "BuildInfo"
 
 assembly / assemblyMergeStrategy := {
   case PathList("META-INF", xs @ _*) =>

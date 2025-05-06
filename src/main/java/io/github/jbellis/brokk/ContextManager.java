@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import io.github.jbellis.brokk.BuildInfo;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextHistory.UndoResult;
@@ -974,14 +975,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public String loadVersion() {
-        Properties props = new Properties();
-        try {
-            props.load(getClass().getResourceAsStream("/version.properties"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        return props.getProperty("version", "unknown");
+        return BuildInfo.version();
     }
 
     /**
