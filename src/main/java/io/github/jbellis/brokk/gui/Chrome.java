@@ -681,17 +681,19 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
             GraphicsDevice defaultScreen = ge.getDefaultScreenDevice();
             Rectangle screenBounds = defaultScreen.getDefaultConfiguration().getBounds();
+            logger.info("No saved window bounds found for project. Detected screen size: {}x{} at ({},{})",
+                        screenBounds.width, screenBounds.height, screenBounds.x, screenBounds.y);
 
-            if (screenBounds.height <= 1080) {
-                // Maximize on smaller screens
-                frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
-            } else {
-                // Right half on larger screens
-                int halfWidth = screenBounds.width / 2;
-                int x = screenBounds.x + halfWidth;
-                frame.setBounds(x, screenBounds.y, halfWidth, screenBounds.height);
-            }
-            logger.debug("Applying default window placement based on screen size.");
+            // Default to 1920x1080 or screen size, whichever is smaller, and center.
+            int defaultWidth = Math.min(1920, screenBounds.width);
+            int defaultHeight = Math.min(1080, screenBounds.height);
+
+            int x = screenBounds.x + (screenBounds.width - defaultWidth) / 2;
+            int y = screenBounds.y + (screenBounds.height - defaultHeight) / 2;
+
+            frame.setBounds(x, y, defaultWidth, defaultHeight);
+            logger.debug("Applying default window placement: {}x{} at ({},{}), centered on screen.",
+                         defaultWidth, defaultHeight, x, y);
         } else {
             var bounds = boundsOptional.get();
             // Valid bounds found, use them
