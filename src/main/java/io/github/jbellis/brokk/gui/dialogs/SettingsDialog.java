@@ -12,6 +12,8 @@ import javax.swing.*;
 import java.awt.*;
 
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
+
+import java.io.IOException;
 import java.util.Arrays; // Import the Arrays class
 
 import java.awt.event.WindowAdapter;
@@ -832,11 +834,17 @@ public class SettingsDialog extends JDialog {
         if (!newBrokkKey.equals(currentBrokkKey)) {
             if (!newBrokkKey.isEmpty()) {
                 try {
-                    Models.parseKey(newBrokkKey);
+                    Models.validateKey(newBrokkKey);
                 } catch (IllegalArgumentException ex) {
                     JOptionPane.showMessageDialog(this,
-                                                  "Invalid Brokk Key: " + ex.getMessage(),
+                                                  "Invalid Brokk Key",
                                                   "Invalid Key",
+                                                  JOptionPane.ERROR_MESSAGE);
+                    return;
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this,
+                                                  "Network error: " + ex.getMessage(),
+                                                  "Unable to reach Brokk service",
                                                   JOptionPane.ERROR_MESSAGE);
                     return;
                 }
@@ -1142,12 +1150,25 @@ public class SettingsDialog extends JDialog {
         var existingKey = Project.getBrokkKey();
         if (!existingKey.isEmpty()) {
             try {
-                Models.parseKey(existingKey);
+                Models.validateKey(existingKey);
                 // (parsing succeeded)
                 logger.debug("Brokk key already configured, skipping signup dialog.");
                 return;
             } catch (IllegalArgumentException e) {
-                logger.debug("Invalid Brokk key {}, showing dialog to get a new one", existingKey);
+                // Existing key is invalid (format or rejected by server).
+                logger.debug("Existing Brokk key '{}' is invalid: {}. Proceeding to show key entry dialog.", existingKey, e.getMessage());
+                // Fall through to show the dialog for entering a new key.
+            } catch (IOException e) {
+                // Service unreachable or other network/IO error during validation of existingKey.
+                logger.warn("Unable to reach Brokk service to validate existing key: {}", e.getMessage(), e);
+                JOptionPane.showMessageDialog(null,
+                                              "Could not connect to Brokk service to validate your key.\n" +
+                                              "Please check your internet connection.\n" +
+                                              "The application will now exit.",
+                                              "Service Unreachable",
+                                              JOptionPane.ERROR_MESSAGE);
+                System.exit(1); // Exit because we can't validate the key and proceed.
+                return;
             }
         }
 
@@ -1223,16 +1244,23 @@ public class SettingsDialog extends JDialog {
             }
             try {
                 // Validate the key structure
-                Models.parseKey(newBrokkKey);
+                Models.validateKey(newBrokkKey);
                 // If valid, save it and close the dialog
                 Project.setBrokkKey(newBrokkKey);
                 logger.debug("Brokk Key successfully configured.");
                 dialog.dispose(); // Close the dialog
             } catch (IllegalArgumentException ex) {
-                logger.warn("Invalid Brokk Key entered: {}", ex.getMessage());
+                logger.debug("Invalid Brokk Key entered: {}", ex.getMessage());
                 JOptionPane.showMessageDialog(dialog,
-                                              "Invalid Brokk Key: " + ex.getMessage() + "\nPlease check your key and try again.",
+                                              "Invalid Brokk Key",
                                               "Invalid Key",
+                                              JOptionPane.ERROR_MESSAGE);
+                keyField.requestFocusInWindow(); // Focus the field again
+                keyField.selectAll();
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(dialog,
+                                              "Network error: " + ex.getMessage(),
+                                              "Unable to reach Brokk service",
                                               JOptionPane.ERROR_MESSAGE);
                 keyField.requestFocusInWindow(); // Focus the field again
                 keyField.selectAll();

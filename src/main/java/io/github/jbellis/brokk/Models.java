@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.CollectionType;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -180,21 +179,28 @@ public final class Models {
     }
 
     public float getUserBalance() throws IOException {
-        var kp = parseKey(Project.getBrokkKey());
-        String url = "https://app.brokk.ai/api/payments/balance-lookup/" + kp.userId();
-        logger.trace(url);
+        return getUserBalance(Project.getBrokkKey());
+    }
+
+    public static float getUserBalance(String key) throws IOException {
+        String url = "https://app.brokk.ai/api/payments/balance-lookup/" + key;
         Request request = new Request.Builder()
                 .url(url)
-                .header("Authorization", "Bearer " + kp.token())
                 .get()
                 .build();
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 String errorBody = response.body() != null ? response.body().string() : "(no body)";
+                if (response.code() == 401) { // HTTP 401 Unauthorized
+                    throw new IllegalArgumentException("Invalid Brokk Key (Unauthorized from server): " + errorBody);
+                }
+                // For other non-successful responses
                 throw new IOException("Failed to fetch user balance: "
                                               + response.code() + " - " + errorBody);
             }
+            // Successful response processing
             String responseBody = response.body() != null ? response.body().string() : "";
+            var objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(responseBody);
             if (rootNode.has("available_balance") && rootNode.get("available_balance").isNumber()) {
                 return rootNode.get("available_balance").floatValue();
@@ -204,6 +210,11 @@ public final class Models {
                 throw new IOException("Unexpected balance response format: " + responseBody);
             }
         }
+    }
+
+    public static void validateKey(String key) throws IOException {
+        parseKey(key);
+        getUserBalance(key);
     }
 
     /**
@@ -220,7 +231,7 @@ public final class Models {
         var authHeader = "Bearer dummy-key";
         if (isBrokk) {
             var kp = parseKey(Project.getBrokkKey());
-            // Use proToken to check available models and balance
+            // Use token to check available models and balance
             authHeader = "Bearer " + kp.token();
         }
         Request request = new Request.Builder()
@@ -456,17 +467,16 @@ public final class Models {
                 .baseUrl(baseUrl)
                 .timeout(Duration.ofMinutes(3)); // default 60s is not enough
 
-        if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
-            var kp = parseKey(Project.getBrokkKey());
-            // Select token based on balance status
-            builder = builder
-                    .apiKey(kp.token)
-                    .customHeaders(Map.of("Authorization", "Bearer " + kp.token))
-                    .user(kp.userId().toString());
-        } else {
-            // Non-Brokk proxy
-            builder = builder.apiKey("dummy-key");
-        }
+            if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+                var kp = parseKey(Project.getBrokkKey());
+                builder = builder
+                        .apiKey(kp.token)
+                        .customHeaders(Map.of("Authorization", "Bearer " + kp.token))
+                        .user(kp.userId().toString());
+            } else {
+                // Non-Brokk proxy
+                builder = builder.apiKey("dummy-key");
+            }
 
         builder = builder.modelName(location);
 
