@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -156,43 +155,112 @@ public final class TreeSitterAnalyzerTest {
 
     /* -------------------- C# -------------------- */
 
-//    @Test
-//    void testCSharpInitializationAndSkeletons() {
-//        TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP); // Use Brokk's Language enum
-//        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
-//        assertInstanceOf(CSharpAnalyzer.class, ana);
-//
-//        CSharpAnalyzer analyzer = (CSharpAnalyzer) ana;
-//        assertFalse(analyzer.isEmpty(), "Analyzer should have processed C# files");
-//
-//        ProjectFile fileA = new ProjectFile(project.getRoot(), "A.cs");
-//        var skelA = analyzer.getSkeletons(fileA);
-//        assertFalse(skelA.isEmpty());
-//
-//        var classA = CodeUnit.cls(fileA, "A");
-//        assertTrue(skelA.containsKey(classA));
-//        assertTrue(skelA.get(classA).trim().startsWith("public class A"));
-//
-//        var methodA = CodeUnit.fn(fileA, "MethodA");
-//        assertTrue(skelA.containsKey(methodA));
-//        assertTrue(skelA.get(methodA).contains("public void MethodA()"));
-//
-//        var fieldMyField = CodeUnit.field(fileA, "MyField");
-//        assertTrue(skelA.containsKey(fieldMyField));
-//        assertEquals("public int MyField;", skelA.get(fieldMyField).trim());
-//
-//        var propMyProp = CodeUnit.field(fileA, "MyProperty");
-//        assertTrue(skelA.containsKey(propMyProp));
-//        assertEquals("public string MyProperty { get; set; }",
-//                     skelA.get(propMyProp).trim());
-//
-//        var ctor = CodeUnit.fn(fileA, "A.<init>");
-//        assertTrue(skelA.containsKey(ctor));
-//        assertTrue(skelA.get(ctor).contains("public A()"));
-//
-//        // Ensure attribute_list capture was ignored
-//        boolean containsAttr = skelA.keySet().stream()
-//                .anyMatch(cu -> cu.identifier().contains("attribute_list"));
-//        assertFalse(containsAttr, "No @annotation captures expected");
-//    }
+    @Test
+    void testCSharpInitializationAndSkeletons() {
+        TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP); // Use Brokk's Language enum
+        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        assertInstanceOf(CSharpAnalyzer.class, ana);
+
+        CSharpAnalyzer analyzer = (CSharpAnalyzer) ana;
+        assertFalse(analyzer.isEmpty(), "Analyzer should have processed C# files");
+
+        ProjectFile fileA = new ProjectFile(project.getRoot(), "A.cs");
+        var skelA = analyzer.getSkeletons(fileA);
+        assertFalse(skelA.isEmpty(), "Skeletons map for file A.cs should not be empty.");
+
+        var classA = CodeUnit.cls(fileA, "TestNamespace", "A"); // Namespace is derived from A.cs
+        assertEquals("A", classA.shortName());
+        assertEquals("TestNamespace.A", classA.fqName()); // fqName includes the namespace
+        assertTrue(skelA.containsKey(classA), "Skeleton map should contain top-level class A. Skeletons found: " + skelA.keySet());
+        
+        String classASkeleton = skelA.get(classA);
+        assertNotNull(classASkeleton, "Skeleton for class A should not be null.");
+        assertTrue(classASkeleton.trim().startsWith("public class A"), "Class A skeleton should start with 'public class A'. Actual: '" + classASkeleton.trim() + "'");
+        // Deferring detailed skeleton content checks for C# members until skeleton building is C#-aware.
+        // For now, the skeleton is minimal: "public class A { }"
+
+        // Ensure attribute_list capture (aliased as "annotation") did not result in a CodeUnit.
+        // The getIgnoredCaptures() method in CSharpAnalyzer should prevent this.
+        boolean containsAnnotationCaptureAsCodeUnit = skelA.keySet().stream()
+                .anyMatch(cu -> "annotation".equals(cu.shortName()) ||
+                                (cu.packageName() != null && cu.packageName().equals("annotation")) ||
+                                cu.identifier().startsWith("annotation")); // Check common ways it might be named
+        assertFalse(containsAnnotationCaptureAsCodeUnit, "No CodeUnits from 'annotation' (attribute_list) captures expected in skeletons.");
+
+        // test getClassesInFile should still correctly identify the top-level class 'A'.
+        assertEquals(Set.of(classA), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A. Expected: " + Set.of(classA) + ", Got: " + analyzer.getClassesInFile(fileA));
+
+        // test getSkeleton for the top-level class 'A' using its fully qualified name.
+        var classASkeletonOpt = analyzer.getSkeleton(classA.fqName());
+        assertTrue(classASkeletonOpt.isDefined(), "Skeleton for classA fqName '" + classA.fqName() + "' should be found.");
+        assertEquals(classASkeleton.trim(), classASkeletonOpt.get().trim(), "getSkeleton for classA fqName mismatch.");
+    }
+
+    @Test
+    void testCSharpMixedScopesAndNestedNamespaces() {
+        TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP);
+        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        assertInstanceOf(CSharpAnalyzer.class, ana);
+        CSharpAnalyzer analyzer = (CSharpAnalyzer) ana;
+
+        // 1. Test MixedScope.cs
+        ProjectFile mixedScopeFile = new ProjectFile(project.getRoot(), "MixedScope.cs");
+        var skelMixed = analyzer.getSkeletons(mixedScopeFile);
+        assertFalse(skelMixed.isEmpty(), "Skeletons map for MixedScope.cs should not be empty.");
+
+        CodeUnit topLevelClass = CodeUnit.cls(mixedScopeFile, "", "TopLevelClass");
+        assertEquals("TopLevelClass", topLevelClass.fqName());
+        assertTrue(skelMixed.containsKey(topLevelClass), "Skeletons should contain TopLevelClass. Found: " + skelMixed.keySet());
+
+        CodeUnit myTestAttributeClass = CodeUnit.cls(mixedScopeFile, "", "MyTestAttribute");
+        assertEquals("MyTestAttribute", myTestAttributeClass.fqName());
+        assertTrue(skelMixed.containsKey(myTestAttributeClass), "Skeletons should contain MyTestAttribute class. Found: " + skelMixed.keySet());
+
+        CodeUnit namespacedClass = CodeUnit.cls(mixedScopeFile, "NS1", "NamespacedClass");
+        assertEquals("NS1.NamespacedClass", namespacedClass.fqName());
+        assertTrue(skelMixed.containsKey(namespacedClass), "Skeletons should contain NS1.NamespacedClass. Found: " + skelMixed.keySet());
+
+        CodeUnit nsInterface = CodeUnit.cls(mixedScopeFile, "NS1", "INamespacedInterface");
+        assertEquals("NS1.INamespacedInterface", nsInterface.fqName());
+        assertTrue(skelMixed.containsKey(nsInterface), "Skeletons should contain NS1.INamespacedInterface. Found: " + skelMixed.keySet());
+
+        CodeUnit topLevelStruct = CodeUnit.cls(mixedScopeFile, "", "TopLevelStruct");
+        assertEquals("TopLevelStruct", topLevelStruct.fqName());
+        assertTrue(skelMixed.containsKey(topLevelStruct), "Skeletons should contain TopLevelStruct. Found: " + skelMixed.keySet());
+
+        Set<CodeUnit> expectedClassesMixed = Set.of(topLevelClass, myTestAttributeClass, namespacedClass, nsInterface, topLevelStruct);
+        assertEquals(expectedClassesMixed, analyzer.getClassesInFile(mixedScopeFile), "getClassesInFile mismatch for MixedScope.cs");
+
+        // Verify that attribute_list captures (aliased as "annotation") do not create CodeUnits
+        boolean containsAnnotationCaptureAsCodeUnitMixed = skelMixed.keySet().stream()
+                .anyMatch(cu -> "annotation".equals(cu.shortName()) ||
+                                (cu.packageName() != null && cu.packageName().contains("annotation")) ||
+                                cu.identifier().startsWith("annotation"));
+        assertFalse(containsAnnotationCaptureAsCodeUnitMixed, "No CodeUnits from 'annotation' (attribute_list) captures expected in MixedScope.cs skeletons.");
+
+
+        // 2. Test NestedNamespaces.cs
+        ProjectFile nestedNamespacesFile = new ProjectFile(project.getRoot(), "NestedNamespaces.cs");
+        var skelNested = analyzer.getSkeletons(nestedNamespacesFile);
+        assertFalse(skelNested.isEmpty(), "Skeletons map for NestedNamespaces.cs should not be empty.");
+
+        CodeUnit myNestedClass = CodeUnit.cls(nestedNamespacesFile, "Outer.Inner", "MyNestedClass");
+        assertEquals("Outer.Inner.MyNestedClass", myNestedClass.fqName());
+        assertTrue(skelNested.containsKey(myNestedClass), "Skeletons should contain Outer.Inner.MyNestedClass. Found: " + skelNested.keySet());
+
+        CodeUnit myNestedInterface = CodeUnit.cls(nestedNamespacesFile, "Outer.Inner", "IMyNestedInterface");
+        assertEquals("Outer.Inner.IMyNestedInterface", myNestedInterface.fqName());
+        assertTrue(skelNested.containsKey(myNestedInterface), "Skeletons should contain Outer.Inner.IMyNestedInterface. Found: " + skelNested.keySet());
+
+        CodeUnit outerClass = CodeUnit.cls(nestedNamespacesFile, "Outer", "OuterClass");
+        assertEquals("Outer.OuterClass", outerClass.fqName());
+        assertTrue(skelNested.containsKey(outerClass), "Skeletons should contain Outer.OuterClass. Found: " + skelNested.keySet());
+
+        CodeUnit anotherClass = CodeUnit.cls(nestedNamespacesFile, "AnotherTopLevelNs", "AnotherClass");
+        assertEquals("AnotherTopLevelNs.AnotherClass", anotherClass.fqName());
+        assertTrue(skelNested.containsKey(anotherClass), "Skeletons should contain AnotherTopLevelNs.AnotherClass. Found: " + skelNested.keySet());
+
+        Set<CodeUnit> expectedClassesNested = Set.of(myNestedClass, myNestedInterface, outerClass, anotherClass);
+        assertEquals(expectedClassesNested, analyzer.getClassesInFile(nestedNamespacesFile), "getClassesInFile mismatch for NestedNamespaces.cs");
+    }
 }

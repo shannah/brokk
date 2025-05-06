@@ -44,11 +44,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         String rawQueryString = loadResource(getQueryResource());
         this.query = new TSQuery(tsLanguage, rawQueryString);
 
-        log.debug("Initializing TSA for {} (query: {})",
-                  project.getAnalyzerLanguage(), getQueryResource());
+        // Debug log using SLF4J
+        log.debug("Initializing TreeSitterAnalyzer for language: {}, query: {}",
+                 project.getAnalyzerLanguage(), getQueryResource());
+
 
         var validExtensions = project.getAnalyzerLanguage().getExtensions();
-        log.debug("Filtering project files for extensions: {}", validExtensions);
+        log.trace("Filtering project files for extensions: {}", validExtensions);
 
         project.getAllFiles().stream()
                 .filter(pf -> {
@@ -57,6 +59,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 })
                 .parallel()
                 .forEach(pf -> {
+                    log.trace("Processing file: {}", pf);
                     // TSParser is not threadsafe, so we create a parser per thread
                     var localParser = new TSParser();
                     try {
@@ -65,12 +68,14 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                             return; // Skip this file if parser setup fails
                         }
                         var map = parseAndExtractSkeletons(pf, localParser);
+                        log.trace("Skeletons found for {}: {}", pf, map.size());
                         if (!map.isEmpty()) {
                              skeletons.put(pf, map);
                              // Extract and store classes for this file
                              var classesInFile = map.keySet().stream()
                                  .filter(CodeUnit::isClass)
                                  .collect(Collectors.toSet());
+                             log.trace("Classes found for {}: {}", pf, classesInFile.size());
                              if (!classesInFile.isEmpty()) {
                                  fileClasses.put(pf, classesInFile);
                              }
@@ -90,26 +95,34 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     @Override
     public Map<CodeUnit, String> getSkeletons(ProjectFile file) {
         var m = skeletons.get(file);
+        log.trace("getSkeletons: file={}, count={}", file, (m == null ? 0 : m.size()));
         return m == null ? Map.of() : Collections.unmodifiableMap(m);
     }
-    
+
     @Override
     public Set<CodeUnit> getClassesInFile(ProjectFile file) {
         var classes = fileClasses.get(file);
+        log.trace("getClassesInFile: file={}, count={}", file, (classes == null ? 0 : classes.size()));
         return classes == null ? Set.of() : Collections.unmodifiableSet(classes);
     }
-    
+
     @Override
     public scala.Option<String> getSkeleton(String fqName) {
+        scala.Option<String> result = scala.Option.empty();
         for (var fileSkeletons : skeletons.values()) {
             for (var entry : fileSkeletons.entrySet()) {
                 // Compute the fqName from the CodeUnit's components before comparing
                 if (entry.getKey().fqName().equals(fqName)) {
-                    return scala.Option.apply(entry.getValue());
+                    result = scala.Option.apply(entry.getValue());
+                    break; // Found, no need to check further
                 }
             }
+            if (result.isDefined()) {
+                break; // Found in this file, no need to check other files
+            }
         }
-        return scala.Option.empty();
+        log.trace("getSkeleton: fqName='{}', found={}", fqName, result.isDefined());
+        return result;
     }
 
     /* ---------- abstract hooks ---------- */
@@ -125,7 +138,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
      */
     protected abstract CodeUnit createCodeUnit(ProjectFile file,
                                                String captureName,
-                                               String simpleName);
+                                               String simpleName,
+                                               String namespaceName);
 
     /** Captures that should be ignored entirely. */
     protected Set<String> getIgnoredCaptures() { return Set.of(); }
@@ -140,8 +154,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /* ---------- core parsing ---------- */
     /** Parses a single file and extracts skeletons using the provided thread-local parser. */
     private Map<CodeUnit, String> parseAndExtractSkeletons(ProjectFile file, TSParser localParser) throws IOException {
+        log.trace("parseAndExtractSkeletons: Parsing file: {}", file);
         String src = Files.readString(file.absPath(), StandardCharsets.UTF_8);
-        Map<CodeUnit, String> result = new HashMap<>();
+        // Map<CodeUnit, String> result = new HashMap<>(); // Not used directly for final output from this function.
 
         // TSTree does not implement AutoCloseable, rely on GC + Cleaner for resource management
         TSTree tree = localParser.parseString(null, src);
@@ -150,16 +165,21 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.warn("Parsing failed or produced null root node for {}", file);
             return Map.of();
         }
-        log.debug("Root node type for {}: {}", file, rootNode.getType()); // Log root node type
+        // Log root node type
+        String rootNodeType = rootNode.getType();
+        log.trace("Root node type for {}: {}", file, rootNodeType);
 
-        // Map to store potential top-level declaration nodes found during the query
-        Map<TSNode, String> declarationNodes = new HashMap<>();
+
+        // Map to store potential top-level declaration nodes found during the query.
+        // The value is a Map.Entry: key = primary capture name (e.g., "class.definition"), value = simpleName.
+        Map<TSNode, Map.Entry<String, String>> declarationNodes = new HashMap<>();
 
         TSQueryCursor cursor = new TSQueryCursor();
         cursor.exec(this.query, rootNode); // Use the query field, execute on root node
 
         TSQueryMatch match = new TSQueryMatch(); // Reusable match object
         while (cursor.nextMatch(match)) {
+            log.trace("Match ID: {}", match.getId());
             // Group nodes by capture name for this specific match
             Map<String, TSNode> capturedNodes = new HashMap<>();
             for (TSQueryCapture capture : match.getCaptures()) {
@@ -168,6 +188,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
                 TSNode node = capture.getNode();
                 if (node != null && !node.isNull()) {
+                    log.trace("  Capture: '{}', Node: {} '{}'", captureName, node.getType(), textSlice(node, src).lines().findFirst().orElse("").trim());
                     // Store the first non-null node found for this capture name in this match
                     // Note: Overwrites if multiple nodes have the same capture name in one match.
                     // The old code implicitly took the first from a list; this takes the last encountered.
@@ -176,54 +197,33 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 }
             }
 
-            // Process each potential declaration found in the match
-            for (var entry : capturedNodes.entrySet()) {
-                String captureName = entry.getKey();
-                TSNode node = entry.getValue();
+            // Process each potential definition found in the match
+            for (var captureEntry : capturedNodes.entrySet()) {
+                String captureName = captureEntry.getKey();
+                TSNode definitionNode = captureEntry.getValue();
 
-                // We only care about captures designating a definition node (e.g., class.definition, function.definition)
-                // The field.declaration capture is handled separately if needed, but won't be top-level.
-                if (captureName.endsWith(".definition")) { // Changed from .declaration to .definition
-
-                    // Try to find the corresponding name node within the same match
-                    String expectedNameCapture = captureName.replace(".definition", ".name"); // Adjusted suffix
+                if (captureName.endsWith(".definition")) {
+                    String simpleName = null;
+                    String expectedNameCapture = captureName.replace(".definition", ".name");
                     TSNode nameNode = capturedNodes.get(expectedNameCapture);
 
-                    // Determine simple name
-                    String simpleName;
                     if (nameNode != null && !nameNode.isNull()) {
-                        // Use content from the explicit *.name node if found
-                        simpleName = src.substring(nameNode.getStartByte(), nameNode.getEndByte());
+                        simpleName = textSlice(nameNode, src);
                     } else {
-                        // Fallback: Try extracting name directly from the definition node ('node')
-                        log.warn("Explicit *.name capture ('{}') not found or invalid in match for definition node '{}'. Falling back to traversal.",
-                                 expectedNameCapture, textSlice(node, src).lines().findFirst().orElse(""));
-                        Optional<String> fallbackNameOpt = extractSimpleName(node, src); // Calls helper that logs its own failure
-                        if (fallbackNameOpt.isPresent()) {
-                             log.debug("Fallback extractSimpleName succeeded for definition node.");
-                             simpleName = fallbackNameOpt.get();
-                        } else {
-                             log.warn("Fallback extractSimpleName also failed for definition node type {} at line {}.",
-                                      node.getType(), node.getStartPoint().getRow() + 1);
-                             simpleName = null;
-                        }
+                        log.warn("Expected name capture '{}' not found for definition '{}' in match for file {}. Falling back to extractSimpleName on definition node.",
+                                 expectedNameCapture, captureName, file);
+                        simpleName = extractSimpleName(definitionNode, src).orElse(null);
                     }
 
-                    // Proceed if we have the essential parts
                     if (simpleName != null && !simpleName.isBlank()) {
-                        // Store the node and its primary capture type for later processing
-                        declarationNodes.putIfAbsent(node, captureName);
-                        log.debug("MATCH [{}]: Found potential definition: Capture [{}], Node Type [{}], Simple Name [{}] -> Storing for later processing.",
-                                  match.getId(), captureName, node.getType(), simpleName);
+                        declarationNodes.putIfAbsent(definitionNode, Map.entry(captureName, simpleName));
+                        log.trace("MATCH [{}]: Found potential definition: Capture [{}], Node Type [{}], Simple Name [{}] -> Storing with determined name.",
+                                  match.getId(), captureName, definitionNode.getType(), simpleName);
                     } else {
-                         // This log now indicates *both* primary and fallback name extraction failed in the first loop.
-                         log.warn("Could not determine simple name for definition capture {} (Node Type [{}], Line {}) in file {} after checking explicit capture and fallback traversal.",
-                                  captureName, node.getType(), node.getStartPoint().getRow() + 1, file);
+                        log.warn("Could not determine simple name for definition capture {} (Node Type [{}], Line {}) in file {} using explicit capture and fallback.",
+                                 captureName, definitionNode.getType(), definitionNode.getStartPoint().getRow() + 1, file);
                     }
                 }
-                // We are primarily interested in the *.definition captures now.
-                // Other captures like *.name were used above to help find the simpleName.
-                // Field declarations might also be captured but will likely not be top-level.
             }
         } // End main query loop
 
@@ -233,31 +233,38 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         for (var entry : declarationNodes.entrySet()) {
             TSNode node = entry.getKey();
-            String primaryCaptureName = entry.getValue(); // e.g., "class.definition"
-            log.debug("Checking node type {} for top-level status.", node.getType()); // Log node being checked
+            Map.Entry<String, String> defInfo = entry.getValue();
+            String primaryCaptureName = defInfo.getKey();
+            String simpleName = defInfo.getValue();
 
-            if (isTopLevel(node, root)) { // Call isTopLevel
-                 log.debug("Node is top-level: {}", textSlice(node, src).lines().findFirst().orElse(""));
-                 // Extract simple name using the standard fallback mechanism (which now only uses getChildByFieldName).
-                 Optional<String> simpleNameOpt = extractSimpleName(node, src);
+            log.trace("Checking node type {} for top-level status.", node.getType());
 
-                 if (simpleNameOpt.isPresent()) {
-                     String simpleName = simpleNameOpt.get();
-                     log.debug("Processing top-level definition: Name='{}', Capture='{}', Node Type='{}'",
+            boolean nodeIsTopLevel = isTopLevel(node, root);
+            log.trace("Node isTopLevel={}, simpleName='{}' for node type {}", nodeIsTopLevel, (simpleName != null ? simpleName : "N/A"), node.getType());
+
+            if (nodeIsTopLevel) {
+                 log.trace("Node is top-level: {}", textSlice(node, src).lines().findFirst().orElse(""));
+
+                 if (simpleName != null && !simpleName.isBlank()) {
+                     log.trace("Processing top-level definition: Name='{}', Capture='{}', Node Type='{}'",
                                simpleName, primaryCaptureName, node.getType());
-                      CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName); // Use the definition capture name
+                      String namespace = extractNamespace(node, root, src);
+                      log.trace("Calling createCodeUnit for simpleName='{}', capture='{}', namespace='{}'", simpleName, primaryCaptureName, namespace);
+                      CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace);
+                      log.trace("createCodeUnit returned: {}", cu);
                       if (cu != null) {
                           String skeleton = buildSkeletonString(node, src, primaryCaptureName);
-                          // Log the skeleton result *before* checking if it's null/blank
-                          log.debug("buildSkeletonString result for '{}': [{}]", simpleName, skeleton == null ? "NULL" : skeleton.isBlank() ? "BLANK" : skeleton.lines().findFirst().orElse("EMPTY"));
+                          log.trace("Built skeleton for '{}':\n{}", simpleName, skeleton);
+                          log.trace("buildSkeletonString result for '{}': [{}]", simpleName, skeleton == null ? "NULL" : skeleton.isBlank() ? "BLANK" : skeleton.lines().findFirst().orElse("EMPTY"));
                           if (skeleton != null && !skeleton.isBlank()) {
-                              log.debug("Storing TOP-LEVEL skeleton for {} in {} | Skeleton starts with: '{}'",
+                              log.trace("Storing TOP-LEVEL skeleton for {} in {} | Skeleton starts with: '{}'",
                                         cu, file, skeleton.lines().findFirst().orElse(""));
                               if (finalSkeletons.containsKey(cu)) {
                                  log.warn("Overwriting skeleton for {} in {}. Old: '{}', New: '{}'",
                                           cu, file, finalSkeletons.get(cu).lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
                              }
                              finalSkeletons.put(cu, skeleton);
+                             log.trace("Storing skeleton for CU: {}", cu);
                          } else {
                              log.warn("buildSkeletonString returned empty/null for top-level node {} ({})", simpleName, primaryCaptureName);
                          }
@@ -265,62 +272,95 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                          log.warn("createCodeUnit returned null for top-level node {} ({})", simpleName, primaryCaptureName);
                      }
                  } else {
-                     log.warn("Could not determine simple name for top-level node type {} in file {}", node.getType(), file);
+                     // This case implies simpleName was null/blank after the first loop's determination attempts.
+                     log.warn("Simple name was null/blank for top-level node type {} (capture: {}) in file {}. Skeleton not generated.",
+                              node.getType(), primaryCaptureName, file);
                   }
              } else {
                   TSNode parent = node.getParent();
                   String parentType = (parent == null || parent.isNull()) ? "null" : parent.getType();
-                  log.debug("Node is NOT top-level: Type='{}', ParentType='{}'. First line: '{}'",
+                  log.trace("Node is NOT top-level: Type='{}', ParentType='{}'. First line: '{}'",
                             node.getType(), parentType, textSlice(node, src).lines().findFirst().orElse(""));
              }
          }
 
-
+        log.trace("Finished parsing {}: found {} top-level skeletons.", file, finalSkeletons.size());
         return finalSkeletons;
     }
 
-    /** Helper to find a specific capture within a match related to a primary node */
-    private Optional<String> findCaptureInMatch(TSQueryMatch match, String targetCaptureName, TSNode primaryNode, String src) {
-       // This approach is flawed because 'match' is from the loop and not specific to the node processing after loop.
-       // We should rely on node traversal (getChildByFieldName) or run targeted queries if needed.
-       // Let's stick to extractSimpleName which uses traversal.
-       return Optional.empty(); // Placeholder - use extractSimpleName
-    }
-
+    // Removed findCaptureInMatch as it was unused and flawed.
 
     /* ---------- Skeleton Building Logic ---------- */
 
-    /** Checks if a node is a direct child of the root node. */
+    // Note: Add other types as needed, e.g. for C-like languages or others with similar "blocking" constructs
+    private static final Set<String> CSHARP_BLOCKER_NODE_TYPES = Set.of(
+            "class_declaration",
+            "struct_declaration",
+            "interface_declaration",
+            "enum_declaration",
+            "delegate_declaration",
+            "method_declaration",
+            "constructor_declaration",
+            "destructor_declaration",
+            "property_declaration",
+            "indexer_declaration",
+            "event_declaration",
+            "operator_declaration",
+            "field_declaration"
+            // Note: "namespace_declaration" is NOT a blocker, it's a transparent container for top-level.
+            // "declaration_list" is also not a blocker, it's often an artifact of the parser.
+    );
+
+    /** Checks if a node is considered top-level by walking up its parent chain. */
     private boolean isTopLevel(TSNode node, TSNode rootNode) {
         if (node == null || node.isNull()) {
-            log.debug("isTopLevel check: node is null"); // Changed to debug
+            log.trace("isTopLevel: Node is null. Result=false (Initial Null Check)");
             return false;
         }
-         if (rootNode == null || rootNode.isNull()) {
-            log.warn("isTopLevel check: rootNode is null!"); // Should not happen if initial check passed
+        if (rootNode == null || rootNode.isNull()) {
+            log.trace("isTopLevel: Root is null for Node={}. Result=false (Initial Null Check)", node.getType());
             return false;
         }
-        TSNode parent = node.getParent();
-        boolean result;
-        if (parent == null || parent.isNull()) {
-            log.debug("isTopLevel check: parent is null for node type {}", node.getType()); // Changed to debug
-            result = false;
-        } else {
-            // Check if parent's type is 'module' (common root for Python) OR if parent equals rootNode
-            // This provides a potential fallback if direct equality check fails but type check works.
-            boolean parentIsModule = "module".equals(parent.getType());
-            boolean parentEqualsRoot = parent.equals(rootNode);
-            result = parentEqualsRoot; // Primarily rely on equals
-            if (!result && parentIsModule) {
-                 log.warn("isTopLevel check: parent.equals(rootNode) was false, but parent type is 'module'. Treating as top-level. Node Type='{}', Parent Type='{}', Root Type='{}'",
-                          node.getType(), parent.getType(), rootNode.getType());
-                 result = true; // Use type check as fallback
-            } else {
-                 log.debug("isTopLevel check: Node Type='{}', Parent Type='{}', Root Type='{}', Parent Type == 'module'? {}, Parent == Root? {}",
-                           node.getType(), parent.getType(), rootNode.getType(), parentIsModule, parentEqualsRoot);
+
+        String rootNodeType = rootNode.getType();
+        TSNode current = node.getParent();
+        // String originalNodeParentType = (current == null || current.isNull()) ? "null" : current.getType(); // originalNodeParentType is not used by new logging
+
+        while (current != null && !current.isNull()) {
+            String currentType = current.getType();
+
+            // If the current parent IS the root node (by type match), then 'node' is effectively top-level.
+            // This handles cases where the direct parent might be a transparent wrapper like 'declaration_list'.
+            if (currentType.equals(rootNodeType)) {
+                log.trace("isTopLevel: PASSED [Ancestor is Root Type] - Node='{}', Ancestor='{}' (is root type), Root='{}'",
+                         node.getType(), currentType, rootNodeType);
+                return true;
             }
+
+            // For C# (and similar languages where root is 'compilation_unit'),
+            // if we encounter a blocking declaration type before reaching the root,
+            // then 'node' is nested and not top-level.
+            if ("compilation_unit".equals(rootNodeType) && CSHARP_BLOCKER_NODE_TYPES.contains(currentType)) {
+                log.trace("isTopLevel: DENIED [Ancestor is Blocker] - Node='{}' (Target Root='{}') is nested inside Blocker='{}'",
+                         node.getType(), rootNodeType, currentType);
+                return false;
+            }
+            // For other languages, or if not a C# blocker, continue up.
+            // Python's root is "module". If we hit "class_definition" or "function_definition"
+            // before "module", it's nested. This logic might need refinement if
+            // BLOCKER_NODE_TYPES needs to be language-specific beyond C#.
+            // For now, CSHARP_BLOCKER_NODE_TYPES only applies if rootType is "compilation_unit".
+
+            current = current.getParent();
         }
-        return result;
+
+        // If the loop finishes, it means 'current' became null before we hit the root node type.
+        // This could happen if 'node' itself was the root, or an unexpected tree structure.
+        // If node is the root node, its parent is null, loop won't run, we fall here.
+        // If node is a direct child of root (parser gives direct parentage), current becomes root, first check passes.
+        log.warn("isTopLevel: DENIED [Reached Null Ancestor] - Node='{}' (Target Root='{}'). Traversed all parents without matching root type or hitting a C# blocker.",
+                 node.getType(), rootNodeType);
+        return false; // Default to false if we exhaust parents without conclusion.
     }
 
     /** Calculates the leading whitespace indentation for the line the node starts on. */
@@ -348,7 +388,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                       lineStartByte, firstCharByte, startByte);
              return ""; // Return empty string on error
         }
-        return src.substring(lineStartByte, firstCharByte);
+        String indentResult = src.substring(lineStartByte, firstCharByte);
+        log.trace("computeIndentation: Node={}, Indent='{}'", node.getType(), indentResult.replace("\t", "\\t").replace("\n", "\\n"));
+        return indentResult;
     }
 
 
@@ -375,7 +417,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
              return textSlice(definitionNode, src); // Fallback: return raw text
         }
 
-        return String.join("\n", lines);
+        String result = String.join("\n", lines);
+        log.trace("buildSkeletonString: DefNode={}, Capture='{}', Skeleton Output (first line): '{}'", definitionNode.getType(), primaryCaptureName, (result.isEmpty() ? "EMPTY" : result.lines().findFirst().orElse("EMPTY")));
+        return result;
     }
 
     private void buildClassSkeleton(TSNode classNode, String src, String baseIndent, List<String> lines) {
@@ -383,7 +427,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         TSNode bodyNode = classNode.getChildByFieldName("body"); // Usually a block node
 
         if (nameNode == null || nameNode.isNull() || bodyNode == null || bodyNode.isNull()) {
-             log.warn("Could not find name or body for class node: {}", textSlice(classNode, src).lines().findFirst().orElse(""));
+             String classNodeText = textSlice(classNode, src).lines().findFirst().orElse("");
+             log.warn("Could not find name or body for class node: {}", classNodeText);
              lines.add(baseIndent + textSlice(classNode, src)); // Fallback
              log.warn("-> Falling back to raw text slice for class skeleton."); // Add log
              return;
@@ -391,6 +436,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         // Class signature line
         String signature = textSlice(classNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
+        log.trace("buildClassSkeleton: ClassNode={}, Signature line: '{}'", classNode.getType(), signature);
         lines.add(baseIndent + signature + " {");
 
         String memberIndent = baseIndent + "  "; // Indent members further
@@ -456,7 +502,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         TSNode bodyNode = funcNode.getChildByFieldName("body"); // The block containing statements
 
         if (nameNode == null || nameNode.isNull() || paramsNode == null || paramsNode.isNull() || bodyNode == null || bodyNode.isNull()) {
-              log.warn("Could not find essential parts (name, params, body) for function node: {}", textSlice(funcNode, src).lines().findFirst().orElse(""));
+              String funcNodeText = textSlice(funcNode, src).lines().findFirst().orElse("");
+              log.warn("Could not find essential parts (name, params, body) for function node: {}", funcNodeText);
               lines.add(indent + textSlice(funcNode, src)); // Fallback
               log.warn("-> Falling back to raw text slice for function skeleton."); // Add log
               return;
@@ -475,6 +522,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         String returnType = (returnTypeNode != null && !returnTypeNode.isNull()) ? " -> " + textSlice(returnTypeNode, src) : "";
 
         String reconstructedSignature = String.format("%sdef %s%s%s:", prefix, name, params, returnType);
+        log.trace("buildFunctionSkeleton: FuncNode={}, Reconstructed Sig: '{}'", funcNode.getType(), reconstructedSignature);
 
 
         // Check if the body is more than just 'pass' or empty
@@ -526,11 +574,12 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
      * Needs the source string `src` for substring extraction.
      */
     private static Optional<String> extractSimpleName(TSNode decl, String src) {
+        Optional<String> nameOpt = Optional.empty();
         try {
             // Try finding a child node with field name "name" first.
             TSNode nameNode = decl.getChildByFieldName("name");
             if (nameNode != null && !nameNode.isNull()) {
-                return Optional.of(src.substring(nameNode.getStartByte(), nameNode.getEndByte()));
+                nameOpt = Optional.of(src.substring(nameNode.getStartByte(), nameNode.getEndByte()));
             } else {
                  // Log failure specific to getChildByFieldName before falling back or failing
                  log.warn("getChildByFieldName('name') returned null or isNull for node type {} at line {}",
@@ -541,11 +590,31 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
              log.warn("Error extracting simple name from node type {} for node starting with '{}...': {}",
                       decl.getType(), src.substring(decl.getStartByte(), Math.min(decl.getEndByte(), decl.getStartByte() + 20)), e.getMessage());
         }
-        // If we reach here, it means the try block finished without returning (i.e., getChildByFieldName failed).
-        // Log the failure and return empty.
-        log.warn("extractSimpleName: Failed using getChildByFieldName('name') for node type {} at line {}",
-                 decl.getType(), decl.getStartPoint().getRow() + 1);
-        return Optional.empty();
+        // If we reach here, it means the try block finished without returning (i.e., getChildByFieldName failed or an exception occurred).
+        if (nameOpt.isEmpty()) {
+            log.warn("extractSimpleName: Failed using getChildByFieldName('name') for node type {} at line {}",
+                     decl.getType(), decl.getStartPoint().getRow() + 1);
+        }
+        log.trace("extractSimpleName: DeclNode={}, ExtractedName='{}'", decl.getType(), nameOpt.orElse("N/A"));
+        return nameOpt;
+    }
+
+    private String extractNamespace(TSNode definitionNode, TSNode rootNode, String src) {
+        List<String> namespaceParts = new ArrayList<>();
+        TSNode current = definitionNode.getParent(); // Start from the parent of the definition node
+
+        while (current != null && !current.isNull() && !current.equals(rootNode)) {
+            if ("namespace_declaration".equals(current.getType())) {
+                TSNode nameNode = current.getChildByFieldName("name");
+                if (nameNode != null && !nameNode.isNull()) {
+                    String nsPart = textSlice(nameNode, src);
+                    namespaceParts.add(nsPart); // Added from innermost to outermost
+                }
+            }
+            current = current.getParent();
+        }
+        Collections.reverse(namespaceParts); // Reverse to get outermost.innermost
+        return String.join(".", namespaceParts);
     }
 
     private static String loadResource(String path) {
