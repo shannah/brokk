@@ -142,6 +142,9 @@ Everything else: no code intelligence yet
 - Joern (the code intelligence engine) needs to run delombok before it can analyze anything.
   Delombok is extremely slow for anything but trivial projects, making Brokk a poor fit for
   large Lombok-using codebases.
+- Litellm does not pass 429 (over quota) or 503 (unavailable) errors from model vendors to Brokk. This will result
+  in Brokk aborting its task with `BadRequestError (no further information, the response was null; check litellm logs)`.
+  We are fixing this in Litellm.
 
 ## Finer points on some commands
 

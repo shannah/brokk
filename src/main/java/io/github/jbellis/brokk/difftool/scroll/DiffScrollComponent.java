@@ -364,8 +364,10 @@ public class DiffScrollComponent extends JComponent implements ChangeListener
                     commandShape = new Rectangle(0,0,0,0);
                 }
 
-                boolean canMergeRight = !bdTo.isReadonly() && (diffPanel.getMainPanel().isTwoFilesComparison() || diffPanel.getMainPanel().isStringAndFileComparison());
-                boolean canMergeLeft = !bdFrom.isReadonly() && (diffPanel.getMainPanel().isTwoFilesComparison() || diffPanel.getMainPanel().isStringAndFileComparison()); // Assuming symmetry
+                // Merging is possible if the target document is not read-only.
+                // The existence of a source is guaranteed by the BufferSource model.
+                boolean canMergeRight = !bdTo.isReadonly();
+                boolean canMergeLeft = !bdFrom.isReadonly();
 
                 // Draw merge right command (triangle pointing right on left edge of right bar)
                 if (canMergeRight) {

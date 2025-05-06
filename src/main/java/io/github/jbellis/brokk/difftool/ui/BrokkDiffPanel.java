@@ -26,39 +26,20 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
     private final JTabbedPane tabbedPane;
     private boolean started;
     private final JLabel loadingLabel = new JLabel("Processing... Please wait.");
-    private final File leftFile;
-    private final File rightFile;
-    private final String contentLeft;
-    private final String contentRight;
-    private final String leftFileTitle;
-    private final String rightFileTitle;
-    private final boolean isTwoFilesComparison;
-    private final boolean isStringAndFileComparison;
+    private final BufferSource leftSource;
+    private final BufferSource rightSource;
     private final boolean isDarkTheme;
-
-
-    public boolean isTwoFilesComparison() {
-        return isTwoFilesComparison;
-    }
-
-    public boolean isStringAndFileComparison() {
-        return isStringAndFileComparison;
-    }
 
 
     public BrokkDiffPanel(Builder builder) {
         assert builder.contextManager != null;
         this.contextManager = builder.contextManager;
-        this.leftFile = builder.leftFile;
-        this.rightFile = builder.rightFile;
-        this.contentLeft = builder.contentLeft;
-        this.contentRight = builder.contentRight;
-        this.leftFileTitle = builder.leftFileTitle;
-        this.rightFileTitle = builder.rightFileTitle;
-        this.isTwoFilesComparison = builder.isTwoFilesComparison;
-        this.isStringAndFileComparison = builder.isStringAndFileComparison;
+        this.leftSource = builder.leftSource;
+        this.rightSource = builder.rightSource;
         this.isDarkTheme = builder.isDarkTheme;
         assert this.contextManager != null : "ContextManager cannot be null";
+        assert this.leftSource != null : "Left source cannot be null";
+        assert this.rightSource != null : "Right source cannot be null";
 
         // Make the container focusable, so it can handle key events
         setFocusable(true);
@@ -81,14 +62,8 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
 
     // Builder Class
     public static class Builder {
-        private File leftFile;
-        private File rightFile;
-        private String contentLeft;
-        private String contentRight;
-        private String leftFileTitle = "";
-        private String rightFileTitle = "";
-        private boolean isTwoFilesComparison = false;
-        private boolean isStringAndFileComparison = false;
+        private BufferSource leftSource;
+        private BufferSource rightSource;
         private boolean isDarkTheme = false; // Default to light theme
         private final ContextManager contextManager;
 
@@ -97,42 +72,25 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             this.contextManager = contextManager;
         }
 
-        // Compare two files
-        public Builder compareFiles(File leftFile, String leftFileTitle, File rightFile, String rightFileTitle) {
-            this.leftFile = leftFile;
-            this.rightFile = rightFile;
-            this.leftFileTitle = leftFileTitle;
-            this.rightFileTitle = rightFileTitle;
-            this.isTwoFilesComparison = true;
+        public Builder leftSource(BufferSource source) {
+            this.leftSource = source;
             return this;
         }
 
-        // Compare a string and a file
-        public Builder compareStringAndFile(String contentLeft, String contentLeftTitle, File rightFile, String rightFileTitle) {
-            this.contentLeft = contentLeft;
-            this.leftFileTitle = contentLeftTitle;
-            this.rightFile = rightFile;
-            this.rightFileTitle = rightFileTitle;
-            this.isStringAndFileComparison = true;
+        public Builder rightSource(BufferSource source) {
+            this.rightSource = source;
             return this;
         }
-
 
         public Builder withTheme(boolean isDark) {
             this.isDarkTheme = isDark;
             return this;
         }
 
-        // Compare two strings
-        public Builder compareStrings(String contentLeft, String contentLeftTitle, String contentRight, String contentRightTitle) {
-            this.contentLeft = contentLeft;
-            this.contentRight = contentRight;
-            this.leftFileTitle = contentLeftTitle;
-            this.rightFileTitle = contentRightTitle;
-            return this;
-        }
-
         public BrokkDiffPanel build() {
+            if (leftSource == null || rightSource == null) {
+                throw new IllegalStateException("Both left and right sources must be provided.");
+            }
             return new BrokkDiffPanel(this);
         }
     }
@@ -223,10 +181,10 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
             List<String> rightLines = Arrays.asList(rightContent.split("\\R"));
 
             Patch<String> patch = DiffUtils.diff(leftLines, rightLines, (DiffAlgorithmListener) null);
-            List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(leftFileTitle, rightFileTitle, leftLines, patch, 0);
+            List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(this.leftSource.title(), this.rightSource.title(), leftLines, patch, 0);
             String diffText = String.join("\n", unifiedDiff);
 
-            var description = "Captured Diff: %s vs %s".formatted(leftFileTitle, rightFileTitle);
+            var description = "Captured Diff: %s vs %s".formatted(this.leftSource.title(), this.rightSource.title());
             var fragment = new ContextFragment.StringFragment(diffText, description, SyntaxConstants.SYNTAX_STYLE_JAVA);
             contextManager.addVirtualFragment(fragment);
             contextManager.getIo().systemOutput("Added captured diff to context: " + description);
@@ -270,11 +228,7 @@ public class BrokkDiffPanel extends JPanel implements PropertyChangeListener {
 
     private void compare() {
         FileComparison fileComparison = new FileComparison.FileComparisonBuilder(this)
-                .withComparisonType(isTwoFilesComparison, isStringAndFileComparison)
-                .withFiles(leftFile, leftFileTitle, rightFile, rightFileTitle)
-                .withStringAndFile(contentLeft, leftFileTitle, rightFile, rightFileTitle)
-                .withStringAndFile(leftFile, leftFileTitle, contentRight, rightFileTitle)
-                .withStrings(contentLeft, leftFileTitle, contentRight, rightFileTitle)
+                .withSources(this.leftSource, this.rightSource)
                 .withTheme(this.isDarkTheme) // Pass theme state
                 .build();
 
