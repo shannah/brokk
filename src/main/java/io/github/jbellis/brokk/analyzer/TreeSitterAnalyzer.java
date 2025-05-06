@@ -475,7 +475,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         }
         String signature = textSlice(signatureContextNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
         log.trace("buildClassSkeleton: ClassNode={}, SignatureContextNode={}, Signature line: '{}'", classNode.getType(), signatureContextNode.getType(), signature);
-        lines.add(baseIndent + signature + " {");
+        if (getProject().getAnalyzerLanguage() == Language.PYTHON) {
+            // The signature for Python (e.g., "class A:") typically already includes the colon
+            // after stripping trailing whitespace from the text slice up to the body.
+            lines.add(baseIndent + signature);
+        } else {
+            lines.add(baseIndent + signature + " {");
+        }
 
         String memberIndent = baseIndent + "  "; // Indent members further
 
@@ -527,8 +533,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             // Potentially handle nested classes, etc. here if needed
         }
 
-
-        lines.add(baseIndent + "}");
+        if (getProject().getAnalyzerLanguage() != Language.PYTHON) {
+            lines.add(baseIndent + "}");
+        }
     }
 
      private void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines) {
