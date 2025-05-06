@@ -1,7 +1,5 @@
 package io.github.jbellis.brokk.analyzer;
 
-// Treesitter imports
-
 import io.github.jbellis.brokk.IProject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +10,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,18 +69,18 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                         var map = parseAndExtractSkeletons(pf, localParser);
                         log.trace("Skeletons found for {}: {}", pf, map.size());
                         if (!map.isEmpty()) {
-                             skeletons.put(pf, map);
+                             skeletons.put(pf, Collections.unmodifiableMap(new HashMap<>(map)));
                              // Extract and store classes for this file
                              var classesInFile = map.keySet().stream()
                                  .filter(CodeUnit::isClass)
                                  .collect(Collectors.toSet());
                              log.trace("Classes found for {}: {}", pf, classesInFile.size());
                              if (!classesInFile.isEmpty()) {
-                                 fileClasses.put(pf, classesInFile);
+                                 fileClasses.put(pf, Collections.unmodifiableSet(new HashSet<>(classesInFile)));
                              }
                         } else {
                              // Explicitly log when the returned map is empty
-                             log.warn("parseAndExtractSkeletons returned an empty map for file: {}", pf);
+                             log.debug("parseAndExtractSkeletons returned an empty map for file: {}", pf);
                         }
                     } catch (Exception e) {
                         log.warn("Error parsing {}: {}", pf, e, e);
@@ -131,6 +130,25 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
     /** Class-path resource for the query (e.g. {@code "treesitter/python.scm"}). */
     protected abstract String getQueryResource();
+
+    /**
+     * Defines the general type of skeleton that should be built for a given capture.
+     */
+    public enum SkeletonType {
+        CLASS_LIKE,
+        FUNCTION_LIKE,
+        UNSUPPORTED
+    }
+
+    /**
+     * Determines the {@link SkeletonType} for a given capture name.
+     * This allows subclasses to map their specific query capture names (e.g., "class.definition", "method.declaration")
+     * to a general category for skeleton building.
+     *
+     * @param captureName The name of the capture from the Tree-sitter query.
+     * @return The {@link SkeletonType} indicating how to process this capture for skeleton generation.
+     */
+    protected abstract SkeletonType getSkeletonTypeForCapture(String captureName);
 
     /**
      * Translate a capture produced by the query into a {@link CodeUnit}.
@@ -321,24 +339,15 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
     /* ---------- Skeleton Building Logic ---------- */
 
-    // Note: Add other types as needed, e.g. for C-like languages or others with similar "blocking" constructs
-    private static final Set<String> CSHARP_BLOCKER_NODE_TYPES = Set.of(
-            "class_declaration",
-            "struct_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "delegate_declaration",
-            "method_declaration",
-            "constructor_declaration",
-            "destructor_declaration",
-            "property_declaration",
-            "indexer_declaration",
-            "event_declaration",
-            "operator_declaration",
-            "field_declaration"
-            // Note: "namespace_declaration" is NOT a blocker, it's a transparent container for top-level.
-            // "declaration_list" is also not a blocker, it's often an artifact of the parser.
-    );
+    /**
+     * Returns a set of node types that, if encountered as an ancestor of a candidate node
+     * before reaching the root node, would disqualify the candidate node from being top-level.
+     * The default implementation returns an empty set, meaning no node types act as blockers
+     * unless overridden by a subclass.
+     */
+    protected Set<String> getTopLevelBlockerNodeTypes() {
+        return Set.of(); // Default implementation returns an empty set
+    }
 
     /** Checks if a node is considered top-level by walking up its parent chain. */
     private boolean isTopLevel(TSNode node, TSNode rootNode) {
@@ -347,49 +356,45 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             return false;
         }
         if (rootNode == null || rootNode.isNull()) {
-            log.trace("isTopLevel: Root is null for Node={}. Result=false (Initial Null Check)", node.getType());
+            log.trace("isTopLevel: Root is null for Node={}. Result=false (Initial Null Check for root)", node.getType());
             return false;
         }
 
+        if (node.equals(rootNode)) {
+            log.trace("isTopLevel: PASSED [Node is Root] - Node='{}'", node.getType());
+            return true;
+        }
+
         String rootNodeType = rootNode.getType();
+        Set<String> blockerNodeTypes = getTopLevelBlockerNodeTypes();
         TSNode current = node.getParent();
-        // String originalNodeParentType = (current == null || current.isNull()) ? "null" : current.getType(); // originalNodeParentType is not used by new logging
 
         while (current != null && !current.isNull()) {
             String currentType = current.getType();
 
             // If the current parent IS the root node (by type match), then 'node' is effectively top-level.
-            // This handles cases where the direct parent might be a transparent wrapper like 'declaration_list'.
             if (currentType.equals(rootNodeType)) {
                 log.trace("isTopLevel: PASSED [Ancestor is Root Type] - Node='{}', Ancestor='{}' (is root type), Root='{}'",
                          node.getType(), currentType, rootNodeType);
                 return true;
             }
 
-            // For C# (and similar languages where root is 'compilation_unit'),
-            // if we encounter a blocking declaration type before reaching the root,
+            // If we encounter a language-specific blocking declaration type before reaching the root,
             // then 'node' is nested and not top-level.
-            if ("compilation_unit".equals(rootNodeType) && CSHARP_BLOCKER_NODE_TYPES.contains(currentType)) {
-                log.trace("isTopLevel: DENIED [Ancestor is Blocker] - Node='{}' (Target Root='{}') is nested inside Blocker='{}'",
-                         node.getType(), rootNodeType, currentType);
+            if (!blockerNodeTypes.isEmpty() && blockerNodeTypes.contains(currentType)) {
+                log.trace("isTopLevel: DENIED [Ancestor is Blocker] - Node='{}' is nested inside Blocker='{}' (Language: {})",
+                         node.getType(), currentType, getProject().getAnalyzerLanguage());
                 return false;
             }
-            // For other languages, or if not a C# blocker, continue up.
-            // Python's root is "module". If we hit "class_definition" or "function_definition"
-            // before "module", it's nested. This logic might need refinement if
-            // BLOCKER_NODE_TYPES needs to be language-specific beyond C#.
-            // For now, CSHARP_BLOCKER_NODE_TYPES only applies if rootType is "compilation_unit".
 
             current = current.getParent();
         }
 
-        // If the loop finishes, it means 'current' became null before we hit the root node type.
-        // This could happen if 'node' itself was the root, or an unexpected tree structure.
-        // If node is the root node, its parent is null, loop won't run, we fall here.
-        // If node is a direct child of root (parser gives direct parentage), current becomes root, first check passes.
-        log.warn("isTopLevel: DENIED [Reached Null Ancestor] - Node='{}' (Target Root='{}'). Traversed all parents without matching root type or hitting a C# blocker.",
+        // If the loop finishes, 'current' became null. This means we traversed all parents
+        // without matching the root node type or hitting a defined blocker.
+        log.debug("isTopLevel: DENIED [Reached Null Ancestor or Loop Exhausted] - Node='{}' (Target Root='{}'). Parent traversal did not confirm top-level status against specified root or blockers.",
                  node.getType(), rootNodeType);
-        return false; // Default to false if we exhaust parents without conclusion.
+        return false;
     }
 
     /** Calculates the leading whitespace indentation for the line the node starts on. */
@@ -438,14 +443,18 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             lines.add(baseIndent + textSlice(decoratorNode, src));
         }
 
-        if (primaryCaptureName.startsWith("class")) {
-            buildClassSkeleton(definitionNode, src, baseIndent, lines);
-        } else if (primaryCaptureName.startsWith("function")) {
-            // For functions, the simpleName is crucial, especially for arrow functions
-            buildFunctionSkeleton(definitionNode, Optional.of(simpleName), src, baseIndent, lines);
-        } else {
-             log.warn("Unsupported top-level definition type for skeleton: {}", primaryCaptureName);
-             return textSlice(definitionNode, src); // Fallback: return raw text
+        SkeletonType skeletonType = getSkeletonTypeForCapture(primaryCaptureName);
+        switch (skeletonType) {
+            case CLASS_LIKE:
+                buildClassSkeleton(definitionNode, src, baseIndent, lines);
+                break;
+            case FUNCTION_LIKE:
+                buildFunctionSkeleton(definitionNode, Optional.of(simpleName), src, baseIndent, lines);
+                break;
+            case UNSUPPORTED:
+            default: // Also handles null if getSkeletonTypeForCapture could somehow return null
+                 log.debug("Unsupported capture name '{}' for skeleton building (resolved to type {}). Falling back to raw text slice.", primaryCaptureName, skeletonType);
+                 return textSlice(definitionNode, src);
         }
 
         String result = String.join("\n", lines);
@@ -466,79 +475,57 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
          }
 
         // Class signature line
-        TSNode signatureContextNode = classNode;
-        TSNode parent = classNode.getParent();
-        if (parent != null && !parent.isNull() && "export_statement".equals(parent.getType())) {
-            // If the class_declaration is directly inside an export_statement,
-            // the signature should start from the export_statement node to include "export"
-            signatureContextNode = parent;
-        }
-        String signature = textSlice(signatureContextNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
-        log.trace("buildClassSkeleton: ClassNode={}, SignatureContextNode={}, Signature line: '{}'", classNode.getType(), signatureContextNode.getType(), signature);
-        if (getProject().getAnalyzerLanguage() == Language.PYTHON) {
-            // The signature for Python (e.g., "class A:") typically already includes the colon
-            // after stripping trailing whitespace from the text slice up to the body.
-            lines.add(baseIndent + signature);
-        } else {
-            lines.add(baseIndent + signature + " {");
+        String signature = textSlice(classNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
+        log.trace("buildClassSkeleton: ClassNode={}, Signature line: '{}'", classNode.getType(), signature);
+
+        String exportPrefix = getVisibilityPrefix(classNode, src);
+        String headerLine = renderClassHeader(classNode, src, exportPrefix, signature, baseIndent);
+        if (headerLine != null && !headerLine.isBlank()) {
+            lines.add(headerLine);
         }
 
         String memberIndent = baseIndent + "  "; // Indent members further
 
-        // Iterate through direct children of the body node
-        for (int i = 0; i < bodyNode.getNamedChildCount(); i++) {
-            TSNode memberNode = bodyNode.getNamedChild(i);
-            String memberType = memberNode.getType();
+        // Delegate member skeleton building to language-specific implementation
+        buildClassMemberSkeletons(bodyNode, src, memberIndent, lines);
 
-            // Handle potentially decorated methods/functions within the class
-            if ("function_definition".equals(memberType) || "method_definition".equals(memberType)) { // also check for method_definition (JS classes)
-                 // Methods within classes typically have their names defined by the node itself.
-                 buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
-            } else if ("decorated_definition".equals(memberType)) { // Python specific
-                 // Handle decorated functions
-                 TSNode functionDefNode = null;
-                 // Add decorators first
-                 for (int j = 0; j < memberNode.getChildCount(); j++) {
-                     TSNode child = memberNode.getChild(j);
-                     if (child == null || child.isNull()) continue;
-                      if ("decorator".equals(child.getType())) {
-                          // Decorator should use the standard member indentation for skeleton output
-                          lines.add(memberIndent + textSlice(child, src));
-                      } else if ("function_definition".equals(child.getType())) {
-                          functionDefNode = child;
-                          // Don't break, might be other non-decorator children theoretically
-                     }
-                 }
-                 // Then add the function skeleton
-                 if (functionDefNode != null) {
-                     buildFunctionSkeleton(functionDefNode, Optional.empty(), src, memberIndent, lines);
-                 } else {
-                     log.warn("decorated_definition node found without an inner function_definition: {}", textSlice(memberNode, src).lines().findFirst().orElse(""));
-                 }
-            }
-            // Handle field assignments (like self.x = ...) - check if it's an assignment targeting 'self'
-            else if ("expression_statement".equals(memberType)) {
-                 TSNode expr = memberNode.getChild(0);
-                 if (expr != null && "assignment".equals(expr.getType())) {
-                    TSNode left = expr.getChildByFieldName("left");
-                    if (left != null && "attribute".equals(left.getType())) {
-                         TSNode object = left.getChildByFieldName("object");
-                         if (object != null && "identifier".equals(object.getType()) && "self".equals(textSlice(object, src))) {
-                             // It's an assignment like self.x = ...
-                             lines.add(memberIndent + textSlice(memberNode, src).strip());
-                         }
-                    }
-                 }
-            }
-            // Potentially handle nested classes, etc. here if needed
-        }
-
-        if (getProject().getAnalyzerLanguage() != Language.PYTHON) {
-            lines.add(baseIndent + "}");
+        String footerLine = renderClassFooter(classNode, src, baseIndent);
+        if (footerLine != null && !footerLine.isBlank()) {
+            lines.add(footerLine);
         }
     }
 
-     private void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines) {
+    protected abstract String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signature, String baseIndent);
+    protected abstract String renderClassFooter(TSNode classNode, String src, String baseIndent);
+
+    /**
+     * Builds skeletons for the members within a class body.
+     * This method is responsible for iterating through the children of the `classBodyNode`,
+     * identifying relevant members (methods, inner classes, fields, etc.),
+     * and appending their skeleton strings to the `lines` list.
+     * Implementations will typically call `buildFunctionSkeleton` or other helper methods.
+     *
+     * @param classBodyNode The TSNode representing the body of the class.
+     * @param src The source code of the file.
+     * @param memberIndent The indentation string to be used for each member.
+     * @param lines The list to which skeleton lines for members should be added.
+     */
+    protected abstract void buildClassMemberSkeletons(TSNode classBodyNode, String src, String memberIndent, List<String> lines);
+
+    /**
+     * Determines a visibility or export prefix (e.g., "export ", "public ") for a given node.
+     * Subclasses can override this to provide language-specific logic.
+     * The default implementation returns an empty string.
+     *
+     * @param node The node to check for visibility/export modifiers.
+     * @param src  The source code.
+     * @return The visibility or export prefix string.
+     */
+    protected String getVisibilityPrefix(TSNode node, String src) {
+        return ""; // Default implementation returns an empty string
+    }
+
+    protected void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines) {
         String functionName;
         TSNode nameNode = funcNode.getChildByFieldName("name");
 
@@ -556,7 +543,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         TSNode paramsNode = funcNode.getChildByFieldName("parameters");
         TSNode returnTypeNode = funcNode.getChildByFieldName("return_type"); // Might be null for JS/TS
-        TSNode bodyNode = funcNode.getChildByFieldName("body");
+        TSNode bodyNode = funcNode.getChildByFieldName("body"); // Used by language-specific renderers
 
         if (paramsNode == null || paramsNode.isNull() || bodyNode == null || bodyNode.isNull()) {
               String funcNodeText = textSlice(funcNode, src);
@@ -567,50 +554,48 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
               return;
          }
 
-        String exportPrefix = "";
-        TSNode ancestor = funcNode.getParent(); // For function_declaration or arrow_function
-        if (ancestor != null && !ancestor.isNull()) {
-            if ("export_statement".equals(ancestor.getType())) { // Handles exported function_declaration (direct parent)
-                exportPrefix = "export ";
-            } else if ("variable_declarator".equals(ancestor.getType())) { // For arrow_function, parent is variable_declarator
-                TSNode lexicalDeclNode = ancestor.getParent();
-                if (lexicalDeclNode != null && !lexicalDeclNode.isNull() && "lexical_declaration".equals(lexicalDeclNode.getType())) {
-                    TSNode exportStatementNode = lexicalDeclNode.getParent();
-                    if (exportStatementNode != null && !exportStatementNode.isNull() && "export_statement".equals(exportStatementNode.getType())) {
-                        exportPrefix = "export ";
-                    }
-                }
-            }
-        }
-        
+        String exportPrefix = getVisibilityPrefix(funcNode, src);
         String asyncPrefix = "";
         TSNode firstChildOfFunc = funcNode.getChild(0); // Check for 'async' keyword
         if (firstChildOfFunc != null && !firstChildOfFunc.isNull() && "async".equals(firstChildOfFunc.getType())) {
             asyncPrefix = "async ";
         }
         
-        String params = textSlice(paramsNode, src);
-        String returnTypeSuffix = (returnTypeNode != null && !returnTypeNode.isNull()) ? " -> " + textSlice(returnTypeNode, src) : "";
+        String paramsText = textSlice(paramsNode, src);
+        String returnTypeText = (returnTypeNode != null && !returnTypeNode.isNull()) ? textSlice(returnTypeNode, src) : "";
         
-        String reconstructedSignature = String.format("%s%sdef %s%s%s:", exportPrefix, asyncPrefix, functionName, params, returnTypeSuffix);
-        log.trace("buildFunctionSkeleton: FuncNode={}, Name='{}', Type='{}', Reconstructed Sig: '{}'",
-                  funcNode.getType(), functionName, funcNode.getType(), reconstructedSignature);
-
-        // Check if the body is more than just 'pass' or empty (relevant for Python, less so for JS ... placeholder)
-        boolean hasMeaningfulBody = bodyNode.getNamedChildCount() > 1 ||
-                                    (bodyNode.getNamedChildCount() == 1 && !"pass_statement".equals(bodyNode.getNamedChild(0).getType()));
-
-
-
-        // Add the reconstructed line
-        if (hasMeaningfulBody) {
-             lines.add(indent + reconstructedSignature + " " + bodyPlaceholder());
-         } else {
-             lines.add(indent + reconstructedSignature); // Simple signature line without suffix
-         }
+        String functionLine = renderFunctionDeclaration(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
+        if (functionLine != null && !functionLine.isBlank()) {
+            lines.add(functionLine);
+        }
     }
 
     protected abstract String bodyPlaceholder();
+
+    /**
+     * Renders the complete declaration line for a function, including any prefixes, name, parameters,
+     * return type, and language-specific syntax like "def" or "function" keywords, colons, or braces.
+     * Implementations are responsible for constructing the entire line, including indentation and any
+     * language-specific body placeholder if the function body is not empty or trivial.
+     *
+     * @param funcNode The Tree-sitter node representing the function.
+     * @param src The source code of the file.
+     * @param exportPrefix The export prefix (e.g., "export ") if applicable, otherwise empty.
+     * @param asyncPrefix The async prefix (e.g., "async ") if applicable, otherwise empty.
+     * @param functionName The name of the function.
+     * @param paramsText The text content of the function's parameters.
+     * @param returnTypeText The text content of the function's return type, or empty if none.
+     * @param indent The base indentation string for this line.
+     * @return The fully rendered function declaration line, or null/blank if it should not be added.
+     */
+    protected abstract String renderFunctionDeclaration(TSNode funcNode,
+                                                        String src,
+                                                        String exportPrefix,
+                                                        String asyncPrefix,
+                                                        String functionName,
+                                                        String paramsText,
+                                                        String returnTypeText,
+                                                        String indent);
 
     /** Finds decorator nodes immediately preceding a function or class node. */
     private List<TSNode> getPrecedingDecorators(TSNode decoratedNode, String src) {
@@ -626,13 +611,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
 
     /** Extracts a substring from the source code based on node boundaries. */
-    private String textSlice(TSNode node, String src) {
+    protected String textSlice(TSNode node, String src) {
         if (node == null || node.isNull()) return "";
         return src.substring(node.getStartByte(), node.getEndByte());
     }
 
      /** Extracts a substring from the source code based on byte offsets. */
-    private String textSlice(int startByte, int endByte, String src) {
+    protected String textSlice(int startByte, int endByte, String src) {
         return src.substring(startByte, Math.min(endByte, src.length()));
     }
 
@@ -686,6 +671,25 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         }
         Collections.reverse(namespaceParts); // Reverse to get outermost.innermost
         return String.join(".", namespaceParts);
+    }
+
+    /**
+     * Computes a package path based on the file's directory structure relative to the project root.
+     * Path separators are replaced with dots.
+     * @param file The file for which to compute the package path.
+     * @return The package path string, or an empty string if the file is in the project root.
+     */
+    protected String computePackagePath(ProjectFile file) {
+        Path projectRoot = getProject().getRoot();
+        Path filePath = file.absPath();
+        Path parentDir = filePath.getParent();
+
+        if (parentDir == null || parentDir.equals(projectRoot)) {
+            return ""; // File is in the project root
+        }
+
+        var rel = projectRoot.relativize(parentDir);
+        return rel.toString().replace('/', '.').replace('\\', '.');
     }
 
     private static String loadResource(String path) {

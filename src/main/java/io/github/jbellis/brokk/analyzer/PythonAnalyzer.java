@@ -2,10 +2,13 @@ package io.github.jbellis.brokk.analyzer;
 
 import io.github.jbellis.brokk.IProject;
 import org.treesitter.TSLanguage;
-import org.treesitter.TreeSitterPython; // Import the specific language class
+import org.treesitter.TSNode;
+import org.treesitter.TreeSitterPython;
 
 import java.nio.file.Files;
-import java.nio.file.Path; // Add import for Path
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public final class PythonAnalyzer extends TreeSitterAnalyzer {
@@ -72,6 +75,88 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected String bodyPlaceholder() {
         return "…";
+    }
+
+    @Override
+    protected SkeletonType getSkeletonTypeForCapture(String captureName) {
+        return switch (captureName) {
+            case "class.definition" -> SkeletonType.CLASS_LIKE;
+            case "function.definition" -> SkeletonType.FUNCTION_LIKE;
+            default -> SkeletonType.UNSUPPORTED;
+        };
+    }
+
+    @Override
+    protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
+        String pyReturnTypeSuffix = (returnTypeText != null && !returnTypeText.isEmpty()) ? " -> " + returnTypeText : "";
+        String signature = String.format("%s%sdef %s%s%s:", exportPrefix, asyncPrefix, functionName, paramsText, pyReturnTypeSuffix);
+
+        TSNode bodyNode = funcNode.getChildByFieldName("body");
+        boolean hasMeaningfulBody = bodyNode != null && !bodyNode.isNull() &&
+                                    (bodyNode.getNamedChildCount() > 1 ||
+                                     (bodyNode.getNamedChildCount() == 1 && !"pass_statement".equals(bodyNode.getNamedChild(0).getType())));
+
+        if (hasMeaningfulBody) {
+            return indent + signature + " " + bodyPlaceholder();
+        } else {
+            return indent + signature;
+        }
+    }
+
+    @Override
+    protected String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signature, String baseIndent) {
+        // Python's signature from textSlice up to body usually includes the colon.
+        // exportPrefix is expected to be empty for Python from the default getVisibilityPrefix.
+        return baseIndent + signature;
+    }
+
+    @Override
+    protected String renderClassFooter(TSNode classNode, String src, String baseIndent) {
+        return null; // Python classes do not have a closing brace/keyword
+    }
+
+    @Override
+    protected void buildClassMemberSkeletons(TSNode classBodyNode, String src, String memberIndent, List<String> lines) {
+        for (int i = 0; i < classBodyNode.getNamedChildCount(); i++) {
+            TSNode memberNode = classBodyNode.getNamedChild(i);
+            String memberType = memberNode.getType();
+
+            if ("function_definition".equals(memberType)) {
+                super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
+            } else if ("decorated_definition".equals(memberType)) {
+                TSNode functionDefNode = null;
+                // Add decorators first, then the function definition
+                for (int j = 0; j < memberNode.getChildCount(); j++) {
+                    TSNode child = memberNode.getChild(j);
+                    if (child == null || child.isNull()) continue;
+                    if ("decorator".equals(child.getType())) {
+                        lines.add(memberIndent + textSlice(child, src));
+                    } else if ("function_definition".equals(child.getType())) {
+                        functionDefNode = child;
+                    }
+                }
+                if (functionDefNode != null) {
+                    // Pass the original decorated_definition node for context if needed by buildFunctionSkeleton,
+                    // but the actual function details come from functionDefNode.
+                    // However, buildFunctionSkeleton primarily uses the passed funcNode for name, params, body.
+                    // For decorators, they are added before this call now.
+                    super.buildFunctionSkeleton(functionDefNode, Optional.empty(), src, memberIndent, lines);
+                } else {
+                    log.warn("decorated_definition node found without an inner function_definition: {}", textSlice(memberNode, src).lines().findFirst().orElse(""));
+                }
+            } else if ("expression_statement".equals(memberType)) {
+                TSNode expr = memberNode.getChild(0);
+                if (expr != null && "assignment".equals(expr.getType())) {
+                    TSNode left = expr.getChildByFieldName("left");
+                    if (left != null && "attribute".equals(left.getType())) {
+                        TSNode object = left.getChildByFieldName("object");
+                        if (object != null && "identifier".equals(object.getType()) && "self".equals(textSlice(object, src))) {
+                            lines.add(memberIndent + textSlice(memberNode, src).strip());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**

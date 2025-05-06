@@ -296,28 +296,28 @@ public final class TreeSitterAnalyzerTest {
         // Class skeleton
         String expectedJsxClassSkeleton = """
         export class JsxClass {
-          def render(): ...
+          function render() ...
         }
         """.stripIndent();
         assertEquals(expectedJsxClassSkeleton.trim(), skelJsx.get(jsxClass).trim());
 
-        // Arrow functions should now get Pythonic "def..." skeletons.
+        // Arrow functions now get JS-specific skeletons.
         String expectedExportedArrowFnSkeleton = """
-        export def JsxArrowFnComponent({ name }): ...
+        export JsxArrowFnComponent({ name }) => ...
         """.stripIndent();
         assertEquals(expectedExportedArrowFnSkeleton.trim(), skelJsx.get(jsxArrowFn).trim(), "JsxArrowFnComponent skeleton mismatch");
 
         String expectedLocalArrowFnSkeleton = """
-        def LocalJsxArrowFn(): ...
+        LocalJsxArrowFn() => ...
         """.stripIndent();
         assertEquals(expectedLocalArrowFnSkeleton.trim(), skelJsx.get(localJsxArrowFn).trim(), "LocalJsxArrowFn skeleton mismatch");
 
-        // Plain function declarations should still get the Pythonic "def..." skeleton
+        // Plain function declarations now get JS-specific "function..." skeleton
         // PlainJsxFunc is not exported.
-        String pythonicPlainJsxFuncSkeleton = """
-        def PlainJsxFunc(): ...
+        String expectedPlainJsxFuncSkeleton = """
+        function PlainJsxFunc() ...
         """.stripIndent();
-        assertEquals(pythonicPlainJsxFuncSkeleton.trim(), skelJsx.get(plainJsxFunc).trim(), "PlainJsxFunc skeleton mismatch");
+        assertEquals(expectedPlainJsxFuncSkeleton.trim(), skelJsx.get(plainJsxFunc).trim(), "PlainJsxFunc skeleton mismatch");
 
         // Test getClassesInFile
         assertEquals(Set.of(jsxClass), analyzer.getClassesInFile(jsxFile), "getClassesInFile mismatch for Hello.jsx");
@@ -338,15 +338,15 @@ public final class TreeSitterAnalyzerTest {
 
         String expectedHelloClassSkeleton = """
         export class Hello {
-          def greet(): ...
+          function greet() ...
         }
         """.stripIndent();
         assertEquals(expectedHelloClassSkeleton.trim(), skelJs.get(helloClass).trim());
 
-        // util is an exported function_declaration, should get Pythonic skeleton prefixed with "export"
-        String pythonicUtilFuncSkeleton = """
-        export def util(): ...
+        // util is an exported function_declaration, should get JS-specific "function..." skeleton prefixed with "export"
+        String expectedUtilFuncSkeleton = """
+        export function util() ...
         """.stripIndent();
-        assertEquals(pythonicUtilFuncSkeleton.trim(), skelJs.get(utilFunc).trim());
+        assertEquals(expectedUtilFuncSkeleton.trim(), skelJs.get(utilFunc).trim());
     }
 }
