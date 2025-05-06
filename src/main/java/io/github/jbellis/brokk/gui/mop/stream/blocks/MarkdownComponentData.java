@@ -39,8 +39,9 @@ public record MarkdownComponentData(int id, String html) implements ComponentDat
             var viewport = SwingUtilities.getAncestorOfClass(JViewport.class, editor);
             Point viewPosition = viewport instanceof JViewport ? ((JViewport)viewport).getViewPosition() : null;
             
-            // Update content
-            editor.setText("<html><body>" + html + "</body></html>");
+            // Update content - sanitize HTML entities for Swing's HTML renderer
+            var sanitized = IncrementalBlockRenderer.sanitizeForSwing(html);
+            editor.setText("<html><body>" + sanitized + "</body></html>");
             
             // Restore scroll position if possible
             if (viewport instanceof JViewport && viewPosition != null) {
