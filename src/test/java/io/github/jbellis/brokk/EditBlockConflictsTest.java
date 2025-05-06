@@ -2,6 +2,8 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.git.InMemoryRepo;
 import io.github.jbellis.brokk.prompts.EditBlockConflictsParser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +21,7 @@ class EditBlockConflictsTest {
     static class TestContextManager implements IContextManager {
         private final Path root;
         private final Set<ProjectFile> validFiles;
+        private final IGitRepo repo = new InMemoryRepo();
 
         public TestContextManager(Path root, Set<String> validFiles) {
             this.root = root;
@@ -33,6 +36,11 @@ class EditBlockConflictsTest {
         @Override
         public Set<ProjectFile> getEditableFiles() {
             return validFiles;
+        }
+
+        @Override
+        public IGitRepo getRepo() {
+            return repo;
         }
     }
 
