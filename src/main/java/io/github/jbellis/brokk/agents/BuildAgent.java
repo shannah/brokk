@@ -59,7 +59,7 @@ public class BuildAgent {
 
         // Add the initial result to history (no AI request for this one)
         chatHistory.add(initialResultMessage);
-        logger.debug("Initial tool result added to history: {}", initialResultMessage.text());
+        logger.trace("Initial tool result added to history: {}", initialResultMessage.text());
 
         // 2. Iteration Loop
         while (true) {
@@ -100,7 +100,7 @@ public class BuildAgent {
 
             // 5. Process Tool Execution Requests
             var requests = aiMessage.toolExecutionRequests();
-            logger.debug("LLM requested {} tools", requests.size());
+            logger.trace("LLM requested {} tools", requests.size());
 
             // Prioritize terminal actions (report or abort)
             ToolExecutionRequest reportRequest = null;
@@ -109,7 +109,7 @@ public class BuildAgent {
 
             for (var request : requests) {
                 String toolName = request.name();
-                logger.debug("Processing requested tool: {} with args: {}", toolName, request.arguments());
+                logger.trace("Processing requested tool: {} with args: {}", toolName, request.arguments());
                 if (toolName.equals("reportBuildDetails")) {
                     reportRequest = request;
                 } else if (toolName.equals("abortBuildDetails")) {
@@ -148,13 +148,13 @@ public class BuildAgent {
             // Only proceed if no terminal action was requested this turn
             for (var request : otherRequests) {
                 String toolName = request.name();
-                logger.debug(String.format("Agent action: %s (%s)", toolName, request.arguments()));
+                logger.trace(String.format("Agent action: %s (%s)", toolName, request.arguments()));
                 ToolExecutionResult execResult = toolRegistry.executeTool(this, request);
                 ToolExecutionResultMessage resultMessage = execResult.toExecutionResultMessage();
 
                 // Record individual tool result history
                 chatHistory.add(resultMessage);
-                logger.debug("Tool result added to history: {}", resultMessage.text());
+                logger.trace("Tool result added to history: {}", resultMessage.text());
             }
         }
     }

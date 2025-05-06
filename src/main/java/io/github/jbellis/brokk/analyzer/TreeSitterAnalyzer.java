@@ -100,7 +100,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                             log.trace("Processed file {}: {} top-level CUs, {} signatures, {} parent-child relationships.",
                                       pf, analysisResult.topLevelCUs().size(), analysisResult.signatures().size(), analysisResult.children().size());
                         } else {
-                            log.debug("analyzeFileDeclarations returned empty result for file: {}", pf);
+                            log.trace("analyzeFileDeclarations returned empty result for file: {}", pf);
                         }
                     } catch (Exception e) {
                         log.warn("Error analyzing {}: {}", pf, e, e);

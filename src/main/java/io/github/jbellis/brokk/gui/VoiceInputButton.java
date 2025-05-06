@@ -75,7 +75,7 @@ public class VoiceInputButton extends JButton {
             // Scale icons if needed
             micOnIcon = new ImageIcon(micOnIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
             micOffIcon = new ImageIcon(micOffIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
-            logger.debug("Successfully loaded mic icons");
+            logger.trace("Successfully loaded mic icons");
         } catch (Exception e) {
             logger.warn("Failed to load mic icons", e);
             // We'll fall back to text if icons can't be loaded
