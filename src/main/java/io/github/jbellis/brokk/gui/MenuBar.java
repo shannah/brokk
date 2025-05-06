@@ -271,7 +271,7 @@ public class MenuBar {
         var aboutItem = new JMenuItem("About");
         aboutItem.addActionListener(e -> {
             JOptionPane.showMessageDialog(chrome.getFrame(),
-                                          "Brokk Swing UI\nVersion X\n...",
+                                          "Brokk Swing UI\nVersion %s\n...".formatted(chrome.getContextManager().loadVersion()),
                                           "About Brokk",
                                           JOptionPane.INFORMATION_MESSAGE);
         });

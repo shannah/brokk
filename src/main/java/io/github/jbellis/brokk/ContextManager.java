@@ -935,14 +935,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             throw new UncheckedIOException(e1);
         }
 
-        Properties props = new Properties();
-        try {
-            props.load(getClass().getResourceAsStream("/version.properties"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        var version = props.getProperty("version", "unknown");
+        var version = loadVersion();
 
         // Get configured models for display
         String architectModelName = project.getArchitectModelName();
@@ -978,6 +971,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                            editModelName != null ? editModelName : "(Not Set)",
                                            searchModelName != null ? searchModelName : "(Not Set)",
                                            quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
+    }
+
+    public String loadVersion() {
+        Properties props = new Properties();
+        try {
+            props.load(getClass().getResourceAsStream("/version.properties"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        return props.getProperty("version", "unknown");
     }
 
     /**
