@@ -10,15 +10,11 @@ import io.github.jbellis.brokk.gui.mop.util.ComponentUtils;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.junit.jupiter.api.Test;
 
-import javax.swing.JEditorPane;
-import javax.swing.JPanel;
-import java.awt.Component;
+import javax.swing.*;
+import java.awt.*;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for the IncrementalBlockRenderer.
@@ -280,6 +276,49 @@ public class IncrementalBlockRendererTest {
         assertTrue(hasCodeBlock || hasEditBlock, 
             "Composite should contain either a CodeBlockComponentData or EditBlockComponentData");
     }
+    @Test
+    void editBlockIsIgnoredWhenDisabled() {
+        String md = """
+                Regular text
+                
+                <edit-block data-id="99" data-adds="1" data-dels="1" data-file="Foo.java"/>
+                """;
+                
+        var renderer = new IncrementalBlockRenderer(false /*dark*/, false /*enableEditBlocks*/);
+        
+        // Parse the markdown directly at the model level
+        var html = renderer.createHtml(md);
+        var components = renderer.buildComponentData(html);
+        
+        // Check that no EditBlockComponentData objects were created
+        assertTrue(
+            components.stream().noneMatch(c -> c instanceof EditBlockComponentData),
+            "No EditBlockComponentData must be produced when feature is disabled"
+        );
+    }
+    
+    @Test
+    void editBlockIsPresentWhenEnabled() {
+        String md = """
+                Regular text
+                
+                <edit-block data-id="100" data-adds="2" data-dels="3" data-file="Bar.java"/>
+                """;
+                
+        // Use a renderer with edit blocks enabled (default behavior)
+        var renderer = new IncrementalBlockRenderer(false /*dark*/, true /*enableEditBlocks*/);
+        
+        // Parse the markdown directly at the model level
+        var html = renderer.createHtml(md);
+        var components = renderer.buildComponentData(html);
+        
+        // Check that at least one EditBlockComponentData object was created
+        assertTrue(
+            components.stream().anyMatch(c -> c instanceof EditBlockComponentData),
+            "EditBlockComponentData must be produced when feature is enabled"
+        );
+    }
+    
     @Test
     void streamingSessionKeepsComponentInstances() {
         var renderer = new IncrementalBlockRenderer(false);

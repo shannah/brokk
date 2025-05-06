@@ -49,6 +49,9 @@ public final class IncrementalBlockRenderer {
                          .map(ServiceLoader.Provider::get)
                          .collect(Collectors.toMap(ComponentDataFactory::tagName, f -> f));
     
+    // Per-instance filtered factories
+    private final Map<String, ComponentDataFactory> activeFactories;
+    
     // Fallback factory for markdown content
     private final MarkdownFactory markdownFactory = new MarkdownFactory();
 
@@ -58,6 +61,16 @@ public final class IncrementalBlockRenderer {
      * @param dark true for dark theme, false for light theme
      */
     public IncrementalBlockRenderer(boolean dark) {
+        this(dark, true);
+    }
+    
+    /**
+     * Creates a new incremental renderer with the given theme and edit block setting.
+     * 
+     * @param dark true for dark theme, false for light theme
+     * @param enableEditBlocks true to enable edit block parsing and rendering, false to disable
+     */
+    public IncrementalBlockRenderer(boolean dark, boolean enableEditBlocks) {
         this.isDarkTheme = dark;
         
         // Create root panel with vertical BoxLayout
@@ -73,12 +86,24 @@ public final class IncrementalBlockRenderer {
                     TablesExtension.create(),
                     BrokkMarkdownExtension.create()
             ))
+            .set(BrokkMarkdownExtension.ENABLE_EDIT_BLOCK, enableEditBlocks)
             .set(IdProvider.ID_PROVIDER, idProvider)
             .set(HtmlRenderer.SOFT_BREAK, "<br />\n")
             .set(HtmlRenderer.ESCAPE_HTML, true);
             
         parser = Parser.builder(options).build();
         renderer = HtmlRenderer.builder(options).build();
+        
+        // Filter out edit blocks if disabled
+        if (enableEditBlocks) {
+            activeFactories = FACTORIES;
+            logger.debug("Edit blocks enabled");
+        } else {
+            activeFactories = FACTORIES.entrySet().stream()
+                    .filter(e -> !"edit-block".equals(e.getKey()))
+                    .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+            logger.debug("Edit blocks disabled");
+        }
         
         logger.debug("Initialized IncrementalBlockRenderer with Flexmark parser and custom extensions");
     }
@@ -126,7 +151,7 @@ public final class IncrementalBlockRenderer {
         Reconciler.reconcile(root, components, registry, isDarkTheme);
     }
 
-    private String createHtml(String md) {
+    /* package */ String createHtml(String md) {
         // Parse with Flexmark
         var document = parser.parse(md);
         return renderer.render(document);  // Don't sanitize yet - let MarkdownComponentData handle it
@@ -150,7 +175,7 @@ public final class IncrementalBlockRenderer {
      * @param html The HTML string to parse
      * @return A list of ComponentData objects in document order
      */
-    private List<ComponentData> buildComponentData(String html) {
+    /* package */ List<ComponentData> buildComponentData(String html) {
         List<ComponentData> result = new ArrayList<>();
         
         Document doc = Jsoup.parse(html);
@@ -163,7 +188,7 @@ public final class IncrementalBlockRenderer {
         for (Node child : body.childNodes()) {
             if (child instanceof Element element) {
                 // Parse the element tree to find nested custom tags
-                var parsedElements = miniParser.parse(element, markdownFactory, FACTORIES, idProvider);
+                var parsedElements = miniParser.parse(element, markdownFactory, activeFactories, idProvider);
                 
                 // For stability of IDs, ensure composites get a deterministic ID
                 // derived from the source element's position via IdProvider
