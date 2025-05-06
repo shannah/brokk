@@ -164,7 +164,18 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     protected abstract CodeUnit createCodeUnit(ProjectFile file,
                                                String captureName,
                                                String simpleName,
-                                               String namespaceName);
+                                               String namespaceName,
+                                               String classChain);
+
+    /**
+     * Checks if the given AST node represents a class-like declaration
+     * (e.g., class, interface, struct) in the specific language.
+     * Subclasses must implement this to guide class chain extraction.
+     *
+     * @param node The TSNode to check.
+     * @return true if the node is a class-like declaration, false otherwise.
+     */
+    protected abstract boolean isClassLike(TSNode node);
 
     /** Captures that should be ignored entirely. */
     protected Set<String> getIgnoredCaptures() { return Set.of(); }
@@ -264,145 +275,102 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
             log.trace("Checking node type {} for top-level status.", node.getType());
 
-            boolean nodeIsTopLevel = isTopLevel(node, root);
-            log.trace("Node isTopLevel={}, simpleName='{}' for node type {}", nodeIsTopLevel, (simpleName != null ? simpleName : "N/A"), node.getType());
+            // Unconditionally process the node; the isTopLevel check and related logging are removed.
+            log.trace("Processing definition node: {}", textSlice(node, src).lines().findFirst().orElse("")); // Retained log from original if-block
 
-            if (nodeIsTopLevel) {
-                 log.trace("Node is top-level: {}", textSlice(node, src).lines().findFirst().orElse(""));
+            if (simpleName != null && !simpleName.isBlank()) {
+                log.trace("Processing definition: Name='{}', Capture='{}', Node Type='{}'",
+                          simpleName, primaryCaptureName, node.getType());
 
-                 if (simpleName != null && !simpleName.isBlank()) {
-                     log.trace("Processing top-level definition: Name='{}', Capture='{}', Node Type='{}'",
-                               simpleName, primaryCaptureName, node.getType());
+                 String namespace = extractNamespace(node, root, src);
 
-                      String namespace = extractNamespace(node, root, src);
-                      log.trace("Calling createCodeUnit for simpleName='{}', capture='{}', namespace='{}'", simpleName, primaryCaptureName, namespace);
-
-                      CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace);
-                      log.trace("createCodeUnit returned: {}", cu);
-
-                      if (cu != null) {
-                          String skeleton = buildSkeletonString(node, simpleName, src, primaryCaptureName);
-                          log.trace("Built skeleton for '{}':\n{}", simpleName, skeleton);
-                          log.trace("buildSkeletonString result for '{}': [{}]", simpleName, skeleton == null ? "NULL" : skeleton.isBlank() ? "BLANK" : skeleton.lines().findFirst().orElse("EMPTY"));
-
-                          if (skeleton != null && !skeleton.isBlank()) {
-                              log.trace("Storing TOP-LEVEL skeleton for {} in {} | Skeleton starts with: '{}'",
-                                        cu, file, skeleton.lines().findFirst().orElse(""));
-                              finalSkeletons.compute(cu, (currentCU, existingSkeleton) -> {
-                                  if (existingSkeleton == null) {
-                                      log.trace("Storing NEW skeleton for {} in {} | Skeleton starts with: '{}'",
-                                                currentCU, file, skeleton.lines().findFirst().orElse(""));
-                                      return skeleton;
-                                  }
-                                  // Prefer skeleton that starts with "export" if current one doesn't and new one does.
-                                  boolean newIsExported = skeleton.trim().startsWith("export");
-                                  boolean oldIsExported = existingSkeleton.trim().startsWith("export");
-
-                                  if (newIsExported && !oldIsExported) {
-                                      log.warn("Overwriting non-exported skeleton for {} with EXPORTED version. Old: '{}', New: '{}'",
-                                               currentCU, existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
-                                      return skeleton;
-                                  } else if (!newIsExported && oldIsExported) {
-                                      log.trace("Keeping existing EXPORTED skeleton for {}. Discarding new non-exported: '{}'",
-                                                currentCU, skeleton.lines().findFirst().orElse(""));
-                                      return existingSkeleton;
-                                  } else {
-                                      // Both have same export status (either both exported or both not)
-                                      // or some other complex scenario. Log and keep the one that was already there
-                                      // (effectively making the processing order of declarationNodes relevant for ties).
-                                      // This could be made more deterministic (e.g. shortest/longest, but "export" is main concern).
-                                      // For now, if they are equally "good" (e.g. both exported), a warning implies potential duplicate query match.
-                                      log.warn("Duplicate skeleton processing for {}. Export-status new: {}, old: {}. Keeping existing. Existing: '{}', New (discarded): '{}'",
-                                               currentCU, newIsExported, oldIsExported,
-                                               existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
-                                      return existingSkeleton;
-                                  }
-                              });
-                             log.trace("Stored/Updated skeleton for CU: {}", cu);
-                         } else {
-                             log.warn("buildSkeletonString returned empty/null for top-level node {} ({})", simpleName, primaryCaptureName);
-                         }
-                     } else {
-                         log.warn("createCodeUnit returned null for top-level node {} ({})", simpleName, primaryCaptureName);
+                 // Calculate enclosing class chain
+                 List<String> enclosingClasses = new ArrayList<>();
+                 TSNode currentParent = node.getParent();
+                 // TSNode root = tree.getRootNode(); // Ensure 'root' is available here if it's not already in scope from earlier.
+                 // It seems 'root' is already defined from 'TSNode root = tree.getRootNode();' earlier in the method.
+                 while (currentParent != null && !currentParent.isNull() && !currentParent.equals(root)) {
+                     if (isClassLike(currentParent)) {
+                         final TSNode effectivelyFinalCurrentParent = currentParent; // Capture currentParent for the lambda
+                         Optional<String> parentNameOpt = extractSimpleName(effectivelyFinalCurrentParent, src);
+                         parentNameOpt.ifPresent(parentName -> {
+                             if (!parentName.isBlank()) {
+                                 enclosingClasses.add(0, parentName); // Add to front to maintain outer-to-inner order
+                             } else {
+                                 log.warn("Encountered class-like parent {} with blank simple name while building class chain for node {} in file {}.",
+                                          effectivelyFinalCurrentParent.getType(), simpleName, file);
+                             }
+                         });
                      }
-                 } else {
-                     // This case implies simpleName was null/blank after the first loop's determination attempts.
-                     log.warn("Simple name was null/blank for top-level node type {} (capture: {}) in file {}. Skeleton not generated.",
-                              node.getType(), primaryCaptureName, file);
-                  }
-             } else {
-                  TSNode parent = node.getParent();
-                  String parentType = (parent == null || parent.isNull()) ? "null" : parent.getType();
-                  log.trace("Node is NOT top-level: Type='{}', ParentType='{}'. First line: '{}'",
-                            node.getType(), parentType, textSlice(node, src).lines().findFirst().orElse(""));
-             }
-         }
+                     currentParent = currentParent.getParent();
+                 }
+                 String classChain = String.join("$", enclosingClasses);
+                 log.trace("Computed classChain for simpleName='{}': '{}'", simpleName, classChain);
 
-        log.trace("Finished parsing {}: found {} top-level skeletons.", file, finalSkeletons.size());
+                 log.trace("Calling createCodeUnit for simpleName='{}', capture='{}', namespace='{}', classChain='{}'", simpleName, primaryCaptureName, namespace, classChain);
+
+                 CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace, classChain);
+                 log.trace("createCodeUnit returned: {}", cu);
+
+                 if (cu != null) {
+                     String skeleton = buildSkeletonString(node, simpleName, src, primaryCaptureName);
+                     log.trace("Built skeleton for '{}':\n{}", simpleName, skeleton);
+                     log.trace("buildSkeletonString result for '{}': [{}]", simpleName, skeleton == null ? "NULL" : skeleton.isBlank() ? "BLANK" : skeleton.lines().findFirst().orElse("EMPTY"));
+
+                     if (skeleton != null && !skeleton.isBlank()) {
+                         log.trace("Storing skeleton for {} in {} | Skeleton starts with: '{}'",
+                                   cu, file, skeleton.lines().findFirst().orElse(""));
+                         finalSkeletons.compute(cu, (currentCU, existingSkeleton) -> {
+                             if (existingSkeleton == null) {
+                                 log.trace("Storing NEW skeleton for {} in {} | Skeleton starts with: '{}'",
+                                           currentCU, file, skeleton.lines().findFirst().orElse(""));
+                                 return skeleton;
+                             }
+                             // Prefer skeleton that starts with "export" if current one doesn't and new one does.
+                             boolean newIsExported = skeleton.trim().startsWith("export");
+                             boolean oldIsExported = existingSkeleton.trim().startsWith("export");
+
+                             if (newIsExported && !oldIsExported) {
+                                 log.warn("Overwriting non-exported skeleton for {} with EXPORTED version. Old: '{}', New: '{}'",
+                                          currentCU, existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
+                                 return skeleton;
+                             } else if (!newIsExported && oldIsExported) {
+                                 log.trace("Keeping existing EXPORTED skeleton for {}. Discarding new non-exported: '{}'",
+                                           currentCU, skeleton.lines().findFirst().orElse(""));
+                                 return existingSkeleton;
+                             } else {
+                                 // Both have same export status (either both exported or both not)
+                                 // or some other complex scenario. Log and keep the one that was already there
+                                 // (effectively making the processing order of declarationNodes relevant for ties).
+                                 // This could be made more deterministic (e.g. shortest/longest, but "export" is main concern).
+                                 // For now, if they are equally "good" (e.g. both exported), a warning implies potential duplicate query match.
+                                 log.warn("Duplicate skeleton processing for {}. Export-status new: {}, old: {}. Keeping existing. Existing: '{}', New (discarded): '{}'",
+                                          currentCU, newIsExported, oldIsExported,
+                                          existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
+                                 return existingSkeleton;
+                             }
+                         });
+                        log.trace("Stored/Updated skeleton for CU: {}", cu);
+                    } else {
+                        log.warn("buildSkeletonString returned empty/null for node {} ({})", simpleName, primaryCaptureName);
+                    }
+                } else {
+                    log.warn("createCodeUnit returned null for node {} ({})", simpleName, primaryCaptureName);
+                }
+            } else {
+                // This case implies simpleName was null/blank after the first loop's determination attempts.
+                log.warn("Simple name was null/blank for node type {} (capture: {}) in file {}. Skeleton not generated.",
+                         node.getType(), primaryCaptureName, file);
+             }
+        }
+
+        log.trace("Finished parsing {}: found {} skeletons.", file, finalSkeletons.size());
         return finalSkeletons;
     }
 
     // Removed findCaptureInMatch as it was unused and flawed.
 
     /* ---------- Skeleton Building Logic ---------- */
-
-    /**
-     * Returns a set of node types that, if encountered as an ancestor of a candidate node
-     * before reaching the root node, would disqualify the candidate node from being top-level.
-     * The default implementation returns an empty set, meaning no node types act as blockers
-     * unless overridden by a subclass.
-     */
-    protected Set<String> getTopLevelBlockerNodeTypes() {
-        return Set.of(); // Default implementation returns an empty set
-    }
-
-    /** Checks if a node is considered top-level by walking up its parent chain. */
-    private boolean isTopLevel(TSNode node, TSNode rootNode) {
-        if (node == null || node.isNull()) {
-            log.trace("isTopLevel: Node is null. Result=false (Initial Null Check)");
-            return false;
-        }
-        if (rootNode == null || rootNode.isNull()) {
-            log.trace("isTopLevel: Root is null for Node={}. Result=false (Initial Null Check for root)", node.getType());
-            return false;
-        }
-
-        if (node.equals(rootNode)) {
-            log.trace("isTopLevel: PASSED [Node is Root] - Node='{}'", node.getType());
-            return true;
-        }
-
-        String rootNodeType = rootNode.getType();
-        Set<String> blockerNodeTypes = getTopLevelBlockerNodeTypes();
-        TSNode current = node.getParent();
-
-        while (current != null && !current.isNull()) {
-            String currentType = current.getType();
-
-            // If the current parent IS the root node (by type match), then 'node' is effectively top-level.
-            if (currentType.equals(rootNodeType)) {
-                log.trace("isTopLevel: PASSED [Ancestor is Root Type] - Node='{}', Ancestor='{}' (is root type), Root='{}'",
-                         node.getType(), currentType, rootNodeType);
-                return true;
-            }
-
-            // If we encounter a language-specific blocking declaration type before reaching the root,
-            // then 'node' is nested and not top-level.
-            if (!blockerNodeTypes.isEmpty() && blockerNodeTypes.contains(currentType)) {
-                log.trace("isTopLevel: DENIED [Ancestor is Blocker] - Node='{}' is nested inside Blocker='{}' (Language: {})",
-                         node.getType(), currentType, getProject().getAnalyzerLanguage());
-                return false;
-            }
-
-            current = current.getParent();
-        }
-
-        // If the loop finishes, 'current' became null. This means we traversed all parents
-        // without matching the root node type or hitting a defined blocker.
-        log.debug("isTopLevel: DENIED [Reached Null Ancestor or Loop Exhausted] - Node='{}' (Target Root='{}'). Parent traversal did not confirm top-level status against specified root or blockers.",
-                 node.getType(), rootNodeType);
-        return false;
-    }
 
     /** Calculates the leading whitespace indentation for the line the node starts on. */
     private String computeIndentation(TSNode node, String src) {
@@ -469,7 +437,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         return result;
     }
 
-    private void buildClassSkeleton(TSNode classNode, String src, String baseIndent, List<String> lines) {
+    protected void buildClassSkeleton(TSNode classNode, String src, String baseIndent, List<String> lines) {
         TSNode nameNode = classNode.getChildByFieldName("name");
         TSNode bodyNode = classNode.getChildByFieldName("body"); // Usually a block node
 

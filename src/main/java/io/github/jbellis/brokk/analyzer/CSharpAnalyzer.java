@@ -8,6 +8,7 @@ import org.treesitter.TSNode;
 import org.treesitter.TreeSitterCSharp;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public final class CSharpAnalyzer extends TreeSitterAnalyzer {
@@ -33,30 +34,47 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected CodeUnit createCodeUnit(ProjectFile file, String captureName, String simpleName, String namespaceName) {
+    protected CodeUnit createCodeUnit(ProjectFile file,
+                                      String captureName,
+                                      String simpleName,
+                                      String namespaceName,
+                                      String classChain) {
         // C# doesn't have standard package structure like Java/Python based on folders.
         // Namespaces are declared in code. The namespaceName parameter provides this.
+        // The classChain parameter is used for Joern-style short name generation.
         String packageName = namespaceName;
 
-        // Simple name is the identifier (class name, method name, field name).
-        // For methods/fields, the shortName should ideally include the class.
-        // For constructors, simpleName is the class name.
-        // We need to construct the appropriate shortName based on the context (which isn't fully available here).
-        // Let's use simpleName as shortName for now, similar to Python, understanding this might be incomplete for members.
-        String shortName = simpleName;
-
-        CodeUnit result = switch (captureName) {
-            // Pass packageName and simpleName as shortName
-            case "class.definition", "interface.definition", "struct.definition" -> CodeUnit.cls(file, packageName, shortName);
-            // Use simpleName (method identifier) as shortName. Class prefix missing.
-            case "method.definition" -> CodeUnit.fn(file, packageName, shortName);
-            // simpleName is class name. Use "ClassName.<init>" as shortName for constructor function.
-            case "constructor.definition" -> CodeUnit.fn(file, packageName, shortName + ".<init>");
-            // Use simpleName (field/property identifier) as shortName. Class prefix missing.
-            case "field.definition", "property.definition" -> CodeUnit.field(file, packageName, shortName);
-            // Ignore other captures
-            default -> null;
-        };
+        CodeUnit result;
+        try {
+            result = switch (captureName) {
+                case "class.definition", "interface.definition", "struct.definition" -> {
+                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
+                    yield CodeUnit.cls(file, packageName, finalShortName);
+                }
+                case "method.definition" -> {
+                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                    yield CodeUnit.fn(file, packageName, finalShortName);
+                }
+                case "constructor.definition" -> { // simpleName is the class name itself
+                    String finalShortName = (classChain.isEmpty() ? "" : classChain + "$") + simpleName + ".<init>";
+                    yield CodeUnit.fn(file, packageName, finalShortName);
+                }
+                case "field.definition", "property.definition" -> {
+                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                    yield CodeUnit.field(file, packageName, finalShortName);
+                }
+                // Ignore other captures
+                default -> {
+                    log.warn("Unhandled capture name in CSharpAnalyzer.createCodeUnit: '{}' for simple name '{}', namespace '{}', classChain '{}' in file {}. Returning null.",
+                             captureName, simpleName, namespaceName, classChain, file);
+                    yield null;
+                }
+            };
+        } catch (Exception e) {
+            log.warn("Exception in CSharpAnalyzer.createCodeUnit for capture '{}', name '{}', file '{}', namespace '{}', classChain '{}': {}",
+                     captureName, simpleName, file, namespaceName, classChain, e.getMessage(), e);
+            return null;
+        }
         log.trace("CSharpAnalyzer.createCodeUnit: returning {}", result);
         return result;
     }
@@ -88,24 +106,7 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
         };
     }
 
-    @Override
-    protected Set<String> getTopLevelBlockerNodeTypes() {
-        return Set.of(
-            "class_declaration",
-            "struct_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "delegate_declaration",
-            "method_declaration",
-            "constructor_declaration",
-            "destructor_declaration",
-            "property_declaration",
-            "indexer_declaration",
-            "event_declaration",
-            "operator_declaration",
-            "field_declaration"
-        );
-    }
+    // getTopLevelBlockerNodeTypes is removed as the base method in TreeSitterAnalyzer is removed.
 
     @Override
     protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
@@ -155,18 +156,45 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
         // (e.g. listing all methods of a class within its own skeleton).
         // If specific C# members needed to be summarized here (e.g. private helpers not caught by main query),
         // logic similar to Python/JS would be added.
-        // For instance, to add method summaries:
-        /*
         for (int i = 0; i < classBodyNode.getNamedChildCount(); i++) {
             TSNode memberNode = classBodyNode.getNamedChild(i);
-            if ("method_declaration".equals(memberNode.getType())) {
-                // Potentially call super.buildFunctionSkeleton or a C#-specific variant
-                // super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
-                // However, this might duplicate work if method_declaration is already a top-level capture.
-                // Need to be careful about what this method's responsibility is vs. top-level captures.
+            if (memberNode == null || memberNode.isNull()) {
+                continue;
+            }
+
+            String memberType = memberNode.getType();
+
+            if (isClassLike(memberNode)) {
+                // Recursively build skeleton for nested class-like structures
+                this.buildClassSkeleton(memberNode, src, memberIndent, lines);
+            } else {
+                // Handle other members like methods, constructors
+                switch (memberType) {
+                    case "method_declaration":
+                    case "constructor_declaration":
+                        // Delegate to the generic function skeleton builder
+                        super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
+                        break;
+                    // Fields, properties, events etc. are typically captured as separate CodeUnits by the main query
+                    // if they are to be individually addressable. If simple textual inclusion in the parent
+                    // skeleton is desired for members not creating their own CodeUnits, that logic would go here.
+                    // For now, focusing on nested classes and methods as per requirement.
+                    default:
+                        log.trace("CSharpAnalyzer.buildClassMemberSkeletons: Ignoring member type: {} in class body: {}", memberType, classBodyNode.getType());
+                        break;
+                }
             }
         }
-        */
-        log.trace("CSharpAnalyzer.buildClassMemberSkeletons: Called for Body node: {}. No specific C# member summarization implemented here at this time, as members are typically separate CodeUnits.", classBodyNode.getType());
+    }
+
+    @Override
+    protected boolean isClassLike(TSNode node) {
+        if (node == null || node.isNull()) {
+            return false;
+        }
+        return switch (node.getType()) {
+            case "class_declaration", "interface_declaration", "struct_declaration", "record_declaration", "record_struct_declaration" -> true;
+            default -> false;
+        };
     }
 }

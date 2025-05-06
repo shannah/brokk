@@ -20,13 +20,28 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     protected CodeUnit createCodeUnit(ProjectFile file,
                                       String captureName,
                                       String simpleName,
-                                      String namespaceName) // namespaceName is currently not used by JS specific queries
+                                      String namespaceName, // namespaceName is currently not used by JS specific queries
+                                      String classChain)
     {
         var pkg = computePackagePath(file);
         return switch (captureName) {
-            case "class.definition"    -> CodeUnit.cls(file, pkg, simpleName);
-            case "function.definition" -> CodeUnit.fn(file, pkg, simpleName);
-            default                    -> null;
+            case "class.definition" -> {
+                String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
+                yield CodeUnit.cls(file, pkg, finalShortName);
+            }
+            case "function.definition" -> {
+                String finalShortName;
+                if (!classChain.isEmpty()) { // It's a method within a class structure
+                    finalShortName = classChain + "." + simpleName;
+                } else { // It's a top-level function in the file
+                    finalShortName = simpleName;
+                }
+                yield CodeUnit.fn(file, pkg, finalShortName);
+            }
+            default -> {
+                log.debug("Ignoring capture in JavascriptAnalyzer: {} with name: {} and classChain: {}", captureName, simpleName, classChain);
+                yield null;
+            }
         };
     }
 
@@ -112,11 +127,28 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
                 // Standard JS class methods don't have decorators as separate sibling nodes typically.
                 // The current buildFunctionSkeleton handles `async` prefix, and renderFunctionDeclaration for JS builds the signature.
                 super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
+            } else if (isClassLike(memberNode)) {
+                // Recursively build skeleton for nested class-like structures
+                this.buildClassSkeleton(memberNode, src, memberIndent, lines);
             }
             // TODO: Add other JS-specific class member handling here if necessary in the future
-            // (e.g., class static blocks, private fields if their summarization is desired differently).
+            // (e.g., class static blocks, private fields (`private_field_definition`),
+            // or public fields (`public_field_definition`)) if their summarization is desired.
             // Standard fields `foo = 1;` or `static bar = 2;` are `field_definition` or `public_field_definition`
-            // and are not currently part of the detailed skeleton unless the query targets them.
+            // and are not currently part of the detailed skeleton unless the query targets them specifically
+            // to become CodeUnits or this method is enhanced to list them.
         }
+    }
+
+    @Override
+    protected boolean isClassLike(TSNode node) {
+        if (node == null || node.isNull()) {
+            return false;
+        }
+        // JavaScript classes can be declarations or expressions.
+        return switch (node.getType()) {
+            case "class_declaration", "class_expression", "class" -> true; // "class" for older/generic tree-sitter grammars
+            default -> false;
+        };
     }
 }

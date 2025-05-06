@@ -28,9 +28,14 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected CodeUnit createCodeUnit(ProjectFile file, String captureName, String simpleName, String namespaceName) {
+    protected CodeUnit createCodeUnit(ProjectFile file,
+                                      String captureName,
+                                      String simpleName,
+                                      String namespaceName,
+                                      String classChain) {
         // Calculate package path based on directory structure relative to project root
         // The namespaceName parameter is ignored for Python, as its packaging is directory-based.
+        // The classChain parameter is used for Joern-style short name generation.
         String packagePath = computePythonPackagePath(file); // e.g., "a" for "a/A.py"
 
         // Extract module name from filename using the inherited getFileName() method
@@ -41,21 +46,18 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
         try {
             return switch (captureName) {
-                // e.g., file=a/A.py, packagePath=a, simpleName=A
-                // -> CodeUnit.cls(file, "a", "A") => fqName="a.A"
-                case "class.definition" -> CodeUnit.cls(file, packagePath, simpleName);
-
-                // e.g., file=a/A.py, packagePath=a, simpleName=funcA (top-level function)
-                // -> CodeUnit.fn(file, "a", "A.funcA") => fqName="a.A.funcA"
-                // Note: We use ModuleName as the "class" context for top-level functions' shortName.
-                case "function.definition" -> CodeUnit.fn(file, packagePath, moduleName + "." + simpleName);
-
-                // TODO: Handle methods within classes correctly if the query captures them
+                case "class.definition" -> {
+                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
+                    yield CodeUnit.cls(file, packagePath, finalShortName);
+                }
+                case "function.definition" -> {
+                    String finalShortName = classChain.isEmpty() ? (moduleName + "." + simpleName) : (classChain + "." + simpleName);
+                    yield CodeUnit.fn(file, packagePath, finalShortName);
+                }
                 // TODO: Add case for "field.definition" if the query is updated to capture fields
-
                 default -> {
                     // Log or handle unexpected captures if necessary
-                    log.debug("Ignoring capture: {} with name: {}", captureName, simpleName);
+                    log.debug("Ignoring capture: {} with name: {} and classChain: {}", captureName, simpleName, classChain);
                     yield null; // Returning null ignores the capture
                 }
             };
@@ -121,8 +123,14 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
             TSNode memberNode = classBodyNode.getNamedChild(i);
             String memberType = memberNode.getType();
 
-            if ("function_definition".equals(memberType)) {
+            log.trace("PythonAnalyzer.buildClassMemberSkeletons: Processing member type: '{}', text: '{}'", memberType, textSlice(memberNode, src).lines().findFirst().orElse(""));
+
+            if ("comment".equals(memberType)) {
+                continue;
+            } else if ("function_definition".equals(memberType)) {
                 super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
+            } else if (isClassLike(memberNode)) {
+                this.buildClassSkeleton(memberNode, src, memberIndent, lines);
             } else if ("decorated_definition".equals(memberType)) {
                 TSNode functionDefNode = null;
                 // Add decorators first, then the function definition
@@ -155,6 +163,8 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                         }
                     }
                 }
+            } else {
+                log.warn("PythonAnalyzer.buildClassMemberSkeletons: Unhandled member type: {} for node starting with: '{}'", memberType, textSlice(memberNode, src).lines().findFirst().orElse(""));
             }
         }
     }
@@ -222,5 +232,13 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
         } else {
             return relPath.toString().replace('/', '.').replace('\\', '.');
         }
+    }
+
+    @Override
+    protected boolean isClassLike(TSNode node) {
+        if (node == null || node.isNull()) {
+            return false;
+        }
+        return "class_definition".equals(node.getType());
     }
 }
