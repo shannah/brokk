@@ -21,22 +21,16 @@ import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.StackTrace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1618,16 +1612,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public List<Context> getContextHistory() {
         return contextHistory.getHistory();
-    }
-
-    @Override
-    public void addToGit(List<ProjectFile> files) {
-        try {
-            project.getRepo().add(files);
-        } catch (GitAPIException e) {
-            logger.warn(e);
-            io.toolErrorRaw(e.getMessage());
-        }
     }
 
     // Convert a throwable to a string with full stack trace

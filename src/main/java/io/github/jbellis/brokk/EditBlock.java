@@ -3,6 +3,7 @@ package io.github.jbellis.brokk;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -164,18 +165,15 @@ public class EditBlock {
             }
 
             // Perform the replacement
-            replaceInFile(file, block.beforeText(), block.afterText());
+            replaceInFile(file, block.beforeText(), block.afterText(), contextManager);
 
             // If successful, add to succeeded list
+            // If it was a deletion, replaceInFile handled it and returned; file will not exist.
+            // If it was a modification or creation, the file will exist with new content.
             succeeded.put(block, file);
             if (isCreateNew) {
-                try {
-                    contextManager.addToGit(List.of(file));
-                    io.systemOutput("Added to git " + file);
-                } catch (IOException e) {
-                    io.systemOutput("Failed to git add " + file + ": " + e.getMessage());
-                    // Continue anyway, git add failure is not fatal here
-                }
+                contextManager.getRepo().add(List.of(file));
+                io.systemOutput("Added to git " + file);
             }
         } catch(NoMatchException | AmbiguousMatchException e) {
                 assert changedFiles.containsKey(file);
@@ -205,8 +203,12 @@ public class EditBlock {
                 failed.add(new FailedBlock(block, reason, commentary));
             } catch (IOException e) {
                 var msg = "Error applying edit to " + file;
-                logger.warn("{}: {}", msg, e.getMessage());
+                logger.error("{}: {}", msg, e.getMessage());
                 throw new IOException(msg);
+            } catch (GitAPIException e) {
+                var msg = "Non-fatal error: unable to update `%s` in Git".formatted(file);
+                logger.error("{}: {}", msg, e.getMessage());
+                io.toolErrorRaw(msg);
             }
         }
 
@@ -260,15 +262,45 @@ public class EditBlock {
     }
 
     /**
+     * Determines if an edit operation constitutes a logical deletion of file content.
+     * A deletion occurs if the original content was non-blank and the updated content becomes blank.
+     *
+     * @param originalContent The content of the file before the edit.
+     * @param updatedContent The content of the file after the edit.
+     * @return {@code true} if the operation is a logical deletion, {@code false} otherwise.
+     */
+    static boolean isDeletion(String originalContent, String updatedContent) {
+        // 1. The original must have had *something* non-blank
+        if (originalContent.isBlank()) {
+            return false;
+        }
+        // 2. After replacement the file is blank (only whitespace/newlines)
+        return updatedContent.isBlank();
+    }
+
+    /**
      * Replace the first occurrence of `beforeText` lines with `afterText` lines in the given file.
+     * If the operation results in the file becoming blank (and it wasn't already), the file is deleted
+     * and the deletion is staged in Git via the contextManager.
      * Throws NoMatchException if `beforeText` is not found in the file content.
      * Throws AmbiguousMatchException if more than one match is found.
      */
-    public static void replaceInFile(ProjectFile file, String beforeText, String afterText)
-    throws IOException, NoMatchException, AmbiguousMatchException
+    public static void replaceInFile(ProjectFile file,
+                                     String beforeText,
+                                     String afterText,
+                                     IContextManager contextManager)
+    throws IOException, NoMatchException, AmbiguousMatchException, GitAPIException
     {
         String original = file.exists() ? file.read() : "";
         String updated = replaceMostSimilarChunk(original, beforeText, afterText);
+
+        if (isDeletion(original, updated)) {
+            logger.info("Detected deletion for file {}", file);
+            java.nio.file.Files.deleteIfExists(file.absPath()); // remove from disk
+            contextManager.getRepo().remove(file); // stage deletion
+            return; // Do not write the blank content
+        }
+
         file.write(updated);
     }
 

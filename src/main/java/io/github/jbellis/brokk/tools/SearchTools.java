@@ -134,7 +134,7 @@ public class SearchTools {
             @P("List of file paths relative to the project root. Supports glob patterns (* for single directory, ** for recursive). E.g., ['src/main/java/com/example/util/*.java', 'tests/foo/**.py']")
             List<String> filePaths
     ) {
-        assert getAnalyzer().isCpg() : "Cannot get summaries: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get summaries: Code Intelligence is not available.";
         if (filePaths == null || filePaths.isEmpty()) {
             return "Cannot get summaries: file paths list is empty";
         }
@@ -301,7 +301,7 @@ public class SearchTools {
             @P("Fully qualified class names to get the skeleton structures for")
             List<String> classNames
     ) {
-        assert getAnalyzer().isCpg() : "Cannot get skeletons: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get skeletons: Code Intelligence is not available.";
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get skeletons: class names list is empty");
         }

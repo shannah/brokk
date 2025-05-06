@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
@@ -73,11 +74,11 @@ public class ArchitectOptionsDialog {
             var validationCb = createCheckbox.apply("Validation Agent", "Suggest relevant test files for Code Agent");
             validationCb.setSelected(currentOptions.includeValidationAgent());
 
-            var analyzerCb = createCheckbox.apply("Code Analyzer Tools", "Allow direct querying of code structure (e.g., find usages, call graphs)");
+            var analyzerCb = createCheckbox.apply("Code Intelligence Tools", "Allow direct querying of code structure (e.g., find usages, call graphs)");
             analyzerCb.setSelected(currentOptions.includeAnalyzerTools());
             analyzerCb.setEnabled(isCpg); // Disable if not a CPG
             if (!isCpg) {
-                analyzerCb.setToolTipText("Code Analyzer tools require a Code Property Graph (CPG) build.");
+                analyzerCb.setToolTipText("Code Intelligence tools for %s are not yet available".formatted(chrome.getProject().getAnalyzerLanguage()));
             }
 
             var workspaceCb = createCheckbox.apply("Workspace Management Tools", "Allow adding/removing files, URLs, or text to/from the workspace");

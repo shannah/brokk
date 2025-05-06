@@ -1,6 +1,10 @@
 package io.github.jbellis.brokk.flex;
 
+import com.vladsch.flexmark.util.data.MutableDataSet;
+import io.github.jbellis.brokk.gui.mop.stream.flex.BrokkMarkdownExtension;
+import com.vladsch.flexmark.parser.Parser;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 
 import java.util.Set;
 
@@ -85,6 +89,110 @@ public class EditBlockUtilsTest {
         // Test OPENING_FENCE pattern
         assertTrue(OPENING_FENCE.matcher("```").matches());
         assertTrue(OPENING_FENCE.matcher(" ```").matches());
+        assertTrue(OPENING_FENCE.matcher("```java").matches(), "Should match fence with language");
+        assertTrue(OPENING_FENCE.matcher("```file.txt").matches(), "Should match fence with filename");
+        assertTrue(OPENING_FENCE.matcher("``` java").matches(), "Should match fence with space before language");
         assertFalse(OPENING_FENCE.matcher("``").matches());
+        
+        // Test extracting token from OPENING_FENCE
+        var matcher = OPENING_FENCE.matcher("```java");
+        assertTrue(matcher.matches());
+        assertEquals("java", matcher.group(1), "Should extract language token");
+        
+        matcher = OPENING_FENCE.matcher("```file.txt");
+        assertTrue(matcher.matches());
+        assertEquals("file.txt", matcher.group(1), "Should extract filename token");
+        
+        matcher = OPENING_FENCE.matcher("```");
+        assertTrue(matcher.matches());
+        assertNull(matcher.group(1), "Should have null token for plain fence");
+    }
+    
+    @Test
+    void testLooksLikePath() {
+        // Test path detection
+        assertTrue(looksLikePath("file.txt"), "File with extension should look like path");
+        assertTrue(looksLikePath("src/main/file.txt"), "Path with slashes should look like path");
+        assertTrue(looksLikePath("C:/Windows/file.txt"), "Windows path with forward slashes should look like path");
+        assertTrue(looksLikePath("C:\\Windows\\file.txt"), "Windows path with backslashes should look like path");
+        
+        // Test non-path strings
+        assertFalse(looksLikePath("java"), "Language should not look like path");
+        assertFalse(looksLikePath("cpp"), "Language should not look like path");
+        assertFalse(looksLikePath(null), "Null should not look like path");
+        assertFalse(looksLikePath(""), "Empty string should not look like path");
+    }
+    
+    @Test
+    void testParserRecognition() {
+        // Test with Parser directly to ensure recognition of all syntax variants
+        MutableDataSet options = new MutableDataSet()
+                .set(Parser.EXTENSIONS, List.of(BrokkMarkdownExtension.create()));
+        
+        Parser parser = Parser.builder(options).build();
+        
+        // 1. Test normal syntax
+        var doc1 = parser.parse("""
+                file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                """);
+        assertHasEditBlock(doc1, "Normal syntax not recognized");
+        
+        // 2. Test conflict syntax 
+        var doc2 = parser.parse("""
+                <<<<<<< SEARCH file1.txt
+                one
+                ======= file1.txt
+                two
+                >>>>>>> REPLACE file1.txt
+                """);
+        assertHasEditBlock(doc2, "Conflict syntax not recognized");
+        
+        // 3. Test fenced normal syntax
+        var doc3 = parser.parse("""
+                ```
+                file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                ```
+                """);
+        assertHasEditBlock(doc3, "Fenced normal syntax not recognized");
+        
+        // 4. Test fenced with language
+        var doc4 = parser.parse("""
+                ```java
+                file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                ```
+                """);
+        assertHasEditBlock(doc4, "Fenced with language syntax not recognized");
+        
+        // 5. Test fenced with filename in fence line
+        var doc5 = parser.parse("""
+                ```file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                ```
+                """);
+        assertHasEditBlock(doc5, "Fenced with filename syntax not recognized");
+    }
+    
+    private void assertHasEditBlock(com.vladsch.flexmark.util.ast.Document doc, String message) {
+        boolean hasEditBlock = doc.getChildOfType(io.github.jbellis.brokk.gui.mop.stream.flex.EditBlockNode.class) != null;
+        assertTrue(hasEditBlock, message);
     }
 }

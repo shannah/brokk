@@ -30,14 +30,25 @@ public final class EditBlockUtils {
     public static final Pattern UPDATED =
             Pattern.compile("^ {0,3}>{5,9}\\s+REPLACE(?:\\s+(\\S.*))?\\s*$", Pattern.MULTILINE);
     
-    // Pattern for opening code fence
+    // Pattern for opening code fence (captures optional language or filename token)
     public static final Pattern OPENING_FENCE =
-            Pattern.compile("^ {0,3}```\\s*$");
+            Pattern.compile("^ {0,3}```(?:\\s*(\\S[^`\\s]*))?\\s*$");
     
     // Default fence markers
     public static final String[] DEFAULT_FENCE = {"```", "```"};
 
     private EditBlockUtils() {}
+    
+    /**
+     * Determines if a string looks like a path or filename.
+     * Simple heuristic: contains a dot or slash character.
+     *
+     * @param s the string to check
+     * @return true if the string appears to be a path
+     */
+    public static boolean looksLikePath(String s) {
+        return s != null && (s.contains(".") || s.contains("/"));
+    }
 
     /**
      * Removes any extra lines containing the filename or triple-backticks fences.
@@ -107,6 +118,11 @@ public final class EditBlockUtils {
                                    Set<ProjectFile> projectFiles,
                                    String currentPath)
     {
+        // Guard against empty arrays
+        if (lines == null || lines.length == 0 || headIndex < 0) {
+            return currentPath;
+        }
+        
         // Search up to 3 lines above headIndex
         int start = Math.max(0, headIndex - 3);
         var candidates = new ArrayList<String>();

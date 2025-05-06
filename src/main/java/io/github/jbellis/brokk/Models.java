@@ -83,8 +83,6 @@ public final class Models {
     // they are not suitable for writing code
     private static final Set<String> SYSTEM_ONLY_MODELS = Set.of("gemini-2.0-flash-lite", "gpt-4.1-nano");
 
-    // Cached model storage
-    private final ConcurrentHashMap<String, StreamingChatLanguageModel> loadedModels = new ConcurrentHashMap<>();
     // display name -> location
     private final ConcurrentHashMap<String, String> modelLocations = new ConcurrentHashMap<>();
     // location -> model info
@@ -145,7 +143,6 @@ public final class Models {
             // No models? LiteLLM must be down. Add a placeholder.
             logger.warn("No chat models available, cannot set defaults or override.");
             modelLocations.put(UNAVAILABLE, "not_a_model");
-            loadedModels.put(UNAVAILABLE, new UnavailableStreamingModel());
         } else {
             // Check configured models against available ones and temporarily override if needed
             // Choose the first available chat model as the default fallback
@@ -433,69 +430,64 @@ public final class Models {
      * @param modelName      The display name of the model (e.g., "gemini-2.5-pro-exp-03-25").
      */
     public StreamingChatLanguageModel get(String modelName, Project.ReasoningLevel reasoningLevel, Double temperature) {
-        // Use a composite key for the cache to include reasoning level if not default
-        String cacheKey = modelName + (reasoningLevel == Project.ReasoningLevel.DEFAULT ? "" : ":" + reasoningLevel.name());
+        String location = modelLocations.get(modelName);
+        logger.debug("Creating new model instance for '{}' at location '{}' with reasoning '{}' via LiteLLM",
+                     modelName, location, reasoningLevel);
+        if (location == null) {
+            logger.error("Location not found for model name: {}", modelName);
+            return null;
+        }
 
-        return loadedModels.computeIfAbsent(cacheKey, key -> {
-            String location = modelLocations.get(modelName);
-            logger.debug("Creating new model instance for '{}' at location '{}' with reasoning '{}' via LiteLLM",
-                         modelName, location, reasoningLevel);
-            if (location == null) {
-                logger.error("Location not found for model name: {}", modelName);
-                return null;
-            }
+        // OpenAI says, "Your rate limit is calculated as the maximum of max_tokens
+        // and the estimated number of tokens based on the character count of your request.
+        // https://platform.openai.com/docs/guides/rate-limits
+        // We don't have a good way to predict output size, but almost all of them are lower than 32k,
+        // and CodeAgent can pick up an request that stopped early from the last edit block
+        var maxTokens = min(32768, getMaxOutputTokens(location));
 
-            // OpenAI says, "Your rate limit is calculated as the maximum of max_tokens
-            // and the estimated number of tokens based on the character count of your request.
-            // https://platform.openai.com/docs/guides/rate-limits
-            // We don't have a good way to predict output size, but almost all of them are lower than 32k,
-            // and CodeAgent can pick up an request that stopped early from the last edit block
-            var maxTokens = min(32768, getMaxOutputTokens(location));
+        // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
+        // placeholder, LiteLLM manages actual keys
+        String baseUrl = Project.getLlmProxy();
+        var builder = OpenAiStreamingChatModel.builder()
+                .logRequests(true)
+                .logResponses(true)
+                .strictJsonSchema(true)
+                .maxTokens(maxTokens)
+                .baseUrl(baseUrl)
+                .timeout(Duration.ofMinutes(3)); // default 60s is not enough
 
-            // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
-            // placeholder, LiteLLM manages actual keys
-            String baseUrl = Project.getLlmProxy();
-            var builder = OpenAiStreamingChatModel.builder()
-                    .logRequests(true)
-                    .logResponses(true)
-                    .strictJsonSchema(true)
-                    .maxTokens(maxTokens)
-                    .baseUrl(baseUrl)
-                    .timeout(Duration.ofMinutes(3)); // default 60s is not enough
+        if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+            var kp = parseKey(Project.getBrokkKey());
+            // Select token based on balance status
+            builder = builder
+                    .apiKey(kp.token)
+                    .customHeaders(Map.of("Authorization", "Bearer " + kp.token))
+                    .user(kp.userId().toString());
+        } else {
+            // Non-Brokk proxy
+            builder = builder.apiKey("dummy-key");
+        }
 
-            if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
-                var kp = parseKey(Project.getBrokkKey());
-                // Select token based on balance status
-                builder = builder
-                        .apiKey(kp.token)
-                        .customHeaders(Map.of("Authorization", "Bearer " + kp.token))
-                        .user(kp.userId().toString());
-            } else {
-                // Non-Brokk proxy
-                builder = builder.apiKey("dummy-key");
-            }
+        builder = builder.modelName(location);
 
-            builder = builder.modelName(location);
+        // default request parameters
+        var params = OpenAiChatRequestParameters.builder()
+                .temperature(temperature);
+        // Apply reasoning effort if not default and supported
+        logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
+        if (supportsReasoningEffort(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
+            params = params.reasoningEffort(reasoningLevel.name().toLowerCase());
+        }
+        builder.defaultRequestParameters(params.build());
 
-            // default request parameters
-            var params = OpenAiChatRequestParameters.builder()
-                    .temperature(temperature);
-            // Apply reasoning effort if not default and supported
-            logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
-            if (supportsReasoningEffort(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
-                params = params.reasoningEffort(reasoningLevel.name().toLowerCase());
-            }
-            builder.defaultRequestParameters(params.build());
+        if (modelName.contains("sonnet")) {
+            // "Claude 3.7 Sonnet may be less likely to make make parallel tool calls in a response,
+            // even when you have not set disable_parallel_tool_use. To work around this, we recommend
+            // enabling token-efficient tool use, which helps encourage Claude to use parallel tools."
+            builder = builder.customHeaders(Map.of("anthropic-beta", "token-efficient-tools-2025-02-19,output-128k-2025-02-19"));
+        }
 
-            if (modelName.contains("sonnet")) {
-                // "Claude 3.7 Sonnet may be less likely to make make parallel tool calls in a response,
-                // even when you have not set disable_parallel_tool_use. To work around this, we recommend
-                // enabling token-efficient tool use, which helps encourage Claude to use parallel tools."
-                builder = builder.customHeaders(Map.of("anthropic-beta", "token-efficient-tools-2025-02-19,output-128k-2025-02-19"));
-            }
-
-            return builder.build();
-        });
+        return builder.build();
     }
 
     public StreamingChatLanguageModel get(String modelName, Project.ReasoningLevel reasoningLevel) {

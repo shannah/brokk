@@ -456,4 +456,32 @@ class EditBlockInternalsTest {
           String input10 = "```python```";
           assertEquals("", EditBlock.extractCodeFromTripleBackticks(input10));
       }
-  }
+
+    @Test
+    void testIsDeletion() {
+        // Case 1: Original non-blank, updated blank (is a deletion)
+        assertTrue(EditBlock.isDeletion("some content", ""));
+        assertTrue(EditBlock.isDeletion("some content", "   \n   ")); // whitespace only is blank
+
+        // Case 2: Original blank, updated blank (not a deletion of actual content)
+        assertFalse(EditBlock.isDeletion("", ""));
+        assertFalse(EditBlock.isDeletion("  \n  ", "")); // original was already blank
+        assertFalse(EditBlock.isDeletion("", "   \n ")); // original was blank, updated is blank
+
+        // Case 3: Original blank, updated non-blank (creation, not deletion)
+        assertFalse(EditBlock.isDeletion("", "new content"));
+        assertFalse(EditBlock.isDeletion("  \n  ", "new content")); // original was blank
+
+        // Case 4: Original non-blank, updated non-blank (modification, not deletion)
+        assertFalse(EditBlock.isDeletion("some content", "other content"));
+        assertFalse(EditBlock.isDeletion("line1\nline2", "line1\nline3"));
+
+        // Case 5: Original non-blank, updated is effectively blank (only newlines/spaces)
+        assertTrue(EditBlock.isDeletion("content", "\n"));
+        assertTrue(EditBlock.isDeletion("content", " \t \n "));
+
+        // Case 6: Original has only whitespace, updated is blank (not a deletion of non-blank content)
+        assertFalse(EditBlock.isDeletion("\n   \n", ""));
+        assertFalse(EditBlock.isDeletion("   ", " ")); // original was already blank
+    }
+}

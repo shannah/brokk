@@ -491,49 +491,6 @@ class BrokkMarkdownExtensionTest {
     }
     
     
-    @Test
-    void realWorldEditBlocksGetsRenderedCorrectly4() {
-        var md = """
-                 Here's what needs to be changed:
-                 
-                 1. In `IncrementalBlockRenderer.buildComponentData()`, we need to process all child Nodes, not just Elements
-                 2. For TextNodes that aren't blank, we'll create MarkdownComponentData directly
-                 
-                 Here's the implementation:
-                 
-                 ```java
-                 <<<<<<< SEARCH src/main/java/io/github/jbellis/brokk/gui/mop/stream/IncrementalBlockRenderer.java
-                     private List<ComponentData> buildComponentData(String html) {
-                         List<ComponentData> result = new ArrayList<>();
-                         return result;
-                     }
-                 ======= src/main/java/io/github/jbellis/brokk/gui/mop/stream/IncrementalBlockRenderer.java
-                     private List<ComponentData> buildComponentData(String html) {
-                         List<ComponentData> result = new ArrayList<>();
-                         return result;
-                     }
-                 >>>>>>> REPLACE src/main/java/io/github/jbellis/brokk/gui/mop/stream/IncrementalBlockRenderer.java
-                 ```
-                 
-                 another one
-                 
-                ```java
-                file1.txt
-                <<<<<<< SEARCH
-                one
-                =======
-                two
-                >>>>>>> REPLACE
-                ```
-                 
-                 This change ensures that all top-level text nodes are properly parsed and included in the component data list, while maintaining their stable IDs derived from the body element itself.
-                """;
-
-        String html = renderer.render(parser.parse(md));
-        System.out.println(html);
-        
-        // TODO: we need to find such S/R blocks too
-    }
     
     @Test
     void indentedCodePreservesLeadingSpaces() {

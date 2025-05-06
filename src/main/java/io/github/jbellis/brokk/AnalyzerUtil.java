@@ -171,7 +171,7 @@ public class AnalyzerUtil {
 
     /**
      * Retrieves skeleton data for the given class names.
-     * @param analyzer The code analyzer instance.
+     * @param analyzer The Analyzer instance.
      * @param classNames Fully qualified class names.
      * @return A map of CodeUnit to its skeleton string. Returns an empty map if no skeletons are found.
      */
@@ -196,7 +196,7 @@ public class AnalyzerUtil {
 
     /**
      * Retrieves method source code for the given method names.
-     * @param analyzer The code analyzer instance.
+     * @param analyzer The Analyzer instance.
      * @param methodNames Fully qualified method names.
      * @return A map of method name to its source code string. Returns an empty map if no sources are found.
      */
@@ -227,7 +227,7 @@ public class AnalyzerUtil {
 
     /**
      * Retrieves class source code for the given class names, including filename headers.
-     * @param analyzer The code analyzer instance.
+     * @param analyzer The Analyzer instance.
      * @param classNames Fully qualified class names.
      * @return A map of class name to its formatted source code string (with header). Returns an empty map if no sources are found.
      */

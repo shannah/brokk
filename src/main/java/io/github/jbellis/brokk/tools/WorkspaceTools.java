@@ -250,7 +250,7 @@ public class WorkspaceTools {
             String symbol
     )
     {
-        assert getAnalyzer().isCpg() : "Cannot add usages: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add usages: Code Intelligence is not available.";
         if (symbol == null || symbol.isBlank()) {
             return "Cannot add usages: symbol cannot be empty";
         }
@@ -277,7 +277,7 @@ public class WorkspaceTools {
             List<String> classNames
     )
     {
-        assert getAnalyzer().isCpg() : "Cannot add summary: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add summary: Code Intelligence is not available.";
         if (classNames == null || classNames.isEmpty()) {
             return "Cannot add summary: class names list is empty";
         }
@@ -329,7 +329,7 @@ public class WorkspaceTools {
             List<String> filePaths
     )
     {
-        assert getAnalyzer().isCpg() : "Cannot add summaries: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add summaries: Code Intelligence is not available.";
         if (filePaths == null || filePaths.isEmpty()) {
             return "Cannot add summaries: file paths list is empty";
         }
@@ -379,7 +379,7 @@ public class WorkspaceTools {
             List<String> methodNames
     )
     {
-        assert getAnalyzer().isCpg() : "Cannot add method sources: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot add method sources: Code Intelligence is not available.";
         if (methodNames == null || methodNames.isEmpty()) {
             return "Cannot add method sources: method names list is empty";
         }
@@ -410,7 +410,7 @@ public class WorkspaceTools {
             List<String> classNames
     )
     {
-        assert getAnalyzer().isCpg() : "Cannot get files: Code analyzer is not available.";
+        assert getAnalyzer().isCpg() : "Cannot get files: Code Intelligence is not available.";
         if (classNames == null || classNames.isEmpty()) {
             return "Class names list cannot be empty.";
         }
@@ -455,7 +455,7 @@ public class WorkspaceTools {
 //            @P("List of fully qualified class names (e.g., ['com.example.ClassA', 'org.another.ClassB']) to retrieve the full source code for.")
 //            List<String> classNames
 //    ) {
-//        assert getAnalyzer().isCpg() : "Cannot add class sources: Code analyzer is not available.";
+//        assert getAnalyzer().isCpg() : "Cannot add class sources: Code Intelligence is not available.";
 //        if (classNames == null || classNames.isEmpty()) {
 //            return "Cannot add class sources: class names list is empty";
 //        }

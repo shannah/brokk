@@ -44,4 +44,8 @@ public interface IGitRepo {
     default void add(List<ProjectFile> files) throws GitAPIException {
         throw new UnsupportedOperationException();
     }
+
+    default void remove(ProjectFile file) throws GitAPIException {
+        throw new UnsupportedOperationException();
+    }
 }
