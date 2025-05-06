@@ -25,8 +25,9 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected CodeUnit createCodeUnit(ProjectFile file, String captureName, String simpleName) {
+    protected CodeUnit createCodeUnit(ProjectFile file, String captureName, String simpleName, String namespaceName) {
         // Calculate package path based on directory structure relative to project root
+        // The namespaceName parameter is ignored for Python, as its packaging is directory-based.
         String packagePath = computePythonPackagePath(file); // e.g., "a" for "a/A.py"
 
         // Extract module name from filename using the inherited getFileName() method

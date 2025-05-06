@@ -71,8 +71,9 @@ libraryDependencies ++= Seq(
 
   // TreeSitter Java parser
   "io.github.bonede" % "tree-sitter" % "0.25.3",
-  "io.github.bonede" % "tree-sitter-python" % "0.23.4",
   "io.github.bonede" % "tree-sitter-c-sharp" % "0.23.1",
+  "io.github.bonede" % "tree-sitter-javascript" % "0.23.1",
+  "io.github.bonede" % "tree-sitter-python" % "0.23.4",
 
   // Testing
   "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test,
