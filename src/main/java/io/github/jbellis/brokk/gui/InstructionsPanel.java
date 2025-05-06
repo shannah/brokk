@@ -1142,6 +1142,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                                           Map.of(), // No undo contents for Ask
                                                           new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
                     contextManager.addToHistory(sessionResult, false);
+                    chrome.systemOutput("Ask command complete!");
                 } else {
                     chrome.systemOutput("Ask command completed with an empty response.");
                 }
@@ -1206,6 +1207,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             // Search does not stream to llmOutput, so add the final answer here
             chrome.llmOutput("\n# Answer\n%s".formatted(((ContextFragment.SearchFragment) result.output()).explanation()), ChatMessageType.AI);
             contextManager.addToHistory(result, false);
+            chrome.systemOutput("Search complete!");
         } catch (InterruptedException e) {
             chrome.toolErrorRaw("Search agent cancelled without answering");
         }
@@ -1237,6 +1239,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             var parsed = new TaskFragment(List.copyOf(chrome.getLlmRawMessages()), action);
             return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture(action));
         });
+
+        if (result.error() == null) { // This means exit code 0
+            chrome.systemOutput("Run command complete!");
+        } else {
+            chrome.systemOutput("Run command completed with errors -- see Output.");
+        }
     }
 
     // --- Action Handlers ---
