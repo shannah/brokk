@@ -38,6 +38,10 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
                 }
                 yield CodeUnit.fn(file, pkg, finalShortName);
             }
+            case "field.definition" -> { // For class fields
+                String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                yield CodeUnit.field(file, pkg, finalShortName);
+            }
             default -> {
                 log.debug("Ignoring capture in JavascriptAnalyzer: {} with name: {} and classChain: {}", captureName, simpleName, classChain);
                 yield null;
@@ -56,6 +60,7 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
         return switch (captureName) {
             case "class.definition" -> SkeletonType.CLASS_LIKE;
             case "function.definition" -> SkeletonType.FUNCTION_LIKE;
+            case "field.definition" -> SkeletonType.FIELD_LIKE;
             default -> SkeletonType.UNSUPPORTED;
         };
     }
@@ -130,13 +135,11 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
             } else if (isClassLike(memberNode)) {
                 // Recursively build skeleton for nested class-like structures
                 this.buildClassSkeleton(memberNode, src, memberIndent, lines);
+            } else if ("public_field_definition".equals(memberType) ||
+                       "private_field_definition".equals(memberType)) {
+                lines.add(memberIndent + textSlice(memberNode, src).strip());
             }
-            // TODO: Add other JS-specific class member handling here if necessary in the future
-            // (e.g., class static blocks, private fields (`private_field_definition`),
-            // or public fields (`public_field_definition`)) if their summarization is desired.
-            // Standard fields `foo = 1;` or `static bar = 2;` are `field_definition` or `public_field_definition`
-            // and are not currently part of the detailed skeleton unless the query targets them specifically
-            // to become CodeUnits or this method is enhanced to list them.
+            // TODO: Add other JS-specific class member handling like static blocks if needed.
         }
     }
 

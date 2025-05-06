@@ -144,6 +144,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     public enum SkeletonType {
         CLASS_LIKE,
         FUNCTION_LIKE,
+        FIELD_LIKE,
         UNSUPPORTED
     }
 
@@ -426,6 +427,11 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             case FUNCTION_LIKE:
                 buildFunctionSkeleton(definitionNode, Optional.of(simpleName), src, baseIndent, lines);
                 break;
+            case FIELD_LIKE:
+                // For a field's own CodeUnit skeleton, a raw text slice is usually sufficient.
+                // Its inclusion in the parent class skeleton is handled by buildClassMemberSkeletons.
+                log.debug("Field-like capture name '{}' for skeleton building (resolved to type {}). Falling back to raw text slice for its individual skeleton.", primaryCaptureName, skeletonType);
+                return textSlice(definitionNode, src);
             case UNSUPPORTED:
             default: // Also handles null if getSkeletonTypeForCapture could somehow return null
                  log.debug("Unsupported capture name '{}' for skeleton building (resolved to type {}). Falling back to raw text slice.", primaryCaptureName, skeletonType);

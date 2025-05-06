@@ -54,7 +54,10 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                     String finalShortName = classChain.isEmpty() ? (moduleName + "." + simpleName) : (classChain + "." + simpleName);
                     yield CodeUnit.fn(file, packagePath, finalShortName);
                 }
-                // TODO: Add case for "field.definition" if the query is updated to capture fields
+                case "field.definition" -> { // For class attributes captured by the new query
+                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                    yield CodeUnit.field(file, packagePath, finalShortName);
+                }
                 default -> {
                     // Log or handle unexpected captures if necessary
                     log.debug("Ignoring capture: {} with name: {} and classChain: {}", captureName, simpleName, classChain);
@@ -84,6 +87,8 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
         return switch (captureName) {
             case "class.definition" -> SkeletonType.CLASS_LIKE;
             case "function.definition" -> SkeletonType.FUNCTION_LIKE;
+            case "field.definition" -> SkeletonType.FIELD_LIKE; // For class attributes
+            // field.declaration (for self.x=...) is not a primary definition, so won't hit this from main loop
             default -> SkeletonType.UNSUPPORTED;
         };
     }
@@ -159,8 +164,11 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                     if (left != null && "attribute".equals(left.getType())) {
                         TSNode object = left.getChildByFieldName("object");
                         if (object != null && "identifier".equals(object.getType()) && "self".equals(textSlice(object, src))) {
-                            lines.add(memberIndent + textSlice(memberNode, src).strip());
+                            lines.add(memberIndent + textSlice(memberNode, src).strip()); // Instance variable self.foo = ...
                         }
+                    } else if (left != null && "identifier".equals(left.getType())) { // Class variable FOO = ...
+                        // This handles 'CLS_VAR = value' where memberNode is the expression_statement.
+                        lines.add(memberIndent + textSlice(memberNode, src).strip());
                     }
                 }
             } else {

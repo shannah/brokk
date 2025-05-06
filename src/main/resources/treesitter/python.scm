@@ -16,3 +16,11 @@
   left: (attribute
     object: (identifier) @obj (#eq? @obj "self")
     attribute: (identifier) @field.name)) @field.declaration
+
+; Python class attribute
+; Captures assignments like `CLS_VAR = value` directly under class definition
+(class_definition
+  name: _ @_.class_name ; Anchor to ensure we are inside a class
+  body: (block . (expression_statement (assignment
+                                          left: (identifier) @field.name
+                                          right: _) @field.definition)))

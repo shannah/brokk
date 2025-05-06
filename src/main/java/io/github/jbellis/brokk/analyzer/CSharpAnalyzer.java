@@ -99,9 +99,7 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
         return switch (captureName) {
             case "class.definition", "interface.definition", "struct.definition" -> SkeletonType.CLASS_LIKE;
             case "method.definition", "constructor.definition" -> SkeletonType.FUNCTION_LIKE;
-            // Other .definition captures like field.definition, property.definition
-            // will correctly fall into UNSUPPORTED, maintaining existing behavior
-            // where buildSkeletonString does not generate specific skeletons for them.
+            case "field.definition", "property.definition" -> SkeletonType.FIELD_LIKE;
             default -> SkeletonType.UNSUPPORTED;
         };
     }
@@ -175,10 +173,12 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
                         // Delegate to the generic function skeleton builder
                         super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
                         break;
-                    // Fields, properties, events etc. are typically captured as separate CodeUnits by the main query
-                    // if they are to be individually addressable. If simple textual inclusion in the parent
-                    // skeleton is desired for members not creating their own CodeUnits, that logic would go here.
-                    // For now, focusing on nested classes and methods as per requirement.
+                    case "field_declaration":
+                    case "property_declaration":
+                    // Potentially also "event_declaration", "event_field_declaration", "indexer_declaration"
+                    // if they should be listed in the class skeleton.
+                        lines.add(memberIndent + textSlice(memberNode, src).strip());
+                        break;
                     default:
                         log.trace("CSharpAnalyzer.buildClassMemberSkeletons: Ignoring member type: {} in class body: {}", memberType, classBodyNode.getType());
                         break;
