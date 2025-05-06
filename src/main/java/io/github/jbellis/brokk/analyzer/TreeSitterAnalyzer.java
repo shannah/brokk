@@ -92,6 +92,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     @Override public boolean isEmpty() { return skeletons.isEmpty(); }
 
     @Override
+    public List<CodeUnit> getAllClasses() {
+        return fileClasses.values().stream()
+                .flatMap(Collection::stream)
+                .toList();
+    }
+
+    @Override
     public Map<CodeUnit, String> getSkeletons(ProjectFile file) {
         var m = skeletons.get(file);
         log.trace("getSkeletons: file={}, count={}", file, (m == null ? 0 : m.size()));
