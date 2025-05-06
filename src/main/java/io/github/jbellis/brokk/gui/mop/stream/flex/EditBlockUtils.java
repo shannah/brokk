@@ -118,6 +118,11 @@ public final class EditBlockUtils {
                                    Set<ProjectFile> projectFiles,
                                    String currentPath)
     {
+        // Guard against empty arrays
+        if (lines == null || lines.length == 0 || headIndex < 0) {
+            return currentPath;
+        }
+        
         // Search up to 3 lines above headIndex
         int start = Math.max(0, headIndex - 3);
         var candidates = new ArrayList<String>();

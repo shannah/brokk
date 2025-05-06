@@ -1,6 +1,10 @@
 package io.github.jbellis.brokk.flex;
 
+import com.vladsch.flexmark.util.data.MutableDataSet;
+import io.github.jbellis.brokk.gui.mop.stream.flex.BrokkMarkdownExtension;
+import com.vladsch.flexmark.parser.Parser;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 
 import java.util.Set;
 
@@ -117,5 +121,78 @@ public class EditBlockUtilsTest {
         assertFalse(looksLikePath("cpp"), "Language should not look like path");
         assertFalse(looksLikePath(null), "Null should not look like path");
         assertFalse(looksLikePath(""), "Empty string should not look like path");
+    }
+    
+    @Test
+    void testParserRecognition() {
+        // Test with Parser directly to ensure recognition of all syntax variants
+        MutableDataSet options = new MutableDataSet()
+                .set(Parser.EXTENSIONS, List.of(BrokkMarkdownExtension.create()));
+        
+        Parser parser = Parser.builder(options).build();
+        
+        // 1. Test normal syntax
+        var doc1 = parser.parse("""
+                file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                """);
+        assertHasEditBlock(doc1, "Normal syntax not recognized");
+        
+        // 2. Test conflict syntax 
+        var doc2 = parser.parse("""
+                <<<<<<< SEARCH file1.txt
+                one
+                ======= file1.txt
+                two
+                >>>>>>> REPLACE file1.txt
+                """);
+        assertHasEditBlock(doc2, "Conflict syntax not recognized");
+        
+        // 3. Test fenced normal syntax
+        var doc3 = parser.parse("""
+                ```
+                file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                ```
+                """);
+        assertHasEditBlock(doc3, "Fenced normal syntax not recognized");
+        
+        // 4. Test fenced with language
+        var doc4 = parser.parse("""
+                ```java
+                file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                ```
+                """);
+        assertHasEditBlock(doc4, "Fenced with language syntax not recognized");
+        
+        // 5. Test fenced with filename in fence line
+        var doc5 = parser.parse("""
+                ```file1.txt
+                <<<<<<< SEARCH
+                one
+                =======
+                two
+                >>>>>>> REPLACE
+                ```
+                """);
+        assertHasEditBlock(doc5, "Fenced with filename syntax not recognized");
+    }
+    
+    private void assertHasEditBlock(com.vladsch.flexmark.util.ast.Document doc, String message) {
+        boolean hasEditBlock = doc.getChildOfType(io.github.jbellis.brokk.gui.mop.stream.flex.EditBlockNode.class) != null;
+        assertTrue(hasEditBlock, message);
     }
 }
