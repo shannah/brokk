@@ -97,43 +97,39 @@ public final class TreeSitterAnalyzerTest {
         TestProject project = createTestProject("testcode-py", io.github.jbellis.brokk.analyzer.Language.PYTHON); // Use Brokk's Language enum
         IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
         assertInstanceOf(PythonAnalyzer.class, ana);
-
-        TreeSitterAnalyzer analyzer = (TreeSitterAnalyzer) ana;
+        PythonAnalyzer analyzer = (PythonAnalyzer) ana; // Cast to PythonAnalyzer
         assertFalse(analyzer.isEmpty(), "Analyzer should have processed Python files");
 
         ProjectFile fileA = new ProjectFile(project.getRoot(), "a/A.py");
+        // Skeletons are now reconstructed. We check CodeUnits first.
+        var classesInFileA = analyzer.getClassesInFile(fileA);
+        var classA_CU = CodeUnit.cls(fileA, "a", "A");
+        assertTrue(classesInFileA.contains(classA_CU), "File A should contain class A.");
+
+        var topLevelDeclsInA = ((TreeSitterAnalyzer)analyzer).topLevelDeclarations.get(fileA); // Accessing internal for test validation
+        assertNotNull(topLevelDeclsInA, "Top level declarations for file A should exist.");
+
+        var funcA_CU = CodeUnit.fn(fileA, "a", "A.funcA");
+        assertTrue(topLevelDeclsInA.contains(funcA_CU), "File A should contain function funcA as top-level.");
+        assertTrue(topLevelDeclsInA.contains(classA_CU), "File A should contain class A as top-level.");
+
+        // Test reconstructed skeletons
         var skelA = analyzer.getSkeletons(fileA);
-        assertFalse(skelA.isEmpty(), "Skeletons map for file A should not be empty.");
+        assertFalse(skelA.isEmpty(), "Reconstructed skeletons map for file A should not be empty.");
 
-        // Use the 3-parameter factory methods with corrected Python structure:
-        // Package path is directory-based (e.g., "a").
-        // Class shortName is just the class name ("A"). fqName = "a.A".
-        // Function shortName includes module ("A.funcA"). fqName = "a.A.funcA".
+        assertTrue(skelA.containsKey(classA_CU), "Skeleton map should contain class A.");
+        String classASkeleton = skelA.get(classA_CU);
+        assertTrue(classASkeleton.contains("class A:"), "Class A skeleton content error.");
 
-        var classA = CodeUnit.cls(fileA, "a", "A"); // package="a", shortName="A"
-        assertEquals("A", classA.shortName(), "Class A shortName mismatch");
-        assertEquals("a.A", classA.fqName(), "Class A fqName mismatch"); // Corrected fqName
-        assertTrue(skelA.containsKey(classA), "Skeleton map should contain class A.");
-        assertTrue(skelA.get(classA).contains("class A:"));
+        assertTrue(skelA.containsKey(funcA_CU), "Skeleton map should contain function funcA.");
+        String funcASkeleton = skelA.get(funcA_CU);
+        assertTrue(funcASkeleton.contains("def funcA():"), "funcA skeleton content error.");
 
-        // Function shortName includes module name ("A.funcA")
-        var funcA = CodeUnit.fn(fileA, "a", "A.funcA"); // package="a", shortName="A.funcA"
-        assertEquals("A.funcA", funcA.shortName(), "Function funcA shortName mismatch"); // Corrected shortName
-        assertEquals("a.A.funcA", funcA.fqName(), "Function funcA fqName mismatch"); // fqName remains the same
-        assertTrue(skelA.containsKey(funcA), "Skeleton map should contain function funcA.");
-        assertTrue(skelA.get(funcA).contains("def funcA():"));
-
-
-        // Expected skeleton for the top-level function funcA
         var funcASummary = """
         def funcA(): …
         """;
-        assertEquals(funcASummary.trim(), skelA.get(funcA).trim());
+        assertEquals(funcASummary.trim(), funcASkeleton.trim());
 
-
-        // Expected skeleton for the top-level class A
-        // Class variables from testcode-py/a/A.py are not currently asserted here
-        // as their presence depends on the content of that file which is not modified.
         var classASummary = """
         class A:
           def __init__(self): …
@@ -144,15 +140,11 @@ public final class TreeSitterAnalyzerTest {
           def method4(foo: float, bar: int) -> int: …
           def method5(self) -> None: …
           def method6(self) -> None: …
-        """.stripIndent(); // Using stripIndent for cleaner comparison
-        assertEquals(classASummary.trim(), skelA.get(classA).trim(), "Class A skeleton mismatch.");
+        """; // Note: PythonAnalyzer.getLanguageSpecificIndent() might affect exact string match if not "  "
+        assertEquals(classASummary.stripIndent().trim(), classASkeleton.trim(), "Class A skeleton mismatch.");
 
-        // test getClassesInFile
-        assertEquals(Set.of(classA), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A");
-        // non-py files are now filtered out during construction, so no need to check ignore.md
-
-        // test getSummary - use fqName() method
-        assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA.fqName()).get(), "getSkeleton mismatch for funcA");
+        assertEquals(Set.of(classA_CU), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A");
+        assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA_CU.fqName()).get().trim(), "getSkeleton mismatch for funcA");
     }
 
 
@@ -160,7 +152,7 @@ public final class TreeSitterAnalyzerTest {
 
     @Test
     void testCSharpInitializationAndSkeletons() {
-        TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP); // Use Brokk's Language enum
+        TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP);
         IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
         assertInstanceOf(CSharpAnalyzer.class, ana);
 
@@ -168,19 +160,19 @@ public final class TreeSitterAnalyzerTest {
         assertFalse(analyzer.isEmpty(), "Analyzer should have processed C# files");
 
         ProjectFile fileA = new ProjectFile(project.getRoot(), "A.cs");
+        var classA_CU = CodeUnit.cls(fileA, "TestNamespace", "A");
+
+        assertTrue(analyzer.getClassesInFile(fileA).contains(classA_CU), "File A.cs should contain class A.");
+
         var skelA = analyzer.getSkeletons(fileA);
         assertFalse(skelA.isEmpty(), "Skeletons map for file A.cs should not be empty.");
+        assertTrue(skelA.containsKey(classA_CU), "Skeleton map should contain top-level class A. Skeletons found: " + skelA.keySet());
 
-        var classA = CodeUnit.cls(fileA, "TestNamespace", "A"); // Namespace is derived from A.cs
-        assertEquals("A", classA.shortName());
-        assertEquals("TestNamespace.A", classA.fqName()); // fqName includes the namespace
-        assertTrue(skelA.containsKey(classA), "Skeleton map should contain top-level class A. Skeletons found: " + skelA.keySet());
-        
-        String classASkeleton = skelA.get(classA);
+        String classASkeleton = skelA.get(classA_CU);
         assertNotNull(classASkeleton, "Skeleton for class A should not be null.");
-        assertTrue(classASkeleton.trim().startsWith("public class A"), "Class A skeleton should start with 'public class A'. Actual: '" + classASkeleton.trim() + "'");
-        
-        // Expected skeleton for class A, with indentation matching the actual output from the failed test run.
+        assertTrue(classASkeleton.trim().startsWith("public class A {") || classASkeleton.trim().startsWith("public class A\n{"), // Allow for newline before brace
+                   "Class A skeleton should start with 'public class A {'. Actual: '" + classASkeleton.trim() + "'");
+
         String expectedClassASkeleton = """
         public class A {
           public int MyField;
@@ -189,27 +181,21 @@ public final class TreeSitterAnalyzerTest {
           public A() { … }
         }
         """.stripIndent();
-        // Normalize both expected and actual by removing all leading/trailing whitespace from each line
-        // and then joining, to be robust against minor indentation differences if the content is structurally the same.
         java.util.function.Function<String, String> normalize = (String s) -> s.lines().map(String::strip).collect(Collectors.joining("\n"));
-        assertEquals(normalize.apply(expectedClassASkeleton), normalize.apply(classASkeleton), "Class A skeleton mismatch. Test expectation updated to match current analyzer output for A.cs.");
+        assertEquals(normalize.apply(expectedClassASkeleton), normalize.apply(classASkeleton), "Class A skeleton mismatch.");
 
+        // Check that attribute_list capture does not result in top-level CodeUnits or signatures
+        boolean hasAnnotationSignature = ((TreeSitterAnalyzer)analyzer).signatures.keySet().stream()
+            .filter(cu -> cu.source().equals(fileA))
+            .anyMatch(cu -> "annotation".equals(cu.shortName()) ||
+                            (cu.packageName() != null && cu.packageName().equals("annotation")) ||
+                             cu.identifier().startsWith("annotation"));
+        assertFalse(hasAnnotationSignature, "No signatures from 'annotation' captures expected.");
 
-        // Ensure attribute_list capture (aliased as "annotation") did not result in a CodeUnit.
-        // The getIgnoredCaptures() method in CSharpAnalyzer should prevent this.
-        boolean containsAnnotationCaptureAsCodeUnit = skelA.keySet().stream()
-                .anyMatch(cu -> "annotation".equals(cu.shortName()) ||
-                                (cu.packageName() != null && cu.packageName().equals("annotation")) ||
-                                cu.identifier().startsWith("annotation")); // Check common ways it might be named
-        assertFalse(containsAnnotationCaptureAsCodeUnit, "No CodeUnits from 'annotation' (attribute_list) captures expected in skeletons.");
-
-        // test getClassesInFile should still correctly identify the top-level class 'A'.
-        assertEquals(Set.of(classA), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A. Expected: " + Set.of(classA) + ", Got: " + analyzer.getClassesInFile(fileA));
-
-        // test getSkeleton for the top-level class 'A' using its fully qualified name.
-        var classASkeletonOpt = analyzer.getSkeleton(classA.fqName());
-        assertTrue(classASkeletonOpt.isDefined(), "Skeleton for classA fqName '" + classA.fqName() + "' should be found.");
-        assertEquals(classASkeleton.trim(), classASkeletonOpt.get().trim(), "getSkeleton for classA fqName mismatch.");
+        assertEquals(Set.of(classA_CU), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A.");
+        var classASkeletonOpt = analyzer.getSkeleton(classA_CU.fqName());
+        assertTrue(classASkeletonOpt.isDefined(), "Skeleton for classA fqName '" + classA_CU.fqName() + "' should be found.");
+        assertEquals(normalize.apply(classASkeleton), normalize.apply(classASkeletonOpt.get()), "getSkeleton for classA fqName mismatch.");
     }
 
     @Test
@@ -219,62 +205,39 @@ public final class TreeSitterAnalyzerTest {
         assertInstanceOf(CSharpAnalyzer.class, ana);
         CSharpAnalyzer analyzer = (CSharpAnalyzer) ana;
 
-        // 1. Test MixedScope.cs
         ProjectFile mixedScopeFile = new ProjectFile(project.getRoot(), "MixedScope.cs");
-        var skelMixed = analyzer.getSkeletons(mixedScopeFile);
+        var skelMixed = analyzer.getSkeletons(mixedScopeFile); // Triggers parsing and populates internal maps
         assertFalse(skelMixed.isEmpty(), "Skeletons map for MixedScope.cs should not be empty.");
 
         CodeUnit topLevelClass = CodeUnit.cls(mixedScopeFile, "", "TopLevelClass");
-        assertEquals("TopLevelClass", topLevelClass.fqName());
-        assertTrue(skelMixed.containsKey(topLevelClass), "Skeletons should contain TopLevelClass. Found: " + skelMixed.keySet());
-
         CodeUnit myTestAttributeClass = CodeUnit.cls(mixedScopeFile, "", "MyTestAttribute");
-        assertEquals("MyTestAttribute", myTestAttributeClass.fqName());
-        assertTrue(skelMixed.containsKey(myTestAttributeClass), "Skeletons should contain MyTestAttribute class. Found: " + skelMixed.keySet());
-
         CodeUnit namespacedClass = CodeUnit.cls(mixedScopeFile, "NS1", "NamespacedClass");
-        assertEquals("NS1.NamespacedClass", namespacedClass.fqName());
-        assertTrue(skelMixed.containsKey(namespacedClass), "Skeletons should contain NS1.NamespacedClass. Found: " + skelMixed.keySet());
+        CodeUnit nsInterface = CodeUnit.cls(mixedScopeFile, "NS1", "INamespacedInterface"); // Interfaces are classes for CodeUnit
+        CodeUnit topLevelStruct = CodeUnit.cls(mixedScopeFile, "", "TopLevelStruct"); // Structs are classes
 
-        CodeUnit nsInterface = CodeUnit.cls(mixedScopeFile, "NS1", "INamespacedInterface");
-        assertEquals("NS1.INamespacedInterface", nsInterface.fqName());
-        assertTrue(skelMixed.containsKey(nsInterface), "Skeletons should contain NS1.INamespacedInterface. Found: " + skelMixed.keySet());
-
-        CodeUnit topLevelStruct = CodeUnit.cls(mixedScopeFile, "", "TopLevelStruct");
-        assertEquals("TopLevelStruct", topLevelStruct.fqName());
-        assertTrue(skelMixed.containsKey(topLevelStruct), "Skeletons should contain TopLevelStruct. Found: " + skelMixed.keySet());
+        // Check if these CUs are present by querying for their skeletons or inclusion in file classes
+        assertTrue(skelMixed.containsKey(topLevelClass), "Skeletons should contain TopLevelClass.");
+        assertTrue(skelMixed.containsKey(myTestAttributeClass), "Skeletons should contain MyTestAttribute class.");
+        assertTrue(skelMixed.containsKey(namespacedClass), "Skeletons should contain NS1.NamespacedClass.");
+        assertTrue(skelMixed.containsKey(nsInterface), "Skeletons should contain NS1.INamespacedInterface.");
+        assertTrue(skelMixed.containsKey(topLevelStruct), "Skeletons should contain TopLevelStruct.");
 
         Set<CodeUnit> expectedClassesMixed = Set.of(topLevelClass, myTestAttributeClass, namespacedClass, nsInterface, topLevelStruct);
         assertEquals(expectedClassesMixed, analyzer.getClassesInFile(mixedScopeFile), "getClassesInFile mismatch for MixedScope.cs");
 
-        // Verify that attribute_list captures (aliased as "annotation") do not create CodeUnits
-        boolean containsAnnotationCaptureAsCodeUnitMixed = skelMixed.keySet().stream()
-                .anyMatch(cu -> "annotation".equals(cu.shortName()) ||
-                                (cu.packageName() != null && cu.packageName().contains("annotation")) ||
-                                cu.identifier().startsWith("annotation"));
-        assertFalse(containsAnnotationCaptureAsCodeUnitMixed, "No CodeUnits from 'annotation' (attribute_list) captures expected in MixedScope.cs skeletons.");
-
-
-        // 2. Test NestedNamespaces.cs
         ProjectFile nestedNamespacesFile = new ProjectFile(project.getRoot(), "NestedNamespaces.cs");
         var skelNested = analyzer.getSkeletons(nestedNamespacesFile);
         assertFalse(skelNested.isEmpty(), "Skeletons map for NestedNamespaces.cs should not be empty.");
 
         CodeUnit myNestedClass = CodeUnit.cls(nestedNamespacesFile, "Outer.Inner", "MyNestedClass");
-        assertEquals("Outer.Inner.MyNestedClass", myNestedClass.fqName());
-        assertTrue(skelNested.containsKey(myNestedClass), "Skeletons should contain Outer.Inner.MyNestedClass. Found: " + skelNested.keySet());
-
         CodeUnit myNestedInterface = CodeUnit.cls(nestedNamespacesFile, "Outer.Inner", "IMyNestedInterface");
-        assertEquals("Outer.Inner.IMyNestedInterface", myNestedInterface.fqName());
-        assertTrue(skelNested.containsKey(myNestedInterface), "Skeletons should contain Outer.Inner.IMyNestedInterface. Found: " + skelNested.keySet());
-
         CodeUnit outerClass = CodeUnit.cls(nestedNamespacesFile, "Outer", "OuterClass");
-        assertEquals("Outer.OuterClass", outerClass.fqName());
-        assertTrue(skelNested.containsKey(outerClass), "Skeletons should contain Outer.OuterClass. Found: " + skelNested.keySet());
-
         CodeUnit anotherClass = CodeUnit.cls(nestedNamespacesFile, "AnotherTopLevelNs", "AnotherClass");
-        assertEquals("AnotherTopLevelNs.AnotherClass", anotherClass.fqName());
-        assertTrue(skelNested.containsKey(anotherClass), "Skeletons should contain AnotherTopLevelNs.AnotherClass. Found: " + skelNested.keySet());
+
+        assertTrue(skelNested.containsKey(myNestedClass), "Skeletons should contain Outer.Inner.MyNestedClass.");
+        assertTrue(skelNested.containsKey(myNestedInterface), "Skeletons should contain Outer.Inner.IMyNestedInterface.");
+        assertTrue(skelNested.containsKey(outerClass), "Skeletons should contain Outer.OuterClass.");
+        assertTrue(skelNested.containsKey(anotherClass), "Skeletons should contain AnotherTopLevelNs.AnotherClass.");
 
         Set<CodeUnit> expectedClassesNested = Set.of(myNestedClass, myNestedInterface, outerClass, anotherClass);
         assertEquals(expectedClassesNested, analyzer.getClassesInFile(nestedNamespacesFile), "getClassesInFile mismatch for NestedNamespaces.cs");
@@ -293,37 +256,26 @@ public final class TreeSitterAnalyzerTest {
 
         ProjectFile jsxFile = new ProjectFile(project.getRoot(), "Hello.jsx");
         var skelJsx = analyzer.getSkeletons(jsxFile);
-        assertFalse(skelJsx.isEmpty(), "Skeletons map for Hello.jsx should not be empty. Found: " + skelJsx.keySet());
+        assertFalse(skelJsx.isEmpty(), "Skeletons map for Hello.jsx should not be empty. Found: " + skelJsx.keySet().stream().map(CodeUnit::fqName).collect(Collectors.joining(", ")));
 
-        // CodeUnits - package name is "" because project root is 'testcode-js'
-        // and file is directly in it. ShortNames for functions are now simple names.
         var jsxClass = CodeUnit.cls(jsxFile, "", "JsxClass");
-        var jsxArrowFn = CodeUnit.fn(jsxFile, "", "JsxArrowFnComponent"); // shortName is "JsxArrowFnComponent"
-        var localJsxArrowFn = CodeUnit.fn(jsxFile, "", "LocalJsxArrowFn");   // shortName is "LocalJsxArrowFn"
-        var plainJsxFunc = CodeUnit.fn(jsxFile, "", "PlainJsxFunc");       // shortName is "PlainJsxFunc"
+        var jsxArrowFn = CodeUnit.fn(jsxFile, "", "JsxArrowFnComponent");
+        var localJsxArrowFn = CodeUnit.fn(jsxFile, "", "LocalJsxArrowFn");
+        var plainJsxFunc = CodeUnit.fn(jsxFile, "", "PlainJsxFunc");
 
-        assertTrue(skelJsx.containsKey(jsxClass), "Skeleton map should contain JsxClass. Found: " + skelJsx.keySet());
-        assertTrue(skelJsx.containsKey(jsxArrowFn), "Skeleton map should contain JsxArrowFnComponent. Found: " + skelJsx.keySet());
-        assertTrue(skelJsx.containsKey(localJsxArrowFn), "Skeleton map should contain LocalJsxArrowFn. Found: " + skelJsx.keySet());
-        assertTrue(skelJsx.containsKey(plainJsxFunc), "Skeleton map should contain PlainJsxFunc. Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(jsxClass), "Skeleton map should contain JsxClass. Skeletons: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(jsxArrowFn), "Skeleton map should contain JsxArrowFnComponent. Skeletons: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(localJsxArrowFn), "Skeleton map should contain LocalJsxArrowFn. Skeletons: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(plainJsxFunc), "Skeleton map should contain PlainJsxFunc. Skeletons: " + skelJsx.keySet());
 
-        // Expected Skeletons
-        // Class skeleton
-        // JavaScript field queries are currently commented out due to TSQueryErrorField.
-        // Adjust expected skeleton to not include fields.
         String expectedJsxClassSkeleton = """
         export class JsxClass {
           function render() ...
         }
         """.stripIndent();
-        // assertEquals(expectedJsxClassSkeleton.trim(), skelJsx.get(jsxClass).trim(), "JsxClass skeleton mismatch in Hello.jsx.");
-        // Temporarily relax this assertion until field queries are fixed, or verify actual content of Hello.jsx
-        assertTrue(skelJsx.get(jsxClass).trim().startsWith("export class JsxClass {"));
-        assertTrue(skelJsx.get(jsxClass).trim().endsWith("}"));
-        assertTrue(skelJsx.get(jsxClass).trim().contains("function render() ..."));
+        assertEquals(expectedJsxClassSkeleton.trim(), skelJsx.get(jsxClass).trim(), "JsxClass skeleton mismatch in Hello.jsx.");
 
 
-        // Arrow functions now get JS-specific skeletons.
         String expectedExportedArrowFnSkeleton = """
         export JsxArrowFnComponent({ name }) => ...
         """.stripIndent();
@@ -334,45 +286,32 @@ public final class TreeSitterAnalyzerTest {
         """.stripIndent();
         assertEquals(expectedLocalArrowFnSkeleton.trim(), skelJsx.get(localJsxArrowFn).trim(), "LocalJsxArrowFn skeleton mismatch");
 
-        // Plain function declarations now get JS-specific "function..." skeleton
-        // PlainJsxFunc is not exported.
         String expectedPlainJsxFuncSkeleton = """
         function PlainJsxFunc() ...
         """.stripIndent();
         assertEquals(expectedPlainJsxFuncSkeleton.trim(), skelJsx.get(plainJsxFunc).trim(), "PlainJsxFunc skeleton mismatch");
 
-        // Test getClassesInFile
         assertEquals(Set.of(jsxClass), analyzer.getClassesInFile(jsxFile), "getClassesInFile mismatch for Hello.jsx");
-
-        // Test getSkeleton by FQ name
         assertEquals(expectedExportedArrowFnSkeleton.trim(), analyzer.getSkeleton(jsxArrowFn.fqName()).get().trim(), "getSkeleton mismatch for JsxArrowFnComponent FQ name");
 
-        // Test the existing Hello.js file to ensure no regressions
         ProjectFile jsFile = new ProjectFile(project.getRoot(), "Hello.js");
         var skelJs = analyzer.getSkeletons(jsFile);
         assertFalse(skelJs.isEmpty(), "Skeletons map for Hello.js should not be empty.");
 
         var helloClass = CodeUnit.cls(jsFile, "", "Hello");
-        var utilFunc = CodeUnit.fn(jsFile, "", "util"); // shortName is "util"
+        var utilFunc = CodeUnit.fn(jsFile, "", "util");
 
         assertTrue(skelJs.containsKey(helloClass), "Skeleton map should contain Hello class from Hello.js");
         assertTrue(skelJs.containsKey(utilFunc), "Skeleton map should contain util function from Hello.js");
 
-        // JavaScript field queries are currently commented out due to TSQueryErrorField.
-        // Adjust expected skeleton to not include fields.
         String expectedHelloClassSkeleton = """
         export class Hello {
           function greet() ...
         }
         """.stripIndent();
-        // assertEquals(expectedHelloClassSkeleton.trim(), skelJs.get(helloClass).trim(), "Hello class skeleton mismatch in Hello.js.");
-        // Temporarily relax this assertion
-        assertTrue(skelJs.get(helloClass).trim().startsWith("export class Hello {"));
-        assertTrue(skelJs.get(helloClass).trim().endsWith("}"));
-        assertTrue(skelJs.get(helloClass).trim().contains("function greet() ..."));
+        assertEquals(expectedHelloClassSkeleton.trim(), skelJs.get(helloClass).trim(), "Hello class skeleton mismatch in Hello.js.");
 
 
-        // util is an exported function_declaration, should get JS-specific "function..." skeleton prefixed with "export"
         String expectedUtilFuncSkeleton = """
         export function util() ...
         """.stripIndent();

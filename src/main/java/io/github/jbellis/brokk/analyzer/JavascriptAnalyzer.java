@@ -67,18 +67,19 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
+        // The 'indent' parameter is now "" when called from buildSignatureString.
         String tsReturnTypeSuffix = (returnTypeText != null && !returnTypeText.isEmpty()) ? ": " + returnTypeText : "";
         String signature;
-        String bodySuffix = " " + bodyPlaceholder(); // bodyPlaceholder() for JS is "..."
+        String bodySuffix = " " + bodyPlaceholder();
 
         String nodeType = funcNode.getType();
-        
+
         if ("arrow_function".equals(nodeType)) {
              signature = String.format("%s%s%s%s%s =>", exportPrefix, asyncPrefix, functionName, paramsText, tsReturnTypeSuffix);
-        } else { // Assumes "function_declaration", etc.
+        } else { // Assumes "function_declaration", "method_definition" etc.
              signature = String.format("%s%sfunction %s%s%s", exportPrefix, asyncPrefix, functionName, paramsText, tsReturnTypeSuffix);
         }
-        return indent + signature + bodySuffix;
+        return signature + bodySuffix; // Do not prepend indent here
     }
 
     @Override
@@ -106,41 +107,15 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signature, String baseIndent) {
-        return baseIndent + exportPrefix + signature + " {";
+    protected String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signatureText, String baseIndent) {
+        // The 'baseIndent' parameter is now "" when called from buildSignatureString.
+        // Stored signature should be unindented.
+        return exportPrefix + signatureText + " {"; // Do not prepend baseIndent here
     }
 
     @Override
-    protected String renderClassFooter(TSNode classNode, String src, String baseIndent) {
-        return baseIndent + "}";
-    }
-
-    @Override
-    protected void buildClassMemberSkeletons(TSNode classBodyNode, String src, String memberIndent, List<String> lines) {
-        for (int i = 0; i < classBodyNode.getNamedChildCount(); i++) {
-            TSNode memberNode = classBodyNode.getNamedChild(i);
-            String memberType = memberNode.getType();
-
-            // In JavaScript, class methods are typically 'method_definition'
-            // This also correctly handles getter, setter, and async methods if they are 'method_definition'
-            if ("method_definition".equals(memberType)) {
-                // Decorators for methods/accessors are children of method_definition in estree for stage 3 decorators.
-                // Handle decorators if they are part of the memberNode itself, e.g. by getPrecedingDecorators
-                // or if renderFunctionDeclaration is made aware.
-                // For now, assuming decorators are handled by getPrecedingDecorators if they are siblings,
-                // or implicitly by textSlice if they are part of method_definition's signature.
-                // Standard JS class methods don't have decorators as separate sibling nodes typically.
-                // The current buildFunctionSkeleton handles `async` prefix, and renderFunctionDeclaration for JS builds the signature.
-                super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
-            } else if (isClassLike(memberNode)) {
-                // Recursively build skeleton for nested class-like structures
-                this.buildClassSkeleton(memberNode, src, memberIndent, lines);
-            } else if ("public_field_definition".equals(memberType) ||
-                       "private_field_definition".equals(memberType)) {
-                lines.add(memberIndent + textSlice(memberNode, src).strip());
-            }
-            // TODO: Add other JS-specific class member handling like static blocks if needed.
-        }
+    protected String getLanguageSpecificCloser(CodeUnit cu) {
+        return cu.isClass() ? "}" : "";
     }
 
     @Override
@@ -154,4 +129,9 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
             default -> false;
         };
     }
+
+    // buildClassMemberSkeletons is no longer directly called for parent skeleton string generation.
+    // If JS needs to identify children not caught by main query for the childrenByParent map,
+    // that logic would need to be integrated into analyzeFileDeclarations or a new helper.
+    // For now, assume main query captures are sufficient for JS CUs.
 }

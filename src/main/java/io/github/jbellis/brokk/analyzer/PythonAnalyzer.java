@@ -96,6 +96,8 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
         String pyReturnTypeSuffix = (returnTypeText != null && !returnTypeText.isEmpty()) ? " -> " + returnTypeText : "";
+        // The 'indent' parameter is now "" when called from buildSignatureString,
+        // so it's effectively ignored here for constructing the stored signature.
         String signature = String.format("%s%sdef %s%s%s:", exportPrefix, asyncPrefix, functionName, paramsText, pyReturnTypeSuffix);
 
         TSNode bodyNode = funcNode.getChildByFieldName("body");
@@ -104,77 +106,22 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                                      (bodyNode.getNamedChildCount() == 1 && !"pass_statement".equals(bodyNode.getNamedChild(0).getType())));
 
         if (hasMeaningfulBody) {
-            return indent + signature + " " + bodyPlaceholder();
+            return signature + " " + bodyPlaceholder(); // Do not prepend indent here
         } else {
-            return indent + signature;
+            return signature; // Do not prepend indent here
         }
     }
 
     @Override
-    protected String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signature, String baseIndent) {
-        // Python's signature from textSlice up to body usually includes the colon.
-        // exportPrefix is expected to be empty for Python from the default getVisibilityPrefix.
-        return baseIndent + signature;
+    protected String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signatureText, String baseIndent) {
+        // The 'baseIndent' parameter is now "" when called from buildSignatureString.
+        // Stored signature should be unindented.
+        return signatureText; // Do not prepend baseIndent here
     }
 
     @Override
-    protected String renderClassFooter(TSNode classNode, String src, String baseIndent) {
-        return null; // Python classes do not have a closing brace/keyword
-    }
-
-    @Override
-    protected void buildClassMemberSkeletons(TSNode classBodyNode, String src, String memberIndent, List<String> lines) {
-        for (int i = 0; i < classBodyNode.getNamedChildCount(); i++) {
-            TSNode memberNode = classBodyNode.getNamedChild(i);
-            String memberType = memberNode.getType();
-
-            log.trace("PythonAnalyzer.buildClassMemberSkeletons: Processing member type: '{}', text: '{}'", memberType, textSlice(memberNode, src).lines().findFirst().orElse(""));
-
-            if ("comment".equals(memberType)) {
-                continue;
-            } else if ("function_definition".equals(memberType)) {
-                super.buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
-            } else if (isClassLike(memberNode)) {
-                this.buildClassSkeleton(memberNode, src, memberIndent, lines);
-            } else if ("decorated_definition".equals(memberType)) {
-                TSNode functionDefNode = null;
-                // Add decorators first, then the function definition
-                for (int j = 0; j < memberNode.getChildCount(); j++) {
-                    TSNode child = memberNode.getChild(j);
-                    if (child == null || child.isNull()) continue;
-                    if ("decorator".equals(child.getType())) {
-                        lines.add(memberIndent + textSlice(child, src));
-                    } else if ("function_definition".equals(child.getType())) {
-                        functionDefNode = child;
-                    }
-                }
-                if (functionDefNode != null) {
-                    // Pass the original decorated_definition node for context if needed by buildFunctionSkeleton,
-                    // but the actual function details come from functionDefNode.
-                    // However, buildFunctionSkeleton primarily uses the passed funcNode for name, params, body.
-                    // For decorators, they are added before this call now.
-                    super.buildFunctionSkeleton(functionDefNode, Optional.empty(), src, memberIndent, lines);
-                } else {
-                    log.warn("decorated_definition node found without an inner function_definition: {}", textSlice(memberNode, src).lines().findFirst().orElse(""));
-                }
-            } else if ("expression_statement".equals(memberType)) {
-                TSNode expr = memberNode.getChild(0);
-                if (expr != null && "assignment".equals(expr.getType())) {
-                    TSNode left = expr.getChildByFieldName("left");
-                    if (left != null && "attribute".equals(left.getType())) {
-                        TSNode object = left.getChildByFieldName("object");
-                        if (object != null && "identifier".equals(object.getType()) && "self".equals(textSlice(object, src))) {
-                            lines.add(memberIndent + textSlice(memberNode, src).strip()); // Instance variable self.foo = ...
-                        }
-                    } else if (left != null && "identifier".equals(left.getType())) { // Class variable FOO = ...
-                        // This handles 'CLS_VAR = value' where memberNode is the expression_statement.
-                        lines.add(memberIndent + textSlice(memberNode, src).strip());
-                    }
-                }
-            } else {
-                log.warn("PythonAnalyzer.buildClassMemberSkeletons: Unhandled member type: {} for node starting with: '{}'", memberType, textSlice(memberNode, src).lines().findFirst().orElse(""));
-            }
-        }
+    protected String getLanguageSpecificCloser(CodeUnit cu) {
+        return ""; // Python uses indentation, no explicit closer for classes/functions
     }
 
     /**
@@ -249,4 +196,6 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
         }
         return "class_definition".equals(node.getType());
     }
+
+    // buildClassMemberSkeletons is no longer directly called for parent skeleton string generation.
 }

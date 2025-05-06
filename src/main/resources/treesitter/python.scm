@@ -1,14 +1,37 @@
 ; We capture the whole definition node now (@*.definition) for top-level items.
 ; The name is still useful (@*.name).
-; Nested items (methods, fields) will be found by traversing the definition node's children in Java code.
 
-; Top-level Class definition
+; Class definition (captures at any nesting level initially, Java logic sorts out hierarchy)
 (class_definition
   name: (identifier) @class.name) @class.definition
 
-; Top-level Function definition
-(function_definition
-  name: (identifier) @function.name) @function.definition
+; Function definition at module level (direct child of module)
+(module
+  (function_definition
+    name: (identifier) @function.name) @function.definition)
+
+; Method definition (function_definition directly inside a class's body block)
+; This also captures static methods if they are structured as function_definition within class body.
+(class_definition
+  body: (block
+    (function_definition
+      name: (identifier) @function.name) @function.definition
+  )
+)
+
+; Decorated method definition (function_definition directly inside a class's body block, with decorators)
+; The decorated_definition node itself is captured as @function.definition for consistency,
+; and its inner function_definition's name is @function.name.
+(class_definition
+  body: (block
+    (decorated_definition
+      definition: (function_definition
+        name: (identifier) @function.name
+      )
+    ) @function.definition
+  )
+)
+
 
 ; Capture field assignments like `self.x = ...` to help identify them during skeleton building.
 ; We need the helper `obj` capture for the predicate.

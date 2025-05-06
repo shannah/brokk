@@ -30,9 +30,12 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /* ---------- instance state ---------- */
     protected final TSLanguage tsLanguage;
     private final TSQuery query;
-    private final Map<ProjectFile, Map<CodeUnit, String>> skeletons = new ConcurrentHashMap<>();
-    private final Map<ProjectFile, Set<CodeUnit>> fileClasses = new ConcurrentHashMap<>();
+    final Map<ProjectFile, List<CodeUnit>> topLevelDeclarations = new ConcurrentHashMap<>(); // package-private for testing
+    final Map<CodeUnit, List<CodeUnit>> childrenByParent = new ConcurrentHashMap<>(); // package-private for testing
+    final Map<CodeUnit, String> signatures = new ConcurrentHashMap<>(); // package-private for testing
     private final IProject project;
+
+    private record FileAnalysisResult(List<CodeUnit> topLevelCUs, Map<CodeUnit, List<CodeUnit>> children, Map<CodeUnit, String> signatures) {}
 
     /* ---------- constructor ---------- */
     protected TreeSitterAnalyzer(IProject project) {
@@ -66,69 +69,144 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                             log.error("Failed to set language on thread-local TSParser for language {} in file {}", tsLanguage, pf);
                             return; // Skip this file if parser setup fails
                         }
-                        var map = parseAndExtractSkeletons(pf, localParser);
-                        log.trace("Skeletons found for {}: {}", pf, map.size());
-                        if (!map.isEmpty()) {
-                             skeletons.put(pf, Collections.unmodifiableMap(new HashMap<>(map)));
-                             // Extract and store classes for this file
-                             var classesInFile = map.keySet().stream()
-                                 .filter(CodeUnit::isClass)
-                                 .collect(Collectors.toSet());
-                             log.trace("Classes found for {}: {}", pf, classesInFile.size());
-                             if (!classesInFile.isEmpty()) {
-                                 fileClasses.put(pf, Collections.unmodifiableSet(new HashSet<>(classesInFile)));
-                             }
+                        var analysisResult = analyzeFileDeclarations(pf, localParser);
+                        if (!analysisResult.topLevelCUs().isEmpty() || !analysisResult.signatures().isEmpty()) {
+                            topLevelDeclarations.put(pf, Collections.unmodifiableList(new ArrayList<>(analysisResult.topLevelCUs())));
+                            // Merge children, ensuring lists are unmodifiable and free of duplicates.
+                            analysisResult.children().forEach((parentCU, newChildCUs) -> {
+                                childrenByParent.compute(parentCU, (p, existingChildCUs) -> {
+                                    if (existingChildCUs == null) {
+                                        // Ensure newChildCUs itself is a list of unique CUs if it comes from localChildren
+                                        // localChildren lists are already managed to avoid duplicates by the fix below.
+                                        return Collections.unmodifiableList(new ArrayList<>(newChildCUs));
+                                    }
+                                    // Merge, avoiding duplicates. existingChildCUs is already unmodifiable.
+                                    List<CodeUnit> combined = new ArrayList<>(existingChildCUs);
+                                    for (CodeUnit newKid : newChildCUs) {
+                                        if (!combined.contains(newKid)) {
+                                            combined.add(newKid);
+                                        }
+                                    }
+                                    // If no new kids were added that weren't already there, can return original existingKids
+                                    if (combined.size() == existingChildCUs.size()) {
+                                        boolean changed = false; // Check if order or content actually changed before creating new list
+                                        for(int i=0; i<combined.size(); ++i) { if (!combined.get(i).equals(existingChildCUs.get(i))) {changed=true; break;}}
+                                        if (!changed) return existingChildCUs;
+                                    }
+                                    return Collections.unmodifiableList(combined);
+                                });
+                            });
+                            signatures.putAll(analysisResult.signatures());
+                            log.trace("Processed file {}: {} top-level CUs, {} signatures, {} parent-child relationships.",
+                                      pf, analysisResult.topLevelCUs().size(), analysisResult.signatures().size(), analysisResult.children().size());
                         } else {
-                             // Explicitly log when the returned map is empty
-                             log.debug("parseAndExtractSkeletons returned an empty map for file: {}", pf);
+                            log.debug("analyzeFileDeclarations returned empty result for file: {}", pf);
                         }
                     } catch (Exception e) {
-                        log.warn("Error parsing {}: {}", pf, e, e);
+                        log.warn("Error analyzing {}: {}", pf, e, e);
                     }
                 });
     }
 
     /* ---------- IAnalyzer ---------- */
-    @Override public boolean isEmpty() { return skeletons.isEmpty(); }
+    @Override public boolean isEmpty() { return topLevelDeclarations.isEmpty() && signatures.isEmpty(); }
 
     @Override
     public List<CodeUnit> getAllClasses() {
-        return fileClasses.values().stream()
-                .flatMap(Collection::stream)
-                .toList();
+        Set<CodeUnit> allClasses = new HashSet<>();
+        topLevelDeclarations.values().forEach(allClasses::addAll);
+        childrenByParent.values().forEach(allClasses::addAll); // Children lists
+        allClasses.addAll(childrenByParent.keySet());          // Parent CUs themselves
+        return allClasses.stream().filter(CodeUnit::isClass).distinct().toList();
     }
 
     @Override
     public Map<CodeUnit, String> getSkeletons(ProjectFile file) {
-        var m = skeletons.get(file);
-        log.trace("getSkeletons: file={}, count={}", file, (m == null ? 0 : m.size()));
-        return m == null ? Map.of() : Collections.unmodifiableMap(m);
+        List<CodeUnit> topCUs = topLevelDeclarations.getOrDefault(file, List.of());
+        if (topCUs.isEmpty()) return Map.of();
+
+        Map<CodeUnit, String> resultSkeletons = new HashMap<>();
+        for (CodeUnit cu : topCUs) {
+            resultSkeletons.put(cu, reconstructFullSkeleton(cu));
+        }
+        log.trace("getSkeletons: file={}, count={}", file, resultSkeletons.size());
+        return Collections.unmodifiableMap(resultSkeletons);
     }
 
     @Override
     public Set<CodeUnit> getClassesInFile(ProjectFile file) {
-        var classes = fileClasses.get(file);
-        log.trace("getClassesInFile: file={}, count={}", file, (classes == null ? 0 : classes.size()));
-        return classes == null ? Set.of() : Collections.unmodifiableSet(classes);
+        List<CodeUnit> topCUs = topLevelDeclarations.getOrDefault(file, List.of());
+        if (topCUs.isEmpty()) return Set.of();
+
+        Set<CodeUnit> classesInFile = new HashSet<>();
+        Queue<CodeUnit> toProcess = new LinkedList<>(topCUs);
+        Set<CodeUnit> visited = new HashSet<>(topCUs); // Track visited to avoid cycles and redundant processing
+
+        while(!toProcess.isEmpty()) {
+            CodeUnit current = toProcess.poll();
+            if (current.isClass()) {
+                classesInFile.add(current);
+            }
+            childrenByParent.getOrDefault(current, List.of()).forEach(child -> {
+                if (visited.add(child)) { // Add to queue only if not visited
+                    toProcess.add(child);
+                }
+            });
+        }
+        log.trace("getClassesInFile: file={}, count={}", file, classesInFile.size());
+        return Collections.unmodifiableSet(classesInFile);
     }
+
+    private String reconstructFullSkeleton(CodeUnit cu) {
+        StringBuilder sb = new StringBuilder();
+        reconstructSkeletonRecursive(cu, "", sb);
+        return sb.toString().stripTrailing();
+    }
+
+    private void reconstructSkeletonRecursive(CodeUnit cu, String indent, StringBuilder sb) {
+        String signature = signatures.get(cu);
+        if (signature == null) {
+            log.warn("Missing signature for CU: {}. Skipping in skeleton reconstruction.", cu);
+            return;
+        }
+
+        // Apply indent to each line of the signature
+        String[] signatureLines = signature.split("\n", -1); // Use -1 limit to keep trailing empty strings if necessary
+        for (String line : signatureLines) {
+            sb.append(indent).append(line).append('\n');
+        }
+        // If signature itself was empty or only newlines, the above loop might not add a final newline.
+        // However, signatures are expected to have content. If signature ends with \n, split might produce an empty string at the end.
+        // The logic implies signature is one or more content lines, each terminated by \n by the loop.
+
+        List<CodeUnit> kids = childrenByParent.getOrDefault(cu, List.of());
+        // Only add children and closer if the CU can have them (e.g. class, or function that can nest)
+        // For simplicity now, always check for children. Specific languages might refine this.
+        if (!kids.isEmpty() || (cu.isClass() && getLanguageSpecificCloser(cu).length() > 0)) { // also add closer for empty classes
+            String childIndent = indent + getLanguageSpecificIndent();
+            for (CodeUnit kid : kids) {
+                reconstructSkeletonRecursive(kid, childIndent, sb);
+            }
+            String closer = getLanguageSpecificCloser(cu);
+            if (!closer.isEmpty()) {
+                sb.append(indent).append(closer).append('\n');
+            }
+        }
+    }
+
 
     @Override
     public scala.Option<String> getSkeleton(String fqName) {
-        scala.Option<String> result = scala.Option.empty();
-        for (var fileSkeletons : skeletons.values()) {
-            for (var entry : fileSkeletons.entrySet()) {
-                // Compute the fqName from the CodeUnit's components before comparing
-                if (entry.getKey().fqName().equals(fqName)) {
-                    result = scala.Option.apply(entry.getValue());
-                    break; // Found, no need to check further
-                }
-            }
-            if (result.isDefined()) {
-                break; // Found in this file, no need to check other files
-            }
+        Optional<CodeUnit> cuOpt = signatures.keySet().stream()
+                                          .filter(c -> c.fqName().equals(fqName))
+                                          .findFirst();
+        if (cuOpt.isPresent()) {
+            String skeleton = reconstructFullSkeleton(cuOpt.get());
+            log.trace("getSkeleton: fqName='{}', found=true", fqName);
+            return scala.Option.apply(skeleton);
         }
-        log.trace("getSkeleton: fqName='{}', found={}", fqName, result.isDefined());
-        return result;
+        log.trace("getSkeleton: fqName='{}', found=false", fqName);
+        return scala.Option.empty();
     }
 
     /* ---------- abstract hooks ---------- */
@@ -181,6 +259,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /** Captures that should be ignored entirely. */
     protected Set<String> getIgnoredCaptures() { return Set.of(); }
 
+    /** Language-specific indentation string, e.g., "  " or "    ". */
+    protected String getLanguageSpecificIndent() { return "  "; } // Default
+
+    /** Language-specific closing token for a class or namespace (e.g., "}"). Empty if none. */
+    protected abstract String getLanguageSpecificCloser(CodeUnit cu);
+
+
     /**
      * Get the project this analyzer is associated with.
      */
@@ -189,18 +274,21 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     }
 
     /* ---------- core parsing ---------- */
-    /** Parses a single file and extracts skeletons using the provided thread-local parser. */
-    private Map<CodeUnit, String> parseAndExtractSkeletons(ProjectFile file, TSParser localParser) throws IOException {
-        log.trace("parseAndExtractSkeletons: Parsing file: {}", file);
+    /** Analyzes a single file and extracts declaration information. */
+    private FileAnalysisResult analyzeFileDeclarations(ProjectFile file, TSParser localParser) throws IOException {
+        log.trace("analyzeFileDeclarations: Parsing file: {}", file);
         String src = Files.readString(file.absPath(), StandardCharsets.UTF_8);
-        // Map<CodeUnit, String> result = new HashMap<>(); // Not used directly for final output from this function.
 
-        // TSTree does not implement AutoCloseable, rely on GC + Cleaner for resource management
+        List<CodeUnit> localTopLevelCUs = new ArrayList<>();
+        Map<CodeUnit, List<CodeUnit>> localChildren = new HashMap<>();
+        Map<CodeUnit, String> localSignatures = new HashMap<>();
+        Map<String, CodeUnit> localCuByFqName = new HashMap<>(); // For parent lookup within the file
+
         TSTree tree = localParser.parseString(null, src);
         TSNode rootNode = tree.getRootNode();
         if (rootNode.isNull()) {
             log.warn("Parsing failed or produced null root node for {}", file);
-            return Map.of();
+            return new FileAnalysisResult(List.of(), Map.of(), Map.of());
         }
         // Log root node type
         String rootNodeType = rootNode.getType();
@@ -264,114 +352,112 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             }
         } // End main query loop
 
-        // Now, build skeletons only for top-level definitions
-        Map<CodeUnit, String> finalSkeletons = new HashMap<>();
-        TSNode root = tree.getRootNode(); // Get root node again for isTopLevel check
+        // Sort declaration nodes by their start byte to process outer definitions before inner ones.
+        // This is crucial for parent lookup.
+        List<Map.Entry<TSNode, Map.Entry<String, String>>> sortedDeclarationEntries =
+            declarationNodes.entrySet().stream()
+                .sorted(Comparator.comparingInt(entry -> entry.getKey().getStartByte()))
+                .collect(Collectors.toList());
 
-        for (var entry : declarationNodes.entrySet()) {
+        TSNode currentRootNode = tree.getRootNode(); // Used for namespace and class chain extraction
+
+        for (var entry : sortedDeclarationEntries) {
             TSNode node = entry.getKey();
             Map.Entry<String, String> defInfo = entry.getValue();
             String primaryCaptureName = defInfo.getKey();
             String simpleName = defInfo.getValue();
 
-            log.trace("Checking node type {} for top-level status.", node.getType());
+            if (simpleName == null || simpleName.isBlank()) {
+                log.warn("Simple name was null/blank for node type {} (capture: {}) in file {}. Skipping.",
+                         node.getType(), primaryCaptureName, file);
+                continue;
+            }
 
-            // Unconditionally process the node; the isTopLevel check and related logging are removed.
-            log.trace("Processing definition node: {}", textSlice(node, src).lines().findFirst().orElse("")); // Retained log from original if-block
+            log.trace("Processing definition: Name='{}', Capture='{}', Node Type='{}'",
+                      simpleName, primaryCaptureName, node.getType());
 
-            if (simpleName != null && !simpleName.isBlank()) {
-                log.trace("Processing definition: Name='{}', Capture='{}', Node Type='{}'",
-                          simpleName, primaryCaptureName, node.getType());
+            String namespace = extractNamespace(node, currentRootNode, src);
+            List<String> enclosingClassNames = new ArrayList<>();
+            TSNode tempParent = node.getParent();
+            while (tempParent != null && !tempParent.isNull() && !tempParent.equals(currentRootNode)) {
+                if (isClassLike(tempParent)) {
+                    extractSimpleName(tempParent, src).ifPresent(parentName -> {
+                        if (!parentName.isBlank()) enclosingClassNames.add(0, parentName);
+                    });
+                }
+                tempParent = tempParent.getParent();
+            }
+            String classChain = String.join("$", enclosingClassNames);
+            log.trace("Computed classChain for simpleName='{}': '{}'", simpleName, classChain);
 
-                 String namespace = extractNamespace(node, root, src);
+            CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace, classChain);
+            log.trace("createCodeUnit returned: {}", cu);
 
-                 // Calculate enclosing class chain
-                 List<String> enclosingClasses = new ArrayList<>();
-                 TSNode currentParent = node.getParent();
-                 // TSNode root = tree.getRootNode(); // Ensure 'root' is available here if it's not already in scope from earlier.
-                 // It seems 'root' is already defined from 'TSNode root = tree.getRootNode();' earlier in the method.
-                 while (currentParent != null && !currentParent.isNull() && !currentParent.equals(root)) {
-                     if (isClassLike(currentParent)) {
-                         final TSNode effectivelyFinalCurrentParent = currentParent; // Capture currentParent for the lambda
-                         Optional<String> parentNameOpt = extractSimpleName(effectivelyFinalCurrentParent, src);
-                         parentNameOpt.ifPresent(parentName -> {
-                             if (!parentName.isBlank()) {
-                                 enclosingClasses.add(0, parentName); // Add to front to maintain outer-to-inner order
-                             } else {
-                                 log.warn("Encountered class-like parent {} with blank simple name while building class chain for node {} in file {}.",
-                                          effectivelyFinalCurrentParent.getType(), simpleName, file);
-                             }
-                         });
-                     }
-                     currentParent = currentParent.getParent();
-                 }
-                 String classChain = String.join("$", enclosingClasses);
-                 log.trace("Computed classChain for simpleName='{}': '{}'", simpleName, classChain);
+            if (cu == null) {
+                log.warn("createCodeUnit returned null for node {} ({})", simpleName, primaryCaptureName);
+                continue;
+            }
 
-                 log.trace("Calling createCodeUnit for simpleName='{}', capture='{}', namespace='{}', classChain='{}'", simpleName, primaryCaptureName, namespace, classChain);
+            String signature = buildSignatureString(node, simpleName, src, primaryCaptureName);
+            log.trace("Built signature for '{}': [{}]", simpleName, signature == null ? "NULL" : signature.isBlank() ? "BLANK" : signature.lines().findFirst().orElse("EMPTY"));
 
-                 CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace, classChain);
-                 log.trace("createCodeUnit returned: {}", cu);
+            if (signature == null || signature.isBlank()) {
+                log.warn("buildSignatureString returned empty/null for node {} ({})", simpleName, primaryCaptureName);
+                continue;
+            }
+            
+            // Handle potential duplicates (e.g. JS export and direct lexical declaration)
+            // Prefer exported version if a CU already exists.
+            CodeUnit existingCU = localCuByFqName.get(cu.fqName());
+            if (existingCU != null) {
+                String existingSignature = localSignatures.get(existingCU);
+                boolean newIsExported = signature.trim().startsWith("export");
+                boolean oldIsExported = (existingSignature != null) && existingSignature.trim().startsWith("export");
 
-                 if (cu != null) {
-                     String skeleton = buildSkeletonString(node, simpleName, src, primaryCaptureName);
-                     log.trace("Built skeleton for '{}':\n{}", simpleName, skeleton);
-                     log.trace("buildSkeletonString result for '{}': [{}]", simpleName, skeleton == null ? "NULL" : skeleton.isBlank() ? "BLANK" : skeleton.lines().findFirst().orElse("EMPTY"));
+                if (newIsExported && !oldIsExported) {
+                    log.warn("Replacing non-exported CU/signature for {} with EXPORTED version.", cu.fqName());
+                    // Update will happen below. If logic needs explicit removal of old from localChildren's values, add here.
+                } else if (!newIsExported && oldIsExported) {
+                    log.trace("Keeping existing EXPORTED CU/signature for {}. Discarding new non-exported.", cu.fqName());
+                    continue; // Skip adding/processing this non-exported duplicate
+                } else {
+                    log.warn("Duplicate CU processing for {}. Signatures might differ. Keeping first encountered or based on export status.", cu.fqName());
+                    //Potentially skip if signatures are identical or other tie-breaking logic. For now, allow overwrite if not export-related.
+                }
+            }
 
-                     if (skeleton != null && !skeleton.isBlank()) {
-                         log.trace("Storing skeleton for {} in {} | Skeleton starts with: '{}'",
-                                   cu, file, skeleton.lines().findFirst().orElse(""));
-                         finalSkeletons.compute(cu, (currentCU, existingSkeleton) -> {
-                             if (existingSkeleton == null) {
-                                 log.trace("Storing NEW skeleton for {} in {} | Skeleton starts with: '{}'",
-                                           currentCU, file, skeleton.lines().findFirst().orElse(""));
-                                 return skeleton;
-                             }
-                             // Prefer skeleton that starts with "export" if current one doesn't and new one does.
-                             boolean newIsExported = skeleton.trim().startsWith("export");
-                             boolean oldIsExported = existingSkeleton.trim().startsWith("export");
 
-                             if (newIsExported && !oldIsExported) {
-                                 log.warn("Overwriting non-exported skeleton for {} with EXPORTED version. Old: '{}', New: '{}'",
-                                          currentCU, existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
-                                 return skeleton;
-                             } else if (!newIsExported && oldIsExported) {
-                                 log.trace("Keeping existing EXPORTED skeleton for {}. Discarding new non-exported: '{}'",
-                                           currentCU, skeleton.lines().findFirst().orElse(""));
-                                 return existingSkeleton;
-                             } else {
-                                 // Both have same export status (either both exported or both not)
-                                 // or some other complex scenario. Log and keep the one that was already there
-                                 // (effectively making the processing order of declarationNodes relevant for ties).
-                                 // This could be made more deterministic (e.g. shortest/longest, but "export" is main concern).
-                                 // For now, if they are equally "good" (e.g. both exported), a warning implies potential duplicate query match.
-                                 log.warn("Duplicate skeleton processing for {}. Export-status new: {}, old: {}. Keeping existing. Existing: '{}', New (discarded): '{}'",
-                                          currentCU, newIsExported, oldIsExported,
-                                          existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
-                                 return existingSkeleton;
-                             }
-                         });
-                        log.trace("Stored/Updated skeleton for CU: {}", cu);
-                    } else {
-                        log.warn("buildSkeletonString returned empty/null for node {} ({})", simpleName, primaryCaptureName);
+            localSignatures.put(cu, signature);
+            localCuByFqName.put(cu.fqName(), cu); // Add/overwrite current CU by its FQ name
+            localChildren.putIfAbsent(cu, new ArrayList<>()); // Ensure every CU can be a parent
+
+            if (classChain.isEmpty()) {
+                localTopLevelCUs.add(cu);
+            } else {
+                // Parent's shortName is the classChain string itself.
+                String parentFqName = cu.packageName().isEmpty() ? classChain
+                                     : cu.packageName() + "." + classChain;
+                CodeUnit parentCu = localCuByFqName.get(parentFqName);
+                if (parentCu != null) {
+                    List<CodeUnit> kids = localChildren.computeIfAbsent(parentCu, k -> new ArrayList<>());
+                    if (!kids.contains(cu)) { // Prevent adding duplicate children
+                        kids.add(cu);
                     }
                 } else {
-                    log.warn("createCodeUnit returned null for node {} ({})", simpleName, primaryCaptureName);
+                    log.warn("Could not resolve parent CU for {} using parent FQ name candidate '{}' (derived from classChain '{}'). Treating as top-level for this file.", cu, parentFqName, classChain);
+                    localTopLevelCUs.add(cu); // Fallback
                 }
-            } else {
-                // This case implies simpleName was null/blank after the first loop's determination attempts.
-                log.warn("Simple name was null/blank for node type {} (capture: {}) in file {}. Skeleton not generated.",
-                         node.getType(), primaryCaptureName, file);
-             }
+            }
+            log.trace("Stored/Updated info for CU: {}", cu);
         }
 
-        log.trace("Finished parsing {}: found {} skeletons.", file, finalSkeletons.size());
-        return finalSkeletons;
+        log.trace("Finished analyzing {}: found {} top-level CUs, {} total signatures, {} parent entries.",
+                  file, localTopLevelCUs.size(), localSignatures.size(), localChildren.size());
+        return new FileAnalysisResult(localTopLevelCUs, localChildren, localSignatures);
     }
 
-    // Removed findCaptureInMatch as it was unused and flawed.
 
-    /* ---------- Skeleton Building Logic ---------- */
+    /* ---------- Signature Building Logic ---------- */
 
     /** Calculates the leading whitespace indentation for the line the node starts on. */
     private String computeIndentation(TSNode node, String src) {
@@ -405,93 +491,81 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
 
     /**
-     * Builds a summarized skeleton string for a given top-level definition node.
-     * Uses tree traversal to find relevant parts like signature and body.
+     * Builds a signature string for a given definition node.
+     * This includes decorators and the main declaration line (e.g., class header or function signature).
      * @param simpleName The simple name of the definition, pre-determined by query captures.
      */
-    private String buildSkeletonString(TSNode definitionNode, String simpleName, String src, String primaryCaptureName) {
-        List<String> lines = new ArrayList<>();
-        String baseIndent = computeIndentation(definitionNode, src);
+    private String buildSignatureString(TSNode definitionNode, String simpleName, String src, String primaryCaptureName) {
+        List<String> signatureLines = new ArrayList<>();
+        // String baseIndent = computeIndentation(definitionNode, src); // Original indentation is not prepended to stored signature.
 
-        // Common elements: decorators
-        List<TSNode> decorators = getPrecedingDecorators(definitionNode, src);
-        for (TSNode decoratorNode : decorators) {
-            lines.add(baseIndent + textSlice(decoratorNode, src));
+        TSNode effectiveDefinitionNode = definitionNode; // Default to the given node
+
+        // Handle Python's decorated_definition structure specifically for decorators
+        if ("decorated_definition".equals(definitionNode.getType()) && project.getAnalyzerLanguage() == Language.PYTHON) {
+            for (int i = 0; i < definitionNode.getNamedChildCount(); i++) {
+                TSNode child = definitionNode.getNamedChild(i);
+                if ("decorator".equals(child.getType())) {
+                    signatureLines.add(textSlice(child, src).stripLeading());
+                } else if ("function_definition".equals(child.getType()) || "class_definition".equals(child.getType())) {
+                    // In Python, the 'definition' field of a decorated_definition holds the actual func/class def.
+                    // Check if the query gave us decorated_definition but named a function_definition inside it.
+                    // The primaryCaptureName would be function.definition in that case.
+                    // Use the actual function_definition node for building the main signature part.
+                    effectiveDefinitionNode = child; 
+                }
+            }
+            // If the @function.name capture was from the inner function_definition, simpleName is already correct.
+            // effectiveDefinitionNode is now set to the actual function_definition.
+        } else {
+            // General decorator handling for other languages (or non-decorated Python items)
+            List<TSNode> decorators = getPrecedingDecorators(definitionNode, src);
+            for (TSNode decoratorNode : decorators) {
+                signatureLines.add(textSlice(decoratorNode, src).stripLeading());
+            }
         }
 
         SkeletonType skeletonType = getSkeletonTypeForCapture(primaryCaptureName);
         switch (skeletonType) {
             case CLASS_LIKE:
-                buildClassSkeleton(definitionNode, src, baseIndent, lines);
+                String exportPrefix = getVisibilityPrefix(effectiveDefinitionNode, src);
+                TSNode bodyNode = effectiveDefinitionNode.getChildByFieldName("body");
+                String classSignatureText;
+                if (bodyNode != null && !bodyNode.isNull()) {
+                    classSignatureText = textSlice(effectiveDefinitionNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
+                } else { 
+                    classSignatureText = textSlice(effectiveDefinitionNode, src);
+                    if (classSignatureText.endsWith("{")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
+                    else if (classSignatureText.endsWith(";")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
+                }
+                String headerLine = renderClassHeader(effectiveDefinitionNode, src, exportPrefix, classSignatureText, "");
+                if (headerLine != null && !headerLine.isBlank()) signatureLines.add(headerLine);
                 break;
             case FUNCTION_LIKE:
-                buildFunctionSkeleton(definitionNode, Optional.of(simpleName), src, baseIndent, lines);
+                buildFunctionSkeleton(effectiveDefinitionNode, Optional.of(simpleName), src, "", signatureLines);
                 break;
             case FIELD_LIKE:
-                // For a field's own CodeUnit skeleton, a raw text slice is usually sufficient.
-                // Its inclusion in the parent class skeleton is handled by buildClassMemberSkeletons.
-                log.debug("Field-like capture name '{}' for skeleton building (resolved to type {}). Falling back to raw text slice for its individual skeleton.", primaryCaptureName, skeletonType);
-                return textSlice(definitionNode, src);
+                // Store field signature without leading indent.
+                signatureLines.add(textSlice(definitionNode, src).stripLeading());
+                break;
             case UNSUPPORTED:
-            default: // Also handles null if getSkeletonTypeForCapture could somehow return null
-                 log.debug("Unsupported capture name '{}' for skeleton building (resolved to type {}). Falling back to raw text slice.", primaryCaptureName, skeletonType);
-                 return textSlice(definitionNode, src);
+            default:
+                 log.debug("Unsupported capture name '{}' for signature building (type {}). Using raw text slice, stripped.", primaryCaptureName, skeletonType);
+                 signatureLines.add(textSlice(definitionNode, src).stripLeading());
+                 break;
         }
 
-        String result = String.join("\n", lines);
-        log.trace("buildSkeletonString: DefNode={}, Capture='{}', Skeleton Output (first line): '{}'", definitionNode.getType(), primaryCaptureName, (result.isEmpty() ? "EMPTY" : result.lines().findFirst().orElse("EMPTY")));
+        String result = String.join("\n", signatureLines).stripTrailing(); // stripTrailing still useful for multi-line sigs
+        log.trace("buildSignatureString: DefNode={}, Capture='{}', Signature (first line): '{}'",
+                  definitionNode.getType(), primaryCaptureName, (result.isEmpty() ? "EMPTY" : result.lines().findFirst().orElse("EMPTY")));
         return result;
     }
 
-    protected void buildClassSkeleton(TSNode classNode, String src, String baseIndent, List<String> lines) {
-        TSNode nameNode = classNode.getChildByFieldName("name");
-        TSNode bodyNode = classNode.getChildByFieldName("body"); // Usually a block node
+    /** Renders the opening part of a class-like structure (e.g., "public class Foo {"). */
+    protected abstract String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signatureText, String baseIndent);
+    // renderClassFooter is removed, replaced by getLanguageSpecificCloser
+    // buildClassMemberSkeletons is removed from this direct path; children are handled by recursive reconstruction.
 
-        if (nameNode == null || nameNode.isNull() || bodyNode == null || bodyNode.isNull()) {
-             String classNodeText = textSlice(classNode, src).lines().findFirst().orElse("");
-             log.warn("Could not find name or body for class node: {}", classNodeText);
-             lines.add(baseIndent + textSlice(classNode, src)); // Fallback
-             log.warn("-> Falling back to raw text slice for class skeleton."); // Add log
-             return;
-         }
-
-        // Class signature line
-        String signature = textSlice(classNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
-        log.trace("buildClassSkeleton: ClassNode={}, Signature line: '{}'", classNode.getType(), signature);
-
-        String exportPrefix = getVisibilityPrefix(classNode, src);
-        String headerLine = renderClassHeader(classNode, src, exportPrefix, signature, baseIndent);
-        if (headerLine != null && !headerLine.isBlank()) {
-            lines.add(headerLine);
-        }
-
-        String memberIndent = baseIndent + "  "; // Indent members further
-
-        // Delegate member skeleton building to language-specific implementation
-        buildClassMemberSkeletons(bodyNode, src, memberIndent, lines);
-
-        String footerLine = renderClassFooter(classNode, src, baseIndent);
-        if (footerLine != null && !footerLine.isBlank()) {
-            lines.add(footerLine);
-        }
-    }
-
-    protected abstract String renderClassHeader(TSNode classNode, String src, String exportPrefix, String signature, String baseIndent);
-    protected abstract String renderClassFooter(TSNode classNode, String src, String baseIndent);
-
-    /**
-     * Builds skeletons for the members within a class body.
-     * This method is responsible for iterating through the children of the `classBodyNode`,
-     * identifying relevant members (methods, inner classes, fields, etc.),
-     * and appending their skeleton strings to the `lines` list.
-     * Implementations will typically call `buildFunctionSkeleton` or other helper methods.
-     *
-     * @param classBodyNode The TSNode representing the body of the class.
-     * @param src The source code of the file.
-     * @param memberIndent The indentation string to be used for each member.
-     * @param lines The list to which skeleton lines for members should be added.
-     */
-    protected abstract void buildClassMemberSkeletons(TSNode classBodyNode, String src, String memberIndent, List<String> lines);
 
     /**
      * Determines a visibility or export prefix (e.g., "export ", "public ") for a given node.
