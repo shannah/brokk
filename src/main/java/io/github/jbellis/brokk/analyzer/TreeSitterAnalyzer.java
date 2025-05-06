@@ -248,23 +248,52 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                  if (simpleName != null && !simpleName.isBlank()) {
                      log.trace("Processing top-level definition: Name='{}', Capture='{}', Node Type='{}'",
                                simpleName, primaryCaptureName, node.getType());
+
                       String namespace = extractNamespace(node, root, src);
                       log.trace("Calling createCodeUnit for simpleName='{}', capture='{}', namespace='{}'", simpleName, primaryCaptureName, namespace);
+
                       CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace);
                       log.trace("createCodeUnit returned: {}", cu);
+
                       if (cu != null) {
-                          String skeleton = buildSkeletonString(node, src, primaryCaptureName);
+                          String skeleton = buildSkeletonString(node, simpleName, src, primaryCaptureName);
                           log.trace("Built skeleton for '{}':\n{}", simpleName, skeleton);
                           log.trace("buildSkeletonString result for '{}': [{}]", simpleName, skeleton == null ? "NULL" : skeleton.isBlank() ? "BLANK" : skeleton.lines().findFirst().orElse("EMPTY"));
+
                           if (skeleton != null && !skeleton.isBlank()) {
                               log.trace("Storing TOP-LEVEL skeleton for {} in {} | Skeleton starts with: '{}'",
                                         cu, file, skeleton.lines().findFirst().orElse(""));
-                              if (finalSkeletons.containsKey(cu)) {
-                                 log.warn("Overwriting skeleton for {} in {}. Old: '{}', New: '{}'",
-                                          cu, file, finalSkeletons.get(cu).lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
-                             }
-                             finalSkeletons.put(cu, skeleton);
-                             log.trace("Storing skeleton for CU: {}", cu);
+                              finalSkeletons.compute(cu, (currentCU, existingSkeleton) -> {
+                                  if (existingSkeleton == null) {
+                                      log.trace("Storing NEW skeleton for {} in {} | Skeleton starts with: '{}'",
+                                                currentCU, file, skeleton.lines().findFirst().orElse(""));
+                                      return skeleton;
+                                  }
+                                  // Prefer skeleton that starts with "export" if current one doesn't and new one does.
+                                  boolean newIsExported = skeleton.trim().startsWith("export");
+                                  boolean oldIsExported = existingSkeleton.trim().startsWith("export");
+
+                                  if (newIsExported && !oldIsExported) {
+                                      log.warn("Overwriting non-exported skeleton for {} with EXPORTED version. Old: '{}', New: '{}'",
+                                               currentCU, existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
+                                      return skeleton;
+                                  } else if (!newIsExported && oldIsExported) {
+                                      log.trace("Keeping existing EXPORTED skeleton for {}. Discarding new non-exported: '{}'",
+                                                currentCU, skeleton.lines().findFirst().orElse(""));
+                                      return existingSkeleton;
+                                  } else {
+                                      // Both have same export status (either both exported or both not)
+                                      // or some other complex scenario. Log and keep the one that was already there
+                                      // (effectively making the processing order of declarationNodes relevant for ties).
+                                      // This could be made more deterministic (e.g. shortest/longest, but "export" is main concern).
+                                      // For now, if they are equally "good" (e.g. both exported), a warning implies potential duplicate query match.
+                                      log.warn("Duplicate skeleton processing for {}. Export-status new: {}, old: {}. Keeping existing. Existing: '{}', New (discarded): '{}'",
+                                               currentCU, newIsExported, oldIsExported,
+                                               existingSkeleton.lines().findFirst().orElse(""), skeleton.lines().findFirst().orElse(""));
+                                      return existingSkeleton;
+                                  }
+                              });
+                             log.trace("Stored/Updated skeleton for CU: {}", cu);
                          } else {
                              log.warn("buildSkeletonString returned empty/null for top-level node {} ({})", simpleName, primaryCaptureName);
                          }
@@ -397,8 +426,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /**
      * Builds a summarized skeleton string for a given top-level definition node.
      * Uses tree traversal to find relevant parts like signature and body.
+     * @param simpleName The simple name of the definition, pre-determined by query captures.
      */
-    private String buildSkeletonString(TSNode definitionNode, String src, String primaryCaptureName) {
+    private String buildSkeletonString(TSNode definitionNode, String simpleName, String src, String primaryCaptureName) {
         List<String> lines = new ArrayList<>();
         String baseIndent = computeIndentation(definitionNode, src);
 
@@ -411,7 +441,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         if (primaryCaptureName.startsWith("class")) {
             buildClassSkeleton(definitionNode, src, baseIndent, lines);
         } else if (primaryCaptureName.startsWith("function")) {
-            buildFunctionSkeleton(definitionNode, src, baseIndent, lines);
+            // For functions, the simpleName is crucial, especially for arrow functions
+            buildFunctionSkeleton(definitionNode, Optional.of(simpleName), src, baseIndent, lines);
         } else {
              log.warn("Unsupported top-level definition type for skeleton: {}", primaryCaptureName);
              return textSlice(definitionNode, src); // Fallback: return raw text
@@ -435,9 +466,22 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
          }
 
         // Class signature line
-        String signature = textSlice(classNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
-        log.trace("buildClassSkeleton: ClassNode={}, Signature line: '{}'", classNode.getType(), signature);
-        lines.add(baseIndent + signature + " {");
+        TSNode signatureContextNode = classNode;
+        TSNode parent = classNode.getParent();
+        if (parent != null && !parent.isNull() && "export_statement".equals(parent.getType())) {
+            // If the class_declaration is directly inside an export_statement,
+            // the signature should start from the export_statement node to include "export"
+            signatureContextNode = parent;
+        }
+        String signature = textSlice(signatureContextNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
+        log.trace("buildClassSkeleton: ClassNode={}, SignatureContextNode={}, Signature line: '{}'", classNode.getType(), signatureContextNode.getType(), signature);
+        if (getProject().getAnalyzerLanguage() == Language.PYTHON) {
+            // The signature for Python (e.g., "class A:") typically already includes the colon
+            // after stripping trailing whitespace from the text slice up to the body.
+            lines.add(baseIndent + signature);
+        } else {
+            lines.add(baseIndent + signature + " {");
+        }
 
         String memberIndent = baseIndent + "  "; // Indent members further
 
@@ -447,11 +491,10 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             String memberType = memberNode.getType();
 
             // Handle potentially decorated methods/functions within the class
-            if ("function_definition".equals(memberType)) {
-                 // Handle undecorated functions (should have no preceding decorators in this context)
-                 // Pass empty placeholder `""` so method bodies use { ... }
-                 buildFunctionSkeleton(memberNode, src, memberIndent, lines);
-            } else if ("decorated_definition".equals(memberType)) {
+            if ("function_definition".equals(memberType) || "method_definition".equals(memberType)) { // also check for method_definition (JS classes)
+                 // Methods within classes typically have their names defined by the node itself.
+                 buildFunctionSkeleton(memberNode, Optional.empty(), src, memberIndent, lines);
+            } else if ("decorated_definition".equals(memberType)) { // Python specific
                  // Handle decorated functions
                  TSNode functionDefNode = null;
                  // Add decorators first
@@ -468,8 +511,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                  }
                  // Then add the function skeleton
                  if (functionDefNode != null) {
-                     // Pass empty placeholder `""` so method bodies use { ... }
-                     buildFunctionSkeleton(functionDefNode, src, memberIndent, lines);
+                     buildFunctionSkeleton(functionDefNode, Optional.empty(), src, memberIndent, lines);
                  } else {
                      log.warn("decorated_definition node found without an inner function_definition: {}", textSlice(memberNode, src).lines().findFirst().orElse(""));
                  }
@@ -491,41 +533,70 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             // Potentially handle nested classes, etc. here if needed
         }
 
-
-        lines.add(baseIndent + "}");
+        if (getProject().getAnalyzerLanguage() != Language.PYTHON) {
+            lines.add(baseIndent + "}");
+        }
     }
 
-     private void buildFunctionSkeleton(TSNode funcNode, String src, String indent, List<String> lines) {
+     private void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines) {
+        String functionName;
         TSNode nameNode = funcNode.getChildByFieldName("name");
-        TSNode paramsNode = funcNode.getChildByFieldName("parameters");
-        TSNode returnTypeNode = funcNode.getChildByFieldName("return_type"); // Might be null
-        TSNode bodyNode = funcNode.getChildByFieldName("body"); // The block containing statements
 
-        if (nameNode == null || nameNode.isNull() || paramsNode == null || paramsNode.isNull() || bodyNode == null || bodyNode.isNull()) {
-              String funcNodeText = textSlice(funcNode, src).lines().findFirst().orElse("");
-              log.warn("Could not find essential parts (name, params, body) for function node: {}", funcNodeText);
-              lines.add(indent + textSlice(funcNode, src)); // Fallback
-              log.warn("-> Falling back to raw text slice for function skeleton."); // Add log
+        if (nameNode != null && !nameNode.isNull()) {
+            functionName = textSlice(nameNode, src);
+        } else if (providedNameOpt.isPresent()) {
+            functionName = providedNameOpt.get();
+        } else {
+            String funcNodeText = textSlice(funcNode, src);
+            log.warn("Function node type {} has no 'name' field and no name was provided. Raw text: {}", funcNode.getType(), funcNodeText.lines().findFirst().orElse(""));
+            lines.add(indent + funcNodeText);
+            log.warn("-> Falling back to raw text slice for function skeleton due to missing name.");
+            return;
+        }
+
+        TSNode paramsNode = funcNode.getChildByFieldName("parameters");
+        TSNode returnTypeNode = funcNode.getChildByFieldName("return_type"); // Might be null for JS/TS
+        TSNode bodyNode = funcNode.getChildByFieldName("body");
+
+        if (paramsNode == null || paramsNode.isNull() || bodyNode == null || bodyNode.isNull()) {
+              String funcNodeText = textSlice(funcNode, src);
+              log.warn("Could not find essential parts (params, body) for function node type '{}', name '{}'. Raw text: {}",
+                       funcNode.getType(), functionName, funcNodeText.lines().findFirst().orElse(""));
+              lines.add(indent + funcNodeText); // Use funcNodeText which is already sliced
+              log.warn("-> Falling back to raw text slice for function skeleton for '{}'.", functionName);
               return;
          }
 
-        // Handle async keyword
-        TSNode firstChild = funcNode.getChild(0);
-        String prefix = "";
-        if (firstChild != null && "async".equals(firstChild.getType())) {
-            prefix = "async ";
+        String exportPrefix = "";
+        TSNode ancestor = funcNode.getParent(); // For function_declaration or arrow_function
+        if (ancestor != null && !ancestor.isNull()) {
+            if ("export_statement".equals(ancestor.getType())) { // Handles exported function_declaration (direct parent)
+                exportPrefix = "export ";
+            } else if ("variable_declarator".equals(ancestor.getType())) { // For arrow_function, parent is variable_declarator
+                TSNode lexicalDeclNode = ancestor.getParent();
+                if (lexicalDeclNode != null && !lexicalDeclNode.isNull() && "lexical_declaration".equals(lexicalDeclNode.getType())) {
+                    TSNode exportStatementNode = lexicalDeclNode.getParent();
+                    if (exportStatementNode != null && !exportStatementNode.isNull() && "export_statement".equals(exportStatementNode.getType())) {
+                        exportPrefix = "export ";
+                    }
+                }
+            }
         }
-
-        // Reconstruct signature parts from their specific nodes
-        String name = textSlice(nameNode, src);
+        
+        String asyncPrefix = "";
+        TSNode firstChildOfFunc = funcNode.getChild(0); // Check for 'async' keyword
+        if (firstChildOfFunc != null && !firstChildOfFunc.isNull() && "async".equals(firstChildOfFunc.getType())) {
+            asyncPrefix = "async ";
+        }
+        
         String params = textSlice(paramsNode, src);
-        String returnType = (returnTypeNode != null && !returnTypeNode.isNull()) ? " -> " + textSlice(returnTypeNode, src) : "";
+        String returnTypeSuffix = (returnTypeNode != null && !returnTypeNode.isNull()) ? " -> " + textSlice(returnTypeNode, src) : "";
+        
+        String reconstructedSignature = String.format("%s%sdef %s%s%s:", exportPrefix, asyncPrefix, functionName, params, returnTypeSuffix);
+        log.trace("buildFunctionSkeleton: FuncNode={}, Name='{}', Type='{}', Reconstructed Sig: '{}'",
+                  funcNode.getType(), functionName, funcNode.getType(), reconstructedSignature);
 
-        String reconstructedSignature = String.format("%sdef %s%s%s:", prefix, name, params, returnType);
-        log.trace("buildFunctionSkeleton: FuncNode={}, Reconstructed Sig: '{}'", funcNode.getType(), reconstructedSignature);
-
-
-        // Check if the body is more than just 'pass' or empty
+        // Check if the body is more than just 'pass' or empty (relevant for Python, less so for JS ... placeholder)
         boolean hasMeaningfulBody = bodyNode.getNamedChildCount() > 1 ||
                                     (bodyNode.getNamedChildCount() == 1 && !"pass_statement".equals(bodyNode.getNamedChild(0).getType()));
 

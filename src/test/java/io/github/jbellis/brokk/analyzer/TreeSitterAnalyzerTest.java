@@ -133,7 +133,7 @@ public final class TreeSitterAnalyzerTest {
 
         // Expected skeleton for the top-level class A
         var classASummary = """
-        class A: {
+        class A:
           def __init__(self): …
           def method1(self) -> None: …
           def method2(self, input_str: str, other_input: int = None) -> str: …
@@ -142,7 +142,7 @@ public final class TreeSitterAnalyzerTest {
           def method4(foo: float, bar: int) -> int: …
           def method5(self) -> None: …
           def method6(self) -> None: …
-        }""".stripIndent(); // Using stripIndent for cleaner comparison
+        """.stripIndent(); // Using stripIndent for cleaner comparison
         assertEquals(classASummary.trim(), skelA.get(classA).trim(), "Class A skeleton mismatch");
 
         // test getClassesInFile
@@ -263,5 +263,90 @@ public final class TreeSitterAnalyzerTest {
 
         Set<CodeUnit> expectedClassesNested = Set.of(myNestedClass, myNestedInterface, outerClass, anotherClass);
         assertEquals(expectedClassesNested, analyzer.getClassesInFile(nestedNamespacesFile), "getClassesInFile mismatch for NestedNamespaces.cs");
+    }
+
+    /* -------------------- JavaScript / JSX -------------------- */
+
+    @Test
+    void testJavascriptJsxSkeletons() {
+        TestProject project = createTestProject("testcode-js", io.github.jbellis.brokk.analyzer.Language.JAVASCRIPT);
+        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        assertInstanceOf(JavascriptAnalyzer.class, ana);
+
+        JavascriptAnalyzer analyzer = (JavascriptAnalyzer) ana;
+        assertFalse(analyzer.isEmpty(), "Analyzer should have processed JS/JSX files");
+
+        ProjectFile jsxFile = new ProjectFile(project.getRoot(), "Hello.jsx");
+        var skelJsx = analyzer.getSkeletons(jsxFile);
+        assertFalse(skelJsx.isEmpty(), "Skeletons map for Hello.jsx should not be empty. Found: " + skelJsx.keySet());
+
+        // CodeUnits - package name is "" because project root is 'testcode-js'
+        // and file is directly in it. ShortNames for functions in root dir will be "FileName.FunctionName".
+        var jsxClass = CodeUnit.cls(jsxFile, "", "JsxClass");
+        var jsxArrowFn = CodeUnit.fn(jsxFile, "", "Hello.JsxArrowFnComponent");
+        var localJsxArrowFn = CodeUnit.fn(jsxFile, "", "Hello.LocalJsxArrowFn");
+        var plainJsxFunc = CodeUnit.fn(jsxFile, "", "Hello.PlainJsxFunc");
+
+        assertTrue(skelJsx.containsKey(jsxClass), "Skeleton map should contain JsxClass. Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(jsxArrowFn), "Skeleton map should contain JsxArrowFnComponent (Hello.JsxArrowFnComponent). Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(localJsxArrowFn), "Skeleton map should contain LocalJsxArrowFn (Hello.LocalJsxArrowFn). Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(plainJsxFunc), "Skeleton map should contain PlainJsxFunc (Hello.PlainJsxFunc). Found: " + skelJsx.keySet());
+
+        // Expected Skeletons
+        // Class skeleton
+        String expectedJsxClassSkeleton = """
+        export class JsxClass {
+          def render(): ...
+        }
+        """.stripIndent();
+        assertEquals(expectedJsxClassSkeleton.trim(), skelJsx.get(jsxClass).trim());
+
+        // Arrow functions should now get Pythonic "def..." skeletons.
+        String expectedExportedArrowFnSkeleton = """
+        export def JsxArrowFnComponent({ name }): ...
+        """.stripIndent();
+        assertEquals(expectedExportedArrowFnSkeleton.trim(), skelJsx.get(jsxArrowFn).trim(), "JsxArrowFnComponent skeleton mismatch");
+
+        String expectedLocalArrowFnSkeleton = """
+        def LocalJsxArrowFn(): ...
+        """.stripIndent();
+        assertEquals(expectedLocalArrowFnSkeleton.trim(), skelJsx.get(localJsxArrowFn).trim(), "LocalJsxArrowFn skeleton mismatch");
+
+        // Plain function declarations should still get the Pythonic "def..." skeleton
+        // PlainJsxFunc is not exported.
+        String pythonicPlainJsxFuncSkeleton = """
+        def PlainJsxFunc(): ...
+        """.stripIndent();
+        assertEquals(pythonicPlainJsxFuncSkeleton.trim(), skelJsx.get(plainJsxFunc).trim(), "PlainJsxFunc skeleton mismatch");
+
+        // Test getClassesInFile
+        assertEquals(Set.of(jsxClass), analyzer.getClassesInFile(jsxFile), "getClassesInFile mismatch for Hello.jsx");
+
+        // Test getSkeleton by FQ name
+        assertEquals(expectedExportedArrowFnSkeleton.trim(), analyzer.getSkeleton(jsxArrowFn.fqName()).get().trim(), "getSkeleton mismatch for JsxArrowFnComponent FQ name");
+
+        // Test the existing Hello.js file to ensure no regressions
+        ProjectFile jsFile = new ProjectFile(project.getRoot(), "Hello.js");
+        var skelJs = analyzer.getSkeletons(jsFile);
+        assertFalse(skelJs.isEmpty(), "Skeletons map for Hello.js should not be empty.");
+
+        var helloClass = CodeUnit.cls(jsFile, "", "Hello");
+        var utilFunc = CodeUnit.fn(jsFile, "", "Hello.util"); // Updated shortName
+
+        assertTrue(skelJs.containsKey(helloClass), "Skeleton map should contain Hello class from Hello.js");
+        assertTrue(skelJs.containsKey(utilFunc), "Skeleton map should contain util function (Hello.util) from Hello.js");
+
+        String expectedHelloClassSkeleton = """
+        export class Hello {
+          def greet(): ...
+        }
+        """.stripIndent();
+        assertEquals(expectedHelloClassSkeleton.trim(), skelJs.get(helloClass).trim());
+
+        // util is an exported function_declaration, should get Pythonic skeleton prefixed with "export"
+        String pythonicUtilFuncSkeleton = """
+        export def util(): ...
+        """.stripIndent();
+        assertEquals(pythonicUtilFuncSkeleton.trim(), skelJs.get(utilFunc).trim());
     }
 }
