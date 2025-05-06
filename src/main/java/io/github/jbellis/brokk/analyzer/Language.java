@@ -6,7 +6,7 @@ import java.util.List;
 public enum Language {
     C_SHARP("cs"),
     JAVA("java"),
-    JAVASCRIPT(".js", ".mjs", ".cjs"),
+    JAVASCRIPT("js", "mjs", "cjs", "jsx"),
     PYTHON("py"),
     NONE();  // no extensions
 

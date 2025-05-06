@@ -16,4 +16,17 @@
   declaration: ((function_declaration
     name: (identifier) @function.name) @function.definition))
 
+; Top-level const/let/var MyComponent = () => { ... }
+((lexical_declaration
+  (variable_declarator
+    name: (identifier) @function.name
+    value: ((arrow_function) @function.definition))))
+
+; Exported const/let/var MyComponent = () => { ... }
+(export_statement
+  declaration: (lexical_declaration
+                 (variable_declarator
+                   name: (identifier) @function.name
+                   value: ((arrow_function) @function.definition))))
+
 ; Ignore decorators / modifiers for now
