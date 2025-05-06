@@ -90,6 +90,22 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
+     * Removes a file from the Git index. This corresponds to `git rm --cached <file>`.
+     * The working tree file is expected to be deleted separately if desired.
+     *
+     * @param file The file to remove from the index.
+     * @throws GitAPIException if the Git command fails.
+     */
+    public synchronized void remove(ProjectFile file) throws GitAPIException {
+        logger.debug("Removing file from Git index (git rm --cached): {}", file);
+        git.rm()
+           .addFilepattern(toGitPath(file.toString()))
+           .setCached(true) // Remove from index only -- EditBlock removes from disk
+           .call();
+        refresh(); // Refresh repository state, including tracked files cache
+    }
+
+    /**
      * Returns a list of RepoFile objects representing all tracked files in the repository.
      */
     @Override

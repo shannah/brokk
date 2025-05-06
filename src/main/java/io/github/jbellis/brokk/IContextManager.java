@@ -6,16 +6,15 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import org.eclipse.jgit.api.errors.GitAPIException;
 
-import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-
-import java.util.Objects;
 
 /**
  * Interface for context manager functionality
@@ -92,8 +91,6 @@ public interface IContextManager {
     default IProject getProject() {
         return new IProject() {};
     }
-
-    default void addToGit(List<ProjectFile> files) throws IOException {}
 
     default IConsoleIO getIo() {
         throw new UnsupportedOperationException();
