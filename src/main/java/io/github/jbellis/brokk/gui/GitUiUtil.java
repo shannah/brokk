@@ -145,7 +145,8 @@ public final class GitUiUtil
                 SwingUtilities.invokeLater(() -> {
                     var isDark = chrome.themeManager.isDarkTheme();
                     var brokkDiffPanel = new BrokkDiffPanel.Builder(cm)
-                            .compareStrings(parentContent, parentCommitId, commitContent, commitId)
+                            .leftSource(new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(parentContent, parentCommitId))
+                            .rightSource(new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(commitContent, commitId))
                             .withTheme(isDark)
                             .build();
                     brokkDiffPanel.showInFrame(dialogTitle);
@@ -352,7 +353,8 @@ public final class GitUiUtil
                 SwingUtilities.invokeLater(() -> {
                     var isDark = chrome.themeManager.isDarkTheme();
                     var brokkDiffPanel = new BrokkDiffPanel.Builder(cm)
-                            .compareStringAndFile(finalOldContent, finalBaseCommitTitle, file.absPath().toFile(), file.toString())
+                            .leftSource(new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(finalOldContent, finalBaseCommitTitle))
+                            .rightSource(new io.github.jbellis.brokk.difftool.ui.BufferSource.FileSource(file.absPath().toFile(), file.toString()))
                             .withTheme(isDark)
                             .build();
                     brokkDiffPanel.showInFrame(finalDialogTitle);

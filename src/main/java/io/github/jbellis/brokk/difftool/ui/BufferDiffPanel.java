@@ -254,7 +254,7 @@ public class BufferDiffPanel extends AbstractContentPanel
         panel.add(new RevisionBar(this, filePanels[LEFT], true), cc.xy(2, 4));
         panel.add(new JLabel(""), cc.xy(2, 2)); // for spacing
 
-        panel.add(filePanels[LEFT].getScrollPane(), cc.xyw(4, 4, 3));
+        panel.add(filePanels[LEFT].getVisualComponent(), cc.xyw(4, 4, 3));
 
         // The middle area for drawing the linking curves
         var diffScrollComponent = new DiffScrollComponent(this, LEFT, RIGHT);
@@ -262,7 +262,7 @@ public class BufferDiffPanel extends AbstractContentPanel
 
         // Right side revision bar
         panel.add(new RevisionBar(this, filePanels[RIGHT], false), cc.xy(12, 4));
-        panel.add(filePanels[RIGHT].getScrollPane(), cc.xyw(8, 4, 3));
+        panel.add(filePanels[RIGHT].getVisualComponent(), cc.xyw(8, 4, 3));
 
         panel.setMinimumSize(new Dimension(300, 200));
         return panel;

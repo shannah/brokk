@@ -27,6 +27,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
 
     private final BufferDiffPanel diffPanel;
     private final String name;
+    private JPanel visualComponentContainer; // Main container for editor or "new file" label
     private JScrollPane scrollPane;
     private JTextArea editor;
     private BufferDocumentIF bufferDocument;
@@ -43,13 +44,14 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
     }
 
     private void init() {
+        visualComponentContainer = new JPanel(new BorderLayout());
+
         // Initialize text editor with custom highlighting
         editor = new JTextArea();
         editor.setHighlighter(new JMHighlighter());
         editor.addFocusListener(getFocusListener());
         bar.setFilePanel(this);
-
-        editor.getDocument().addUndoableEditListener(diffPanel.getUndoHandler()); // Add undo listener
+        // Undo listener will be added in setBufferDocument when editor is active
 
         // Wrap editor inside a scroll pane with optimized scrolling
         scrollPane = new JScrollPane(editor);
@@ -62,6 +64,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
             layout.syncWithScrollPane(scrollPane);
         }
 
+        // Initially, add scrollPane to the visual container
+        visualComponentContainer.add(scrollPane, BorderLayout.CENTER);
+
         // Setup a one-time timer to refresh the UI after 100ms
         timer = new Timer(100, refresh());
         timer.setRepeats(false);
@@ -71,6 +76,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
 //        });
     }
 
+    public JComponent getVisualComponent() {
+        return visualComponentContainer;
+    }
 
     public JScrollPane getScrollPane() {
         return scrollPane;
@@ -87,34 +95,50 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
 
     public void setBufferDocument(BufferDocumentIF bd) {
         Document previousDocument;
-        Document document;
+        Document newDocument;
+
         try {
-            if (bufferDocument != null) {
-                bufferDocument.removeChangeListener(this);
-                previousDocument = bufferDocument.getDocument();
+            if (this.bufferDocument != null) {
+                this.bufferDocument.removeChangeListener(this);
+                previousDocument = this.bufferDocument.getDocument();
                 if (previousDocument != null) {
-                    previousDocument.removeUndoableEditListener(diffPanel
-                                                                        .getUndoHandler());
+                    previousDocument.removeUndoableEditListener(diffPanel.getUndoHandler());
                 }
             }
 
-            bufferDocument = bd;
+            this.bufferDocument = bd;
+            visualComponentContainer.removeAll(); // Clear previous content
 
-            document = bufferDocument.getDocument();
-            if (document != null) {
-                editor.setDocument(document);
-                editor.setTabSize(4);
-                bufferDocument.addChangeListener(this);
-                document.addUndoableEditListener(diffPanel.getUndoHandler());
+            // Always add the scrollPane (which contains the editor)
+            visualComponentContainer.add(scrollPane, BorderLayout.CENTER);
+
+            if (bd != null) {
+                newDocument = bd.getDocument();
+                if (newDocument != null) {
+                    editor.setDocument(newDocument);
+                    editor.setTabSize(4); // TODO: Make configurable
+                    bd.addChangeListener(this);
+                    newDocument.addUndoableEditListener(diffPanel.getUndoHandler());
+                }
+                editor.setEditable(!bd.isReadonly());
+            } else {
+                // If BufferDocumentIF is null, clear the editor and make it non-editable
+                editor.setDocument(new JTextArea().getDocument()); // Set a new empty document
+                editor.setText("");
+                editor.setEditable(false);
             }
 
-            // Initialize configuration including theme-specific highlight painters
+            visualComponentContainer.revalidate();
+            visualComponentContainer.repaint();
+
+            // Initialize configuration - this sets border etc.
             initConfiguration();
+
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(diffPanel, "Could not read file: "
-                                                  + bufferDocument.getName()
+            JOptionPane.showMessageDialog(diffPanel, "Could not read file or set document: "
+                                                  + (bd != null ? bd.getName() : "Unknown")
                                                   + "\n" + ex.getMessage(),
-                                          "Error opening file", JOptionPane.ERROR_MESSAGE);
+                                          "Error processing file", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -353,6 +377,10 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
         caseSensitive = searchCommand.isCaseSensitive(); // Get case-sensitive flag
 
         doc = getBufferDocument();
+        if (doc == null) { // Should not happen if isDisplayingEditor is true and doc set
+            searchHits = new SearchHits();
+            return searchHits;
+        }
         numberOfLines = doc.getNumberOfLines();
 
         searchHits = new SearchHits();
@@ -385,7 +413,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
             }
         }
 
-        reDisplay();
+        reDisplay(); // This will also check isDisplayingEditor
         scrollToSearch(this, searchHits);
         return getSearchHits();
     }
@@ -393,56 +421,51 @@ public class FilePanel implements BufferDocumentChangeListenerIF {
 
     SearchHits getSearchHits() {
         return searchHits;
-    }
+        }
 
-    private void paintSearchHighlights() {
-        if (searchHits != null) {
-            for (SearchHit sh : searchHits.getSearchHits()) {
-                setHighlight(JMHighlighter.LAYER2, sh.getFromOffset(),
-                             sh.getToOffset(),
-                             searchHits.isCurrent(sh)
-                                     ? JMHighlightPainter.CURRENT_SEARCH : JMHighlightPainter.SEARCH);
+        private void paintSearchHighlights() {
+            if (searchHits == null) {
+                return;
             }
+            for (SearchHit sh : searchHits.getSearchHits()) {
+            setHighlight(JMHighlighter.LAYER2, sh.getFromOffset(),
+                         sh.getToOffset(),
+                         searchHits.isCurrent(sh)
+                                 ? JMHighlightPainter.CURRENT_SEARCH : JMHighlightPainter.SEARCH);
         }
     }
 
 
     public void doPreviousSearch() {
-        SearchHits searchHits = getSearchHits();
-        if (searchHits == null) {
+        SearchHits sh = getSearchHits();
+        if (sh == null) {
             return;
         }
-        searchHits.previous();
+        sh.previous();
         reDisplay();
-
-        scrollToSearch(this, searchHits);
+        scrollToSearch(this, sh);
     }
 
-    private void scrollToSearch(FilePanel fp, SearchHits searchHits) {
-        SearchHit currentHit;
-        int line;
-
-        if (searchHits == null) {
+    private void scrollToSearch(FilePanel fp, SearchHits searchHitsToScroll) {
+        if (searchHitsToScroll == null) {
             return;
         }
 
-        currentHit = searchHits.getCurrent();
+        SearchHit currentHit = searchHitsToScroll.getCurrent();
         if (currentHit != null) {
-            line = currentHit.getLine();
-
+            int line = currentHit.getLine();
             diffPanel.getScrollSynchronizer().scrollToLine(fp, line);
             diffPanel.setSelectedLine(line);
         }
     }
 
     public void doNextSearch() {
-        SearchHits searchHits = getSearchHits();
-        if (searchHits == null) {
+        SearchHits sh = getSearchHits();
+        if (sh == null) {
             return;
         }
-        searchHits.next();
+        sh.next();
         reDisplay();
-
-        scrollToSearch(this, searchHits);
+        scrollToSearch(this, sh);
     }
 }

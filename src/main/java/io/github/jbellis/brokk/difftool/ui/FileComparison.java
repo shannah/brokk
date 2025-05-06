@@ -15,95 +15,33 @@ import java.util.Objects;
 public class FileComparison extends SwingWorker<String, Object> {
     private final BrokkDiffPanel mainPanel;
     private JMDiffNode diffNode;
-    private final File leftFile;
-    private final File rightFile;
     private BufferDiffPanel panel;
-    private final String contentLeft;
-    private final String contentRight;
-    private final String contentLeftTitle;
-    private final String contentRightTitle;
-    private final boolean isTwoFilesComparison;
-    private final String leftFileTitle;
-    private final String rightFileTitle;
+    private final BufferSource leftSource;
+    private final BufferSource rightSource;
     private final boolean isDarkTheme;
 
     // Constructor
     private FileComparison(FileComparisonBuilder builder) {
         this.mainPanel = builder.mainPanel;
-        this.leftFile = builder.leftFile;
-        this.rightFile = builder.rightFile;
-        this.contentLeft = builder.contentLeft;
-        this.contentRight = builder.contentRight;
-        this.contentLeftTitle = builder.contentLeftTitle;
-        this.contentRightTitle = builder.contentRightTitle;
-        this.isTwoFilesComparison = builder.isTwoFilesComparison;
-        this.leftFileTitle = builder.leftFileTitle;
-        this.rightFileTitle = builder.rightFileTitle;
+        this.leftSource = builder.leftSource;
+        this.rightSource = builder.rightSource;
         this.isDarkTheme = builder.isDarkTheme;
     }
 
     // Static Builder class
     public static class FileComparisonBuilder {
         private final BrokkDiffPanel mainPanel;
-        private File leftFile;
-        private File rightFile;
-        private String contentLeft;
-        private String contentRight;
-        private String contentLeftTitle;
-        private String contentRightTitle;
-        private boolean isTwoFilesComparison;
-        private boolean isStringAndFileComparison;
-        private String leftFileTitle = "";
-        private String rightFileTitle = "";
+        private BufferSource leftSource;
+        private BufferSource rightSource;
         private boolean isDarkTheme = false; // Default to light
 
         public FileComparisonBuilder(BrokkDiffPanel mainPanel) {
             this.mainPanel = mainPanel;
         }
 
-        public FileComparisonBuilder withComparisonType(boolean isTwoFilesComparison, boolean isStringAndFileComparison) {
-            this.isTwoFilesComparison = isTwoFilesComparison;
-            this.isStringAndFileComparison = isStringAndFileComparison;
-            return this;
-        }
-
-        public FileComparisonBuilder withFiles(File leftFile, String leftFileTitle, File rightFile, String rightFileTitle) {
-            if (isTwoFilesComparison) {
-                this.leftFile = leftFile;
-                this.leftFileTitle = leftFileTitle;
-                this.rightFile = rightFile;
-                this.rightFileTitle = rightFileTitle;
-            }
-            return this;
-        }
-
-        public FileComparisonBuilder withStringAndFile(String contentLeft, String contentLeftTitle, File rightFile, String rightFileTitle) {
-            if (isStringAndFileComparison) {
-                this.contentLeft = contentLeft;
-                this.contentLeftTitle = contentLeftTitle;
-                this.rightFile = rightFile;
-                this.rightFileTitle = rightFileTitle;
-            }
-            return this;
-        }
-
-        public FileComparisonBuilder withStringAndFile(File leftFile, String leftFileTitle, String contentRight, String contentRightTitle) {
-            if (isStringAndFileComparison) {
-                this.contentRight = contentRight;
-                this.contentRightTitle = contentRightTitle;
-                this.leftFile = leftFile;
-                this.leftFileTitle = leftFileTitle;
-            }
-            return this;
-        }
-
-        public FileComparisonBuilder withStrings(String contentLeft, String contentLeftTitle, String contentRight, String contentRightTitle) {
-            if (!isTwoFilesComparison && !isStringAndFileComparison) {
-                this.contentLeft = contentLeft;
-                this.contentLeftTitle = contentLeftTitle;
-                this.contentRight = contentRight;
-                this.contentRightTitle = contentRightTitle;
-            }
+        public FileComparisonBuilder withSources(BufferSource left, BufferSource right) {
+            this.leftSource = left;
+            this.rightSource = right;
             return this;
         }
 
@@ -113,6 +51,9 @@ public class FileComparison extends SwingWorker<String, Object> {
         }
 
         public FileComparison build() {
+            if (leftSource == null || rightSource == null) {
+                throw new IllegalStateException("Both left and right sources must be provided for comparison.");
+            }
             return new FileComparison(this);
         }
     }
@@ -123,70 +64,48 @@ public class FileComparison extends SwingWorker<String, Object> {
 
     @Override
     public String doInBackground() {
+        if (leftSource == null || rightSource == null) {
+            return "Error: Both left and right sources must be provided.";
+        }
+
         if (diffNode == null) {
-            if (isTwoFilesComparison) {
-                // Ensure both leftFile and rightFile are not null
-                if (leftFile != null && rightFile != null) {
-                    diffNode = create(leftFileTitle, leftFile, rightFileTitle, rightFile);
-                } else {
-                    return "Error: One or both files are null.";
-                }
-            } else if (mainPanel.isStringAndFileComparison()) {
-                // Handle string and file comparison, ensuring that contentLeft is not null and rightFile is not null
-                if (contentLeft != null && !contentLeft.isEmpty() && rightFile != null) {
-                    diffNode = createStringAndFile(contentLeftTitle, contentLeft, rightFileTitle, rightFile);
-                } else if (contentRight != null && !contentRight.isEmpty() && leftFile != null) {
-                    diffNode = createStringAndFile(leftFileTitle, leftFile, contentRightTitle, contentRight);
-                } else {
-                    return "Error: Either the left content or right file is null or empty.";
-                }
-            } else if (contentLeft != null && contentRight != null) {
-                // Ensure both contentLeft and contentRight are not null
-                if (!contentLeft.isEmpty() && !contentRight.isEmpty()) {
-                    diffNode = createString(contentLeftTitle, contentLeft, contentRightTitle, contentRight);
-                } else {
-                    return "Error: One or both content values are empty.";
-                }
-            } else {
-                return "Error: One or both content values are null.";
-            }
+            diffNode = createDiffNode(leftSource, rightSource);
         }
 
         // If no errors, proceed to diffing
-        SwingUtilities.invokeLater(() -> diffNode.diff());
+        // diffNode can be null if createDiffNode returns null (though it shouldn't with current logic)
+        if (diffNode != null) {
+            SwingUtilities.invokeLater(() -> diffNode.diff());
+        } else {
+            // This case should ideally not be reached if sources are non-null
+            return "Error: Could not create diff node from sources.";
+        }
         return null;
     }
 
+    private JMDiffNode createDiffNode(BufferSource left, BufferSource right) {
+        Objects.requireNonNull(left, "Left source cannot be null");
+        Objects.requireNonNull(right, "Right source cannot be null");
 
-    public JMDiffNode create(String fileLeftName, File fileLeft,
-                             String fileRightName, File fileRight) {
-        JMDiffNode node = new JMDiffNode(fileLeftName, true);
-        node.setBufferNodeLeft(new FileNode(fileLeftName, fileLeft));
-        node.setBufferNodeRight(new FileNode(fileRightName, fileRight));
-        return node;
-    }
+        var node = new JMDiffNode(left.title(), true); // Use left title for the JMDiffNode name, or decide a convention
 
-    public JMDiffNode createString(String fileLeftName, String leftContent,
-                                   String fileRightName, String rightContent) {
-        JMDiffNode node = new JMDiffNode(fileLeftName, true);
-        node.setBufferNodeLeft(new StringNode(fileLeftName, leftContent));
-        node.setBufferNodeRight(new StringNode(fileRightName, rightContent));
-        return node;
-    }
+        if (left instanceof BufferSource.FileSource fileSourceLeft) {
+            node.setBufferNodeLeft(new FileNode(fileSourceLeft.title(), fileSourceLeft.file()));
+        } else if (left instanceof BufferSource.StringSource stringSourceLeft) {
+            node.setBufferNodeLeft(new StringNode(stringSourceLeft.title(), stringSourceLeft.content()));
+        } else {
+            // Should not happen with a sealed interface if all subtypes are handled
+            throw new IllegalArgumentException("Unknown left source type: " + left.getClass());
+        }
 
-    public JMDiffNode createStringAndFile(String contentLeftTitle, String leftContent,
-                                          String fileRightName, File fileRight) {
-        JMDiffNode node = new JMDiffNode(contentLeftTitle, true);
-        node.setBufferNodeLeft(new StringNode(contentLeftTitle, leftContent));
-        node.setBufferNodeRight(new FileNode(fileRightName, fileRight));
-        return node;
-    }
-
-    public JMDiffNode createStringAndFile(String fileLeftName, File fileLeft, String contentRightTitle,
-                                          String rightContent) {
-        JMDiffNode node = new JMDiffNode(contentLeftTitle, true);
-        node.setBufferNodeLeft(new FileNode(fileLeftName, fileLeft));
-        node.setBufferNodeRight(new StringNode(contentRightTitle, rightContent));
+        if (right instanceof BufferSource.FileSource fileSourceRight) {
+            node.setBufferNodeRight(new FileNode(fileSourceRight.title(), fileSourceRight.file()));
+        } else if (right instanceof BufferSource.StringSource stringSourceRight) {
+            node.setBufferNodeRight(new StringNode(stringSourceRight.title(), stringSourceRight.content()));
+        } else {
+            // Should not happen with a sealed interface
+            throw new IllegalArgumentException("Unknown right source type: " + right.getClass());
+        }
 
         return node;
     }
