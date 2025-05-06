@@ -139,10 +139,10 @@ public record CodeUnit(ProjectFile source, CodeUnitType kind, String packageName
      * @param shortName   The short name including the simple class name and member name (e.g., "MyClass.myMethod", "Outer$Inner.myMethod").
      */
     public static CodeUnit fn(ProjectFile source, String packageName, String shortName) {
-        // Validate that shortName contains a dot if it's expected for FUNCTION/FIELD
-        if (shortName == null || !shortName.contains(".")) {
-             throw new IllegalArgumentException("shortName for FUNCTION must be in 'ClassName.methodName' format, got: " + shortName);
-        }
+        // The shortName for FUNCTION no longer requires a 'ClassName.methodName' format by default.
+        // It can be a simple function name, and fqName() will handle prefixing with packageName if present.
+        // Validation for specific formats, if needed, should be handled by the language-specific analyzer
+        // or be based on a language-specific flag if CodeUnit needs to be more universal.
         return new CodeUnit(source, CodeUnitType.FUNCTION, packageName, shortName);
     }
 

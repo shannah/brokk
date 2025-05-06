@@ -281,16 +281,16 @@ public final class TreeSitterAnalyzerTest {
         assertFalse(skelJsx.isEmpty(), "Skeletons map for Hello.jsx should not be empty. Found: " + skelJsx.keySet());
 
         // CodeUnits - package name is "" because project root is 'testcode-js'
-        // and file is directly in it. ShortNames for functions in root dir will be "FileName.FunctionName".
+        // and file is directly in it. ShortNames for functions are now simple names.
         var jsxClass = CodeUnit.cls(jsxFile, "", "JsxClass");
-        var jsxArrowFn = CodeUnit.fn(jsxFile, "", "Hello.JsxArrowFnComponent");
-        var localJsxArrowFn = CodeUnit.fn(jsxFile, "", "Hello.LocalJsxArrowFn");
-        var plainJsxFunc = CodeUnit.fn(jsxFile, "", "Hello.PlainJsxFunc");
+        var jsxArrowFn = CodeUnit.fn(jsxFile, "", "JsxArrowFnComponent"); // shortName is "JsxArrowFnComponent"
+        var localJsxArrowFn = CodeUnit.fn(jsxFile, "", "LocalJsxArrowFn");   // shortName is "LocalJsxArrowFn"
+        var plainJsxFunc = CodeUnit.fn(jsxFile, "", "PlainJsxFunc");       // shortName is "PlainJsxFunc"
 
         assertTrue(skelJsx.containsKey(jsxClass), "Skeleton map should contain JsxClass. Found: " + skelJsx.keySet());
-        assertTrue(skelJsx.containsKey(jsxArrowFn), "Skeleton map should contain JsxArrowFnComponent (Hello.JsxArrowFnComponent). Found: " + skelJsx.keySet());
-        assertTrue(skelJsx.containsKey(localJsxArrowFn), "Skeleton map should contain LocalJsxArrowFn (Hello.LocalJsxArrowFn). Found: " + skelJsx.keySet());
-        assertTrue(skelJsx.containsKey(plainJsxFunc), "Skeleton map should contain PlainJsxFunc (Hello.PlainJsxFunc). Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(jsxArrowFn), "Skeleton map should contain JsxArrowFnComponent. Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(localJsxArrowFn), "Skeleton map should contain LocalJsxArrowFn. Found: " + skelJsx.keySet());
+        assertTrue(skelJsx.containsKey(plainJsxFunc), "Skeleton map should contain PlainJsxFunc. Found: " + skelJsx.keySet());
 
         // Expected Skeletons
         // Class skeleton
@@ -331,10 +331,10 @@ public final class TreeSitterAnalyzerTest {
         assertFalse(skelJs.isEmpty(), "Skeletons map for Hello.js should not be empty.");
 
         var helloClass = CodeUnit.cls(jsFile, "", "Hello");
-        var utilFunc = CodeUnit.fn(jsFile, "", "Hello.util"); // Updated shortName
+        var utilFunc = CodeUnit.fn(jsFile, "", "util"); // shortName is "util"
 
         assertTrue(skelJs.containsKey(helloClass), "Skeleton map should contain Hello class from Hello.js");
-        assertTrue(skelJs.containsKey(utilFunc), "Skeleton map should contain util function (Hello.util) from Hello.js");
+        assertTrue(skelJs.containsKey(utilFunc), "Skeleton map should contain util function from Hello.js");
 
         String expectedHelloClassSkeleton = """
         export class Hello {
