@@ -85,6 +85,37 @@ public class EditBlockUtilsTest {
         // Test OPENING_FENCE pattern
         assertTrue(OPENING_FENCE.matcher("```").matches());
         assertTrue(OPENING_FENCE.matcher(" ```").matches());
+        assertTrue(OPENING_FENCE.matcher("```java").matches(), "Should match fence with language");
+        assertTrue(OPENING_FENCE.matcher("```file.txt").matches(), "Should match fence with filename");
+        assertTrue(OPENING_FENCE.matcher("``` java").matches(), "Should match fence with space before language");
         assertFalse(OPENING_FENCE.matcher("``").matches());
+        
+        // Test extracting token from OPENING_FENCE
+        var matcher = OPENING_FENCE.matcher("```java");
+        assertTrue(matcher.matches());
+        assertEquals("java", matcher.group(1), "Should extract language token");
+        
+        matcher = OPENING_FENCE.matcher("```file.txt");
+        assertTrue(matcher.matches());
+        assertEquals("file.txt", matcher.group(1), "Should extract filename token");
+        
+        matcher = OPENING_FENCE.matcher("```");
+        assertTrue(matcher.matches());
+        assertNull(matcher.group(1), "Should have null token for plain fence");
+    }
+    
+    @Test
+    void testLooksLikePath() {
+        // Test path detection
+        assertTrue(looksLikePath("file.txt"), "File with extension should look like path");
+        assertTrue(looksLikePath("src/main/file.txt"), "Path with slashes should look like path");
+        assertTrue(looksLikePath("C:/Windows/file.txt"), "Windows path with forward slashes should look like path");
+        assertTrue(looksLikePath("C:\\Windows\\file.txt"), "Windows path with backslashes should look like path");
+        
+        // Test non-path strings
+        assertFalse(looksLikePath("java"), "Language should not look like path");
+        assertFalse(looksLikePath("cpp"), "Language should not look like path");
+        assertFalse(looksLikePath(null), "Null should not look like path");
+        assertFalse(looksLikePath(""), "Empty string should not look like path");
     }
 }
