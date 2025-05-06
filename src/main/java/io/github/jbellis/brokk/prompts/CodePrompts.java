@@ -32,8 +32,10 @@ public abstract class CodePrompts {
 
     public static final String OVEREAGER_REMINDER = """
             Avoid changing code or comments that are not directly related to the request.
+
             Do not comment on your modifications, only on the resulting code in isolation.
-            This means that comments like "added X" or "changed Y" or "moved Z" are NOT WELCOME.
+            You must never output any comments about the progress or type of changes of your refactoring or generation. 
+            For example, you must NOT add comments like: 'Added dependency' or 'Changed to new style' or worst of all 'Keeping existing implementation'.
             """.stripIndent();
 
     public static final String ARCHITECT_REMINDER = """
