@@ -228,13 +228,13 @@ public class AnalyzerWrapper implements AutoCloseable {
     }
 
     public boolean isCpg() {
-        return project.getAnalyzerLanguage() == io.github.jbellis.brokk.analyzer.Language.JAVA;
+        return project.getAnalyzerLanguage() == Language.JAVA;
     }
 
     private IAnalyzer createAndSaveAnalyzer() {
         IAnalyzer newAnalyzer;
         logger.debug("Creating {} analyzer for {}", language, project.getRoot());
-        if (language == io.github.jbellis.brokk.analyzer.Language.JAVA) {
+        if (language == Language.JAVA) {
             newAnalyzer = new JavaAnalyzer(root);
             Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
             ((JavaAnalyzer) newAnalyzer).writeCpg(analyzerPath);
@@ -242,6 +242,7 @@ public class AnalyzerWrapper implements AutoCloseable {
             newAnalyzer = switch (language) {
                 case PYTHON -> new PythonAnalyzer(project);
                 case C_SHARP -> new CSharpAnalyzer(project);
+                case JAVASCRIPT -> new JavascriptAnalyzer(project);
                 default -> new DisabledAnalyzer();
             };
         }
