@@ -101,7 +101,20 @@ public class MiniParser {
                 
                 // Create component for this custom tag
                 var factory = factories.get(tagName);
-                childrenData.add(factory.fromElement(element));
+                try {
+                    ComponentData component = factory.fromElement(element);
+                    if (component != null) {
+                        childrenData.add(component);
+                    }
+                } catch (Exception ex) {
+                    // Log the error but continue parsing - don't crash the UI
+                    logger.warn("Failed to parse {} tag: {}. Error: {}", 
+                               tagName, element.outerHtml(), ex.getMessage());
+                    
+                    // Include the raw HTML in the output so the content isn't lost, but properly escape it
+                    ensureAnchor(node, sb);
+                    sb.append(org.jsoup.nodes.Entities.escape(element.outerHtml()));
+                }
                 
             } else {
                 // This is a regular HTML element - serialize opening tag

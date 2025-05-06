@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.mop.stream.blocks;
 
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
+import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
 
 import javax.swing.*;
 import javax.swing.text.DefaultCaret;
@@ -20,8 +21,9 @@ public record MarkdownComponentData(int id, String html) implements ComponentDat
     public JComponent createComponent(boolean darkTheme) {
         JEditorPane editor = createHtmlPane(darkTheme);
         
-        // Update content
-        editor.setText("<html><body>" + html + "</body></html>");
+        // Update content - sanitize HTML entities for Swing's HTML renderer
+        var sanitized = IncrementalBlockRenderer.sanitizeForSwing(html);
+        editor.setText("<html><body>" + sanitized + "</body></html>");
         
         // Configure for left alignment and proper sizing
         editor.setAlignmentX(Component.LEFT_ALIGNMENT);

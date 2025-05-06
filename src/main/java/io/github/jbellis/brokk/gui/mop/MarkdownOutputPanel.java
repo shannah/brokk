@@ -216,8 +216,9 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
                 highlightColor = ThemeColors.getColor(isDarkTheme, "message_border_custom");
         }
         
-        // Create a new renderer for this message
-        var renderer = new IncrementalBlockRenderer(isDarkTheme);
+        // Create a new renderer for this message - disable edit blocks for user messages
+        boolean enableEditBlocks = message.type() != ChatMessageType.USER;
+        var renderer = new IncrementalBlockRenderer(isDarkTheme, enableEditBlocks);
         messageRenderers.add(renderer);
         
         // Create the base panel with the renderer's root component

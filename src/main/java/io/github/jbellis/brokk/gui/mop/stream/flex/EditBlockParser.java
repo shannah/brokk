@@ -52,7 +52,8 @@ public class EditBlockParser extends AbstractBlockParser {
         block.setChars(openingMarker);
         
         if (isFenced) {
-            this.phase = Phase.FILENAME;
+            // If we have a filename from the fence line, go directly to SEARCH phase
+            this.phase = (filename != null && !filename.isBlank()) ? Phase.SEARCH : Phase.FILENAME;
         } else if (!initialLine.isBlank()) {
             searchContent.append(initialLine);
         }
@@ -60,6 +61,7 @@ public class EditBlockParser extends AbstractBlockParser {
         // Set filename in the node immediately if available
         if (currentFilename != null && !currentFilename.isBlank()) {
             block.setFilename(currentFilename);
+            logger.debug("Setting filename in constructor: {}", currentFilename);
         }
     }
     
@@ -75,10 +77,28 @@ public class EditBlockParser extends AbstractBlockParser {
         
         switch (phase) {
             case FILENAME:
-                // First line after opening fence is the filename
-                currentFilename = lineStr.trim();
-                block.setFilename(currentFilename);
-                phase = Phase.SEARCH;
+                // First line after opening fence should be the filename
+                String possibleFilename = stripFilename(lineStr);
+                
+                // If this is already a SEARCH line, don't treat it as filename
+                if (HEAD.matcher(lineStr).matches()) {
+                    sawHeadLine = true;
+                    phase = Phase.SEARCH;
+                    
+                    // Try to extract filename from the SEARCH line
+                    Matcher headMatcher = HEAD.matcher(lineStr);
+                    if (headMatcher.matches() && headMatcher.group(1) != null) {
+                        currentFilename = headMatcher.group(1).trim();
+                        block.setFilename(currentFilename);
+                        logger.debug("Set filename from HEAD line: {}", currentFilename);
+                    }
+                } else if (possibleFilename != null && !possibleFilename.isBlank()) {
+                    // Got a valid filename
+                    currentFilename = possibleFilename;
+                    block.setFilename(currentFilename);
+                    phase = Phase.SEARCH;
+                    logger.debug("Set filename from line after fence: {}", currentFilename);
+                }
                 return BlockContinue.atIndex(state.getIndex());
                 
             case SEARCH:
@@ -87,9 +107,9 @@ public class EditBlockParser extends AbstractBlockParser {
                     sawHeadLine = true;
                     // Extract filename from head line if none was provided before
                     if ((currentFilename == null || currentFilename.isBlank()) && lineStr.trim().length() > 14) {
-                        String possibleFilename = lineStr.trim().substring(14).trim();
-                        if (!possibleFilename.isBlank()) {
-                            currentFilename = possibleFilename;
+                        Matcher filenameMatcher = HEAD.matcher(lineStr);
+                        if (filenameMatcher.matches() && filenameMatcher.group(1) != null) {
+                            currentFilename = filenameMatcher.group(1).trim();
                             block.setFilename(currentFilename);
                         }
                     }
@@ -220,18 +240,41 @@ public class EditBlockParser extends AbstractBlockParser {
                             return BlockStart.none();               // let Flexmark parse it as code-fence
                         }
                         
+                        // Extract token from fence line (may be language or filename)
+                        String token = fenceMatcher.group(1);
+                        String filenameFromFence = null;
+                        
+                        // If token contains . or / treat it as a filename
+                        if (token != null && looksLikePath(token)) {
+                            filenameFromFence = token;
+                            logger.debug("Found filename in fence line: {}", filenameFromFence);
+                        }
+                        
                         // SEARCH found -> treat as fenced edit-block
+                        // If filenameFromFence is non-null, we'll start in SEARCH phase
                         return BlockStart.of(new EditBlockParser(
-                                line, BasedSequence.NULL, BasedSequence.NULL, true, null))
+                                line, BasedSequence.NULL, BasedSequence.NULL, true, filenameFromFence))
                                 .atIndex(state.getIndex());
                     }
                     
                     // Check if this line matches the edit block start pattern (<<<<<<< SEARCH)
                     Matcher headMatcher = HEAD.matcher(lineStr);
                     if (headMatcher.matches()) {
-                        BasedSequence openingMarker = line.subSequence(0, 5); // The five "<"
-                        BasedSequence searchKeyword = line.subSequence(6, 12); // "SEARCH"
-                        BasedSequence searchText = line.subSequence(12); // File name and rest
+                        // Find proper boundaries for each component
+                        int startOfSearch = lineStr.indexOf("SEARCH");
+                        int endOfSearch = startOfSearch + "SEARCH".length();
+                        
+                        BasedSequence openingMarker = line.subSequence(0, lineStr.indexOf("SEARCH") - 1);
+                        BasedSequence searchKeyword = line.subSequence(startOfSearch, endOfSearch);
+                        BasedSequence searchText = BasedSequence.NULL; // Default to empty
+                        
+                        // Only include content after "SEARCH" if it's not empty
+                        if (endOfSearch < lineStr.length()) {
+                            String afterSearch = lineStr.substring(endOfSearch).trim();
+                            if (!afterSearch.isEmpty()) {
+                                searchText = line.subSequence(endOfSearch + (lineStr.charAt(endOfSearch) == ' ' ? 1 : 0));
+                            }
+                        }
                         
                         // Extract filename from the SEARCH line or guess
                         String filename = null;
@@ -240,17 +283,37 @@ public class EditBlockParser extends AbstractBlockParser {
                         if (filenameText != null && !filenameText.isBlank()) {
                             filename = filenameText.trim();
                         } else {
-                            // Try to find filename nearby using shared utility
-                            String[] allLines =
-                                    state.getLineSegments()             // List<BasedSequence>
-                                            .stream()
-                                            .map(BasedSequence::toString)   // remove flexmark wrapper
-                                            .toArray(String[]::new);
-                            filename = findFileNameNearby(
-                                allLines,
-                                state.getLineNumber(),
-                                projectFiles != null ? projectFiles : Set.of(),
-                                previousFilename);
+                            // Try to find filename by checking context in the document
+                        String[] allLines;
+                        int lineIdx;
+                        
+                        // Get the full document through the base sequence of the current line
+                        BasedSequence docChars = state.getLine().getBaseSequence();
+                        String docContent = docChars.toString();
+                        allLines = docContent.split("\n", -1);
+                        
+                        // Calculate proper document line index by counting newlines
+                        int headStartChar = state.getLine().getStartOffset();
+                        lineIdx = 0;
+                        for (int pos = 0; pos < headStartChar; pos++) {
+                            if (docChars.charAt(pos) == '\n') lineIdx++;
+                        }
+                        
+                        filename = findFileNameNearby(
+                            allLines,
+                            lineIdx,
+                            projectFiles != null ? projectFiles : Set.of(),
+                            previousFilename);
+                                
+                            // If we found a filename in the line directly before current line, 
+                            // we need to handle it differently in unfenced mode:
+                            // It should NOT be included in the SEARCH content
+                            if (filename != null && lineIdx > 0 && 
+                                filename.equals(stripFilename(allLines[lineIdx-1]))) {
+                                // Skip this line by advancing the parser index
+                                return BlockStart.of(new EditBlockParser(openingMarker, searchKeyword, searchText, false, filename))
+                                        .atIndex(state.getIndex() + 1);
+                            }
                         }
                         
                         logger.debug("Found edit block start: {}, filename: {}", line, filename);
