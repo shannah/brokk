@@ -129,7 +129,18 @@ public final class IncrementalBlockRenderer {
     private String createHtml(String md) {
         // Parse with Flexmark
         var document = parser.parse(md);
-        return renderer.render(document);
+        return renderer.render(document);  // Don't sanitize yet - let MarkdownComponentData handle it
+    }
+    
+    /**
+     * Swing's HTMLEditorKit predates HTML5 and does not recognize &apos;.
+     * Convert to the numeric entity &#39; that it does understand.
+     */
+    public static String sanitizeForSwing(String html) {
+        return html
+            .replace("&amp;apos;", "&#39;")  // Fix double-escaped apos
+            .replace("&amp;#39;", "&#39;")   // Fix double-escaped numeric
+            .replace("&apos;", "&#39;");     // Convert any remaining apos
     }
     
     /**
@@ -161,9 +172,10 @@ public final class IncrementalBlockRenderer {
                 // Add all parsed components to our result list
                 result.addAll(parsedElements);
             } else if (child instanceof org.jsoup.nodes.TextNode textNode && !textNode.isBlank()) {
-                // For plain text nodes, create a markdown component directly
+                // For plain text nodes, create a markdown component directly.
+                // Let Swing's HTMLEditorKit handle basic escaping - it knows what it needs.
                 int id = idProvider.getId(body); // Use body as anchor for stability
-                result.add(markdownFactory.fromText(id, org.jsoup.nodes.Entities.escape(textNode.getWholeText())));
+                result.add(markdownFactory.fromText(id, textNode.getWholeText()));
             }
         }
         

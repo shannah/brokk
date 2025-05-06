@@ -6,13 +6,18 @@ import io.github.jbellis.brokk.gui.mop.stream.blocks.CodeBlockComponentData;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.CompositeComponentData;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.EditBlockComponentData;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData;
+import io.github.jbellis.brokk.gui.mop.util.ComponentUtils;
+import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.junit.jupiter.api.Test;
 
+import javax.swing.JEditorPane;
 import javax.swing.JPanel;
+import java.awt.Component;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -274,5 +279,52 @@ public class IncrementalBlockRendererTest {
             
         assertTrue(hasCodeBlock || hasEditBlock, 
             "Composite should contain either a CodeBlockComponentData or EditBlockComponentData");
+    }
+    @Test
+    void streamingSessionKeepsComponentInstances() {
+        var renderer = new IncrementalBlockRenderer(false);
+        var root = renderer.getRoot();
+
+        // 1st chunk - initial content (heading + paragraph)
+        renderer.update("## Title\nThis is an example ");
+        
+        // Store all components for reuse verification
+        var components = new Component[root.getComponentCount()];
+        for (int i = 0; i < root.getComponentCount(); i++) {
+            components[i] = root.getComponent(i);
+            // Component might be a JEditorPane directly or wrapped in a JPanel
+            var editorPane = (JEditorPane) components[i];
+            System.out.println("Component " + i + " content: " + editorPane.getText());
+        }
+
+        // 2nd chunk - completes paragraph and adds a code block
+        renderer.update("## Title\nThis is an example of streaming.\n```java\nSystem.out");
+        
+        // Components should be reused
+        assertSame(components[0], root.getComponent(0), "## Title should be reused");
+        assertSame(components[1], root.getComponent(1), "This is an example... should be reused");
+        
+        // Verify content through the component hierarchy
+        var lastComponent = (JPanel)root.getComponent(root.getComponentCount() - 1);
+        var codeEditor = ComponentUtils.findComponentsOfType(lastComponent, RSyntaxTextArea.class).getFirst();
+        assertTrue(codeEditor.getText().contains("System.out"), "Content should contain code block");
+
+        // 3rd chunk - adds a second paragraph
+        renderer.update("""
+            ## Title
+            This is an example of streaming.
+            ```java
+            System.out.println("hi");
+            ```
+            Let's add a second paragraph.
+            """);
+            
+        // Message bubbles should still be reused
+        assertSame(components[0], root.getComponent(0), "## Title should be reused");
+        assertSame(components[1], root.getComponent(1), "This is an example... should be reused");
+        assertTrue(codeEditor.getText().contains("System.out.println"), "Content should contain code block");
+        
+        // Verify final content
+        assertTrue(((JEditorPane)root.getComponent(3)).getText().contains("Let's add a second paragraph."), "Content should contain second paragraph");
     }
 }

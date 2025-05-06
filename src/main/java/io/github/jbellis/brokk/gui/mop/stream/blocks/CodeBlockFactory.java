@@ -13,7 +13,7 @@ public class CodeBlockFactory implements ComponentDataFactory {
     
     @Override
     public ComponentData fromElement(Element element) {
-            int id = Integer.parseInt(element.attr("data-id"));
+        int id = Integer.parseInt(element.attr("data-id"));
         String lang = element.attr("data-lang");
         
         // Extract content from the <pre> element to preserve whitespace

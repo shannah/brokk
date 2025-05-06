@@ -11,6 +11,7 @@ import org.fife.ui.rsyntaxtextarea.Theme;
 import javax.swing.*;
 import javax.swing.text.DefaultCaret;
 import java.io.IOException;
+import io.github.jbellis.brokk.gui.mop.util.ComponentUtils;
 import java.util.List;
 
 /**
@@ -65,7 +66,7 @@ public record CodeBlockComponentData(int id, String body, String lang) implement
     @Override
     public void updateComponent(JComponent component) {
         // Find the RSyntaxTextArea within the panel
-        var textAreas = findComponentsOfType(component, org.fife.ui.rsyntaxtextarea.RSyntaxTextArea.class);
+        var textAreas = ComponentUtils.findComponentsOfType(component, org.fife.ui.rsyntaxtextarea.RSyntaxTextArea.class);
         if (!textAreas.isEmpty()) {
             var textArea = textAreas.getFirst();
             // Record caret position
@@ -177,19 +178,4 @@ public record CodeBlockComponentData(int id, String body, String lang) implement
         };
     }
 
-    /**
-     * Finds all components of a specific type within a container.
-     */
-    private <T extends java.awt.Component> List<T> findComponentsOfType(java.awt.Container container, Class<T> type) {
-        java.util.List<T> result = new java.util.ArrayList<>();
-        for (java.awt.Component comp : container.getComponents()) {
-            if (type.isInstance(comp)) {
-                result.add(type.cast(comp));
-            }
-            if (comp instanceof java.awt.Container) {
-                result.addAll(findComponentsOfType((java.awt.Container) comp, type));
-            }
-        }
-        return result;
-    }
 }
