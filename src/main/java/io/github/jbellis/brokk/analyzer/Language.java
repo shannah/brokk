@@ -4,9 +4,10 @@ import java.util.Arrays;
 import java.util.List;
 
 public enum Language {
-    JAVA("java"),
-    PYTHON("py"),
     C_SHARP("cs"),
+    JAVA("java"),
+    JAVASCRIPT(".js", ".mjs", ".cjs"),
+    PYTHON("py"),
     NONE();  // no extensions
 
     private final List<String> extensions;
@@ -36,10 +37,17 @@ public enum Language {
             return NONE;
         }
         String lowerExt = extension.toLowerCase();
+        // Ensure the extension starts with a dot for consistent matching,
+        // as stored extensions might or might not have it.
+        // The current Language enum stores extensions without a leading dot.
+        String normalizedExt = lowerExt.startsWith(".") ? lowerExt.substring(1) : lowerExt;
+
         for (Language lang : Language.values()) {
-            // Check if the lowercase extension is in the language's known extensions
-            if (lang.extensions.contains(lowerExt)) {
-                return lang;
+            for (String langExt : lang.extensions) {
+                // Stored extensions in the enum do not have a leading dot.
+                if (langExt.equals(normalizedExt)) {
+                    return lang;
+                }
             }
         }
         // No matching language found for the extension

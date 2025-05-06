@@ -47,6 +47,7 @@ public final class TreeSitterAnalyzerTest {
                 analyzer = switch (language) { // Use Brokk's Language enum
                     case PYTHON -> new PythonAnalyzer(this);
                     case C_SHARP -> new CSharpAnalyzer(this);
+                    case JAVASCRIPT -> new JavascriptAnalyzer(this);
                     // add more languages as needed
                     default      -> throw new IllegalArgumentException(
                             "No TreeSitterAnalyzer registered for: " + language);
