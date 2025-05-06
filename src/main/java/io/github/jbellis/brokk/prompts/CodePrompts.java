@@ -76,8 +76,8 @@ public abstract class CodePrompts {
         var messages = new ArrayList<ChatMessage>();
 
         messages.add(systemMessage(cm, ""));
-        messages.addAll(cm.getHistoryMessages());
         messages.addAll(cm.getWorkspaceContentsMessages());
+        messages.addAll(cm.getHistoryMessages());
         messages.add(askRequest(input));
 
         return messages;
