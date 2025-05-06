@@ -270,10 +270,19 @@ public class MenuBar {
 
         var aboutItem = new JMenuItem("About");
         aboutItem.addActionListener(e -> {
+            ImageIcon icon = null;
+            var iconUrl = Brokk.class.getResource(Brokk.ICON_RESOURCE);
+            if (iconUrl != null) {
+                var originalIcon = new ImageIcon(iconUrl);
+                var image = originalIcon.getImage();
+                var scaledImage = image.getScaledInstance(128, 128, Image.SCALE_SMOOTH);
+                icon = new ImageIcon(scaledImage);
+            }
             JOptionPane.showMessageDialog(chrome.getFrame(),
-                                          "Brokk Swing UI\nVersion %s\n...".formatted(chrome.getContextManager().loadVersion()),
+                                          "Brokk Version %s\n\nCopyright (c) 2025 Brokk, Inc.".formatted(chrome.getContextManager().loadVersion()),
                                           "About Brokk",
-                                          JOptionPane.INFORMATION_MESSAGE);
+                                          JOptionPane.INFORMATION_MESSAGE,
+                                          icon);
         });
         helpMenu.add(aboutItem);
 
