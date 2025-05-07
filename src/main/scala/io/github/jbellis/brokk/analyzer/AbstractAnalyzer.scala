@@ -1054,9 +1054,6 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
   override def close(): Unit = cpg.close()
 
-  /**
-   * Gets a set of relevant symbol names (classes, methods, fields) defined within the given source CodeUnits.
-   */
   override def getSymbols(sources: java.util.Set[CodeUnit]): java.util.Set[String] = {
     import scala.jdk.CollectionConverters.*
 

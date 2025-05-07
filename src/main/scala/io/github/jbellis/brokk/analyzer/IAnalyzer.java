@@ -90,8 +90,11 @@ public interface IAnalyzer {
     /**
      * Gets a set of relevant symbol names (classes, methods, fields) defined within the given source CodeUnits.
      *
+     * Almost all String representations in the Analyzer are fully-qualified, but these are not! In CodeUnit
+     * terms, this returns identifiers -- just the symbol name itself, no class or package hierarchy.
+     *
      * @param sources source files or classes to analyse
-     * @return fully-qualified symbol names found within the sources
+     * @return unqualified symbol names found within the sources
      */
     default Set<String> getSymbols(Set<CodeUnit> sources) {
         throw new UnsupportedOperationException();

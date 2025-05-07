@@ -241,28 +241,23 @@ public class VoiceInputButton extends JButton {
                                 .flatMap(f -> f.sources(analyzer).stream())
                                 .collect(Collectors.toSet());
 
-                        if (analyzer != null) {
-                             // Get full symbols first
-                            var fullSymbols = analyzer.getSymbols(sources);
+                        // Get full symbols first
+                        var fullSymbols = analyzer.getSymbols(sources);
 
-                            // Extract short names from sources and returned symbols
-                            symbolsForTranscription = sources.stream()
-                                    .map(CodeUnit::shortName)
-                                    .collect(Collectors.toSet());
-                            fullSymbols.stream()
-                                    .map(s -> {
-                                        var parts = s.split("\\.");
-                                        // Get last part as short name
-                                        return parts.length > 0 ? parts[parts.length - 1] : null;
-                                    })
-                                    .filter(java.util.Objects::nonNull)
-                                    // Add to the same set
-                                    .forEach(symbolsForTranscription::add);
-                            logger.debug("Using context symbols for transcription: {}", symbolsForTranscription.size());
-                        } else {
-                              logger.warn("Analyzer not available, cannot fetch context symbols.");
-                              symbolsForTranscription = Collections.emptySet();
-                         }
+                        // Extract short names from sources and returned symbols
+                        symbolsForTranscription = sources.stream()
+                                .map(CodeUnit::shortName)
+                                .collect(Collectors.toSet());
+                        fullSymbols.stream()
+                                .map(s -> {
+                                    var parts = s.split("\\.");
+                                    // Get last part as short name
+                                    return parts.length > 0 ? parts[parts.length - 1] : null;
+                                })
+                                .filter(java.util.Objects::nonNull)
+                                // Add to the same set
+                                .forEach(symbolsForTranscription::add);
+                        logger.debug("Using context symbols for transcription: {}", symbolsForTranscription.size());
                      }
 
                     // Perform transcription
