@@ -155,6 +155,7 @@ public class Brokk {
         var contextManager = new ContextManager(projectPath);
 
         var io = new Chrome(contextManager);
+        io.systemOutput("Opening project at " + projectPath);
         contextManager.resolveCircularReferences(io);
 
         // Check and potentially force setting Data Retention Policy *before* showing main window fully
@@ -173,7 +174,6 @@ public class Brokk {
         }
 
         io.onComplete(); // Finalize UI setup
-        io.systemOutput("Opened project at " + projectPath);
 
         openProjectWindows.put(projectPath, io);
 
