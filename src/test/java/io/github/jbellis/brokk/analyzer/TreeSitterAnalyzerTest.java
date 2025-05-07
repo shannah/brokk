@@ -333,8 +333,67 @@ public final class TreeSitterAnalyzerTest {
     }
 
     @Test
+    void testJavascriptGetSymbols() {
+        TestProject project = createTestProject("testcode-js", Language.JAVASCRIPT);
+        JavascriptAnalyzer analyzer = new JavascriptAnalyzer(project);
+        assertFalse(analyzer.isEmpty(), "Analyzer should not be empty after processing JS files");
+
+        ProjectFile helloJsFile = new ProjectFile(project.getRoot(), "Hello.js");
+        ProjectFile helloJsxFile = new ProjectFile(project.getRoot(), "Hello.jsx");
+        ProjectFile varsJsFile = new ProjectFile(project.getRoot(), "Vars.js");
+
+        // Define CodeUnits relevant to the test
+        // These must match the CUs created by the analyzer internally for the maps to be hit correctly.
+        CodeUnit helloClass = CodeUnit.cls(helloJsFile, "", "Hello"); // From Hello.js
+        CodeUnit jsxArrowFn = CodeUnit.fn(helloJsxFile, "", "JsxArrowFnComponent"); // From Hello.jsx
+        CodeUnit topConstJs = CodeUnit.field(varsJsFile, "", "_module_.TOP_CONST_JS"); // From Vars.js
+
+        Set<CodeUnit> sources = Set.of(helloClass, jsxArrowFn, topConstJs);
+        Set<String> actualSymbols = analyzer.getSymbols(sources);
+
+        // Expected symbols:
+        // "Hello" from helloClass itself
+        // "greet" from the greet() method, which is a child of helloClass
+        // "JsxArrowFnComponent" from jsxArrowFn itself
+        // "TOP_CONST_JS" from topConstJs itself (after stripping _module_.)
+        Set<String> expectedSymbols = Set.of(
+                "Hello",
+                "greet",
+                "JsxArrowFnComponent",
+                "TOP_CONST_JS"
+        );
+        assertEquals(expectedSymbols, actualSymbols, "Symbols mismatch for combined sources.");
+
+        // Test with an empty set of sources
+        Set<String> emptySymbols = analyzer.getSymbols(Set.of());
+        assertTrue(emptySymbols.isEmpty(), "getSymbols with empty sources should return an empty set.");
+
+        // Test with a single top-level function CU
+        CodeUnit utilFunc = CodeUnit.fn(helloJsFile, "", "util"); // from Hello.js
+        Set<String> utilSymbols = analyzer.getSymbols(Set.of(utilFunc));
+        assertEquals(Set.of("util"), utilSymbols, "Symbols mismatch for util function.");
+
+        // Test with a single class CU from a JSX file (should include its methods)
+        CodeUnit jsxClass = CodeUnit.cls(helloJsxFile, "", "JsxClass");
+        // Expected: "JsxClass" from the class itself, "render" from its method
+        Set<String> jsxClassSymbols = analyzer.getSymbols(Set.of(jsxClass));
+        assertEquals(Set.of("JsxClass", "render"), jsxClassSymbols, "Symbols mismatch for JsxClass.");
+
+        // Test with a non-exported top-level variable
+        CodeUnit localVarJs = CodeUnit.field(varsJsFile, "", "_module_.localVarJs");
+        Set<String> localVarSymbols = analyzer.getSymbols(Set.of(localVarJs));
+        assertEquals(Set.of("localVarJs"), localVarSymbols, "Symbols mismatch for localVarJs.");
+
+        // Test with multiple sources from the same file
+        CodeUnit plainJsxFunc = CodeUnit.fn(helloJsxFile, "", "PlainJsxFunc");
+        Set<CodeUnit> jsxSources = Set.of(jsxClass, plainJsxFunc);
+        Set<String> jsxCombinedSymbols = analyzer.getSymbols(jsxSources);
+        assertEquals(Set.of("JsxClass", "render", "PlainJsxFunc"), jsxCombinedSymbols, "Symbols mismatch for combined JSX sources.");
+    }
+
+    @Test
     void testJavascriptTopLevelVariables() {
-        TestProject project = createTestProject("testcode-js", io.github.jbellis.brokk.analyzer.Language.JAVASCRIPT);
+        TestProject project = createTestProject("testcode-js", Language.JAVASCRIPT);
         IAnalyzer ana = new JavascriptAnalyzer(project);
         assertInstanceOf(JavascriptAnalyzer.class, ana);
         JavascriptAnalyzer analyzer = (JavascriptAnalyzer) ana;

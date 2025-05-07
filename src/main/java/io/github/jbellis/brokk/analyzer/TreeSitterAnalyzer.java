@@ -801,5 +801,52 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         }
     }
 
-    // Removed parseQueryPatterns as TSQuery constructor takes the raw query string.
+    @Override
+    public Set<String> getSymbols(Set<CodeUnit> sources) {
+        Set<String> symbols = new HashSet<>();
+        Queue<CodeUnit> toProcess = new LinkedList<>(sources);
+        Set<CodeUnit> visited = new HashSet<>();
+
+        while (!toProcess.isEmpty()) {
+            CodeUnit current = toProcess.poll();
+            if (!visited.add(current)) { // If already visited, skip
+                continue;
+            }
+
+            String shortName = current.shortName();
+            if (shortName == null || shortName.isEmpty()) {
+                continue;
+            }
+
+            int lastDot = shortName.lastIndexOf('.');
+            int lastDollar = shortName.lastIndexOf('$');
+            int lastSeparator = Math.max(lastDot, lastDollar);
+
+            String unqualifiedName;
+            if (lastSeparator == -1) {
+                unqualifiedName = shortName;
+            } else {
+                // Ensure there's something after the separator
+                if (lastSeparator < shortName.length() - 1) {
+                    unqualifiedName = shortName.substring(lastSeparator + 1);
+                } else {
+                    // This case (e.g., shortName ends with '.') should ideally not happen
+                    // with valid CodeUnit shortNames, but handle defensively.
+                    unqualifiedName = ""; // Or log a warning
+                }
+            }
+
+            if (!unqualifiedName.isEmpty()) {
+                symbols.add(unqualifiedName);
+            }
+
+            List<CodeUnit> children = childrenByParent.getOrDefault(current, Collections.emptyList());
+            for (CodeUnit child : children) {
+                if (!visited.contains(child)) { // Add to queue only if not already processed or in queue
+                    toProcess.add(child);
+                }
+            }
+        }
+        return symbols;
+    }
 }
