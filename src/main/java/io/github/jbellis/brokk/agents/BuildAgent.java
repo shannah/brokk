@@ -279,6 +279,42 @@ public class BuildAgent {
              return "Abort signal received and processed.";
         }
 
+    /**
+     * Removes markdown code block syntax (single and triple backticks) from a string.
+     *
+     * @param text The string to process.
+     * @return The string with markdown code blocks removed, or an empty string if input is null/blank.
+     */
+    private static String unmarkdown(@Nullable String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String trimmedText = text.trim();
+
+        // Check for triple backticks (e.g., ```text``` or ```lang\ntext```)
+        if (trimmedText.startsWith("```") && trimmedText.endsWith("```") && trimmedText.length() >= 6) {
+            String content = trimmedText.substring(3, trimmedText.length() - 3);
+            int firstNewline = content.indexOf('\n');
+
+            if (firstNewline == 0) { // Starts with a newline, e.g. ```\ncode\n```
+                content = content.substring(1); // Remove the leading newline
+            } else if (firstNewline > 0) { // Has a newline, content before it could be lang specifier
+                // Assumes the first line is a language specifier if present and removes it
+                content = content.substring(firstNewline + 1);
+            }
+
+            // fall through to single-backtick check
+            trimmedText = content.trim();
+        }
+
+        // Check for single backticks (e.g., `text`)
+        if (trimmedText.startsWith("`") && trimmedText.endsWith("`") && trimmedText.length() >= 2) {
+            return trimmedText.substring(1, trimmedText.length() - 1).trim();
+        }
+
+        return trimmedText;
+    }
+
     /** Holds semi-structured information about a project's build process */
     public record BuildDetails(List<String> buildFiles,
                                List<String> dependencies,
@@ -359,24 +395,29 @@ public class BuildAgent {
             // Need a coder instance specifically for this task
             var inferTestCoder = cm.getLlm(cm.getModels().quickModel(), "Infer tests");
             // Ask the LLM
-            Llm.StreamingResult llmResult = null;
+            Llm.StreamingResult llmResult;
             try {
                 llmResult = inferTestCoder.sendRequest(List.of(new UserMessage(prompt)));
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            var suggestedCommand = llmResult.chatResponse() != null && llmResult.chatResponse().aiMessage() != null
-                                   ? llmResult.chatResponse().aiMessage().text().trim()
-                                   : null; // Handle potential nulls from LLM response
-
-            // Use the suggested command if valid, otherwise fallback
-            if (suggestedCommand != null && !suggestedCommand.isBlank()) {
-                logger.info("LLM suggested specific test command: '{}'", suggestedCommand);
-                return suggestedCommand;
-            } else {
-                logger.warn("LLM did not suggest a specific test command. Falling back to default");
+            if (llmResult.chatResponse() == null || llmResult.chatResponse().aiMessage() == null) {
+                logger.warn("No reply from LLM; falling back to default: {}", details.buildLintCommand());
                 return details.buildLintCommand();
             }
+
+            // remove potential markdown syntax
+            String rawCommandFromLlm = llmResult.chatResponse().aiMessage().text();
+            var suggestedCommand = unmarkdown(rawCommandFromLlm);
+
+            // Use the suggested command if valid, otherwise fallback
+            if (suggestedCommand.isBlank()) {
+                logger.warn("Blank reply from LLM; falling back to default: {}", details.buildLintCommand());
+                return details.buildLintCommand();
+            }
+
+            logger.debug("LLM suggested specific test command: '{}'", suggestedCommand);
+            return suggestedCommand;
         }, cm.getBackgroundTasks());
     }
 }
