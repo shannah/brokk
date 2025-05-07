@@ -78,13 +78,13 @@ public record CodeUnit(ProjectFile source, CodeUnitType kind, String packageName
             default -> { // FUNCTION or FIELD
                 // shortName is "ClassName.memberName" for FUNCTION/FIELD
                 int lastDot = shortName.lastIndexOf('.');
-                // Constructor validation ensures shortName contains '.' for FUNCTION/FIELD
-                assert lastDot > 0 : "shortName for FUNCTION/FIELD should contain a dot: " + shortName;
+                assert lastDot != 0;
+                if (lastDot < 0) {
+                    yield Optional.empty();
+                }
 
                 // Extract the class name part from the shortName
                 String className = shortName.substring(0, lastDot); // e.g., "MyClass" or "Outer$Inner"
-
-                // Use the existing packageName field and the extracted className
                 yield Optional.of(cls(source, packageName, className));
             }
         };
