@@ -737,7 +737,7 @@ public class ContextPanel extends JPanel {
      * Checks if analyzer is ready for operations, shows error message if not.
      */
     private boolean isAnalyzerReady() {
-        var analyzer = contextManager.getProject().getAnalyzerWrapper().getNonBlocking();
+        var analyzer = contextManager.getAnalyzerWrapper().getNonBlocking();
         if (analyzer == null) {
             chrome.systemOutput("Code Intelligence is still being built. Please wait until completion.");
             return false;
@@ -755,7 +755,7 @@ public class ContextPanel extends JPanel {
 
         contextManager.submitContextTask("Find Symbol Usage", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
+                var analyzer = contextManager.getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
                     chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
@@ -784,7 +784,7 @@ public class ContextPanel extends JPanel {
 
         contextManager.submitContextTask("Find Method Callers", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
+                var analyzer = contextManager.getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
                     chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
@@ -814,7 +814,7 @@ public class ContextPanel extends JPanel {
 
         contextManager.submitContextTask("Find Method Callees", () -> {
             try {
-                var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
+                var analyzer = contextManager.getAnalyzerUninterrupted();
                 if (analyzer.isEmpty()) {
                     chrome.toolErrorRaw("Code Intelligence is empty; nothing to add");
                     return;
@@ -838,7 +838,7 @@ public class ContextPanel extends JPanel {
      * Show the symbol selection dialog with a type filter
      */
     private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter) {
-        var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
+        var analyzer = contextManager.getAnalyzerUninterrupted();
         var dialogRef = new AtomicReference<SymbolSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
             var dialog = new SymbolSelectionDialog(chrome.getFrame(), analyzer, title, typeFilter);
@@ -862,7 +862,7 @@ public class ContextPanel extends JPanel {
      * Show the call graph dialog for configuring method and depth
      */
     private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph) {
-        var analyzer = contextManager.getProject().getAnalyzerUninterrupted();
+        var analyzer = contextManager.getAnalyzerUninterrupted();
         var dialogRef = new AtomicReference<CallGraphDialog>();
         SwingUtil.runOnEDT(() -> {
             var dialog = new CallGraphDialog(chrome.getFrame(), analyzer, title, isCallerGraph);
@@ -1183,7 +1183,7 @@ public class ContextPanel extends JPanel {
                     selectedFiles.add(ppf.file());
                 } else {
                     // Otherwise, add the sources (which should be classes/symbols)
-                    selectedClasses.addAll(frag.sources(project));
+                    selectedClasses.addAll(frag.sources(contextManager.getAnalyzerUninterrupted()));
                 }
             }
         }
@@ -1240,10 +1240,10 @@ public class ContextPanel extends JPanel {
     private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Future<Set<ProjectFile>> projectCompletionsFuture, Set<SelectionMode> modes) {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
         SwingUtil.runOnEDT(() -> {
-            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager.getProject(), title, allowExternalFiles, projectCompletionsFuture, modes); 
+            var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager, title, allowExternalFiles, projectCompletionsFuture, modes);
             // Use dialog's preferred size after packing, potentially adjust width
             dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));
-            dialog.setLocationRelativeTo(chrome.getFrame()); 
+            dialog.setLocationRelativeTo(chrome.getFrame());
             dialog.setVisible(true);
             dialogRef.set(dialog);
         });

@@ -12,9 +12,6 @@ import java.util.List;
 import java.util.Set;
 
 public interface IProject {
-    default IAnalyzer getAnalyzer() throws InterruptedException {
-        return new DisabledAnalyzer();
-    }
 
     default IGitRepo getRepo() {
         return Set::of;
@@ -45,15 +42,6 @@ public interface IProject {
      */
     default BuildAgent.BuildDetails getBuildDetails() {
         return BuildAgent.BuildDetails.EMPTY; // Default implementation returns empty
-    }
-
-    /** for when you're confident the thread should never be interrupted */
-    default IAnalyzer getAnalyzerUninterrupted() {
-        try {
-            return getAnalyzer();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     default Project.DataRetentionPolicy getDataRetentionPolicy() {

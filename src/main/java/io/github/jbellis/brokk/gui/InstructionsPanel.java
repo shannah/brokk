@@ -1092,9 +1092,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void executeCodeCommand(StreamingChatLanguageModel model, String input) {
         var contextManager = chrome.getContextManager();
-        var project = contextManager.getProject();
 
-        project.pauseAnalyzerRebuilds();
+        contextManager.getAnalyzerWrapper().pause();
         try {
             var result = new CodeAgent(contextManager, model).runSession(input, false);
             if (result.stopDetails().reason() == SessionResult.StopReason.INTERRUPTED) {
@@ -1111,7 +1110,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 contextManager.addToHistory(result, false);
             }
         } finally {
-            project.resumeAnalyzerRebuilds();
+            contextManager.getAnalyzerWrapper().resume();
         }
     }
 

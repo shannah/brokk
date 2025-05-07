@@ -84,7 +84,7 @@ public interface ContextFragment extends Serializable {
     /**
      * code sources found in this fragment
      */
-    Set<CodeUnit> sources(IProject project);
+    Set<CodeUnit> sources(IAnalyzer analyzer);
 
     /**
      * Returns all repo files referenced by this fragment.
@@ -193,8 +193,8 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
-            return project.getAnalyzerUninterrupted().getClassesInFile(file);
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
+            return analyzer.getClassesInFile(file);
         }
 
         @Override
@@ -236,7 +236,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             // Treat historical content as potentially different from current; don't claim sources
             return Set.of();
         }
@@ -290,7 +290,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return Set.of();
         }
 
@@ -331,7 +331,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String text() {
-            // return this text to support ContextMenu Fragment > Copy
+            // return this text tu support ContextMenu Fragment > Copy
             return "[Image content provided out of band]";
         }
 
@@ -341,7 +341,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return Set.of();
         }
 
@@ -421,10 +421,8 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
-            return files(project).stream()
-                    .flatMap(f -> project.getAnalyzerUninterrupted().getClassesInFile(f).stream())
-                    .collect(java.util.stream.Collectors.toSet());
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
+            return Set.of();
         }
 
         @Override
@@ -505,7 +503,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return sources;
         }
 
@@ -711,7 +709,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return sources;
         }
 
@@ -766,7 +764,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return classes;
         }
 
@@ -798,7 +796,6 @@ public interface ContextFragment extends Serializable {
             assert type != null;
             assert targetIdentifier != null;
             assert classes != null;
-            assert code != null;
             this.type = type;
             this.targetIdentifier = targetIdentifier;
             this.classes = classes;
@@ -811,7 +808,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return classes;
         }
 
@@ -887,7 +884,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return nonDummy();
         }
 
@@ -984,7 +981,7 @@ public interface ContextFragment extends Serializable {
         }
 
         @Override
-        public Set<CodeUnit> sources(IProject project) {
+        public Set<CodeUnit> sources(IAnalyzer analyzer) {
             return Set.of();
         }
 

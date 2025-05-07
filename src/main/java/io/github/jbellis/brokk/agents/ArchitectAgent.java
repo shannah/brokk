@@ -220,7 +220,7 @@ public class ArchitectAgent {
             return result.stopDetails().toString();
         }
 
-        var relevantClasses = result.output().sources(contextManager.getProject()).stream()
+        var relevantClasses = result.output().sources(contextManager.getAnalyzer()).stream()
                 .map(CodeUnit::fqName)
                 .collect(Collectors.joining(","));
         var stringResult = """

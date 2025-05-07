@@ -24,7 +24,6 @@ public final class TreeSitterAnalyzerTest {
     final static class TestProject implements IProject {
         private final Path root;
         private final io.github.jbellis.brokk.analyzer.Language language; // Use Brokk's Language enum
-        private IAnalyzer analyzer;      // lazy-initialised
 
         TestProject(Path root, io.github.jbellis.brokk.analyzer.Language language) {
             this.root     = root;
@@ -39,21 +38,6 @@ public final class TreeSitterAnalyzerTest {
         @Override
         public Path getRoot() {
             return root;
-        }
-
-        @Override
-        public synchronized IAnalyzer getAnalyzer() {
-            if (analyzer == null) {
-                analyzer = switch (language) { // Use Brokk's Language enum
-                    case PYTHON -> new PythonAnalyzer(this);
-                    case C_SHARP -> new CSharpAnalyzer(this);
-                    case JAVASCRIPT -> new JavascriptAnalyzer(this);
-                    // add more languages as needed
-                    default      -> throw new IllegalArgumentException(
-                            "No TreeSitterAnalyzer registered for: " + language);
-                };
-            }
-            return analyzer;
         }
 
         @Override
@@ -75,11 +59,6 @@ public final class TreeSitterAnalyzerTest {
                 return Collections.emptySet();
             }
         }
-
-        @Override
-        public IAnalyzer getAnalyzerUninterrupted() {
-            return getAnalyzer();
-        }
     }
 
     /** Creates a TestProject rooted under src/test/resources/{subDir}. */
@@ -95,7 +74,7 @@ public final class TreeSitterAnalyzerTest {
     @Test
     void testPythonInitializationAndSkeletons() {
         TestProject project = createTestProject("testcode-py", io.github.jbellis.brokk.analyzer.Language.PYTHON); // Use Brokk's Language enum
-        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        IAnalyzer ana = new PythonAnalyzer(project);
         assertInstanceOf(PythonAnalyzer.class, ana);
         PythonAnalyzer analyzer = (PythonAnalyzer) ana; // Cast to PythonAnalyzer
         assertFalse(analyzer.isEmpty(), "Analyzer should have processed Python files");
@@ -150,7 +129,7 @@ public final class TreeSitterAnalyzerTest {
     @Test
     void testPythonTopLevelVariables() {
         TestProject project = createTestProject("testcode-py", io.github.jbellis.brokk.analyzer.Language.PYTHON);
-        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        IAnalyzer ana = new PythonAnalyzer(project);
         assertInstanceOf(PythonAnalyzer.class, ana);
         PythonAnalyzer analyzer = (PythonAnalyzer) ana;
 
@@ -188,7 +167,7 @@ public final class TreeSitterAnalyzerTest {
     @Test
     void testCSharpInitializationAndSkeletons() {
         TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP);
-        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        IAnalyzer ana = new CSharpAnalyzer(project);
         assertInstanceOf(CSharpAnalyzer.class, ana);
 
         CSharpAnalyzer analyzer = (CSharpAnalyzer) ana;
@@ -236,7 +215,7 @@ public final class TreeSitterAnalyzerTest {
     @Test
     void testCSharpMixedScopesAndNestedNamespaces() {
         TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP);
-        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        IAnalyzer ana = new CSharpAnalyzer(project);
         assertInstanceOf(CSharpAnalyzer.class, ana);
         CSharpAnalyzer analyzer = (CSharpAnalyzer) ana;
 
@@ -283,7 +262,7 @@ public final class TreeSitterAnalyzerTest {
     @Test
     void testJavascriptJsxSkeletons() {
         TestProject project = createTestProject("testcode-js", io.github.jbellis.brokk.analyzer.Language.JAVASCRIPT);
-        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        IAnalyzer ana = new JavascriptAnalyzer(project);
         assertInstanceOf(JavascriptAnalyzer.class, ana);
 
         JavascriptAnalyzer analyzer = (JavascriptAnalyzer) ana;
@@ -356,7 +335,7 @@ public final class TreeSitterAnalyzerTest {
     @Test
     void testJavascriptTopLevelVariables() {
         TestProject project = createTestProject("testcode-js", io.github.jbellis.brokk.analyzer.Language.JAVASCRIPT);
-        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        IAnalyzer ana = new JavascriptAnalyzer(project);
         assertInstanceOf(JavascriptAnalyzer.class, ana);
         JavascriptAnalyzer analyzer = (JavascriptAnalyzer) ana;
 

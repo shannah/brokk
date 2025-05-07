@@ -271,21 +271,20 @@ public class Context implements Serializable {
         analyzer = contextManager.getAnalyzerUninterrupted();
 
         // Collect ineligible classnames from fragments not eligible for auto-context
-        var project = contextManager.getProject();
         var ineligibleSources = Streams.concat(editableFiles.stream(), readonlyFiles.stream(), virtualFragments.stream())
                 .filter(f -> !f.isEligibleForAutoContext())
-                .flatMap(f -> f.sources(project).stream())
+                .flatMap(f -> f.sources(analyzer).stream())
                 .collect(Collectors.toSet());
 
         // Collect initial seeds
         var weightedSeeds = new HashMap<String, Double>();
         // editable files have a weight of 1.0, each
-        editableFiles.stream().flatMap(f -> f.sources(project).stream()).forEach(unit -> {
+        editableFiles.stream().flatMap(f -> f.sources(analyzer).stream()).forEach(unit -> {
             weightedSeeds.put(unit.fqName(), 1.0);
         });
         // everything else splits a weight of 1.0
         Streams.concat(readonlyFiles.stream(), virtualFragments.stream())
-                .flatMap(f -> f.sources(project).stream())
+                .flatMap(f -> f.sources(analyzer).stream())
                 .forEach(unit ->
                          {
                              weightedSeeds.merge(unit.fqName(), 1.0 / (readonlyFiles.size() + virtualFragments.size()), Double::sum);

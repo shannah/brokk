@@ -80,7 +80,7 @@ public class SearchAgent {
     {
         this.query = query;
         this.contextManager = contextManager;
-        this.analyzer = contextManager.getProject().getAnalyzer();
+        this.analyzer = contextManager.getAnalyzer();
         this.ordinal = ordinal;
         this.llm = contextManager.getLlm(model, "Search: " + query);
         this.io = contextManager.getIo();
@@ -213,7 +213,7 @@ public class SearchAgent {
                     %s
                     </fragment>
                     """.stripIndent().formatted(f.description(),
-                                                (f.sources(contextManager.getProject()).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
+                                                (f.sources(analyzer).stream().map(CodeUnit::fqName).collect(Collectors.joining(", "))),
                                                 text);
         }).filter(Objects::nonNull).collect(Collectors.joining("\n\n"));
         if (!contextWithClasses.isBlank()) {

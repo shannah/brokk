@@ -39,7 +39,7 @@ public class ArchitectOptionsDialog {
         // Use invokeAndWait to run the dialog logic on the EDT and wait for completion
         SwingUtil.runOnEDT(() -> {
             // Initial checks must happen *inside* the EDT task now
-            var isCpg = contextManager.getProject().getAnalyzerWrapper().isCpg();
+            var isCpg = contextManager.getAnalyzerWrapper().isCpg();
             // Use last options as default for this session
             var currentOptions = lastArchitectOptions;
 

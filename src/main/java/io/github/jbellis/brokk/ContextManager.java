@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.BuildInfo;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextHistory.UndoResult;
@@ -53,6 +52,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
     private Chrome io; // for UI feedback - Initialized in resolveCircularReferences
+    private AnalyzerWrapper analyzerWrapper;
+
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
@@ -196,7 +197,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 io.updateCommitPanel();
             }
         };
-        this.project = new Project(root, this::submitBackgroundTask, analyzerListener);
+        this.project = new Project(root); // Removed unused parameters
+        // Instantiate AnalyzerWrapper here
+        this.analyzerWrapper = new AnalyzerWrapper(project, this::submitBackgroundTask, analyzerListener);
         this.models.reinit(project);
         this.toolRegistry = new ToolRegistry(this);
         // Register standard tools
@@ -318,6 +321,21 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public ProjectFile toFile(String relName)
     {
         return new ProjectFile(root, relName);
+    }
+
+    @Override
+    public AnalyzerWrapper getAnalyzerWrapper() {
+        return analyzerWrapper;
+    }
+
+    @Override
+    public IAnalyzer getAnalyzer() throws InterruptedException {
+        return analyzerWrapper.get();
+    }
+
+    @Override
+    public IAnalyzer getAnalyzerUninterrupted() {
+        return analyzerWrapper.getNonBlocking();
     }
 
     /**
@@ -563,10 +581,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * request code-intel rebuild
      */
+    @Override
     public void requestRebuild()
     {
         project.getRepo().refresh();
-        project.rebuildAnalyzer();
+        analyzerWrapper.requestRebuild();
     }
 
     /**
@@ -986,6 +1005,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         contextActionExecutor.shutdown();
         backgroundTasks.shutdown();
         project.close();
+        analyzerWrapper.close();
     }
 
     /**
@@ -1073,7 +1093,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // optional: related classes
         String topClassesText = "";
-        if (includeRelatedClasses && getProject().getAnalyzerWrapper().isCpg()) {
+        if (includeRelatedClasses && getAnalyzerWrapper().isCpg()) {
             var ac = topContext().buildAutoContext(10);
             String topClassesRaw = ac.text();
             if (!topClassesRaw.isBlank()) {
@@ -1463,7 +1483,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.systemOutput("Generating project style guide...");
-                var analyzer = project.getAnalyzerUninterrupted();
+                var analyzer = getAnalyzerUninterrupted();
                 // Use a reasonable limit for style guide generation context
                 var topClasses = AnalyzerUtil.combinedPagerankFor(analyzer, Map.of()).stream().limit(10).toList();
 

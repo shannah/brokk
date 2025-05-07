@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -235,18 +236,18 @@ public class VoiceInputButton extends JButton {
                     // If custom symbols weren't retrieved or were empty, fall back to context symbols
                     if (symbolsForTranscription == null) {
                         logger.debug("Falling back to context symbols for transcription.");
+                        var analyzer = contextManager.getAnalyzerUninterrupted();
                         var sources = contextManager.topContext().allFragments()
-                                .flatMap(f -> f.sources(contextManager.getProject()).stream())
+                                .flatMap(f -> f.sources(analyzer).stream())
                                 .collect(Collectors.toSet());
 
-                        var analyzer = contextManager.getAnalyzerUninterrupted();
                         if (analyzer != null) {
                              // Get full symbols first
                             var fullSymbols = analyzer.getSymbols(sources);
 
                             // Extract short names from sources and returned symbols
                             symbolsForTranscription = sources.stream()
-                                    .map(io.github.jbellis.brokk.analyzer.CodeUnit::shortName)
+                                    .map(CodeUnit::shortName)
                                     .collect(Collectors.toSet());
                             fullSymbols.stream()
                                     .map(s -> {

@@ -72,9 +72,19 @@ public interface IContextManager {
         // no-op
     }
 
-    default IAnalyzer getAnalyzer() throws InterruptedException {
-        return getProject().getAnalyzer();
+    default AnalyzerWrapper getAnalyzerWrapper() {
+        throw new UnsupportedOperationException();
     }
+
+    default IAnalyzer getAnalyzer() throws InterruptedException {
+        throw new UnsupportedOperationException();
+    }
+
+    default IAnalyzer getAnalyzerUninterrupted() {
+        throw new UnsupportedOperationException();
+    }
+
+    default void requestRebuild() {}
 
     default IGitRepo getRepo() {
         return getProject().getRepo();
@@ -102,9 +112,5 @@ public interface IContextManager {
 
     default Llm getLlm(StreamingChatLanguageModel model, String taskDescription) {
         return new Llm(model, taskDescription, this);
-    }
-
-    default IAnalyzer getAnalyzerUninterrupted() {
-        return getProject().getAnalyzerUninterrupted();
     }
 }

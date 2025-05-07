@@ -29,7 +29,6 @@ public class Project implements IProject, AutoCloseable {
     private final Properties projectProps;
     private final Properties workspaceProps;
     private final Path styleGuidePath;
-    private final AnalyzerWrapper analyzerWrapper;
     private final IGitRepo repo;
     private final Set<ProjectFile> dependencyFiles;
 
@@ -91,7 +90,7 @@ public class Project implements IProject, AutoCloseable {
     public static final String BROKK_PROXY_URL = "https://proxy.brokk.ai";
     public static final String LOCALHOST_PROXY_URL = "http://localhost:4000";
 
-    public Project(Path root, ContextManager.TaskRunner runner, AnalyzerListener analyzerListener) {
+    public Project(Path root) {
         this.repo = GitRepo.hasGitRepo(root) ? new GitRepo(root) : new LocalFileRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
@@ -120,9 +119,6 @@ public class Project implements IProject, AutoCloseable {
                 workspaceProps.clear();
             }
         }
-
-        // Create the analyzer wrapper
-        this.analyzerWrapper = new AnalyzerWrapper(this, runner, analyzerListener);
     }
 
     // --- Static methods for global properties ---
@@ -487,8 +483,7 @@ public class Project implements IProject, AutoCloseable {
             projectProps.setProperty("code_intelligence_language", language.name()); // Store the enum name
         }
         saveProjectProperties();
-        // Request analyzer rebuild if language changes, as it affects CPG generation
-        analyzerWrapper.requestRebuild();
+        // Request for analyzer rebuild is now handled by ContextManager after this call
     }
 
 
@@ -577,18 +572,6 @@ public class Project implements IProject, AutoCloseable {
 
     public boolean hasGit() {
         return repo instanceof GitRepo;
-    }
-
-    public void pauseAnalyzerRebuilds() {
-        analyzerWrapper.pause();
-    }
-
-    public void resumeAnalyzerRebuilds() {
-        analyzerWrapper.resume();
-    }
-
-    public AnalyzerWrapper getAnalyzerWrapper() {
-        return analyzerWrapper;
     }
 
     public enum CpgRefresh {
@@ -1066,10 +1049,6 @@ public class Project implements IProject, AutoCloseable {
         saveGlobalProperties(props);
     }
 
-    public void rebuildAnalyzer() {
-        analyzerWrapper.requestRebuild();
-    }
-
     /**
      * Checks configured models against available ones and temporarily overrides missing ones in memory.
      * Does NOT save the changes to disk.
@@ -1122,14 +1101,6 @@ public class Project implements IProject, AutoCloseable {
             logger.debug("{} model set to '{}' in memory. Reason: {}.", key, modelToUse, reason);
         }
         return warnings;
-    }
-
-    /**
-     * Gets the analyzer, blocking if necessary while it's being built
-     */
-    @Override
-    public IAnalyzer getAnalyzer() throws InterruptedException {
-        return analyzerWrapper.get();
     }
 
     /**
@@ -1399,6 +1370,6 @@ public class Project implements IProject, AutoCloseable {
 
     @Override
     public void close() {
-        analyzerWrapper.close();
+        // analyzerWrapper is now closed by ContextManager
     }
 }

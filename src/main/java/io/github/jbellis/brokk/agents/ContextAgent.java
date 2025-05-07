@@ -305,7 +305,7 @@ public class ContextAgent {
         Map<CodeUnit, String> rawSummaries;
         // If the workspace isn't empty, use pagerank candidates for Quick context
         var ctx = contextManager.topContext();
-        var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources(contextManager.getProject()).stream()).findAny().isPresent();
+        var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources(analyzer).stream()).findAny().isPresent();
         if (codeInWorkspace && !deepScan) {
             var ac = contextManager.topContext().buildAutoContext(50);
             debug("Non-empty context; using pagerank candidates {}",
