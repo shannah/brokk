@@ -7,15 +7,19 @@ import org.treesitter.TSLanguage;
 import org.treesitter.TSNode;
 import org.treesitter.TreeSitterCSharp;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.Collections;
 import java.util.Set;
 
 public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(CSharpAnalyzer.class);
 
+    public CSharpAnalyzer(IProject project, Set<String> excludedFiles) {
+        super(project, excludedFiles);
+        log.debug("CSharpAnalyzer: Constructor called for project: {} with {} excluded files", project, excludedFiles.size());
+    }
+
     public CSharpAnalyzer(IProject project) {
-        super(project);
+        this(project, Collections.emptySet());
         log.debug("CSharpAnalyzer: Constructor called for project: {}", project);
     }
 

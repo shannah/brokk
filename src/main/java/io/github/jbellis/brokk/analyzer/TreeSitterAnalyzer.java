@@ -34,14 +34,31 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     final Map<CodeUnit, List<CodeUnit>> childrenByParent = new ConcurrentHashMap<>(); // package-private for testing
     final Map<CodeUnit, String> signatures = new ConcurrentHashMap<>(); // package-private for testing
     private final IProject project;
+    protected final Set<String> normalizedExcludedFiles;
+
 
     private record FileAnalysisResult(List<CodeUnit> topLevelCUs, Map<CodeUnit, List<CodeUnit>> children, Map<CodeUnit, String> signatures) {}
 
     /* ---------- constructor ---------- */
-    protected TreeSitterAnalyzer(IProject project) {
+    protected TreeSitterAnalyzer(IProject project, Set<String> excludedFiles) {
         this.project = project;
         this.tsLanguage = getTSLanguage(); // Provided by subclass
         Objects.requireNonNull(tsLanguage, "Tree-sitter TSLanguage must not be null");
+
+        this.normalizedExcludedFiles = (excludedFiles != null ? excludedFiles : Collections.<String>emptySet())
+                .stream()
+                .map(p -> {
+                    Path path = Path.of(p);
+                    if (path.isAbsolute()) {
+                        return path.normalize().toString();
+                    } else {
+                        return project.getRoot().resolve(p).toAbsolutePath().normalize().toString();
+                    }
+                })
+                .collect(Collectors.toSet());
+        if (!this.normalizedExcludedFiles.isEmpty()) {
+            log.debug("Normalized excluded files: {}", this.normalizedExcludedFiles);
+        }
 
         String rawQueryString = loadResource(getQueryResource());
         this.query = new TSQuery(tsLanguage, rawQueryString);
@@ -57,6 +74,10 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         project.getAllFiles().stream()
                 .filter(pf -> {
                     var pathStr = pf.absPath().toString();
+                    if (this.normalizedExcludedFiles.contains(pathStr)) {
+                        log.debug("Skipping excluded file: {}", pf);
+                        return false;
+                    }
                     return validExtensions.stream().anyMatch(pathStr::endsWith);
                 })
                 .parallel()
@@ -106,6 +127,10 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                         log.warn("Error analyzing {}: {}", pf, e, e);
                     }
                 });
+    }
+
+    protected TreeSitterAnalyzer(IProject project) {
+        this(project, Collections.emptySet());
     }
 
     /* ---------- IAnalyzer ---------- */

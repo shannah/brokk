@@ -4,7 +4,6 @@ import flatgraph.storage.Serialization
 import io.github.jbellis.brokk.*
 import org.slf4j.LoggerFactory
 import io.joern.dataflowengineoss.layers.dataflows.OssDataFlow
-import io.joern.javasrc2cpg.{Config, JavaSrc2Cpg}
 import io.joern.joerncli.CpgBasedTool
 import io.joern.x2cpg.{ValidationMode, X2Cpg}
 import io.shiftleft.codepropertygraph.generated.Cpg

@@ -51,6 +51,9 @@ public class SettingsDialog extends JDialog {
     private JTextArea styleGuideArea;
     private JTextArea commitFormatArea;
     private JComboBox<io.github.jbellis.brokk.analyzer.Language> languageComboBox; // Project language selector
+    // Project -> Build tab specific fields
+    private JList<String> excludedDirectoriesList;
+    private DefaultListModel<String> excludedDirectoriesListModel;
 
 
     public SettingsDialog(Frame owner, Chrome chrome) {
@@ -354,12 +357,79 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 1;
         gbc.gridy = row;
         gbc.weightx = 1.0;
+        gbc.weighty = 0.7; // Give more weight to instructions
         gbc.fill = GridBagConstraints.BOTH;
         buildPanel.add(instructionsScrollPane, gbc);
+        row++; // Move to the next conceptual row
+
+        // Excluded Directories
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.weighty = 0.0; // Label doesn't take vertical space
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+        gbc.fill = GridBagConstraints.NONE;
+        buildPanel.add(new JLabel("Excluded Directories:"), gbc);
+
+        excludedDirectoriesListModel = new DefaultListModel<>();
+        if (details != null && details.excludedDirectories() != null) {
+            for (String dir : details.excludedDirectories()) {
+                excludedDirectoriesListModel.addElement(dir);
+            }
+        }
+        excludedDirectoriesList = new JList<>(excludedDirectoriesListModel);
+        var excludedScrollPane = new JScrollPane(excludedDirectoriesList);
+        excludedScrollPane.setPreferredSize(new Dimension(200, 80)); // Initial preferred size
+
+        gbc.gridx = 1;
+        gbc.gridy = row;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.3; // Takes less vertical space than instructions
+        gbc.fill = GridBagConstraints.BOTH;
+        buildPanel.add(excludedScrollPane, gbc);
+
+        // Buttons for Excluded Directories
+        var excludedButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        var addButton = new JButton("Add");
+        var removeButton = new JButton("Remove");
+        excludedButtonsPanel.add(addButton);
+        excludedButtonsPanel.add(removeButton);
+
+        gbc.gridx = 1;
+        gbc.gridy = row + 1; // Position buttons below the list
+        gbc.weightx = 0.0;
+        gbc.weighty = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.NORTHWEST; // Align to the top-left of the cell
+        gbc.insets = new Insets(2, 0, 2, 2); // Small top margin, align with list's left edge
+        buildPanel.add(excludedButtonsPanel, gbc);
+        gbc.insets = new Insets(2, 2, 2, 2); // Reset insets
+
+        // Add button action
+        addButton.addActionListener(e -> {
+            String newDir = JOptionPane.showInputDialog(SettingsDialog.this,
+                                                          "Enter directory to exclude (e.g., target/, build/):",
+                                                          "Add Excluded Directory",
+                                                          JOptionPane.PLAIN_MESSAGE);
+            if (newDir != null && !newDir.trim().isEmpty()) {
+                excludedDirectoriesListModel.addElement(newDir.trim());
+            }
+        });
+
+        // Remove button action
+        removeButton.addActionListener(e -> {
+            int[] selectedIndices = excludedDirectoriesList.getSelectedIndices();
+            // Iterate backwards to avoid issues with index shifting after removal
+            for (int i = selectedIndices.length - 1; i >= 0; i--) {
+                excludedDirectoriesListModel.removeElementAt(selectedIndices[i]);
+            }
+        });
+
+        row += 2; // Increment row counter, consumed one for list, one for buttons panel
 
         // Add vertical glue to push components to the top
         gbc.gridx = 0;
-        gbc.gridy = ++row; // Move to next row
+        gbc.gridy = row; // Use the updated row
         gbc.gridwidth = 2; // Span across both columns
         gbc.weighty = 1.0; // Take up remaining vertical space
         gbc.fill = GridBagConstraints.VERTICAL;
@@ -897,8 +967,21 @@ public class SettingsDialog extends JDialog {
             var newTestAll = allTestsCommandField.getText();
             var newInstructions = buildInstructionsArea.getText();
 
+            // Create a list from the DefaultListModel for excluded directories
+            java.util.List<String> newExcludedDirs = new java.util.ArrayList<>();
+            if (excludedDirectoriesListModel != null) { // Check if initialized (project open)
+                for (int i = 0; i < excludedDirectoriesListModel.getSize(); i++) {
+                    newExcludedDirs.add(excludedDirectoriesListModel.getElementAt(i));
+                }
+            }
+
             // Create a new BuildDetails record with updated fields
-            var newDetails = new BuildAgent.BuildDetails(currentDetails.buildfiles().isEmpty() ? java.util.List.of() : currentDetails.buildfiles(), currentDetails.dependencies(), newBuildLint, newTestAll, newInstructions);
+            var newDetails = new BuildAgent.BuildDetails(currentDetails.buildfiles(),
+                                                        currentDetails.dependencies(),
+                                                        newBuildLint,
+                                                        newTestAll,
+                                                        newInstructions,
+                                                        newExcludedDirs); // Use the new list from JList
 
             logger.debug("Applying Build Details: {}", newDetails);
 

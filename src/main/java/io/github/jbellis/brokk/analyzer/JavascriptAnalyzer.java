@@ -7,10 +7,12 @@ import org.treesitter.TreeSitterJavascript;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collections;
 import java.util.Set;
 
 public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
-    public JavascriptAnalyzer(IProject project) { super(project); }
+    public JavascriptAnalyzer(IProject project, Set<String> excludedFiles) { super(project, excludedFiles); }
+    public JavascriptAnalyzer(IProject project) { this(project, Collections.emptySet()); }
 
     @Override protected TSLanguage getTSLanguage() { return new TreeSitterJavascript(); }
 

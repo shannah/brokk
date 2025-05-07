@@ -25,10 +25,17 @@ class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
   def this(sourcePath: Path, preloadedPath: Path) =
     this(sourcePath, CpgBasedTool.loadFromFile(preloadedPath.toString))
 
-  def this(sourcePath: Path) =
-    this(sourcePath, JavaAnalyzer.createNewCpgForSource(sourcePath))
+  def this(sourcePath: Path, excludedFiles: java.util.Set[String]) =
+    this(sourcePath, JavaAnalyzer.createNewCpgForSource(sourcePath, excludedFiles))
 
-  def this(sourcePath: Path, language: Language) = this(sourcePath)
+  def this(sourcePath: Path) =
+    this(sourcePath, java.util.Collections.emptySet[String]())
+
+  def this(sourcePath: Path, language: Language, excludedFiles: java.util.Set[String]) =
+    this(sourcePath, excludedFiles) // Assuming language doesn't change CPG creation regarding exclusion
+
+  def this(sourcePath: Path, language: Language) =
+    this(sourcePath, language, java.util.Collections.emptySet[String]())
 
   def this(sourcePath: Path, preloadedPath: Path, language: Language) =
     this(sourcePath, preloadedPath)
@@ -297,14 +304,18 @@ class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
 }
 
 object JavaAnalyzer {
-  private def createNewCpgForSource(sourcePath: Path): Cpg = {
+  import scala.jdk.CollectionConverters.*
+
+  private def createNewCpgForSource(sourcePath: Path, excludedFiles: java.util.Set[String]): Cpg = {
     val absPath = sourcePath.toAbsolutePath.toRealPath()
     require(absPath.toFile.isDirectory, s"Source path must be a directory: $absPath")
 
     // Build the CPG
+    val scalaExcludedFiles = excludedFiles.asScala.toSeq
     val config = Config()
       .withInputPath(absPath.toString)
       .withEnableTypeRecovery(true)
+      .withIgnoredFiles(scalaExcludedFiles)
 
     val newCpg = JavaSrc2Cpg().createCpg(config).getOrElse {
       throw new IOException("Failed to create Java CPG")

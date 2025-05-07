@@ -7,14 +7,17 @@ import org.treesitter.TreeSitterPython;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Optional;
+import java.util.Collections;
 import java.util.Set;
 
 public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
+    public PythonAnalyzer(IProject project, Set<String> excludedFiles) {
+        super(project, excludedFiles);
+    }
+
     public PythonAnalyzer(IProject project) {
-        super(project);
+        this(project, Collections.emptySet());
     }
 
     @Override

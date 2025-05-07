@@ -10,13 +10,21 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.Llm;
+import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.BuildToolConventions;
+import io.github.jbellis.brokk.util.BuildToolConventions.BuildSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * An agent that iteratively explores a codebase using specific tools
@@ -24,19 +32,22 @@ import java.util.List;
  */
 public class BuildAgent {
     private static final Logger logger = LogManager.getLogger(BuildAgent.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final Llm llm;
     private final ToolRegistry toolRegistry;
 
     // Use standard ChatMessage history
     private final List<ChatMessage> chatHistory = new ArrayList<>();
+    private final Project project;
     // Field to store the result from the reportBuildDetails tool
     private BuildDetails reportedDetails = null;
     // Field to store the reason from the abortBuildDetails tool
     private String abortReason = null;
+    // Field to store directories to exclude from code intelligence
+    private List<String> currentExcludedDirectories = new ArrayList<>();
 
-    public BuildAgent(Llm llm, ToolRegistry toolRegistry) {
+    public BuildAgent(Project project, Llm llm, ToolRegistry toolRegistry) {
+        this.project = project;
         assert llm != null : "coder cannot be null";
         assert toolRegistry != null : "toolRegistry cannot be null";
         this.llm = llm;
@@ -61,12 +72,41 @@ public class BuildAgent {
         chatHistory.add(initialResultMessage);
         logger.trace("Initial tool result added to history: {}", initialResultMessage.text());
 
+        // Determine build system and set initial excluded directories
+        var files = project.getAllFiles().stream().parallel()
+                .filter(f -> f.getParent().equals(Path.of("")))
+                .map(ProjectFile::toString)
+                .toList();
+        BuildSystem detectedSystem = BuildToolConventions.determineBuildSystem(files);
+        this.currentExcludedDirectories = new ArrayList<>(BuildToolConventions.getDefaultExcludes(detectedSystem));
+        logger.info("Determined build system: {}. Initial excluded directories: {}", detectedSystem, this.currentExcludedDirectories);
+
+        // Add exclusions from .gitignore
+        var repo = project.getRepo();
+        if (repo instanceof GitRepo gitRepo) {
+            var ignoredPatterns = gitRepo.getIgnoredPatterns();
+            var addedFromGitignore = new ArrayList<String>();
+            for (var pattern : ignoredPatterns) {
+                var trimmedPattern = pattern.trim();
+                if (trimmedPattern.endsWith("/")) {
+                    this.currentExcludedDirectories.add(trimmedPattern);
+                    addedFromGitignore.add(trimmedPattern);
+                }
+            }
+            if (!addedFromGitignore.isEmpty()) {
+                logger.debug("Added the following directory patterns from .gitignore to excluded directories: {}", addedFromGitignore);
+            }
+
+        } else {
+            logger.debug("No .git directory found at project root. Skipping .gitignore processing for excluded directories.");
+        }
+
         // 2. Iteration Loop
         while (true) {
             // 3. Build Prompt
             List<ChatMessage> messages = buildPrompt();
 
-            // 4. Call LLM
+            // 4. Add tools
             // Get specifications for ALL tools the agent might use in this turn.
             var tools = new ArrayList<>(toolRegistry.getRegisteredTools(List.of("listFiles", "searchFilenames", "searchSubstrings", "getFileContents")));
             if (chatHistory.size() > 1) {
@@ -74,7 +114,7 @@ public class BuildAgent {
                 tools.addAll(toolRegistry.getTools(this, List.of("reportBuildDetails", "abortBuildDetails")));
             }
 
-            // Call the Coder to get the LLM's response, including potential tool calls
+            // Make the LLM request
             Llm.StreamingResult result;
             try {
                 result = llm.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
@@ -168,12 +208,18 @@ public class BuildAgent {
         // System Prompt
         messages.add(new SystemMessage("""
         You are an agent tasked with finding build information for the *development* environment of a software project.
-        Your goal is to identify dependencies, plugins, repositories, development profile details, key build commands (clean, compile/build, test all, test specific), how to invoke those commands correctly, and the main application entry point.
-        Focus *only* on details relevant to local development builds/profiles, explicitly ignoring production-specific configurations unless they are the only ones available.
+        Your goal is to identify dependencies, plugins,repositories, development profile details, key build commands 
+        (clean, compile/build, test all, test specific), how to invoke those commands correctly, and the main application entry point.
+        Focus *only* on details relevant to local development builds/profiles, explicitly ignoring production-specific 
+        configurations unless they are the only ones available.
 
         Use the tools to examine build files (like `pom.xml`, `build.gradle`, etc.), configuration files, and linting files.
         The information you gather will be handed off to agents that do not have access to these files, so
         make sure your instructions are comprehensive.
+
+        A baseline set of excluded directories has been established from build conventions and .gitignore. 
+        When you use `reportBuildDetails`, the `excludedDirectories` parameter should contain *additional* directories 
+        you identify that should be excluded from code intelligence, beyond this baseline.
         
         Remember to request the `reportBuildDetails` tool to finalize the process ONLY once all information is collected.
         """.stripIndent()));
@@ -198,11 +244,18 @@ public class BuildAgent {
                 and any idiosyncracies observed. Include information on how to run other test configurations, especially 
                 individual tests but also at other levels e.g. package or namespace;
                 also include information on other pre-commit tools like code formatters or static analysis tools.
-                     """) String instructions
+                     """) String instructions,
+            @P("List of directories to exclude from code intelligence (e.g., generated code, build artifacts)") List<String> excludedDirectories
         ) {
-            // Construct the BuildDetails object from the parameters and store it in the agent's field
-            this.reportedDetails = new BuildDetails(buildfiles, dependencies, buildLintCommand, testAllCommand, instructions);
-            logger.debug("reportBuildDetails tool executed, details captured.");
+            // Combine baseline excluded directories with those suggested by the LLM
+            var finalExcludes = Stream.concat(this.currentExcludedDirectories.stream(), excludedDirectories.stream())
+                                      .map(String::trim)
+                                      .filter(s -> !s.isEmpty())
+                                      .distinct()
+                                      .collect(Collectors.toList());
+
+            this.reportedDetails = new BuildDetails(buildfiles, dependencies, buildLintCommand, testAllCommand, instructions, finalExcludes);
+            logger.debug("reportBuildDetails tool executed, details captured. Final excluded directories: {}", finalExcludes);
             return "Build details report received and processed.";
         }
 
@@ -222,8 +275,9 @@ public class BuildAgent {
             List<String> dependencies,
             String buildLintCommand,
             String testAllCommand,
-            String instructions
+            String instructions,
+            List<String> excludedDirectories
     ) {
-        public static final BuildDetails EMPTY = new BuildDetails(List.of(), List.of(), "", "", "");
+        public static final BuildDetails EMPTY = new BuildDetails(List.of(), List.of(), "", "", "", List.of());
     }
 }
