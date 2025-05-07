@@ -1,24 +1,15 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.Project.CpgRefresh;
-
+import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.*;
-import io.github.jbellis.brokk.analyzer.Language;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import java.awt.KeyboardFocusManager;
-
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
-
+import java.awt.*;
 import java.io.IOException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -49,9 +40,6 @@ public class AnalyzerWrapper implements AutoCloseable {
     private volatile boolean externalRebuildRequested = false;
     private volatile boolean rebuildPending = false;
 
-    /**
-     * Create a new orchestrator. (We assume the analyzer executor is provided externally.)
-     */
     public AnalyzerWrapper(Project project, ContextManager.TaskRunner runner, AnalyzerListener listener) {
         this.project = project;
         this.root = project.getRoot();
@@ -174,6 +162,12 @@ public class AnalyzerWrapper implements AutoCloseable {
             return new DisabledAnalyzer();
         }
 
+        BuildAgent.BuildDetails fetchedBuildDetails = project.awaitBuildDetails();
+        if (fetchedBuildDetails.equals(BuildAgent.BuildDetails.EMPTY)) {
+            // only log this once
+            logger.warn("Build details are empty or null. Analyzer functionality may be limited.");
+        }
+
         // FIXME
         Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
         if (project.getCpgRefresh() == CpgRefresh.UNSET) {
@@ -234,15 +228,16 @@ public class AnalyzerWrapper implements AutoCloseable {
     private IAnalyzer createAndSaveAnalyzer() {
         IAnalyzer newAnalyzer;
         logger.debug("Creating {} analyzer for {}", language, project.getRoot());
+        var excluded = project.awaitBuildDetails().excludedDirectories();
         if (language == Language.JAVA) {
-            newAnalyzer = new JavaAnalyzer(root);
+            newAnalyzer = new JavaAnalyzer(root, excluded);
             Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
             ((JavaAnalyzer) newAnalyzer).writeCpg(analyzerPath);
         } else {
             newAnalyzer = switch (language) {
-                case PYTHON -> new PythonAnalyzer(project);
-                case C_SHARP -> new CSharpAnalyzer(project);
-                case JAVASCRIPT -> new JavascriptAnalyzer(project);
+                case PYTHON -> new PythonAnalyzer(project, excluded);
+                case C_SHARP -> new CSharpAnalyzer(project, excluded);
+                case JAVASCRIPT -> new JavascriptAnalyzer(project, excluded);
                 default -> new DisabledAnalyzer();
             };
         }

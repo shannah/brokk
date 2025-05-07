@@ -18,6 +18,7 @@ import java.util.Arrays; // Import the Arrays class
 
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.HashSet;
 
 public class SettingsDialog extends JDialog {
     private static final Logger logger = LogManager.getLogger(SettingsDialog.class);
@@ -330,7 +331,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = row;
         gbc.weightx = 0.0;
         buildPanel.add(new JLabel("Build/Lint Command:"), gbc);
-        buildCleanCommandField.setText(details != null ? details.buildLintCommand() : ""); // Existing line
+        buildCleanCommandField.setText(details.buildLintCommand());
         gbc.gridx = 1;
         gbc.gridy = row++;
         gbc.weightx = 1.0;
@@ -341,7 +342,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = row;
         gbc.weightx = 0.0;
         buildPanel.add(new JLabel("Test All Command:"), gbc);
-        allTestsCommandField.setText(details != null ? details.testAllCommand() : ""); // Existing line
+        allTestsCommandField.setText(details.testAllCommand());
         gbc.gridx = 1;
         gbc.gridy = row++;
         gbc.weightx = 1.0;
@@ -353,11 +354,11 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 0.0;
         gbc.anchor = GridBagConstraints.NORTHWEST;
         buildPanel.add(new JLabel("Build Instructions:"), gbc);
-        buildInstructionsArea.setText(details != null ? details.instructions() : ""); // Set initial text
+        buildInstructionsArea.setText(details.instructions());
         gbc.gridx = 1;
         gbc.gridy = row;
         gbc.weightx = 1.0;
-        gbc.weighty = 0.7; // Give more weight to instructions
+        gbc.weighty = 0.5; // Share vertical space equally
         gbc.fill = GridBagConstraints.BOTH;
         buildPanel.add(instructionsScrollPane, gbc);
         row++; // Move to the next conceptual row
@@ -372,19 +373,18 @@ public class SettingsDialog extends JDialog {
         buildPanel.add(new JLabel("Excluded Directories:"), gbc);
 
         excludedDirectoriesListModel = new DefaultListModel<>();
-        if (details != null && details.excludedDirectories() != null) {
-            for (String dir : details.excludedDirectories()) {
-                excludedDirectoriesListModel.addElement(dir);
-            }
+        var sortedExcludedDirs = details.excludedDirectories().stream().sorted().toList();
+        for (String dir : sortedExcludedDirs) {
+            excludedDirectoriesListModel.addElement(dir);
         }
         excludedDirectoriesList = new JList<>(excludedDirectoriesListModel);
+        excludedDirectoriesList.setVisibleRowCount(7);
         var excludedScrollPane = new JScrollPane(excludedDirectoriesList);
-        excludedScrollPane.setPreferredSize(new Dimension(200, 80)); // Initial preferred size
 
         gbc.gridx = 1;
         gbc.gridy = row;
         gbc.weightx = 1.0;
-        gbc.weighty = 0.3; // Takes less vertical space than instructions
+        gbc.weighty = 0.5; // Share vertical space equally
         gbc.fill = GridBagConstraints.BOTH;
         buildPanel.add(excludedScrollPane, gbc);
 
@@ -412,7 +412,18 @@ public class SettingsDialog extends JDialog {
                                                           "Add Excluded Directory",
                                                           JOptionPane.PLAIN_MESSAGE);
             if (newDir != null && !newDir.trim().isEmpty()) {
-                excludedDirectoriesListModel.addElement(newDir.trim());
+                String trimmedNewDir = newDir.trim();
+                // Add and then re-sort the model
+                excludedDirectoriesListModel.addElement(trimmedNewDir);
+                var elements = new java.util.ArrayList<String>();
+                for (int i = 0; i < excludedDirectoriesListModel.getSize(); i++) {
+                    elements.add(excludedDirectoriesListModel.getElementAt(i));
+                }
+                elements.sort(String::compareToIgnoreCase); // Or String::compareTo for case-sensitive
+                excludedDirectoriesListModel.clear();
+                for (String element : elements) {
+                    excludedDirectoriesListModel.addElement(element);
+                }
             }
         });
 
@@ -426,14 +437,6 @@ public class SettingsDialog extends JDialog {
         });
 
         row += 2; // Increment row counter, consumed one for list, one for buttons panel
-
-        // Add vertical glue to push components to the top
-        gbc.gridx = 0;
-        gbc.gridy = row; // Use the updated row
-        gbc.gridwidth = 2; // Span across both columns
-        gbc.weighty = 1.0; // Take up remaining vertical space
-        gbc.fill = GridBagConstraints.VERTICAL;
-        buildPanel.add(Box.createVerticalGlue(), gbc);
 
         // ----- Other Tab -----
         var otherPanel = new JPanel(new GridBagLayout());
@@ -958,9 +961,6 @@ public class SettingsDialog extends JDialog {
         if (project != null && tabbedPane.isEnabledAt(1)) {
             // Get current details to compare against and preserve non-editable fields
             var currentDetails = project.getBuildDetails();
-            if (currentDetails == null) {
-                currentDetails = BuildAgent.BuildDetails.EMPTY; // Use empty if somehow null
-            }
 
             // Read potentially edited values from Build tab
             var newBuildLint = buildCleanCommandField.getText();
@@ -968,7 +968,7 @@ public class SettingsDialog extends JDialog {
             var newInstructions = buildInstructionsArea.getText();
 
             // Create a list from the DefaultListModel for excluded directories
-            java.util.List<String> newExcludedDirs = new java.util.ArrayList<>();
+            var newExcludedDirs = new HashSet<String>();
             if (excludedDirectoriesListModel != null) { // Check if initialized (project open)
                 for (int i = 0; i < excludedDirectoriesListModel.getSize(); i++) {
                     newExcludedDirs.add(excludedDirectoriesListModel.getElementAt(i));
@@ -976,12 +976,12 @@ public class SettingsDialog extends JDialog {
             }
 
             // Create a new BuildDetails record with updated fields
-            var newDetails = new BuildAgent.BuildDetails(currentDetails.buildfiles(),
+            var newDetails = new BuildAgent.BuildDetails(currentDetails.buildFiles(),
                                                         currentDetails.dependencies(),
                                                         newBuildLint,
                                                         newTestAll,
                                                         newInstructions,
-                                                        newExcludedDirs); // Use the new list from JList
+                                                        newExcludedDirs);
 
             logger.debug("Applying Build Details: {}", newDetails);
 

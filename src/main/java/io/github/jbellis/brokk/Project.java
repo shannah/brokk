@@ -1,11 +1,9 @@
 package io.github.jbellis.brokk;
 
-// import ch.usi.si.seart.treesitter.Language; // Removed this import
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.agents.BuildAgent;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
@@ -20,6 +18,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class Project implements IProject, AutoCloseable {
@@ -31,6 +31,7 @@ public class Project implements IProject, AutoCloseable {
     private final Path styleGuidePath;
     private final IGitRepo repo;
     private final Set<ProjectFile> dependencyFiles;
+    private volatile CompletableFuture<BuildAgent.BuildDetails> detailsFuture = new CompletableFuture<>();
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger logger = LogManager.getLogger(Project.class);
@@ -100,14 +101,21 @@ public class Project implements IProject, AutoCloseable {
         this.workspaceProps = new Properties();
         this.dependencyFiles = loadDependencyFiles();
 
-        // Load project properties
-        if (Files.exists(propertiesFile)) {
-            try (var reader = Files.newBufferedReader(propertiesFile)) {
-                projectProps.load(reader);
-            } catch (Exception e) {
-                logger.error("Error loading project properties: {}", e.getMessage());
-                projectProps.clear();
+        // Load project properties and attempt to initialize build details future
+        try {
+            if (Files.exists(propertiesFile)) {
+                try (var reader = Files.newBufferedReader(propertiesFile)) {
+                    projectProps.load(reader); // Attempt to load properties
+                }
+
+                var bd = getBuildDetails();
+                if (!bd.equals(BuildAgent.BuildDetails.EMPTY)) {
+                    this.detailsFuture.complete(bd);
+                }
             }
+        } catch (IOException e) { // Catches IOException from Files.newBufferedReader or projectProps.load()
+            logger.error("Error loading project properties from {}: {}", propertiesFile, e.getMessage());
+            projectProps.clear(); // Ensure props are in a clean state (empty) after a load failure
         }
 
         // Load workspace properties
@@ -207,6 +215,10 @@ public class Project implements IProject, AutoCloseable {
         return repo;
     }
 
+    public boolean hasBuildDetails() {
+        return detailsFuture.isDone();
+    }
+
     @Override
     public BuildAgent.BuildDetails getBuildDetails() {
         // Build details are project-specific, not workspace-specific
@@ -218,27 +230,46 @@ public class Project implements IProject, AutoCloseable {
                 logger.error("Failed to deserialize BuildDetails from JSON: {}", json, e);
             }
         }
-        return null;
+        return BuildAgent.BuildDetails.EMPTY;
     }
 
     public void saveBuildDetails(BuildAgent.BuildDetails details) {
-        if (details == null || details.equals(BuildAgent.BuildDetails.EMPTY)) {
-            // Build details are project-specific, not workspace-specific
-            projectProps.remove(BUILD_DETAILS_KEY);
-            logger.debug("Removing empty build details from project properties.");
-        } else {
+        assert details != null;
+        if (!details.equals(BuildAgent.BuildDetails.EMPTY)) {
             try {
                 String json = objectMapper.writeValueAsString(details);
-                // Build details are project-specific, not workspace-specific
                 projectProps.setProperty(BUILD_DETAILS_KEY, json);
                 logger.debug("Saving build details to project properties.");
             } catch (JsonProcessingException e) {
-                logger.error("Failed to serialize BuildDetails to JSON: {}", details, e);
-                return; // Don't save if serialization fails
+                throw new RuntimeException(e);
             }
+            saveProjectProperties();
         }
-        // Save to project properties file
-        saveProjectProperties();
+
+        if (detailsFuture.isDone()) {
+            // we're modifying it after initial creation
+            detailsFuture = new CompletableFuture<>();
+            detailsFuture.complete(details);
+        } else {
+            detailsFuture.complete(details);
+        }
+    }
+
+    /**
+     * Waits for the build details to become available.
+     * This method will block until the build details are loaded or generated.
+     *
+     * @return The {@link BuildAgent.BuildDetails}.
+     */
+    public BuildAgent.BuildDetails awaitBuildDetails() {
+        try {
+            return detailsFuture.get();
+        } catch (ExecutionException e) {
+            logger.error("ExecutionException while awaiting build details completion", e);
+            return BuildAgent.BuildDetails.EMPTY;
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**

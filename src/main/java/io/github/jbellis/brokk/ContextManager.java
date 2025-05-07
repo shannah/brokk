@@ -197,8 +197,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 io.updateCommitPanel();
             }
         };
-        this.project = new Project(root); // Removed unused parameters
-        // Instantiate AnalyzerWrapper here
+
+        this.project = new Project(root);
         this.analyzerWrapper = new AnalyzerWrapper(project, this::submitBackgroundTask, analyzerListener);
         this.models.reinit(project);
         this.toolRegistry = new ToolRegistry(this);
@@ -1098,14 +1098,14 @@ public class ContextManager implements IContextManager, AutoCloseable {
             String topClassesRaw = ac.text();
             if (!topClassesRaw.isBlank()) {
                 topClassesText = topClassesRaw.isBlank() ? "" : """
-                    <related_classes>
-                    Here are some classes that may be related to what is in your Workspace. They are not yet part of the Workspace!
-                    If relevant, you should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
-                    visible to Code Agent. If they are not relevant, just ignore them.
-                    
-                    %s
-                    </related_classes>
-                    """.stripIndent().formatted(topClassesRaw);
+                                                                <related_classes>
+                                                                Here are some classes that may be related to what is in your Workspace. They are not yet part of the Workspace!
+                                                                If relevant, you should explicitly add them with addClassSummariesToWorkspace or addClassesToWorkspace so they are
+                                                                visible to Code Agent. If they are not relevant, just ignore them.
+                                                                
+                                                                %s
+                                                                </related_classes>
+                                                                """.stripIndent().formatted(topClassesRaw);
             }
         }
 
@@ -1414,32 +1414,29 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Runs asynchronously in the background.
      */
     private void ensureBuildDetailsAsync() {
-        BuildDetails currentDetails = project.getBuildDetails();
-        if (currentDetails != null) {
-            logger.trace("Loaded existing build details {}", currentDetails);
+        if (project.hasBuildDetails()) {
+            logger.trace("Using existing build details");
             return;
         }
 
         // No details found, run the BuildAgent asynchronously
         submitBackgroundTask("Inferring build details", () -> {
+            io.systemOutput("Inferring project build details");
             var model = getSearchModel();
             BuildAgent agent = new BuildAgent(project, getLlm(model, "Infer build details"), toolRegistry);
-            BuildDetails inferredDetails = null;
+            BuildDetails inferredDetails;
             try {
-                inferredDetails = agent.execute(); // This runs the agent loop
+                inferredDetails = agent.execute();
             } catch (Exception e) {
-                logger.error("BuildAgent execution failed", e);
+                logger.error("BuildAgent did not complete successfully (aborted or errored). Build details not saved.");
                 io.toolError("Build Information Agent failed: " + e.getMessage());
+                inferredDetails = BuildDetails.EMPTY;
             }
 
-            if (inferredDetails == null) {
-                logger.warn("BuildAgent did not complete successfully (aborted or errored). Build details not saved.");
-            } else {
-                project.saveBuildDetails(inferredDetails);
-                io.systemOutput("Build details inferred and saved.");
-                logger.debug("Successfully inferred and saved build details.");
-            }
-            return inferredDetails; // Return details for potential chaining, though not used here
+            project.saveBuildDetails(inferredDetails);
+            logger.debug("Build details inferred and saved");
+            io.systemOutput("Build details inferred and saved");
+            return inferredDetails;
         });
     }
 

@@ -565,7 +565,7 @@ public class CodeAgent {
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             logger.warn("Failed to get verification command", e);
             var bd = contextManager.getProject().getBuildDetails();
-            verificationCommand = (bd == null ? null : bd.buildLintCommand());
+            verificationCommand = (bd.equals(BuildDetails.EMPTY) ? null : bd.buildLintCommand());
         }
 
         return checkBuild(verificationCommand, contextManager, io);
@@ -587,7 +587,7 @@ public class CodeAgent {
         return CompletableFuture.supplyAsync(() -> {
             // Retrieve build details from the project associated with the ContextManager
             BuildDetails details = cm.getProject().getBuildDetails();
-            if (details == null) {
+            if (details.equals(BuildDetails.EMPTY)) {
                 logger.warn("No build details available, cannot determine verification command.");
                 return null;
             }

@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.agents;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -19,10 +18,14 @@ import io.github.jbellis.brokk.util.BuildToolConventions;
 import io.github.jbellis.brokk.util.BuildToolConventions.BuildSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -57,8 +60,9 @@ public class BuildAgent {
     /**
      * Execute the build information gathering process.
      *
-     * @return The gathered BuildDetails record, or null if the process fails or is interrupted.
+     * @return The gathered BuildDetails record, or EMPTY if the process fails or is interrupted.
      */
+    @NotNull
     public BuildDetails execute() throws InterruptedException {
         // 1. Initial step: List files in the root directory to give the agent a starting point
         ToolExecutionRequest initialRequest = ToolExecutionRequest.builder()
@@ -87,10 +91,12 @@ public class BuildAgent {
             var ignoredPatterns = gitRepo.getIgnoredPatterns();
             var addedFromGitignore = new ArrayList<String>();
             for (var pattern : ignoredPatterns) {
-                var trimmedPattern = pattern.trim();
-                if (trimmedPattern.endsWith("/")) {
-                    this.currentExcludedDirectories.add(trimmedPattern);
-                    addedFromGitignore.add(trimmedPattern);
+                var file = project.getRoot().resolve(pattern);
+                // include non-existing paths if they end with `/` in case they get created later
+                var isDirectory = (Files.exists(file) && Files.isDirectory(file)) || pattern.endsWith("/");
+                if (!(pattern.startsWith("!")) && isDirectory) {
+                    this.currentExcludedDirectories.add(pattern);
+                    addedFromGitignore.add(pattern);
                 }
             }
             if (!addedFromGitignore.isEmpty()) {
@@ -121,18 +127,18 @@ public class BuildAgent {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.error("Unexpected request cancellation in build agent");
-                return null;
+                return BuildDetails.EMPTY;
             }
 
             if (result.error() != null) {
                 logger.error("LLM error in BuildInfoAgent: " + result.error().getMessage());
-                return null;
+                return BuildDetails.EMPTY;
             }
             var response = result.chatResponse();
             if (response == null || response.aiMessage() == null || !response.aiMessage().hasToolExecutionRequests()) {
                 // This shouldn't happen with ToolChoice.REQUIRED and Coder retries, but handle defensively.
                 logger.error("LLM response did not contain expected tool call in BuildInfoAgent.");
-                return null;
+                return BuildDetails.EMPTY;
             }
 
             var aiMessage = ToolRegistry.removeDuplicateToolRequests(response.aiMessage());
@@ -175,7 +181,7 @@ public class BuildAgent {
                 var terminalResult = toolRegistry.executeTool(this, abortRequest);
                 if (terminalResult.status() == ToolExecutionResult.Status.SUCCESS) {
                     assert abortReason != null;
-                    return null;
+                    return BuildDetails.EMPTY;
                 } else {
                     // Tool execution failed
                     logger.warn("abortBuildDetails tool execution failed. Error: {}", terminalResult.resultText());
@@ -208,17 +214,17 @@ public class BuildAgent {
         // System Prompt
         messages.add(new SystemMessage("""
         You are an agent tasked with finding build information for the *development* environment of a software project.
-        Your goal is to identify dependencies, plugins,repositories, development profile details, key build commands 
+        Your goal is to identify dependencies, plugins,repositories, development profile details, key build commands
         (clean, compile/build, test all, test specific), how to invoke those commands correctly, and the main application entry point.
-        Focus *only* on details relevant to local development builds/profiles, explicitly ignoring production-specific 
+        Focus *only* on details relevant to local development builds/profiles, explicitly ignoring production-specific
         configurations unless they are the only ones available.
 
         Use the tools to examine build files (like `pom.xml`, `build.gradle`, etc.), configuration files, and linting files.
         The information you gather will be handed off to agents that do not have access to these files, so
         make sure your instructions are comprehensive.
 
-        A baseline set of excluded directories has been established from build conventions and .gitignore. 
-        When you use `reportBuildDetails`, the `excludedDirectories` parameter should contain *additional* directories 
+        A baseline set of excluded directories has been established from build conventions and .gitignore.
+        When you use `reportBuildDetails`, the `excludedDirectories` parameter should contain *additional* directories
         you identify that should be excluded from code intelligence, beyond this baseline.
         
         Remember to request the `reportBuildDetails` tool to finalize the process ONLY once all information is collected.
@@ -240,19 +246,20 @@ public class BuildAgent {
             @P("Command to build or lint incrementally, e.g. mvn compile, cargo check, pyflakes .") String buildLintCommand,
             @P("Command to run all tests") String testAllCommand,
             @P("""
-                Instructions and details about the build process, including environment configurations
-                and any idiosyncracies observed. Include information on how to run other test configurations, especially 
-                individual tests but also at other levels e.g. package or namespace;
-                also include information on other pre-commit tools like code formatters or static analysis tools.
-                     """) String instructions,
+               Instructions and details about the build process, including environment configurations
+               and any idiosyncracies observed. Include information on how to run other test configurations, especially
+               individual tests but also at other levels e.g. package or namespace;
+               also include information on other pre-commit tools like code formatters or static analysis tools.
+               """) String instructions,
             @P("List of directories to exclude from code intelligence (e.g., generated code, build artifacts)") List<String> excludedDirectories
         ) {
             // Combine baseline excluded directories with those suggested by the LLM
             var finalExcludes = Stream.concat(this.currentExcludedDirectories.stream(), excludedDirectories.stream())
-                                      .map(String::trim)
-                                      .filter(s -> !s.isEmpty())
-                                      .distinct()
-                                      .collect(Collectors.toList());
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(s -> Path.of(s).normalize())
+                    .map(Path::toString)
+                    .collect(Collectors.toSet());
 
             this.reportedDetails = new BuildDetails(buildfiles, dependencies, buildLintCommand, testAllCommand, instructions, finalExcludes);
             logger.debug("reportBuildDetails tool executed, details captured. Final excluded directories: {}", finalExcludes);
@@ -270,14 +277,22 @@ public class BuildAgent {
         }
 
     /** Holds semi-structured information about a project's build process */
-    public record BuildDetails(
-            List<String> buildfiles,
-            List<String> dependencies,
-            String buildLintCommand,
-            String testAllCommand,
-            String instructions,
-            List<String> excludedDirectories
-    ) {
-        public static final BuildDetails EMPTY = new BuildDetails(List.of(), List.of(), "", "", "", List.of());
+    public record BuildDetails(List<String> buildFiles,
+                               List<String> dependencies,
+                               String buildLintCommand,
+                               String testAllCommand,
+                               String instructions,
+                               Set<String> excludedDirectories)
+    {
+        public BuildDetails {
+            Objects.requireNonNull(buildFiles);
+            Objects.requireNonNull(dependencies);
+            Objects.requireNonNull(buildLintCommand);
+            Objects.requireNonNull(testAllCommand);
+            Objects.requireNonNull(instructions);
+            Objects.requireNonNull(excludedDirectories);
+        }
+
+        public static final BuildDetails EMPTY = new BuildDetails(List.of(), List.of(), "", "", "", Set.of());
     }
 }
