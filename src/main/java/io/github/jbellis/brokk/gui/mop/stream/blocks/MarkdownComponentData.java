@@ -85,7 +85,7 @@ public record MarkdownComponentData(int id, String html) implements ComponentDat
         var borderColor = ThemeColors.getColorHex(isDarkTheme, "border_color_hex");
         // Base typography
         ss.addRule("body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.5; " +
-                           "background-color: " + bgColorHex + "; color: " + textColorHex + "; margin: 0; padding: 8px; }");
+                           "background-color: " + bgColorHex + "; color: " + textColorHex + "; margin: 0; padding-left: 8px; padding-right: 8px; }");
 
         // Headings
         ss.addRule("h1, h2, h3, h4, h5, h6 { margin-top: 18px; margin-bottom: 12px; " +

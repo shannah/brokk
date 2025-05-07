@@ -46,15 +46,15 @@ public final class Reconciler {
                 entry = new BlockEntry(comp, cd.fp());
                 registry.put(cd.id(), entry);
                 container.add(comp);
-                logger.debug("Created new component with id {}: {}", cd.id(), cd.getClass().getSimpleName());
+                // logger.debug("Created new component with id {}: {}", cd.id(), cd.getClass().getSimpleName());
             } else {
-                logger.debug("cd.fp()={} vs. entry.fp={}", cd.fp(), entry.fp);
+                // logger.debug("cd.fp()={} vs. entry.fp={}", cd.fp(), entry.fp);
                 if (!cd.fp().equals(entry.fp)) {
                     // Update existing component
                     cd.updateComponent(entry.comp);
                     entry = new BlockEntry(entry.comp, cd.fp());
                     registry.put(cd.id(), entry);
-                    logger.debug("Updated component with id {}: {}", cd.id(), cd.getClass().getSimpleName());
+                    // logger.debug("Updated component with id {}: {}", cd.id(), cd.getClass().getSimpleName());
                 }
             }
 
@@ -64,7 +64,7 @@ public final class Reconciler {
         // Remove components that are no longer present
         registry.keySet().removeIf(id -> {
             if (!seen.contains(id)) {
-                logger.debug("Removing component with id {}", id);
+                // logger.debug("Removing component with id {}", id);
                 container.remove(registry.get(id).comp);
                 return true;
             }

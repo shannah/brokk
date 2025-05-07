@@ -97,7 +97,20 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      * @param blocked true to prevent clear/reset operations, false to allow them
      */
     public void setBlocking(boolean blocked) {
-        this.blockClearAndReset = blocked;
+        this.blockClearAndReset = blocked; 
+        // use the unblocking state as trigger for compacting markdown
+        if (!blocked) {
+            compactAllMessages();
+        }
+    }
+
+    /**
+     * Returns the current blocking state.
+     *
+     * @return true if clear/reset operations are blocked, false otherwise
+     */
+    public boolean isBlocking() {
+        return blockClearAndReset;
     }
     
     /**
@@ -274,7 +287,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         for (var message : messages) {
             addNewMessage(message);
         }
-
+        compactAllMessages(); // do this for better text selection
         revalidate();
         repaint();
         textChangeListeners.forEach(Runnable::run);
@@ -384,7 +397,21 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
                     return Collections.unmodifiableList(messages);
                 }
 
-            // --- Scrollable interface methods ---
+            /**
+     * Compacts all messages by merging consecutive Markdown blocks in each message renderer.
+     * This improves the user experience for selecting text across multiple Markdown blocks.
+     * Should be called only after streaming is complete for all messages to avoid inconsistencies.
+     */
+    public void compactAllMessages() {
+        for (var renderer : messageRenderers) {
+            renderer.compactMarkdown();
+        }
+        revalidate();
+        repaint();
+        logger.debug("Compacted all messages for better text selection");
+    }
+
+    // --- Scrollable interface methods ---
 
     @Override
     public Dimension getPreferredScrollableViewportSize() {

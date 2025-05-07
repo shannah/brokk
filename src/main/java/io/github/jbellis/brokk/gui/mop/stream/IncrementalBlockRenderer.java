@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentData;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentDataFactory;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.CompositeComponentData;
+import io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownFactory;
 import io.github.jbellis.brokk.gui.mop.stream.flex.BrokkMarkdownExtension;
 import io.github.jbellis.brokk.gui.mop.stream.flex.IdProvider;
@@ -41,6 +42,8 @@ public final class IncrementalBlockRenderer {
     // Component tracking
     private final Map<Integer, Reconciler.BlockEntry> registry = new LinkedHashMap<>();
     private String lastHtmlFingerprint = "";
+    private String lastMarkdown = "";
+    private boolean compacted = false;
     
     // Component factories
     private static final Map<String, ComponentDataFactory> FACTORIES = 
@@ -122,18 +125,23 @@ public final class IncrementalBlockRenderer {
      * Parses the markdown, extracts components, and updates the UI incrementally.
      * 
      * @param markdown the markdown text to display
+     * @throws IllegalStateException if called after compactMarkdown() has been invoked
      */
     public void update(String markdown) {
+        if (compacted) {
+            throw new IllegalStateException("Cannot update content after compaction. Call compactMarkdown() only after streaming is complete.");
+        }
         
         var html = createHtml(markdown);
         
         // Skip if nothing changed
         String htmlFp = html.hashCode() + "";
         if (htmlFp.equals(lastHtmlFingerprint)) {
-            logger.debug("Skipping update - content unchanged");
+            // logger.debug("Skipping update - content unchanged");
             return;
         }
         lastHtmlFingerprint = htmlFp;
+        lastMarkdown = markdown;
         
         // Extract component data from HTML
         List<ComponentData> components = buildComponentData(html);
@@ -234,4 +242,82 @@ public final class IncrementalBlockRenderer {
         return List.of(new CompositeComponentData(stableId, composite.children()));
     }
     
+    /**
+     * Merges consecutive MarkdownComponentData blocks that have no intervening special blocks
+     * (code-fence, edit-block, etc.). Safe to call multiple times; subsequent invocations are no-ops.
+     * This method should be called only after streaming is complete to ensure a consistent user
+     * experience for text selection.
+     */
+    public void compactMarkdown() {
+        if (compacted) {
+            logger.debug("Renderer already compacted - skipping");
+            return;
+        }
+
+        // Rebuild components from the last known markdown content
+        List<ComponentData> originalComponents;
+        if (!lastMarkdown.isEmpty()) {
+            var html = createHtml(lastMarkdown);
+            originalComponents = buildComponentData(html);
+        } else {
+            logger.debug("No markdown content to compact - skipping");
+            compacted = true;
+            return;
+        }
+
+        var merged = mergeMarkdownBlocks(originalComponents);
+        logger.debug("Compacting markdown blocks: {} -> {}", originalComponents.size(), merged.size());
+        updateUI(merged);
+        compacted = true;
+        // Update the last markdown to reflect the merged state for future builds
+        // Reconstruct markdown content from merged components to ensure consistency
+        lastMarkdown = merged.stream()
+                             .filter(cd -> cd instanceof MarkdownComponentData)
+                             .map(cd -> ((MarkdownComponentData) cd).html())
+                             .collect(Collectors.joining("\n"));
+        lastHtmlFingerprint = merged.stream().map(ComponentData::fp).collect(Collectors.joining("-"));
+    }
+
+    /**
+     * Merges consecutive MarkdownComponentData blocks into a single block.
+     * 
+     * @param src The source list of ComponentData objects
+     * @return A new list with consecutive MarkdownComponentData blocks merged
+     */
+    private List<ComponentData> mergeMarkdownBlocks(List<ComponentData> src) {
+        var out = new ArrayList<ComponentData>();
+        MarkdownComponentData acc = null;
+        StringBuilder htmlBuf = null;
+
+        for (ComponentData cd : src) {
+            if (cd instanceof MarkdownComponentData md) {
+                if (acc == null) {
+                    acc = md;
+                    htmlBuf = new StringBuilder(md.html());
+                } else {
+                    htmlBuf.append('\n').append(md.html());
+                }
+            } else {
+                flush(out, acc, htmlBuf);
+                out.add(cd);
+                acc = null;
+                htmlBuf = null;
+            }
+        }
+        flush(out, acc, htmlBuf);
+        return out;
+    }
+
+    /**
+     * Flushes accumulated Markdown content into the output list.
+     * 
+     * @param out The output list to add the merged component to
+     * @param acc The accumulated MarkdownComponentData
+     * @param htmlBuf The StringBuilder containing the merged HTML content
+     */
+    private void flush(List<ComponentData> out, MarkdownComponentData acc, StringBuilder htmlBuf) {
+        if (acc == null || htmlBuf == null) return;
+        var merged = markdownFactory.fromText(acc.id(), htmlBuf.toString());
+        out.add(merged);
+    }
 }

@@ -209,10 +209,10 @@ public class HistoryOutputPanel extends JPanel {
         historyTable.getColumnModel().getColumn(2).setMaxWidth(0);
         historyTable.getColumnModel().getColumn(2).setWidth(0);
 
-        // Add table to scroll pane with SmartScroll
+        // Add table to scroll pane with AutoScroller
         var scrollPane = new JScrollPane(historyTable);
         scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-        new SmartScroll(scrollPane);
+        AutoScroller.install(scrollPane);
 
         // Add undo/redo buttons at the bottom, side by side
         var buttonPanel = new JPanel();
@@ -370,7 +370,7 @@ public class HistoryOutputPanel extends JPanel {
         var jsp = new JScrollPane(llmStreamArea);
         jsp.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         jsp.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        new SmartScroll(jsp);
+        AutoScroller.install(jsp);
 
         // Add a text change listener to update capture buttons
         llmStreamArea.addTextChangeListener(() -> chrome.updateCaptureButtons());
@@ -474,8 +474,8 @@ public class HistoryOutputPanel extends JPanel {
      */
     public void resetLlmOutput(ContextFragment.TaskFragment output) {
         // this is called by the context selection listener, but when we just finished streaming a response
-        // we don't want scroll-to-top behavior
-        if (llmStreamArea.getRawMessages().equals(output.messages())) {
+        // we don't want scroll-to-top behavior (blocking state means we're still in streaming mode)
+        if (llmStreamArea.isBlocking() || llmStreamArea.getRawMessages().equals(output.messages())) {
             return;
         }
 
