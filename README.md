@@ -118,6 +118,7 @@ Use File -> Decompile Dependency... and select the appropriate jar.
 
 Brokk will decompile the jar; after reopening the project, you can read, search, summarize,
 and otherwise treat them like your own project files. (Except you can't edit them.)
+(The decompiled source is 99% as useful to an LLM as the original source would be, and it's guaranteed to be the right version.)
 
 # Current status
 
