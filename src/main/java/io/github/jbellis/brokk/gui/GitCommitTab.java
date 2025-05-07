@@ -300,7 +300,10 @@ public class GitCommitTab extends JPanel {
             contextManager.submitUserTask("Committing files", () -> {
                 try {
                     if (selectedFiles.isEmpty()) {
-                        var allDirtyFiles = getRepo().getModifiedFiles();
+                        var allDirtyFileStatuses = getRepo().getModifiedFiles();
+                        var allDirtyFiles = allDirtyFileStatuses.stream()
+                                .map(GitRepo.ModifiedFile::file)
+                                .collect(Collectors.toList());
                         getRepo().commitFiles(allDirtyFiles, msg);
                     } else {
                         getRepo().commitFiles(selectedFiles, msg);
@@ -412,53 +415,40 @@ public class GitCommitTab extends JPanel {
 
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             try {
-                var uncommittedFiles = getRepo().getModifiedFiles();
-                logger.trace("Found modified files {}", uncommittedFiles);
-                var gitStatus = getRepo().getGit().status().call();
-                // JGit status methods return Set<String> of paths relative to worktree
-                var addedSet = gitStatus.getAdded();
-                var removedSet = new java.util.HashSet<>(gitStatus.getRemoved());
-                removedSet.addAll(gitStatus.getMissing());
+                var uncommittedFileStatuses = getRepo().getModifiedFiles(); // This now returns Set<ModifiedFileStatus>
+                logger.trace("Found uncommitted files with statuses: {}", uncommittedFileStatuses.size());
 
                 SwingUtilities.invokeLater(() -> {
                     fileStatusMap.clear();
-                    for (var file : uncommittedFiles) {
-                        String filePathString = file.toString();
-                        if (addedSet.contains(filePathString)) {
-                            fileStatusMap.put(file, "new");
-                        } else if (removedSet.contains(filePathString)) {
-                            fileStatusMap.put(file, "deleted");
-                        } else {
-                            fileStatusMap.put(file, "modified");
-                        }
+                    // Convert Set to List to maintain an order for adding to table and restoring selection by index
+                    var uncommittedFilesList = new ArrayList<>(uncommittedFileStatuses);
+                    for (var modifiedFileStatus : uncommittedFilesList) {
+                        fileStatusMap.put(modifiedFileStatus.file(), modifiedFileStatus.status());
                     }
 
                     var model = (DefaultTableModel) uncommittedFilesTable.getModel();
                     model.setRowCount(0);
 
-                    if (uncommittedFiles.isEmpty()) {
-                        logger.trace("No modified files found");
+                    if (uncommittedFilesList.isEmpty()) {
+                        logger.trace("No uncommitted files found");
                         suggestMessageButton.setEnabled(false);
                         commitButton.setEnabled(false);
                         stashButton.setEnabled(false);
                     } else {
-                        logger.trace("Found {} modified files to display", uncommittedFiles.size());
-                        // Track row indices for files that were previously selected
+                        logger.trace("Found {} uncommitted files to display", uncommittedFilesList.size());
                         List<Integer> rowsToSelect = new ArrayList<>();
 
-                        for (int i = 0; i < uncommittedFiles.size(); i++) {
-                            var file = uncommittedFiles.get(i);
-                            // Add ProjectFile instance to the hidden column
-                            model.addRow(new Object[]{file.getFileName(), file.getParent().toString(), file});
-                            logger.trace("Added file to table: {}", file);
+                        for (int i = 0; i < uncommittedFilesList.size(); i++) {
+                            var modifiedFileStatus = uncommittedFilesList.get(i);
+                            var projectFile = modifiedFileStatus.file();
+                            model.addRow(new Object[]{projectFile.getFileName(), projectFile.getParent().toString(), projectFile});
+                            logger.trace("Added file to table: {} with status {}", projectFile, modifiedFileStatus.status());
 
-                            // Check if this file was previously selected
-                            if (previouslySelectedFiles.contains(file)) {
+                            if (previouslySelectedFiles.contains(projectFile)) {
                                 rowsToSelect.add(i);
                             }
                         }
 
-                        // Restore selection if any previously selected files are still present
                         if (!rowsToSelect.isEmpty()) {
                             for (int row : rowsToSelect) {
                                 uncommittedFilesTable.addRowSelectionInterval(row, row);
@@ -473,7 +463,7 @@ public class GitCommitTab extends JPanel {
                                 .anyMatch(line -> !line.trim().isEmpty()
                                         && !line.trim().startsWith("#"));
                         commitButton.setEnabled(hasNonCommentText);
-                        stashButton.setEnabled(true); // Enable stash if there are changes
+                        stashButton.setEnabled(true);
                     }
                     updateCommitButtonText();
                 });

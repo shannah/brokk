@@ -239,20 +239,30 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * Returns a list of uncommitted RepoFiles (including added/removed/missing).
+     * Returns a set of uncommitted files with their status (new, modified, deleted).
      */
-    public List<ProjectFile> getModifiedFiles() throws GitAPIException {
-        var status = git.status().call();
-        var filePaths = new HashSet<String>();
-        filePaths.addAll(status.getModified());
-        filePaths.addAll(status.getChanged());
-        filePaths.addAll(status.getAdded());
-        filePaths.addAll(status.getRemoved());
-        filePaths.addAll(status.getMissing());
+    public Set<ModifiedFile> getModifiedFiles() throws GitAPIException {
+        var statusResult = git.status().call();
+        var uncommittedFilesWithStatus = new HashSet<ModifiedFile>();
 
-        return filePaths.stream()
+        statusResult.getAdded().stream()
                 .map(path -> new ProjectFile(root, path))
-                .collect(Collectors.toList());
+                .map(pf -> new ModifiedFile(pf, "new"))
+                .forEach(uncommittedFilesWithStatus::add);
+
+        Stream.concat(statusResult.getRemoved().stream(), statusResult.getMissing().stream())
+                .distinct() // Avoid processing the same path twice if it's in both removed and missing
+                .map(path -> new ProjectFile(root, path))
+                .map(pf -> new ModifiedFile(pf, "deleted"))
+                .forEach(uncommittedFilesWithStatus::add);
+
+        Stream.concat(statusResult.getModified().stream(), statusResult.getChanged().stream())
+                .distinct() // Avoid processing the same path twice if it's in both modified and changed
+                .map(path -> new ProjectFile(root, path))
+                .map(pf -> new ModifiedFile(pf, "modified"))
+                .forEach(uncommittedFilesWithStatus::add);
+
+        return uncommittedFilesWithStatus;
     }
 
     /**
@@ -551,6 +561,11 @@ public class GitRepo implements Closeable, IGitRepo {
     public record CommitInfo(String id, String message, String author, Date date) {}
 
     /**
+     * A record to hold a modified file and its status.
+     */
+    public record ModifiedFile(ProjectFile file, String status) {}
+
+    /**
      * List commits with detailed information for a specific branch
      */
     public List<CommitInfo> listCommitsDetailed(String branchName) throws GitAPIException {
@@ -777,8 +792,11 @@ public class GitRepo implements Closeable, IGitRepo {
 
         logger.debug("Creating partial stash with message: {} for {} files", message, filesToStash.size());
 
-        var allUncommittedFiles = getModifiedFiles();
-        if (!new HashSet<>(allUncommittedFiles).containsAll(filesToStash)) {
+        var allUncommittedFilesWithStatus = getModifiedFiles();
+        var allUncommittedProjectFiles = allUncommittedFilesWithStatus.stream()
+                                             .map(ModifiedFile::file)
+                                             .collect(Collectors.toSet());
+        if (!allUncommittedProjectFiles.containsAll(new HashSet<>(filesToStash))) {
             throw new GitStateException("Files to stash are not actually uncommitted!?");
         }
 
@@ -787,8 +805,9 @@ public class GitRepo implements Closeable, IGitRepo {
                 .collect(Collectors.toSet());
 
         // Files NOT to stash
-        var filesToCommit = allUncommittedFiles.stream()
-                .filter(file -> !filesToStashPaths.contains(file.toString()))
+        var filesToCommit = allUncommittedFilesWithStatus.stream()
+                .filter(mfs -> !filesToStashPaths.contains(mfs.file().toString()))
+                .map(ModifiedFile::file)
                 .collect(Collectors.toList());
 
         if (filesToCommit.isEmpty()) {
