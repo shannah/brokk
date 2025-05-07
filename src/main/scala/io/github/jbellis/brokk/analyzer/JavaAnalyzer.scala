@@ -12,8 +12,8 @@ import io.shiftleft.semanticcpg.layers.LayerCreatorContext
 import java.io.IOException
 import java.nio.file.Path
 import scala.util.matching.Regex
-
 import scala.util.Try
+import scala.util.boundary, boundary.break // Added for modern early exit
 
 /**
  * A concrete analyzer for Java source code, extending AbstractAnalyzer
@@ -222,81 +222,122 @@ class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
   }
 
   /**
-   * Parses a Java fully qualified name into its components.
+   * Parses a Java fully qualified name into its components using CPG lookups first,
+   * then falling back to heuristics.
    * For classes: packageName = everything up to last dot, className = last segment, memberName = empty
    * For members: packageName = everything up to class, className = class part, memberName = member
+   * @param expectedType The type of CodeUnit expected by the caller (CLASS, FUNCTION, or FIELD).
    */
-  override protected def parseFqName(fqName: String): CodeUnit.Tuple3[String, String, String] = {
-    val lastDot = fqName.lastIndexOf('.')
-    if (lastDot == -1) {
-      // No dots, it's a simple class name with no package
-      new CodeUnit.Tuple3("", fqName, "")
-    } else {
-      val lastSegment = fqName.substring(lastDot + 1)
+  protected[analyzer] def parseFqName(fqName: String, expectedType: CodeUnitType): CodeUnit.Tuple3[String, String, String] = boundary {
+    if (fqName == null || fqName.isEmpty) {
+      break(new CodeUnit.Tuple3("", "", ""))
+    }
 
-      // Check if this is a member (method/field/constructor) or a class name
-      if (lastSegment.equals("<init>") || // Constructor is a member
-        (!Character.isUpperCase(lastSegment.charAt(0)) && !lastSegment.contains("$"))) {
-        // Likely a regular method or field (not starting with uppercase, no '$')
+    // Attempt 1: CPG lookup - Is fqName a fully qualified class name?
+    // This path is only valid if the caller expects a class.
+    if (expectedType == CodeUnitType.CLASS && cpg.typeDecl.fullNameExact(fqName).nonEmpty) {
+      val lastDot = fqName.lastIndexOf('.')
+      val (pkg, cls) = if (lastDot == -1) ("", fqName) else (fqName.substring(0, lastDot), fqName.substring(lastDot + 1))
+      break(new CodeUnit.Tuple3(pkg, cls, ""))
+    }
 
-        // Find the class part (everything up to the last dot)
-        val classEndPos = lastDot
-        // Find where the package ends and class begins (last dot before class or whole string)
-        var classStartPos = 0
-        var pkgEndPos = 0
+    // Attempt 2: CPG lookup - Parse as potentialClass.potentialMember
+    val lastDotMemberSep = fqName.lastIndexOf('.')
+    if (lastDotMemberSep != -1) {
+      val potentialClassFullName = fqName.substring(0, lastDotMemberSep)
+      val potentialMemberName = fqName.substring(lastDotMemberSep + 1)
 
-        // Scan backward for the first uppercase letter after a dot - that's likely the class start
-        val foundIndex = (classEndPos - 1 to 0 by -1).find { i =>
-          fqName.charAt(i) == '.' && i + 1 < fqName.length &&
-            Character.isUpperCase(fqName.charAt(i + 1))
+      cpg.typeDecl.fullNameExact(potentialClassFullName).headOption.foreach { td =>
+        val classDotPkgSep = potentialClassFullName.lastIndexOf('.')
+        val (pkg, cls) = if (classDotPkgSep == -1) ("", potentialClassFullName) else (potentialClassFullName.substring(0, classDotPkgSep), potentialClassFullName.substring(classDotPkgSep + 1))
+
+        if (expectedType == CodeUnitType.FUNCTION && (potentialMemberName == "<init>" || td.method.nameExact(potentialMemberName).nonEmpty)) {
+          break(new CodeUnit.Tuple3(pkg, cls, potentialMemberName))
         }
-
-        foundIndex.foreach { i =>
-          classStartPos = i + 1
-          pkgEndPos = i
+        if (expectedType == CodeUnitType.FIELD && td.member.nameExact(potentialMemberName).nonEmpty) {
+          break(new CodeUnit.Tuple3(pkg, cls, potentialMemberName))
         }
+      }
+    }
 
-        val pkg = if (pkgEndPos > 0) fqName.substring(0, pkgEndPos) else ""
-        val className = fqName.substring(classStartPos, classEndPos)
-        new CodeUnit.Tuple3(pkg, className, lastSegment)
-      } else {
-        // Likely a class name (starts with uppercase or contains '$', and isn't <init>)
-        val pkg = if (lastDot > 0) fqName.substring(0, lastDot) else ""
-        new CodeUnit.Tuple3(pkg, lastSegment, "") // Member part is empty for classes
+    // Fallback heuristic using expectedType, if CPG lookups did not resolve the FQN according to expectedType.
+    if (lastDotMemberSep == -1) { // No dots in fqName (e.g., "MyClass" or "myMethod")
+      if (expectedType == CodeUnitType.CLASS) {
+        // Caller expects a class. Treat fqName as a simple class name in default package.
+        break(new CodeUnit.Tuple3("", fqName, "")) // (pkg="", cls=fqName, member="")
+      } else { // Caller expects FUNCTION or FIELD.
+        // Treat fqName as a simple member name with no class or package.
+        break(new CodeUnit.Tuple3("", "", fqName)) // (pkg="", cls="", member=fqName)
+      }
+    } else { // Dots are present in fqName
+      val partAfterLastDot = fqName.substring(lastDotMemberSep + 1)
+      val partBeforeLastDot = fqName.substring(0, lastDotMemberSep)
+
+      if (expectedType == CodeUnitType.CLASS) {
+        // Caller expects a class. Treat partAfterLastDot as class name, partBeforeLastDot as package.
+        // e.g., fqName = "com.example.MyClass" -> (pkg="com.example", cls="MyClass", member="")
+        break(new CodeUnit.Tuple3(partBeforeLastDot, partAfterLastDot, ""))
+      } else { // Caller expects FUNCTION or FIELD
+        // Caller expects a member. Treat partAfterLastDot as member name.
+        // partBeforeLastDot is the FQCN of the class containing the member.
+        // e.g., fqName = "com.example.MyClass.myMethod"
+        // memberName = "myMethod"
+        // fqClassName = "com.example.MyClass"
+        val fqClassName = partBeforeLastDot
+        val memberName = partAfterLastDot
+
+        val classLastDot = fqClassName.lastIndexOf('.')
+        val (pkg, cls) = if (classLastDot == -1) {
+          // No dot in fqClassName, so it's a simple class name in default package.
+          // e.g. fqClassName = "MyClass" -> (pkg="", cls="MyClass")
+          ("", fqClassName)
+        } else {
+          // Dot found in fqClassName, split into package and simple class name.
+          // e.g. fqClassName = "com.example.MyClass" -> (pkg="com.example", cls="MyClass")
+          (fqClassName.substring(0, classLastDot), fqClassName.substring(classLastDot + 1))
+        }
+        break(new CodeUnit.Tuple3(pkg, cls, memberName))
       }
     }
   }
 
   // --- Implementations of Abstract CodeUnit Creation ---
   override def cuClass(fqcn: String, file: ProjectFile): Option[CodeUnit] = {
-    val parts = parseFqName(fqcn)
-    if (!parts._3().isEmpty) {
-      throw new IllegalArgumentException(s"Expected a class FQCN but parsing indicated a member: $fqcn")
+    val parts = parseFqName(fqcn, CodeUnitType.CLASS)
+    if (!parts._3().isEmpty) { // Member part should be empty for a class
+      throw new IllegalArgumentException(s"Expected a class FQCN but parsing indicated a member: $fqcn. Parsed as: Pkg='${parts._1()}', Class='${parts._2()}', Member='${parts._3()}'")
+    }
+    if (parts._2().isEmpty && !fqcn.isEmpty) { // Class name part should not be empty if fqcn was not empty
+        throw new IllegalArgumentException(s"Parsed class name is empty for FQCN: $fqcn. Parsed as: Pkg='${parts._1()}', Class='${parts._2()}', Member='${parts._3()}'")
     }
     Try(CodeUnit.cls(file, parts._1(), parts._2())).toOption
   }
 
   override def cuFunction(fqmn: String, file: ProjectFile): Option[CodeUnit] = {
-    val parts = parseFqName(fqmn)
-    if (parts._3().isEmpty) {
-      throw new IllegalArgumentException(s"Expected a method FQCN but parsing indicated it was not a member: $fqmn")
+    val parts = parseFqName(fqmn, CodeUnitType.FUNCTION)
+    if (parts._3().isEmpty) { // Member part (method name) must not be empty
+      throw new IllegalArgumentException(s"Expected a method FQCN but parsing indicated it was not a member: $fqmn. Parsed as: Pkg='${parts._1()}', Class='${parts._2()}', Member='${parts._3()}'")
+    }
+    if (parts._2().isEmpty) { // Class name part must not be empty for a method
+        throw new IllegalArgumentException(s"Parsed class name is empty for method FQCN: $fqmn. Parsed as: Pkg='${parts._1()}', Class='${parts._2()}', Member='${parts._3()}'")
     }
     val pkg = parts._1()
     val className = parts._2()
     val methodName = parts._3()
-    // Pass just the package, and the Class.method short name
     Try(CodeUnit.fn(file, pkg, s"$className.$methodName")).toOption
   }
 
   override def cuField(fqfn: String, file: ProjectFile): Option[CodeUnit] = {
-    val parts = parseFqName(fqfn)
-    if (parts._3().isEmpty) {
-      throw new IllegalArgumentException(s"Expected a field FQCN but parsing indicated it was not a member: $fqfn")
+    val parts = parseFqName(fqfn, CodeUnitType.FIELD)
+    if (parts._3().isEmpty) { // Member part (field name) must not be empty
+      throw new IllegalArgumentException(s"Expected a field FQCN but parsing indicated it was not a member: $fqfn. Parsed as: Pkg='${parts._1()}', Class='${parts._2()}', Member='${parts._3()}'")
+    }
+     if (parts._2().isEmpty) { // Class name part must not be empty for a field
+        throw new IllegalArgumentException(s"Parsed class name is empty for field FQCN: $fqfn. Parsed as: Pkg='${parts._1()}', Class='${parts._2()}', Member='${parts._3()}'")
     }
     val pkg = parts._1()
     val className = parts._2()
     val fieldName = parts._3()
-    // Pass just the package, and the Class.field short name
     Try(CodeUnit.field(file, pkg, s"$className.$fieldName")).toOption
   }
   // -----------------------------------------------------

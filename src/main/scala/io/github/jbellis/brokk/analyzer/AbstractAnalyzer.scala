@@ -77,15 +77,6 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
    */
   protected def methodSignature(m: Method): String
 
-  /**
-   * Language-specific method to parse a fully qualified name into its components.
-   * 
-   * @param fqName The fully qualified name to parse
-   * @return A Tuple3 containing (packageName, className, memberName)
-   *         For a class, memberName will be empty
-   */
-  protected def parseFqName(fqName: String): CodeUnit.Tuple3[String, String, String]
-  
   // --- Abstract CodeUnit Creation Methods ---
   /** Create a CLASS CodeUnit from FQCN. Relies on language-specific heuristics. Prefer CodeUnit factories where complete information is available. */
   def cuClass(fqcn: String, file: ProjectFile): Option[CodeUnit]

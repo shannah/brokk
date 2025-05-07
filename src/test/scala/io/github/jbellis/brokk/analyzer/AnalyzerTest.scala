@@ -612,4 +612,85 @@ class AnalyzerTest {
   private def getAnalyzer = {
     JavaAnalyzer(Path.of("src/test/resources/testcode-java"))
   }
+
+  @Test
+  def parseFqNameDirectTest(): Unit = {
+    val analyzer = getAnalyzer
+
+    def check(fqn: String, expectedType: CodeUnitType, expectedPkg: String, expectedCls: String, expectedMem: String): Unit = {
+      val result = analyzer.parseFqName(fqn, expectedType) // Call protected method directly
+      val typeString = if (expectedType != null) expectedType.toString else "null"
+      assertEquals(expectedPkg, result._1(), s"Package name mismatch for FQN [$fqn] with type [$typeString]")
+      assertEquals(expectedCls, result._2(), s"Class name mismatch for FQN [$fqn] with type [$typeString]")
+      assertEquals(expectedMem, result._3(), s"Member name mismatch for FQN [$fqn] with type [$typeString]")
+    }
+
+    // === CPG-Resolved Tests ===
+    // Class in CPG, default package
+    check("A", CodeUnitType.CLASS, "", "A", "")
+    // Method in CPG, default package class
+    check("A.method1", CodeUnitType.FUNCTION, "", "A", "method1")
+    // Field in CPG, default package class (D.field1)
+    check("D.field1", CodeUnitType.FIELD, "", "D", "field1")
+    // Static field in CPG, default package class (E.sField)
+    check("E.sField", CodeUnitType.FIELD, "", "E", "sField")
+    // Static method in CPG, default package class (E.sMethod)
+    check("E.sMethod", CodeUnitType.FUNCTION, "", "E", "sMethod")
+
+    // Class in CPG, with package
+    check("io.github.jbellis.brokk.Foo", CodeUnitType.CLASS, "io.github.jbellis.brokk", "Foo", "")
+    // Method in CPG, with package
+    check("io.github.jbellis.brokk.Foo.bar", CodeUnitType.FUNCTION, "io.github.jbellis.brokk", "Foo", "bar")
+
+    // Nested class in CPG (A$AInner)
+    check("A$AInner", CodeUnitType.CLASS, "", "A$AInner", "")
+    // Method in nested class in CPG (A$AInner$AInnerInner.method7)
+    check("A$AInner$AInnerInner.method7", CodeUnitType.FUNCTION, "", "A$AInner$AInnerInner", "method7")
+
+    // Constructor in CPG
+    check("A.<init>", CodeUnitType.FUNCTION, "", "A", "<init>")
+    // Assuming Foo has a constructor, and it's in CPG
+    check("io.github.jbellis.brokk.Foo.<init>", CodeUnitType.FUNCTION, "io.github.jbellis.brokk", "Foo", "<init>")
+
+    // === Fallback Heuristic Tests (for FQNs not in CPG or unresolvable parts) ===
+    // Synthetic member (e.g. enum's $values - typically a method)
+    check("org.fife.ui.autocomplete.AutoCompletionEvent$Type.$values", CodeUnitType.FUNCTION, "org.fife.ui.autocomplete", "AutoCompletionEvent$Type", "$values")
+
+    // Simple class, default package
+    check("NonCpgClass", CodeUnitType.CLASS, "", "NonCpgClass", "")
+    // Class with package
+    check("noncpg.package.SomeClass", CodeUnitType.CLASS, "noncpg.package", "SomeClass", "")
+    // Method in class with package
+    check("noncpg.package.SomeClass.someMethod", CodeUnitType.FUNCTION, "noncpg.package", "SomeClass", "someMethod")
+    // Field in class with package
+    check("noncpg.package.SomeClass.someField", CodeUnitType.FIELD, "noncpg.package", "SomeClass", "someField")
+    // Method in default package class
+    check("NonCpgClass.itsMethod", CodeUnitType.FUNCTION, "", "NonCpgClass", "itsMethod")
+    // Constructor (fallback)
+    check("noncpg.package.SomeClass.<init>", CodeUnitType.FUNCTION, "noncpg.package", "SomeClass", "<init>")
+    // Method with '$' in class name (fallback)
+    check("noncpg.package.My$ProdClass.factory$Method", CodeUnitType.FUNCTION, "noncpg.package", "My$ProdClass", "factory$Method")
+    // Method with '$' in method name (fallback)
+    check("noncpg.package.MyClass.method$WithDollar", CodeUnitType.FUNCTION, "noncpg.package", "MyClass", "method$WithDollar")
+
+    // Unconventional FQN: all lowercase package and class, expecting method
+    check("lower.case.package.lowerclass.methodName", CodeUnitType.FUNCTION, "lower.case.package", "lowerclass", "methodName")
+    // Unconventional FQN: class only, all lowercase, expecting method
+    check("lowerclass.methodName", CodeUnitType.FUNCTION, "", "lowerclass", "methodName")
+    // Unconventional FQN: class only, all lowercase, expecting class
+    check("lowerclass", CodeUnitType.CLASS, "", "lowerclass", "")
+
+    // === Edge Cases ===
+    // Empty string (pass CodeUnitType.CLASS as an arbitrary non-null type for this test)
+    check("", CodeUnitType.CLASS, "", "", "")
+    // Null (pass CodeUnitType.CLASS as an arbitrary non-null type for this test)
+    check(null, CodeUnitType.CLASS, "", "", "")
+
+    // FQN that is only a method name (expecting function)
+    check("orphanMethod", CodeUnitType.FUNCTION, "", "", "orphanMethod")
+    // FQN that is only a class name (expecting class)
+    check("OrphanClass", CodeUnitType.CLASS, "", "OrphanClass", "")
+    // FQN that is package-like but ends there (expecting class, heuristic treats last part as class)
+    check("some.package.name", CodeUnitType.CLASS, "some.package", "name", "")
+  }
 }
