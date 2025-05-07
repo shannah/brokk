@@ -1274,7 +1274,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Disable buttons immediately to provide feedback
         chrome.getProject().addToInstructionsHistory(goal, 20);
-        clearCommandInput();
 
         // Show the options dialog synchronously on the EDT. This blocks until the user clicks OK/Cancel.
         ArchitectAgent.ArchitectOptions options = ArchitectOptionsDialog.showDialogAndWait(chrome, contextManager);
@@ -1285,6 +1284,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             enableButtons(); // Re-enable buttons since the action was cancelled before submission
             return;
         }
+        clearCommandInput();
 
         // User confirmed options, now submit the actual agent execution to the background.
         submitAction("Architect", goal, () -> {
