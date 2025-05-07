@@ -596,7 +596,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 TitledBorder.DEFAULT_POSITION,
                 new Font(Font.DIALOG, Font.BOLD, 12)
         ));
-        // new SmartScroll(scrollPane);
+        AutoScroller.install(scrollPane);
 
         return scrollPane;
     }

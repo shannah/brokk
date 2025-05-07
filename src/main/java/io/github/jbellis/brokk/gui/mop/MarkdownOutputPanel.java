@@ -103,6 +103,15 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             compactAllMessages();
         }
     }
+
+    /**
+     * Returns the current blocking state.
+     *
+     * @return true if clear/reset operations are blocked, false otherwise
+     */
+    public boolean isBlocking() {
+        return blockClearAndReset;
+    }
     
     /**
      * Clears all text and displayed components.
