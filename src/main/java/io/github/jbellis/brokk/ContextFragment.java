@@ -169,7 +169,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            if (file.getParent().isEmpty()) {
+            if (file.getParent().equals(Path.of(""))) {
                 return file.getFileName();
             }
             return "%s [%s]".formatted(file.getFileName(), file.getParent());
@@ -229,8 +229,8 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            String parentDir = file.getParent();
-            return parentDir.isEmpty()
+            var parentDir = file.getParent();
+            return parentDir.equals(Path.of(""))
                    ? shortDescription()
                    : "%s [%s]".formatted(shortDescription(), parentDir);
         }
@@ -318,7 +318,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public String description() {
-            if (file instanceof ProjectFile pf && !pf.getParent().isEmpty()) {
+            if (file instanceof ProjectFile pf && !pf.getParent().equals(Path.of(""))) {
                 return "%s [%s]".formatted(file.getFileName(), pf.getParent());
             }
             return file.toString(); // For ExternalFile or root ProjectFile

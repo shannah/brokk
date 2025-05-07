@@ -419,7 +419,7 @@ public class GitCommitTab extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     fileStatusMap.clear();
                     for (var file : uncommittedFiles) {
-                        String fullPath = file.getParent().isEmpty() ? file.getFileName() : file.getParent() + "/" + file.getFileName();
+                        String fullPath = file.toString();
                         if (addedSet.contains(fullPath)) {
                             fileStatusMap.put(fullPath, "new");
                         } else if (removedSet.contains(fullPath)) {
@@ -444,13 +444,11 @@ public class GitCommitTab extends JPanel {
 
                         for (int i = 0; i < uncommittedFiles.size(); i++) {
                             var file = uncommittedFiles.get(i);
-                            model.addRow(new Object[]{file.getFileName(), file.getParent()});
-                            logger.trace("Added file to table: {}/{}", file.getParent(), file.getFileName());
+                            model.addRow(new Object[]{file.getFileName(), file.getParent().toString()});
+                            logger.trace("Added file to table: {}", file);
 
                             // Check if this file was previously selected
-                            String fullPath = file.getParent().isEmpty() ?
-                                              file.getFileName() : file.getParent() + "/" + file.getFileName();
-                            if (selectedFiles.contains(fullPath)) {
+                            if (selectedFiles.contains(file.toString())) {
                                 rowsToSelect.add(i);
                             }
                         }

@@ -59,12 +59,13 @@ public class ProjectFile implements BrokkFile {
     }
 
     /**
-     * Also relative
+     * Also relative (but unlike raw Path.getParent, ours returns empty path instead of null)
      */
-    public String getParent() {
-        return Optional.ofNullable(relPath.getParent())
-                .map(Path::toString)
-                .orElse("");
+    public Path getParent() {
+        // since this is the *relative* path component I think it's more correct to return empty than null;
+        // the other alternative is to wrap in Optional, but then comparing with an empty path is messier
+        var p = relPath.getParent();
+        return p == null ? Path.of("") : p;
     }
 
     @Override

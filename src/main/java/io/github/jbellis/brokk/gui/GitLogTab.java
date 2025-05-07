@@ -17,6 +17,7 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.awt.event.MouseEvent;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 
@@ -933,8 +934,8 @@ public class GitLogTab extends JPanel {
 
                     pullButton.setEnabled(finalCanPull);
                     pullButton.setToolTipText(finalCanPull
-                                               ? "Pull changes from remote for " + branchName
-                                               : "No upstream branch configured for " + branchName);
+                                              ? "Pull changes from remote for " + branchName
+                                              : "No upstream branch configured for " + branchName);
                     pullButton.setVisible(!branchName.equals("stashes")); // Hide pull button for stashes
 
                     pushButton.setEnabled(finalCanPush);
@@ -1005,7 +1006,7 @@ public class GitLogTab extends JPanel {
                         return;
                     }
 
-                    Map<String, List<String>> filesByDir = new HashMap<>();
+                    Map<Path, List<String>> filesByDir = new HashMap<>();
                     for (var file : allChangedFiles) {
                         filesByDir.computeIfAbsent(file.getParent(), k -> new ArrayList<>()).add(file.getFileName());
                     }
@@ -1015,7 +1016,7 @@ public class GitLogTab extends JPanel {
                         var files = entry.getValue();
 
                         DefaultMutableTreeNode dirNode;
-                        if (dirPath.isEmpty()) {
+                        if (dirPath.equals(Path.of(""))) {
                             dirNode = changesRootNode;
                         } else {
                             dirNode = new DefaultMutableTreeNode(dirPath);

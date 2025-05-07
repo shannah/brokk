@@ -14,6 +14,7 @@ import scala.Option;
 import scala.Tuple2;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -614,24 +615,14 @@ public class SearchTools {
         }
 
         // Normalize path for filtering (remove leading/trailing slashes, handle '.')
-        String normalizedPath = directoryPath.equals(".") ? "" : directoryPath.replaceFirst("^/+", "").replaceFirst("/+$", "");
-        String prefix = normalizedPath.isEmpty() ? "" : normalizedPath + "/";
+        var normalizedPath = Path.of(directoryPath).normalize();
 
-        logger.debug("Listing files for directory path: '{}' (normalized prefix: '{}')", directoryPath, prefix);
+        logger.debug("Listing files for directory path: '{}' (normalized to `{}`)", directoryPath, normalizedPath);
 
         var files = contextManager.getProject().getAllFiles().stream().parallel()
-                .map(ProjectFile::toString) // Get relative path string
-                .filter(path -> {
-                    if (prefix.isEmpty()) { // Root directory case
-                        // Only include files directly in root, not in subdirs
-                        return !path.contains("/");
-                    } else { // Subdirectory case
-                        // Must start with the prefix, but not be the prefix itself (if it's a dir entry somehow)
-                        // and only include files directly within that dir
-                        return path.startsWith(prefix) && path.length() > prefix.length() && !path.substring(prefix.length()).contains("/");
-                    }
-                })
+                .filter(file -> file.getParent().equals(normalizedPath))
                 .sorted()
+                .map(ProjectFile::toString)
                 .collect(Collectors.joining(", "));
 
         if (files.isEmpty()) {
