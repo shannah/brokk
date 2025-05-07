@@ -12,6 +12,14 @@
     name: (identifier) @function.name
     value: ((arrow_function) @function.definition))))
 
+; Top-level non-exported const/let/var variable assignment
+; ((lexical_declaration
+;  (variable_declarator
+;    name: (identifier) @field.name
+;    value: _ ; Ensures it's an assignment with a value
+;  )
+; ) @field.definition) ; Capture the entire lexical_declaration as the definition
+
 ; Class method
 ; Captures method_definition within a class_body. Name can be property_identifier or identifier.
 (
@@ -24,8 +32,111 @@
   )
 )
 
-; TODO: Revisit JavaScript field queries. Current attempts cause TSQueryErrorField.
-; (field definitions are commented out as per original)
+; Top-level non-exported const/let/var variable assignment
+; Catches 'const x = 1;', 'let y = "foo";', 'var z = {};' etc.
+; but not 'const F = () => ...' or 'const C = class ...'
+[
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier) @field.name
+      value: [
+        (string)
+        (template_string)
+        (number)
+        (regex)
+        (true)
+        (false)
+        (null)
+        (undefined)
+        (object)
+        (array)
+        (identifier)
+        (binary_expression)
+        (unary_expression)
+        (member_expression)
+        (subscript_expression)
+        (call_expression)
+      ]
+    ) @field.definition
+  )
+  (variable_declaration
+    (variable_declarator
+      name: (identifier) @field.name
+      value: [
+        (string)
+        (template_string)
+        (number)
+        (regex)
+        (true)
+        (false)
+        (null)
+        (undefined)
+        (object)
+        (array)
+        (identifier)
+        (binary_expression)
+        (unary_expression)
+        (member_expression)
+        (subscript_expression)
+        (call_expression)
+      ]
+    ) @field.definition
+  )
+]
 
+; Exported top-level const/let/var variable assignment
+; Catches 'export const x = 1;' etc.
+(
+  (export_statement
+    declaration: [
+      (lexical_declaration
+        (variable_declarator
+          name: (identifier) @field.name
+          value: [
+            (string)
+            (template_string)
+            (number)
+            (regex)
+            (true)
+            (false)
+            (null)
+            (undefined)
+            (object)
+            (array)
+            (identifier)
+            (binary_expression)
+            (unary_expression)
+            (member_expression)
+            (subscript_expression)
+            (call_expression)
+          ]
+        ) @field.definition
+      )
+      (variable_declaration
+        (variable_declarator
+          name: (identifier) @field.name
+          value: [
+            (string)
+            (template_string)
+            (number)
+            (regex)
+            (true)
+            (false)
+            (null)
+            (undefined)
+            (object)
+            (array)
+            (identifier)
+            (binary_expression)
+            (unary_expression)
+            (member_expression)
+            (subscript_expression)
+            (call_expression)
+          ]
+        ) @field.definition
+      )
+    ]
+  )
+)
 
 ; Ignore decorators / modifiers for now

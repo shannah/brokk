@@ -147,6 +147,41 @@ public final class TreeSitterAnalyzerTest {
         assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA_CU.fqName()).get().trim(), "getSkeleton mismatch for funcA");
     }
 
+    @Test
+    void testPythonTopLevelVariables() {
+        TestProject project = createTestProject("testcode-py", io.github.jbellis.brokk.analyzer.Language.PYTHON);
+        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        assertInstanceOf(PythonAnalyzer.class, ana);
+        PythonAnalyzer analyzer = (PythonAnalyzer) ana;
+
+        ProjectFile varsPyFile = new ProjectFile(project.getRoot(), "vars.py");
+        var skelVars = analyzer.getSkeletons(varsPyFile);
+
+        // vars.py content:
+        // TOP_VALUE = 99
+        // export_like = "not really"
+
+        // For Python top-level fields, shortName is now "moduleName.fieldName"
+        CodeUnit topValueCU = CodeUnit.field(varsPyFile, "", "vars.TOP_VALUE");
+        CodeUnit exportLikeCU = CodeUnit.field(varsPyFile, "", "vars.export_like");
+
+        assertTrue(skelVars.containsKey(topValueCU), "Skeletons map should contain vars.TOP_VALUE. Found: " + skelVars.keySet());
+        assertEquals("TOP_VALUE = 99", skelVars.get(topValueCU).strip());
+
+        assertTrue(skelVars.containsKey(exportLikeCU), "Skeletons map should contain export_like. Found: " + skelVars.keySet());
+        assertEquals("export_like = \"not really\"", skelVars.get(exportLikeCU).strip()); // Note: Query captures the whole assignment
+
+        // Ensure these are not mistaken for classes
+        assertFalse(analyzer.getClassesInFile(varsPyFile).contains(topValueCU), "TOP_VALUE should not be in classes list.");
+        assertFalse(analyzer.getClassesInFile(varsPyFile).contains(exportLikeCU), "export_like should not be in classes list.");
+
+        // Verify that getTopLevelDeclarations includes these fields
+        var topLevelDecls = ((TreeSitterAnalyzer)analyzer).topLevelDeclarations.get(varsPyFile);
+        assertNotNull(topLevelDecls, "Top level declarations for vars.py should exist.");
+        assertTrue(topLevelDecls.contains(topValueCU), "Top-level declarations should include TOP_VALUE.");
+        assertTrue(topLevelDecls.contains(exportLikeCU), "Top-level declarations should include export_like.");
+    }
+
 
     /* -------------------- C# -------------------- */
 
@@ -316,5 +351,32 @@ public final class TreeSitterAnalyzerTest {
         export function util() ...
         """.stripIndent();
         assertEquals(expectedUtilFuncSkeleton.trim(), skelJs.get(utilFunc).trim());
+    }
+
+    @Test
+    void testJavascriptTopLevelVariables() {
+        TestProject project = createTestProject("testcode-js", io.github.jbellis.brokk.analyzer.Language.JAVASCRIPT);
+        IAnalyzer ana = Optional.ofNullable(project.getAnalyzer()).orElseThrow();
+        assertInstanceOf(JavascriptAnalyzer.class, ana);
+        JavascriptAnalyzer analyzer = (JavascriptAnalyzer) ana;
+
+        ProjectFile varsJsFile = new ProjectFile(project.getRoot(), "Vars.js");
+        var skelVars = analyzer.getSkeletons(varsJsFile);
+
+        assertFalse(skelVars.isEmpty(), "Skeletons map for Vars.js should not be empty. Found: " + skelVars.keySet());
+
+        CodeUnit topConstJsCU = CodeUnit.field(varsJsFile, "", "_module_.TOP_CONST_JS");
+        CodeUnit localVarJsCU = CodeUnit.field(varsJsFile, "", "_module_.localVarJs");
+
+        assertTrue(skelVars.containsKey(topConstJsCU), "Skeletons map should contain _module_.TOP_CONST_JS. Found: " + skelVars.keySet());
+        assertEquals("export const TOP_CONST_JS = 123", skelVars.get(topConstJsCU).strip());
+
+        assertTrue(skelVars.containsKey(localVarJsCU), "Skeletons map should contain _module_.localVarJs. Found: " + skelVars.keySet());
+        assertEquals("let localVarJs = \"abc\"", skelVars.get(localVarJsCU).strip());
+
+        // Ensure these are not mistaken for classes
+        Set<CodeUnit> classesInFile = analyzer.getClassesInFile(varsJsFile);
+        assertFalse(classesInFile.contains(topConstJsCU), "_module_.TOP_CONST_JS should not be in classes list.");
+        assertFalse(classesInFile.contains(localVarJsCU), "_module_.localVarJs should not be in classes list.");
     }
 }

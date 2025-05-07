@@ -54,8 +54,19 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                     String finalShortName = classChain.isEmpty() ? (moduleName + "." + simpleName) : (classChain + "." + simpleName);
                     yield CodeUnit.fn(file, packagePath, finalShortName);
                 }
-                case "field.definition" -> { // For class attributes captured by the new query
-                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                case "field.definition" -> { // For class attributes or top-level variables
+                    if (file.getFileName().equals("vars.py")) {
+                        log.info("[vars.py DEBUG PythonAnalyzer.createCodeUnit] file: {}, captureName: {}, simpleName: {}, namespaceName: {}, classChain: {}, packagePath: {}, moduleName: {}",
+                                 file.getFileName(), captureName, simpleName, namespaceName, classChain, packagePath, moduleName);
+                    }
+                    String finalShortName;
+                    if (classChain.isEmpty()) {
+                        // For top-level variables, use "moduleName.variableName" to satisfy CodeUnit.field's expectation of a "."
+                        // This also makes it consistent with how top-level functions are named (moduleName.funcName)
+                        finalShortName = moduleName + "." + simpleName;
+                    } else {
+                        finalShortName = classChain + "." + simpleName;
+                    }
                     yield CodeUnit.field(file, packagePath, finalShortName);
                 }
                 default -> {

@@ -354,6 +354,18 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         // Sort declaration nodes by their start byte to process outer definitions before inner ones.
         // This is crucial for parent lookup.
+        if (file.getFileName().equals("vars.py")) {
+            log.info("[vars.py DEBUG] declarationNodes for vars.py: {}", declarationNodes.entrySet().stream()
+                .map(entry -> String.format("Node: %s (%s), Capture: %s, Name: %s", 
+                                        entry.getKey().getType(), 
+                                        textSlice(entry.getKey(), src).lines().findFirst().orElse("").trim(), 
+                                        entry.getValue().getKey(), 
+                                        entry.getValue().getValue()))
+                .collect(Collectors.toList()));
+            if (declarationNodes.isEmpty()) {
+                log.info("[vars.py DEBUG] declarationNodes for vars.py is EMPTY after query execution.");
+            }
+        }
         List<Map.Entry<TSNode, Map.Entry<String, String>>> sortedDeclarationEntries =
             declarationNodes.entrySet().stream()
                 .sorted(Comparator.comparingInt(entry -> entry.getKey().getStartByte()))
@@ -400,6 +412,12 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
             String signature = buildSignatureString(node, simpleName, src, primaryCaptureName);
             log.trace("Built signature for '{}': [{}]", simpleName, signature == null ? "NULL" : signature.isBlank() ? "BLANK" : signature.lines().findFirst().orElse("EMPTY"));
+
+            if (file.getFileName().equals("vars.py") && primaryCaptureName.equals("field.definition")) {
+                log.info("[vars.py DEBUG] Processing entry for vars.py field: Node Type='{}', SimpleName='{}', CaptureName='{}', Namespace='{}', ClassChain='{}'", 
+                         node.getType(), simpleName, primaryCaptureName, namespace, classChain);
+                log.info("[vars.py DEBUG] CU created: {}, Signature: [{}]", cu, signature == null ? "NULL_SIG" : signature.isBlank() ? "BLANK_SIG" : signature.lines().findFirst().orElse("EMPTY_SIG"));
+            }
 
             if (signature == null || signature.isBlank()) {
                 log.warn("buildSignatureString returned empty/null for node {} ({})", simpleName, primaryCaptureName);
@@ -527,7 +545,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         SkeletonType skeletonType = getSkeletonTypeForCapture(primaryCaptureName);
         switch (skeletonType) {
-            case CLASS_LIKE:
+            case CLASS_LIKE: {
                 String exportPrefix = getVisibilityPrefix(effectiveDefinitionNode, src);
                 TSNode bodyNode = effectiveDefinitionNode.getChildByFieldName("body");
                 String classSignatureText;
@@ -541,13 +559,15 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 String headerLine = renderClassHeader(effectiveDefinitionNode, src, exportPrefix, classSignatureText, "");
                 if (headerLine != null && !headerLine.isBlank()) signatureLines.add(headerLine);
                 break;
+            }
             case FUNCTION_LIKE:
                 buildFunctionSkeleton(effectiveDefinitionNode, Optional.of(simpleName), src, "", signatureLines);
                 break;
-            case FIELD_LIKE:
-                // Store field signature without leading indent.
-                signatureLines.add(textSlice(definitionNode, src).stripLeading());
+            case FIELD_LIKE: {
+                String exportPrefix = getVisibilityPrefix(definitionNode, src);
+                signatureLines.add(exportPrefix + textSlice(definitionNode, src).stripLeading().strip());
                 break;
+            }
             case UNSUPPORTED:
             default:
                  log.debug("Unsupported capture name '{}' for signature building (type {}). Using raw text slice, stripped.", primaryCaptureName, skeletonType);

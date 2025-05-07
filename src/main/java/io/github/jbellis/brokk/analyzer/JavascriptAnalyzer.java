@@ -38,8 +38,15 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
                 }
                 yield CodeUnit.fn(file, pkg, finalShortName);
             }
-            case "field.definition" -> { // For class fields
-                String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+            case "field.definition" -> { // For class fields or top-level variables
+                String finalShortName;
+                if (classChain.isEmpty()) {
+                    // For top-level variables, use a convention like "_module_.variableName"
+                    // to satisfy CodeUnit.field's expectation of a "."
+                    finalShortName = "_module_." + simpleName;
+                } else {
+                    finalShortName = classChain + "." + simpleName;
+                }
                 yield CodeUnit.field(file, pkg, finalShortName);
             }
             default -> {
@@ -86,24 +93,66 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     protected String getVisibilityPrefix(TSNode node, String src) {
         TSNode parent = node.getParent();
         if (parent != null && !parent.isNull()) {
-            // Direct export of class_declaration, function_declaration, etc.
+            // Check if 'node' is a variable_declarator and its parent is lexical_declaration or variable_declaration
+            // This is for field definitions like `const a = 1;` or `export let b = 2;`
+            // where `node` is the `variable_declarator` (e.g., `a = 1`).
+            if (("lexical_declaration".equals(parent.getType()) || "variable_declaration".equals(parent.getType())) &&
+                node.getType().equals("variable_declarator"))
+            {
+                TSNode declarationNode = parent; // lexical_declaration or variable_declaration
+                String keyword = "";
+                // The first child of lexical/variable_declaration is the keyword (const, let, var)
+                TSNode keywordNode = declarationNode.getChild(0);
+                if (keywordNode != null && !keywordNode.isNull()) {
+                   keyword = textSlice(keywordNode, src); // "const", "let", or "var"
+                }
+
+                String exportStr = "";
+                TSNode exportStatementNode = declarationNode.getParent(); // Parent of lexical/variable_declaration
+                if (exportStatementNode != null && !exportStatementNode.isNull() && "export_statement".equals(exportStatementNode.getType())) {
+                    exportStr = "export ";
+                }
+                
+                // Combine export prefix and keyword
+                // e.g., "export const ", "let ", "var "
+                StringBuilder prefixBuilder = new StringBuilder();
+                if (!exportStr.isEmpty()) {
+                    prefixBuilder.append(exportStr);
+                }
+                if (!keyword.isEmpty()) {
+                    prefixBuilder.append(keyword).append(" ");
+                }
+                return prefixBuilder.toString();
+            }
+
+            // Original logic for other types of nodes (e.g., class_declaration, function_declaration, arrow_function)
+            // Case 1: node is class_declaration, function_declaration, etc., and its parent is an export_statement.
             if ("export_statement".equals(parent.getType())) {
+                // This handles `export class Foo {}`, `export function bar() {}`
                 return "export ";
             }
-            // Export of a variable declaration like `export const Foo = ...` or `export let Bar = class ...`
-            // `node` would be arrow_function or class_declaration node.
-            // Parent is variable_declarator. Grandparent is lexical_declaration. Great-grandparent is export_statement.
+
+            // Case 2: node is the value of a variable declarator (e.g., an arrow_function or class_expression),
+            // and the containing lexical_declaration or variable_declaration is exported.
+            // e.g., `export const foo = () => {}` -> `node` is `arrow_function`, `parent` is `variable_declarator`.
             if ("variable_declarator".equals(parent.getType())) {
-                TSNode lexicalDeclNode = parent.getParent();
-                if (lexicalDeclNode != null && !lexicalDeclNode.isNull() && "lexical_declaration".equals(lexicalDeclNode.getType())) {
-                    TSNode exportStatementNode = lexicalDeclNode.getParent();
+                TSNode lexicalOrVarDeclNode = parent.getParent();
+                if (lexicalOrVarDeclNode != null && !lexicalOrVarDeclNode.isNull() &&
+                    ("lexical_declaration".equals(lexicalOrVarDeclNode.getType()) || "variable_declaration".equals(lexicalOrVarDeclNode.getType()))) {
+                    TSNode exportStatementNode = lexicalOrVarDeclNode.getParent();
                     if (exportStatementNode != null && !exportStatementNode.isNull() && "export_statement".equals(exportStatementNode.getType())) {
+                        // For `export const Foo = () => {}`, this returns "export "
+                        // The `const` part is not included here; it's part of the arrow function's name construction logic if needed,
+                        // or implicit in the fact it's a const declaration.
+                        // Current `renderFunctionDeclaration` for arrow functions does:
+                        // `String.format("%s%s%s%s%s =>", exportPrefix, asyncPrefix, functionName, paramsText, tsReturnTypeSuffix);`
+                        // This correctly uses the "export " prefix.
                         return "export ";
                     }
                 }
             }
         }
-        return "";
+        return ""; // Default: no prefix
     }
 
     @Override

@@ -32,18 +32,8 @@
   )
 )
 
-
-; Capture field assignments like `self.x = ...` to help identify them during skeleton building.
-; We need the helper `obj` capture for the predicate.
-(assignment
-  left: (attribute
-    object: (identifier) @obj (#eq? @obj "self")
-    attribute: (identifier) @field.name)) @field.declaration
-
-; Python class attribute
-; Captures assignments like `CLS_VAR = value` directly under class definition
-(class_definition
-  name: _ @_.class_name ; Anchor to ensure we are inside a class
-  body: (block . (expression_statement (assignment
-                                          left: (identifier) @field.name
-                                          right: _) @field.definition)))
+; Top-level variable assignment
+(module
+  (expression_statement
+    (assignment
+      left: (identifier) @field.name) @field.definition))
