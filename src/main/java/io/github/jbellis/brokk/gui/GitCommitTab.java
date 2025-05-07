@@ -38,7 +38,7 @@ public class GitCommitTab extends JPanel {
     private RSyntaxTextArea commitMessageArea;
     private JButton commitButton;
     private JButton stashButton;
-    private final Map<String, String> fileStatusMap = new HashMap<>();
+    private final Map<ProjectFile, String> fileStatusMap = new HashMap<>();
 
     public GitCommitTab(Chrome chrome, ContextManager contextManager, GitPanel gitPanel) {
         super(new BorderLayout());
@@ -54,9 +54,13 @@ public class GitCommitTab extends JPanel {
     private void buildCommitTabUI()
     {
         // Table for uncommitted files
-        DefaultTableModel model = new DefaultTableModel(new Object[]{"Filename", "Path"}, 0) {
+        // Add a hidden column to store ProjectFile objects
+        DefaultTableModel model = new DefaultTableModel(new Object[]{"Filename", "Path", "ProjectFile"}, 0) {
             @Override
             public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 2) {
+                    return ProjectFile.class;
+                }
                 return String.class;
             }
 
@@ -75,10 +79,8 @@ public class GitCommitTab extends JPanel {
             {
                 var cell = (javax.swing.table.DefaultTableCellRenderer)
                         super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                String filename = (String) table.getModel().getValueAt(row, 0);
-                String path = (String) table.getModel().getValueAt(row, 1);
-                String fullPath = path.isEmpty() ? filename : path + "/" + filename;
-                String status = fileStatusMap.get(fullPath);
+                var projectFile = (ProjectFile) table.getModel().getValueAt(row, 2); // Get ProjectFile from hidden column
+                String status = fileStatusMap.get(projectFile);
                 boolean darkTheme = UIManager.getLookAndFeel().getName().toLowerCase().contains("dark");
 
                 if (isSelected) {
@@ -101,6 +103,12 @@ public class GitCommitTab extends JPanel {
         uncommittedFilesTable.setRowHeight(18);
         uncommittedFilesTable.getColumnModel().getColumn(0).setPreferredWidth(150);
         uncommittedFilesTable.getColumnModel().getColumn(1).setPreferredWidth(450);
+        // Hide the ProjectFile column
+        var projectFileColumn = uncommittedFilesTable.getColumnModel().getColumn(2);
+        projectFileColumn.setMinWidth(0);
+        projectFileColumn.setMaxWidth(0);
+        projectFileColumn.setWidth(0);
+        projectFileColumn.setPreferredWidth(0);
         uncommittedFilesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         // Double-click => show diff
@@ -111,11 +119,8 @@ public class GitCommitTab extends JPanel {
                     int row = uncommittedFilesTable.rowAtPoint(e.getPoint());
                     if (row >= 0) {
                         uncommittedFilesTable.setRowSelectionInterval(row, row);
-                        String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                        String path = (String) uncommittedFilesTable.getValueAt(row, 1);
-                        String filePath = path.isEmpty() ? filename : path + "/" + filename;
-                        // Unified call:
-                        GitUiUtil.showUncommittedFileDiff(contextManager, chrome, filePath);
+                        var projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                        GitUiUtil.showUncommittedFileDiff(contextManager, chrome, projectFile.toString());
                     }
                 }
             }
@@ -167,10 +172,8 @@ public class GitCommitTab extends JPanel {
         viewDiffItem.addActionListener(e -> {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
-                String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
-                String filePath = path.isEmpty() ? filename : path + "/" + filename;
-                GitUiUtil.showUncommittedFileDiff(contextManager, chrome, filePath);
+                var projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                GitUiUtil.showUncommittedFileDiff(contextManager, chrome, projectFile.toString());
             }
         });
 
@@ -183,10 +186,8 @@ public class GitCommitTab extends JPanel {
         editFileItem.addActionListener(e -> {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
-                String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
-                String filePath = path.isEmpty() ? filename : path + "/" + filename;
-                GitUiUtil.editFile(contextManager, filePath);
+                var projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                GitUiUtil.editFile(contextManager, projectFile.toString());
             }
         });
 
@@ -194,12 +195,8 @@ public class GitCommitTab extends JPanel {
         viewHistoryItem.addActionListener(e -> {
             int row = uncommittedFilesTable.getSelectedRow();
             if (row >= 0) {
-                String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-                String path = (String) uncommittedFilesTable.getValueAt(row, 1);
-                String filePath = path.isEmpty() ? filename : path + "/" + filename;
-                // Call the parent GitPanel to show the history
-                var file = contextManager.toFile(filePath);
-                gitPanel.addFileHistoryTab(file);
+                var projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                gitPanel.addFileHistoryTab(projectFile);
             }
         });
 
@@ -398,34 +395,41 @@ public class GitCommitTab extends JPanel {
             return;
         }
         // Store currently selected rows before updating
-        int[] selectedRows = uncommittedFilesTable.getSelectedRows();
-        List<String> selectedFiles = new ArrayList<>();
+        int[] selectedRowsIndices = uncommittedFilesTable.getSelectedRows();
+        List<ProjectFile> previouslySelectedFiles = new ArrayList<>();
 
-        // Store the filenames of selected rows to restore selection later
-        for (int row : selectedRows) {
-            String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-            String path = (String) uncommittedFilesTable.getValueAt(row, 1);
-            String fullPath = path.isEmpty() ? filename : path + "/" + filename;
-            selectedFiles.add(fullPath);
+        // Store the ProjectFile objects of selected rows to restore selection later
+        if (uncommittedFilesTable.getModel().getRowCount() > 0) { // Check if table has rows before accessing
+            for (int rowIndex : selectedRowsIndices) {
+                if (rowIndex < uncommittedFilesTable.getModel().getRowCount()) { // Bounds check
+                    ProjectFile pf = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(rowIndex, 2);
+                    if (pf != null) { // getValueAt can return null if model is being cleared
+                        previouslySelectedFiles.add(pf);
+                    }
+                }
+            }
         }
+
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             try {
                 var uncommittedFiles = getRepo().getModifiedFiles();
                 logger.trace("Found modified files {}", uncommittedFiles);
                 var gitStatus = getRepo().getGit().status().call();
+                // JGit status methods return Set<String> of paths relative to worktree
                 var addedSet = gitStatus.getAdded();
                 var removedSet = new java.util.HashSet<>(gitStatus.getRemoved());
                 removedSet.addAll(gitStatus.getMissing());
+
                 SwingUtilities.invokeLater(() -> {
                     fileStatusMap.clear();
                     for (var file : uncommittedFiles) {
-                        String fullPath = file.toString();
-                        if (addedSet.contains(fullPath)) {
-                            fileStatusMap.put(fullPath, "new");
-                        } else if (removedSet.contains(fullPath)) {
-                            fileStatusMap.put(fullPath, "deleted");
+                        String filePathString = file.toString();
+                        if (addedSet.contains(filePathString)) {
+                            fileStatusMap.put(file, "new");
+                        } else if (removedSet.contains(filePathString)) {
+                            fileStatusMap.put(file, "deleted");
                         } else {
-                            fileStatusMap.put(fullPath, "modified");
+                            fileStatusMap.put(file, "modified");
                         }
                     }
 
@@ -444,11 +448,12 @@ public class GitCommitTab extends JPanel {
 
                         for (int i = 0; i < uncommittedFiles.size(); i++) {
                             var file = uncommittedFiles.get(i);
-                            model.addRow(new Object[]{file.getFileName(), file.getParent().toString()});
+                            // Add ProjectFile instance to the hidden column
+                            model.addRow(new Object[]{file.getFileName(), file.getParent().toString(), file});
                             logger.trace("Added file to table: {}", file);
 
                             // Check if this file was previously selected
-                            if (selectedFiles.contains(file.toString())) {
+                            if (previouslySelectedFiles.contains(file)) {
                                 rowsToSelect.add(i);
                             }
                         }
@@ -531,14 +536,11 @@ public class GitCommitTab extends JPanel {
 
             // Get file details for conditional enablement
             int row = selectedRows[0];
-            String filename = (String) uncommittedFilesTable.getValueAt(row, 0);
-            String path = (String) uncommittedFilesTable.getValueAt(row, 1);
-            String filePath = path.isEmpty() ? filename : path + "/" + filename;
-            var file = contextManager.toFile(filePath);
-            String status = fileStatusMap.get(filePath);
+            ProjectFile projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+            String status = fileStatusMap.get(projectFile);
 
             // Conditionally enable Edit File
-            boolean alreadyEditable = contextManager.getEditableFiles().contains(file);
+            boolean alreadyEditable = contextManager.getEditableFiles().contains(projectFile);
             editFileItem.setEnabled(!alreadyEditable);
             editFileItem.setToolTipText(alreadyEditable ?
                                         "File is already in editable context" :
@@ -573,11 +575,9 @@ public class GitCommitTab extends JPanel {
         var files = new ArrayList<ProjectFile>();
 
         for (var row : selectedRows) {
-            var filename = (String) model.getValueAt(row, 0);
-            var path = (String) model.getValueAt(row, 1);
-            // Combine them to get the relative path
-            var combined = path.isEmpty() ? filename : path + "/" + filename;
-            files.add(new ProjectFile(contextManager.getRoot(), combined));
+            // Retrieve ProjectFile directly from the hidden column
+            ProjectFile projectFile = (ProjectFile) model.getValueAt(row, 2);
+            files.add(projectFile);
         }
         return files;
     }
