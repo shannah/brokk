@@ -12,7 +12,22 @@ import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TableUtils {
+public final class TableUtils {
+
+    /**
+     * Returns the preferred row height for a table cell that renders
+     * a {@link FileReferenceList}, by measuring a sample rendered cell.
+     *
+     * @param table The JTable for which to calculate the row height.
+     * @return The preferred row height based on measurement.
+     */
+    public static int measuredBadgeRowHeight(JTable table) {
+        var sampleData = new FileReferenceList.FileReferenceData("sample.txt", "/sample.txt", null);
+        var renderer = new FileReferencesTableCellRenderer();
+        // The column index for getTableCellRendererComponent doesn't matter for row height
+        var component = renderer.getTableCellRendererComponent(table, List.of(sampleData), false, false, 0, 0);
+        return component.getPreferredSize().height;
+    }
 
     /**
      * Adjusts the preferred width of the specified column to fit its content.

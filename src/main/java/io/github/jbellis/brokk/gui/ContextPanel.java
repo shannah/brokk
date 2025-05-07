@@ -126,8 +126,8 @@ public class ContextPanel extends JPanel {
         var fileRenderer = new TableUtils.FileReferencesTableCellRenderer();
         contextTable.getColumnModel().getColumn(FILES_REFERENCED_COLUMN).setCellRenderer(fileRenderer);
 
-        // Increase row height to accommodate file "badges"
-        contextTable.setRowHeight(23);
+        // Dynamically set row height based on renderer's preferred size
+        contextTable.setRowHeight(TableUtils.measuredBadgeRowHeight(contextTable));
 
         // Hide the FRAGMENT_COLUMN from view
         contextTable.getColumnModel().getColumn(FRAGMENT_COLUMN).setMinWidth(0);

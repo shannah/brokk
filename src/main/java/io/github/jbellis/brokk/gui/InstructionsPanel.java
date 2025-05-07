@@ -352,13 +352,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         });
         referenceFileTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         // Dynamically set row height based on renderer's preferred size
-        var sampleFileRefData = new FileReferenceData("sample.txt", "/sample.txt", null);
-        var cellRenderer = new TableUtils.FileReferencesTableCellRenderer();
-        Component rendererComponent = cellRenderer.getTableCellRendererComponent(
-                referenceFileTable, List.of(sampleFileRefData), false, false, 0, 0);
-        int dynamicRowHeight = rendererComponent.getPreferredSize().height;
-
-        referenceFileTable.setRowHeight(dynamicRowHeight);
+        referenceFileTable.setRowHeight(TableUtils.measuredBadgeRowHeight(referenceFileTable));
 
         referenceFileTable.setTableHeader(null);             // single-column ⇒ header not needed
         referenceFileTable.setShowGrid(false);
