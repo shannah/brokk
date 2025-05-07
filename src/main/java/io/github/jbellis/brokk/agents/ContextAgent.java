@@ -408,7 +408,7 @@ public class ContextAgent {
     private Map<CodeUnit, String> getProjectSummaries(Collection<ProjectFile> files) {
         return files.stream().parallel()
                 .flatMap(f -> analyzer.getSkeletons(f).entrySet().stream())
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
     }
 
     private @NotNull Map<CodeUnit, @NotNull String> getSummaries(Collection<CodeUnit> classes, boolean parallel) {

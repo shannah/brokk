@@ -191,7 +191,7 @@ public class AnalyzerUtil {
                     return skeletonOpt.isDefined() ? Map.entry(cu, skeletonOpt.get()) : null; // Create entry if skeleton exists
                 })
                 .filter(Objects::nonNull) // Filter out null entries (where skeleton wasn't found)
-                .collect(Collectors.toMap(entry -> entry.getKey(), entry -> entry.getValue())); // Use explicit lambdas
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     /**
