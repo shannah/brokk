@@ -374,10 +374,26 @@ public class Context implements Serializable {
      * Returns editable files and usage fragments as a combined stream
      */
     public Stream<ContextFragment> getEditableFragments() {
-        return Streams.concat(
-            editableFiles.stream(),
-            virtualFragments.stream().filter(f -> f instanceof ContextFragment.UsageFragment)
-        );
+        // Helper record for associating a fragment with its mtime for safe sorting and filtering
+        record EditableFileWithMtime(ContextFragment.ProjectPathFragment fragment, long mtime) {}
+
+        Stream<ContextFragment.ProjectPathFragment> sortedEditableFiles =
+            editableFiles.stream()
+                .map(ef -> {
+                    try {
+                        return new EditableFileWithMtime(ef, ef.file().mtime());
+                    } catch (IOException e) {
+                        logger.warn("Could not get mtime for editable file [{}], it will be excluded from ordered editable fragments.",
+                                    ef.shortDescription(), e);
+                        return new EditableFileWithMtime(ef, -1L); // Mark for filtering
+                    }
+                })
+                .filter(mf -> mf.mtime() >= 0) // Filter out files with errors or negative mtime
+                .sorted(Comparator.comparingLong(EditableFileWithMtime::mtime)) // Sort by mtime
+                .map(EditableFileWithMtime::fragment); // Extract the original fragment
+
+        return Streams.concat(virtualFragments.stream().filter(f -> f instanceof ContextFragment.UsageFragment),
+                              sortedEditableFiles);
     }
 
     public Stream<? extends ContextFragment> allFragments() {

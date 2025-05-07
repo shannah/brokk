@@ -45,4 +45,8 @@ public interface BrokkFile extends Serializable, Comparable<BrokkFile> {
     default int compareTo(@NotNull BrokkFile o) {
         return absPath().compareTo(o.absPath());
     }
+
+    default long mtime() throws IOException {
+        return Files.getLastModifiedTime(absPath()).toMillis();
+    }
 }
