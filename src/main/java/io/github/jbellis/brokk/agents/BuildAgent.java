@@ -8,6 +8,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -19,6 +20,7 @@ import io.github.jbellis.brokk.util.BuildToolConventions.BuildSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -294,5 +297,86 @@ public class BuildAgent {
         }
 
         public static final BuildDetails EMPTY = new BuildDetails(List.of(), List.of(), "", "", "", Set.of());
+    }
+
+    /**
+     * Asynchronously determines the best verification command based on the user goal,
+     * workspace summary, and stored BuildDetails.
+     * Runs on the ContextManager's background task executor.
+     * Determines the command by checking for relevant test files in the workspace
+     * and the availability of a specific test command in BuildDetails.
+     *
+     * @param cm The ContextManager instance.
+     * @return A CompletableFuture containing the suggested verification command string (either specific test command or build/lint command),
+     * or null if BuildDetails are unavailable.
+     */
+    static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm) {
+        // Runs asynchronously on the background executor provided by ContextManager
+        return CompletableFuture.supplyAsync(() -> {
+            // Retrieve build details from the project associated with the ContextManager
+            BuildDetails details = cm.getProject().getBuildDetails();
+            if (details.equals(BuildDetails.EMPTY)) {
+                logger.warn("No build details available, cannot determine verification command.");
+                return null;
+            }
+
+            // Get the set of files currently loaded in the workspace (both editable and read-only ProjectFiles)
+            var workspaceFiles = Stream.concat(cm.getEditableFiles().stream(), cm.getReadonlyFiles().stream())
+                    .collect(Collectors.toSet());
+
+            // Check if any of the identified project test files are present in the current workspace set
+            var projectTestFiles = cm.getTestFiles();
+            var workspaceTestFiles = projectTestFiles.stream().filter(workspaceFiles::contains).toList();
+
+            // Decide which command to use
+            if (workspaceTestFiles.isEmpty()) {
+                logger.debug("No relevant test files found in workspace, using build/lint command: {}", details.buildLintCommand());
+                return details.buildLintCommand();
+            }
+
+            // Construct the prompt for the LLM
+            logger.debug("Found relevant tests {}, asking LLM for specific command.", workspaceTestFiles);
+            var prompt = """
+                         Given the build details and the list of test files modified or relevant to the recent changes,
+                         give the shell command to run *only* these specific tests. (You may chain multiple
+                         commands with &&, if necessary.)
+                         
+                         Build Details:
+                         Test All Command: %s
+                         Build/Lint Command: %s
+                         Other Instructions: %s
+                         
+                         Test Files to execute:
+                         %s
+                         
+                         Provide *only* the command line string to execute these specific tests.
+                         Do not include any explanation or formatting.
+                         If you cannot determine a more specific command, respond with an empty string.
+                         """.formatted(details.testAllCommand(),
+                                       details.buildLintCommand(),
+                                       details.instructions(),
+                                       workspaceTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"))).stripIndent();
+            // Need a coder instance specifically for this task
+            var inferTestCoder = cm.getLlm(cm.getModels().quickModel(), "Infer tests");
+            // Ask the LLM
+            Llm.StreamingResult llmResult = null;
+            try {
+                llmResult = inferTestCoder.sendRequest(List.of(new UserMessage(prompt)));
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            var suggestedCommand = llmResult.chatResponse() != null && llmResult.chatResponse().aiMessage() != null
+                                   ? llmResult.chatResponse().aiMessage().text().trim()
+                                   : null; // Handle potential nulls from LLM response
+
+            // Use the suggested command if valid, otherwise fallback
+            if (suggestedCommand != null && !suggestedCommand.isBlank()) {
+                logger.info("LLM suggested specific test command: '{}'", suggestedCommand);
+                return suggestedCommand;
+            } else {
+                logger.warn("LLM did not suggest a specific test command. Falling back to default");
+                return details.buildLintCommand();
+            }
+        }, cm.getBackgroundTasks());
     }
 }
