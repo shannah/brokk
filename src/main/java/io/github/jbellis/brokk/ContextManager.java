@@ -1428,7 +1428,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             try {
                 inferredDetails = agent.execute();
             } catch (Exception e) {
-                logger.error("BuildAgent did not complete successfully (aborted or errored). Build details not saved.");
+                logger.error("BuildAgent did not complete successfully (aborted or errored). Build details not saved.", e);
                 io.toolError("Build Information Agent failed: " + e.getMessage());
                 inferredDetails = BuildDetails.EMPTY;
             }
