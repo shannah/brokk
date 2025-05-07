@@ -243,7 +243,7 @@ public class ArchitectAgent {
 
         // Check if ContextAgent is enabled in options before using it
         if (options.includeContextAgent()) {
-            var contextAgent = new ContextAgent(contextManager, contextManager.getAskModel(), goal, true);
+            var contextAgent = new ContextAgent(contextManager, contextManager.getEditModel(), goal, true);
             contextAgent.execute();
         }
 
