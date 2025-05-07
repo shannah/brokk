@@ -41,8 +41,7 @@ public class CodeFenceRenderer implements NodeRenderer {
         String language = node.getInfo().toString();
         String content = node.getContentChars().toString();
 
-        logger.debug("Rendering code fence with id={}, language={}, content length={}",
-                     id, language, content.length());
+        // logger.debug("Rendering code fence with id={}, language={}, content length={}", id, language, content.length());
 
         // Output the code-fence element with attributes, containing a pre block
         // for whitespace preservation in the browser.

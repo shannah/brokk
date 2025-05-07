@@ -137,7 +137,7 @@ public final class IncrementalBlockRenderer {
         // Skip if nothing changed
         String htmlFp = html.hashCode() + "";
         if (htmlFp.equals(lastHtmlFingerprint)) {
-            logger.debug("Skipping update - content unchanged");
+            // logger.debug("Skipping update - content unchanged");
             return;
         }
         lastHtmlFingerprint = htmlFp;

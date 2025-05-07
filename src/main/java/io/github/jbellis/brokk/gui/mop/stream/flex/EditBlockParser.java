@@ -214,7 +214,7 @@ public class EditBlockParser extends AbstractBlockParser {
                     // Check if this line is a fence opening
                     Matcher fenceMatcher = OPENING_FENCE.matcher(lineStr);
                     if (fenceMatcher.matches()) {
-                        logger.debug("Found potential fence opening: {}", line);
+                        // logger.debug("Found potential fence opening: {}", line);
                         
                         // Look-ahead: is there a <<<<<<< SEARCH before the closing fence?
                         var doc = line.getBaseSequence();          // whole document
