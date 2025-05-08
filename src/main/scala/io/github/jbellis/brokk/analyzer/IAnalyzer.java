@@ -43,11 +43,19 @@ public interface IAnalyzer {
         throw new UnsupportedOperationException();
     }
 
-    default Option<String> getMethodSource(String methodName) {
+    /**
+     * Gets the source code for a given method name. If multiple methods match (e.g. overloads),
+     * their source code snippets are concatenated (separated by newlines). If none match, returns None.
+     */
+    default Option<String> getMethodSource(String fqName) {
         throw new UnsupportedOperationException();
     }
 
-    default String getClassSource(String className) {
+    /**
+     * Gets the source code for the entire given class.
+     * If the class is partial or has multiple definitions, this typically returns the primary definition.
+     */
+    default String getClassSource(String fqcn) {
         throw new UnsupportedOperationException();
     }
 

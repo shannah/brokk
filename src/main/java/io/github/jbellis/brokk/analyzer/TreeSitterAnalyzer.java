@@ -4,6 +4,7 @@ import io.github.jbellis.brokk.IProject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.treesitter.*;
+import scala.Option;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,11 +35,16 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     final Map<ProjectFile, List<CodeUnit>> topLevelDeclarations = new ConcurrentHashMap<>(); // package-private for testing
     final Map<CodeUnit, List<CodeUnit>> childrenByParent = new ConcurrentHashMap<>(); // package-private for testing
     final Map<CodeUnit, String> signatures = new ConcurrentHashMap<>(); // package-private for testing
+    private final Map<CodeUnit, List<Range>> sourceRanges = new ConcurrentHashMap<>();
     private final IProject project;
     protected final Set<String> normalizedExcludedFiles;
 
+    private static record Range(int startByte, int endByte, int startLine, int endLine) {}
 
-    private record FileAnalysisResult(List<CodeUnit> topLevelCUs, Map<CodeUnit, List<CodeUnit>> children, Map<CodeUnit, String> signatures) {}
+    private record FileAnalysisResult(List<CodeUnit> topLevelCUs,
+                                      Map<CodeUnit, List<CodeUnit>> children,
+                                      Map<CodeUnit, String> signatures,
+                                      Map<CodeUnit, List<Range>> sourceRanges) {}
 
     /* ---------- constructor ---------- */
     protected TreeSitterAnalyzer(IProject project, Set<String> excludedFiles) {
@@ -91,35 +98,45 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                             return; // Skip this file if parser setup fails
                         }
                         var analysisResult = analyzeFileDeclarations(pf, localParser);
-                        if (!analysisResult.topLevelCUs().isEmpty() || !analysisResult.signatures().isEmpty()) {
-                            topLevelDeclarations.put(pf, Collections.unmodifiableList(new ArrayList<>(analysisResult.topLevelCUs())));
-                            // Merge children, ensuring lists are unmodifiable and free of duplicates.
-                            analysisResult.children().forEach((parentCU, newChildCUs) -> {
-                                childrenByParent.compute(parentCU, (p, existingChildCUs) -> {
-                                    if (existingChildCUs == null) {
-                                        // Ensure newChildCUs itself is a list of unique CUs if it comes from localChildren
-                                        // localChildren lists are already managed to avoid duplicates by the fix below.
-                                        return Collections.unmodifiableList(new ArrayList<>(newChildCUs));
+                        if (!analysisResult.topLevelCUs().isEmpty() || !analysisResult.signatures().isEmpty() || !analysisResult.sourceRanges().isEmpty()) {
+                            topLevelDeclarations.put(pf, analysisResult.topLevelCUs()); // Already unmodifiable from result
+
+                            analysisResult.children().forEach((parentCU, newChildCUs) -> childrenByParent.compute(parentCU, (p, existingChildCUs) -> {
+                                if (existingChildCUs == null) {
+                                    return newChildCUs; // Already unmodifiable
+                                }
+                                List<CodeUnit> combined = new ArrayList<>(existingChildCUs);
+                                for (CodeUnit newKid : newChildCUs) {
+                                    if (!combined.contains(newKid)) {
+                                        combined.add(newKid);
                                     }
-                                    // Merge, avoiding duplicates. existingChildCUs is already unmodifiable.
-                                    List<CodeUnit> combined = new ArrayList<>(existingChildCUs);
-                                    for (CodeUnit newKid : newChildCUs) {
-                                        if (!combined.contains(newKid)) {
-                                            combined.add(newKid);
+                                }
+                                if (combined.size() == existingChildCUs.size()) {
+                                    boolean changed = false;
+                                    for (int i = 0; i < combined.size(); ++i) {
+                                        if (!combined.get(i).equals(existingChildCUs.get(i))) {
+                                            changed = true;
+                                            break;
                                         }
                                     }
-                                    // If no new kids were added that weren't already there, can return original existingKids
-                                    if (combined.size() == existingChildCUs.size()) {
-                                        boolean changed = false; // Check if order or content actually changed before creating new list
-                                        for(int i=0; i<combined.size(); ++i) { if (!combined.get(i).equals(existingChildCUs.get(i))) {changed=true; break;}}
-                                        if (!changed) return existingChildCUs;
-                                    }
-                                    return Collections.unmodifiableList(combined);
-                                });
-                            });
-                            signatures.putAll(analysisResult.signatures());
-                            log.trace("Processed file {}: {} top-level CUs, {} signatures, {} parent-child relationships.",
-                                      pf, analysisResult.topLevelCUs().size(), analysisResult.signatures().size(), analysisResult.children().size());
+                                    if (!changed) return existingChildCUs;
+                                }
+                                return Collections.unmodifiableList(combined);
+                            }));
+
+                            signatures.putAll(analysisResult.signatures()); // Signatures are final strings
+
+                            analysisResult.sourceRanges().forEach((cu, newRangesList) -> sourceRanges.compute(cu, (key, existingRangesList) -> {
+                                if (existingRangesList == null) {
+                                    return newRangesList; // Already unmodifiable
+                                }
+                                List<Range> combined = new ArrayList<>(existingRangesList);
+                                combined.addAll(newRangesList);
+                                return Collections.unmodifiableList(combined);
+                            }));
+
+                            log.trace("Processed file {}: {} top-level CUs, {} signatures, {} parent-child relationships, {} source range entries.",
+                                      pf, analysisResult.topLevelCUs().size(), analysisResult.signatures().size(), analysisResult.children().size(), analysisResult.sourceRanges().size());
                         } else {
                             log.trace("analyzeFileDeclarations returned empty result for file: {}", pf);
                         }
@@ -133,8 +150,71 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         this(project, Collections.emptySet());
     }
 
+    /* ---------- Helper methods for accessing CodeUnits ---------- */
+    /**  All CodeUnits we know about (top-level + children). */
+    private Stream<CodeUnit> allCodeUnits() {
+        // Stream top-level declarations
+        Stream<CodeUnit> topLevelStream = topLevelDeclarations.values().stream().flatMap(Collection::stream);
+
+        // Stream parents from childrenByParent (they might not be in topLevelDeclarations if they are nested)
+        Stream<CodeUnit> parentStream = childrenByParent.keySet().stream();
+
+        // Stream children from childrenByParent
+        Stream<CodeUnit> childrenStream = childrenByParent.values().stream().flatMap(Collection::stream);
+
+        return Stream.of(topLevelStream, parentStream, childrenStream).flatMap(s -> s);
+    }
+
+    /**  De-duplicate and materialise into a List once. */
+    private List<CodeUnit> uniqueCodeUnitList() {
+        return allCodeUnits().distinct().toList();
+    }
+
     /* ---------- IAnalyzer ---------- */
-    @Override public boolean isEmpty() { return topLevelDeclarations.isEmpty() && signatures.isEmpty(); }
+    @Override public boolean isEmpty() { return topLevelDeclarations.isEmpty() && signatures.isEmpty() && childrenByParent.isEmpty() && sourceRanges.isEmpty(); }
+
+    @Override public boolean isCpg() { return false; }
+
+    @Override
+    public scala.Option<String> getSkeletonHeader(String fqName) {
+        return getSkeleton(fqName).map(s ->
+            s.lines().findFirst().orElse("").stripTrailing()
+        );
+    }
+
+    @Override
+    public List<CodeUnit> getMembersInClass(String fqClass) {
+        Optional<CodeUnit> parent = uniqueCodeUnitList().stream()
+                                                        .filter(cu -> cu.fqName().equals(fqClass) && cu.isClass())
+                                                        .findFirst();
+        return parent.map(p -> List.copyOf(childrenByParent.getOrDefault(p, List.of())))
+                     .orElse(List.of());
+    }
+
+    @Override
+    public Optional<ProjectFile> getFileFor(String fqName) {
+        return uniqueCodeUnitList().stream()
+                                   .filter(cu -> cu.fqName().equals(fqName))
+                                   .map(CodeUnit::source)
+                                   .findFirst();
+    }
+
+    @Override
+    public Optional<CodeUnit> getDefinition(String fqName) {
+        return uniqueCodeUnitList().stream()
+                                   .filter(cu -> cu.fqName().equals(fqName))
+                                   .findFirst();
+    }
+
+    @Override
+    public List<CodeUnit> searchDefinitions(String pattern) {
+        if (pattern == null || pattern.isEmpty()) {
+            return List.of();
+        }
+        return uniqueCodeUnitList().stream()
+                                   .filter(cu -> cu.fqName().contains(pattern))
+                                   .toList();
+    }
 
     @Override
     public List<CodeUnit> getAllDeclarations() {
@@ -234,6 +314,59 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         return scala.Option.empty();
     }
 
+    @Override
+    public String getClassSource(String fqName) {
+        var cu = getDefinition(fqName)
+                         .filter(CodeUnit::isClass)
+                         .orElseThrow(() -> new SymbolNotFoundException("Class not found: " + fqName));
+
+        var ranges = sourceRanges.get(cu);
+        if (ranges == null || ranges.isEmpty()) {
+            throw new SymbolNotFoundException("Source range not found for class: " + fqName);
+        }
+
+        // For classes, expect one primary definition range.
+        var range = ranges.getFirst();
+        String src = null;
+        try {
+            src = cu.source().read();
+        } catch (IOException e) {
+            return "";
+        }
+        return src.substring(range.startByte(), range.endByte());
+    }
+
+    @Override
+    public scala.Option<String> getMethodSource(String fqName) {
+        return getDefinition(fqName)
+                .filter(CodeUnit::isFunction)
+                .flatMap(cu -> {
+                    var ranges = sourceRanges.get(cu);
+                    if (ranges == null || ranges.isEmpty()) {
+                        return Optional.empty();
+                    }
+
+                    String src = null;
+                    try {
+                        src = cu.source().read();
+                    } catch (IOException e) {
+                        return Optional.empty();
+                    }
+                    // For methods/functions, similar to classes, expect one primary definition range,
+                    // especially since JS/Python don't have overloads in the same way C#/Java do
+                    // that would result in multiple ranges for the *same* FQ name.
+                    // If `ranges` were to capture multiple distinct parts of a single logical entity
+                    // (e.g. C# partial methods if they shared a CU FQ name), concatenation might be desired.
+                    // However, for the current scenarios and to fix erroneous duplication (e.g. export + plain),
+                    // taking the first range is safer.
+                    var range = ranges.getFirst();
+                    return Optional.of(src.substring(range.startByte(), range.endByte()));
+                })
+                .map(scala.Option::apply)
+                .orElse(scala.Option.empty());
+    }
+
+
     /* ---------- abstract hooks ---------- */
     /** Tree-sitter TSLanguage grammar to use (e.g. {@code new TreeSitterPython()}). */
     protected abstract TSLanguage getTSLanguage();
@@ -307,13 +440,14 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         List<CodeUnit> localTopLevelCUs = new ArrayList<>();
         Map<CodeUnit, List<CodeUnit>> localChildren = new HashMap<>();
         Map<CodeUnit, String> localSignatures = new HashMap<>();
+        Map<CodeUnit, List<Range>> localSourceRanges = new HashMap<>();
         Map<String, CodeUnit> localCuByFqName = new HashMap<>(); // For parent lookup within the file
 
         TSTree tree = localParser.parseString(null, src);
         TSNode rootNode = tree.getRootNode();
         if (rootNode.isNull()) {
             log.warn("Parsing failed or produced null root node for {}", file);
-            return new FileAnalysisResult(List.of(), Map.of(), Map.of());
+            return new FileAnalysisResult(List.of(), Map.of(), Map.of(), Map.of());
         }
         // Log root node type
         String rootNodeType = rootNode.getType();
@@ -353,7 +487,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 TSNode definitionNode = captureEntry.getValue();
 
                 if (captureName.endsWith(".definition")) {
-                    String simpleName = null;
+                    String simpleName;
                     String expectedNameCapture = captureName.replace(".definition", ".name");
                     TSNode nameNode = capturedNodes.get(expectedNameCapture);
 
@@ -471,6 +605,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
 
             localSignatures.put(cu, signature);
+            var currentRange = new Range(node.getStartByte(), node.getEndByte(),
+                                         node.getStartPoint().getRow(), node.getEndPoint().getRow());
+            localSourceRanges.computeIfAbsent(cu, k -> new ArrayList<>()).add(currentRange);
             localCuByFqName.put(cu.fqName(), cu); // Add/overwrite current CU by its FQ name
             localChildren.putIfAbsent(cu, new ArrayList<>()); // Ensure every CU can be a parent
 
@@ -494,9 +631,20 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.trace("Stored/Updated info for CU: {}", cu);
         }
 
-        log.trace("Finished analyzing {}: found {} top-level CUs, {} total signatures, {} parent entries.",
-                  file, localTopLevelCUs.size(), localSignatures.size(), localChildren.size());
-        return new FileAnalysisResult(localTopLevelCUs, localChildren, localSignatures);
+        log.trace("Finished analyzing {}: found {} top-level CUs, {} total signatures, {} parent entries, {} source range entries.",
+                  file, localTopLevelCUs.size(), localSignatures.size(), localChildren.size(), localSourceRanges.size());
+
+        // Make internal lists unmodifiable before returning in FileAnalysisResult
+        Map<CodeUnit, List<CodeUnit>> finalLocalChildren = new HashMap<>();
+        localChildren.forEach((p, kids) -> finalLocalChildren.put(p, Collections.unmodifiableList(kids)));
+
+        Map<CodeUnit, List<Range>> finalLocalSourceRanges = new HashMap<>();
+        localSourceRanges.forEach((c, ranges) -> finalLocalSourceRanges.put(c, Collections.unmodifiableList(ranges)));
+
+        return new FileAnalysisResult(Collections.unmodifiableList(localTopLevelCUs),
+                                      finalLocalChildren, // Values (lists) are already unmodifiable
+                                      localSignatures,    // Values (strings) are inherently unmodifiable
+                                      finalLocalSourceRanges); // Values (lists) are already unmodifiable
     }
 
 

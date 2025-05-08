@@ -139,4 +139,18 @@
   )
 )
 
+; Exported top-level class
+((export_statement
+  declaration: (class_declaration
+    name: (identifier) @class.name
+  )
+) @class.definition)
+
+; Exported top-level function
+((export_statement
+  declaration: (function_declaration
+    name: (identifier) @function.name
+  )
+) @function.definition)
+
 ; Ignore decorators / modifiers for now

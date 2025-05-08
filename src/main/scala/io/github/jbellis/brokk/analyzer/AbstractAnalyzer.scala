@@ -136,12 +136,8 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     classesForPagerank = (adjacency.keys ++ adjacency.values.flatMap(_.keys)).toSet
   }
 
-  /**
-   * Gets the source code for a given method name. If multiple methods match,
-   * returns them all concatenated. If none match, returns None.
-   */
-  override def getMethodSource(methodName: String): Option[String] = {
-    val resolvedMethodName = resolveMethodName(methodName)
+  override def getMethodSource(fqName: String): Option[String] = {
+    val resolvedMethodName = resolveMethodName(fqName)
     val methods = methodsFromName(resolvedMethodName)
 
     // static constructors often lack line info
@@ -158,23 +154,20 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     if (sources.isEmpty) None else Some(sources.mkString("\n\n"))
   }
 
-  /**
-   * Gets the source code for the entire file containing a class.
-   */
-  override def getClassSource(className: String): String = {
-    var classNodes = cpg.typeDecl.fullNameExact(className).l
+  override def getClassSource(fqcn: String): String = {
+    var classNodes = cpg.typeDecl.fullNameExact(fqcn).l
 
     // This is called by the search agent, so be forgiving: if no exact match, try fuzzy matching
     if (classNodes.isEmpty) {
       // Attempt by simple name
-      val simpleClassName = className.split("[.$]").last
+      val simpleClassName = fqcn.split("[.$]").last
       val nameMatches = cpg.typeDecl.name(simpleClassName).l
 
       if (nameMatches.size == 1) {
         classNodes = nameMatches
       } else if (nameMatches.size > 1) {
         // Second attempt: try replacing $ with .
-        val dotClassName = className.replace('$', '.')
+        val dotClassName = fqcn.replace('$', '.')
         val dotMatches = nameMatches.filter(td => td.fullName.replace('$', '.') == dotClassName)
         if (dotMatches.size == 1) classNodes = dotMatches
       }
