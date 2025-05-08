@@ -730,7 +730,9 @@ public class Project implements IProject, AutoCloseable {
             String encoded = workspaceProps.getProperty("context");
             if (encoded != null && !encoded.isEmpty()) {
                 byte[] serialized = java.util.Base64.getDecoder().decode(encoded);
-                return Context.deserialize(serialized, welcomeMessage).withContextManager(contextManager);
+                var context = Context.deserialize(serialized, welcomeMessage).withContextManager(contextManager);
+                logger.debug("Deserialized context with {} fragments", context.allFragments().count());
+                return context;
             }
         } catch (Throwable e) {
             logger.error("Error loading context: {}", e.getMessage());
