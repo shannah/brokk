@@ -250,17 +250,27 @@ public class GitRepo implements Closeable, IGitRepo {
                 .map(pf -> new ModifiedFile(pf, "new"))
                 .forEach(uncommittedFilesWithStatus::add);
 
-        Stream.concat(statusResult.getRemoved().stream(), statusResult.getMissing().stream())
-                .distinct() // Avoid processing the same path twice if it's in both removed and missing
-                .map(path -> new ProjectFile(root, path))
-                .map(pf -> new ModifiedFile(pf, "deleted"))
-                .forEach(uncommittedFilesWithStatus::add);
+        Stream.concat(
+                statusResult.getRemoved().stream()
+                        .map(path -> new ProjectFile(root, path))
+                        .map(pf -> new ModifiedFile(pf, "deleted")),
+                statusResult.getMissing().stream()
+                        .map(path -> new ProjectFile(root, path))
+                        .map(pf -> new ModifiedFile(pf, "deleted"))
+        )
+        .distinct() // Avoid duplicate ModifiedFile objects if a path is in both removed and missing
+        .forEach(uncommittedFilesWithStatus::add);
 
-        Stream.concat(statusResult.getModified().stream(), statusResult.getChanged().stream())
-                .distinct() // Avoid processing the same path twice if it's in both modified and changed
-                .map(path -> new ProjectFile(root, path))
-                .map(pf -> new ModifiedFile(pf, "modified"))
-                .forEach(uncommittedFilesWithStatus::add);
+        Stream.concat(
+                statusResult.getModified().stream()
+                        .map(path -> new ProjectFile(root, path))
+                        .map(pf -> new ModifiedFile(pf, "modified")),
+                statusResult.getChanged().stream()
+                        .map(path -> new ProjectFile(root, path))
+                        .map(pf -> new ModifiedFile(pf, "modified"))
+        )
+        .distinct() // Avoid duplicate ModifiedFile objects if a path is in both modified and changed
+        .forEach(uncommittedFilesWithStatus::add);
 
         return uncommittedFilesWithStatus;
     }
