@@ -1,10 +1,15 @@
 package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.AiMessage;
-import io.github.jbellis.brokk.*;
+import io.github.jbellis.brokk.Context;
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
-import io.github.jbellis.brokk.analyzer.*;
+import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.analyzer.BrokkFile;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
+import io.github.jbellis.brokk.analyzer.CodeUnitType;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
@@ -14,6 +19,9 @@ import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
 import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.StackTrace;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,20 +36,25 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.CharacterCodingException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 public class ContextPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(ContextPanel.class);
     private final String EMPTY_CONTEXT = "Empty Workspace--use Edit or Read or Summarize to add content";
+
+    private static final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .connectTimeout(1, TimeUnit.SECONDS)
+            .readTimeout(1, TimeUnit.SECONDS)
+            .writeTimeout(1, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build();
 
     /**
      * Enum representing the different types of context actions that can be performed.
@@ -1068,15 +1081,48 @@ public class ContextPanel extends JPanel {
             boolean wasUrl = false;
 
             if (isUrl(clipboardText)) {
+                URI uri;
                 try {
-                    chrome.systemOutput("Fetching " + clipboardText);
-                    content = WorkspaceTools.fetchUrlContent(new URI(clipboardText));
-                    content = HtmlToMarkdown.maybeConvertToMarkdown(content);
-                    wasUrl = true;
-                    chrome.actionComplete();
-                } catch (IOException | URISyntaxException e) {
-                    chrome.toolErrorRaw("Failed to fetch or process URL content: " + e.getMessage());
-                    content = clipboardText;
+                    uri = new URI(clipboardText);
+                } catch (URISyntaxException e) {
+                    logger.warn("Thought we had a url but we did not: " + clipboardText);
+                    // Not a valid URI, proceed to treat as plain text
+                    uri = null;
+                }
+
+                if (uri != null) { // Only proceed if URI parsing was successful
+                    // Try to handle as image URL first
+                    if (isImageUri(uri)) {
+                        try {
+                            chrome.systemOutput("Fetching image from " + clipboardText);
+                            java.awt.Image image = javax.imageio.ImageIO.read(uri.toURL());
+                            if (image != null) {
+                                contextManager.addPastedImageFragment(image);
+                                chrome.systemOutput("Pasted image from URL added to context");
+                                chrome.actionComplete();
+                                return; // Image handled, done with paste action
+                            } else {
+                                logger.warn("URL {} identified as image, but ImageIO.read returned null. Falling back to text.", clipboardText);
+                                chrome.systemOutput("Could not load image from URL. Trying to fetch as text.");
+                            }
+                        } catch (IOException e) {
+                            logger.warn("Failed to fetch or decode image from URL {}: {}. Falling back to text.", clipboardText, e.getMessage());
+                            chrome.systemOutput("Failed to load image from URL: " + e.getMessage() + ". Trying to fetch as text.");
+                            // Fall through to fetching as text
+                        }
+                    }
+
+                    // Fallback: If not an image URL or image fetching failed, try to fetch as text
+                    try {
+                        chrome.systemOutput("Fetching content from " + clipboardText);
+                        content = WorkspaceTools.fetchUrlContent(uri);
+                        content = HtmlToMarkdown.maybeConvertToMarkdown(content);
+                        wasUrl = true;
+                        chrome.actionComplete();
+                    } catch (IOException e) {
+                        chrome.toolErrorRaw("Failed to fetch or process URL content as text: " + e.getMessage());
+                        content = clipboardText; // Revert to original clipboard text if fetch fails
+                    }
                 }
             }
 
@@ -1260,5 +1306,29 @@ public class ContextPanel extends JPanel {
 
     private boolean isUrl(String text) {
         return text.matches("^https?://\\S+$");
+    }
+
+    private boolean isImageUri(URI uri) {
+        Request request = new Request.Builder()
+                .url(uri.toString())
+                .head() // Send a HEAD request
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.isSuccessful()) {
+                String contentType = response.header("Content-Type");
+                if (contentType != null) {
+                    logger.debug("URL {} Content-Type: {}", uri, contentType);
+                    return contentType.toLowerCase().startsWith("image/");
+                } else {
+                    logger.warn("URL {} did not return a Content-Type header.", uri);
+                }
+            } else {
+                logger.warn("HEAD request to {} failed with code: {}", uri, response.code());
+            }
+        } catch (IOException e) {
+            logger.error("IOException during HEAD request to {}: {}", uri, e.getMessage());
+        }
+        return false;
     }
 }
