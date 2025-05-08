@@ -111,6 +111,6 @@ public interface IContextManager {
     }
 
     default Llm getLlm(StreamingChatLanguageModel model, String taskDescription) {
-        return new Llm(model, taskDescription, this);
+        return new Llm(model, taskDescription, this, getProject().getDataRetentionPolicy() == Project.DataRetentionPolicy.IMPROVE_BROKK);
     }
 }

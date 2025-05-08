@@ -39,6 +39,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,11 +64,13 @@ public class Llm {
     final IContextManager contextManager;
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
     private final StreamingChatLanguageModel model;
+    private final boolean tagRetain;
 
-    public Llm(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager) {
+    public Llm(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager, boolean tagRetain) {
         this.model = model;
         this.contextManager = contextManager;
         this.io = contextManager.getIo();
+        this.tagRetain = tagRetain;
         var historyBaseDir = getHistoryBaseDir(contextManager.getProject().getRoot());
 
         // Create session directory name for this specific LLM interaction
@@ -364,7 +367,7 @@ public class Llm {
         var requestBuilder = ChatRequest.builder().messages(messagesToSend);
         if (!tools.isEmpty()) {
             logger.debug("Performing native tool calls");
-            var paramsBuilder = OpenAiChatRequestParameters.builder()
+            var paramsBuilder = getParamsBuilder()
                     .toolSpecifications(tools);
             if (contextManager.getModels().supportsParallelCalls(model)) {
                 // can't just blindly call .parallelToolCalls(boolean), litellm will barf if it sees the option at all
@@ -383,6 +386,20 @@ public class Llm {
 
         var request = requestBuilder.build();
         return doSingleStreamingCall(request, echo);
+    }
+
+    private OpenAiChatRequestParameters.@NotNull Builder getParamsBuilder() {
+        OpenAiChatRequestParameters.Builder builder = OpenAiChatRequestParameters.builder();
+
+        if (this.tagRetain) {
+            // this is the only place we add metadata so we can just overwrite what's there
+            logger.trace("Adding 'retain' metadata tag to LLM request.");
+            Map<String, String> newMetadata = new java.util.HashMap<>();
+            newMetadata.put("tags", "retain");
+            builder.metadata(newMetadata);
+        }
+
+        return builder;
     }
 
     /**
@@ -570,7 +587,7 @@ public class Llm {
                 .type(ResponseFormatType.JSON)
                 .jsonSchema(schema)
                 .build();
-        var requestParams = ChatRequestParameters.builder()
+        var requestParams = getParamsBuilder()
                 .responseFormat(responseFormat)
                 .build();
 
