@@ -286,6 +286,10 @@ public class HistoryOutputPanel extends JPanel {
         resetToHereItem.addActionListener(event -> resetContextTo(context));
         popup.add(resetToHereItem);
 
+        JMenuItem resetToHereIncludingHistoryItem = new JMenuItem("Reset Context to Here (including History)");
+        resetToHereIncludingHistoryItem.addActionListener(event -> resetContextToIncludingHistory(context));
+        popup.add(resetToHereIncludingHistoryItem);
+
         // Register popup with theme manager
         if (chrome.themeManager != null) {
             chrome.themeManager.registerPopupMenu(popup);
@@ -308,6 +312,13 @@ public class HistoryOutputPanel extends JPanel {
      */
     private void resetContextTo(Context targetContext) {
         contextManager.resetContextToAsync(targetContext);
+    }
+
+    /**
+     * Creates a new context based on the files, fragments, and history from a historical context
+     */
+    private void resetContextToIncludingHistory(Context targetContext) {
+        contextManager.resetContextToIncludingHistoryAsync(targetContext);
     }
 
     /**
