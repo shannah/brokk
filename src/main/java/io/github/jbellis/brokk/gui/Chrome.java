@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class Chrome implements AutoCloseable, IConsoleIO {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
@@ -83,13 +84,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void onComplete() {
+        loadWindowSizeAndPosition();
         if (contextManager == null) {
             frame.setTitle("Brokk (no project)");
             instructionsPanel.disableButtons(); // Ensure buttons disabled if no project/context
         } else {
             // Load saved theme, window size, and position
             frame.setTitle("Brokk: " + getProject().getRoot());
-            loadWindowSizeAndPosition();
 
             // If the project uses Git, put the context panel and the Git panel in a split pane
             if (getProject().hasGit()) {
@@ -354,7 +355,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public void disableActionButtons() {
         instructionsPanel.disableButtons();
-        gitPanel.getCommitTab().disableButtons();
+        if (gitPanel != null) {
+            gitPanel.getCommitTab().disableButtons();
+        }
     }
 
     public void enableActionButtons() {
@@ -670,19 +673,15 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     private void loadWindowSizeAndPosition() {
         var project = getProject();
-        if (project == null) {
-            frame.setLocationRelativeTo(null);
-            return;
-        }
 
-        var boundsOptional = project.getMainWindowBounds();
+        var boundsOptional = project == null ? Optional.<Rectangle>empty() : project.getMainWindowBounds();
         if (boundsOptional.isEmpty()) {
             // No valid saved bounds, apply default placement logic
             GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
             GraphicsDevice defaultScreen = ge.getDefaultScreenDevice();
             Rectangle screenBounds = defaultScreen.getDefaultConfiguration().getBounds();
-            logger.info("No saved window bounds found for project. Detected screen size: {}x{} at ({},{})",
-                        screenBounds.width, screenBounds.height, screenBounds.x, screenBounds.y);
+            logger.debug("No saved window bounds found for project. Detected screen size: {}x{} at ({},{})",
+                         screenBounds.width, screenBounds.height, screenBounds.x, screenBounds.y);
 
             // Default to 1920x1080 or screen size, whichever is smaller, and center.
             int defaultWidth = Math.min(1920, screenBounds.width);
@@ -706,6 +705,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
                 frame.setLocationRelativeTo(null);
                 logger.debug("Saved window position is off-screen, centering window.");
             }
+        }
+
+        if (project == null) {
+            return;
         }
 
         // Listener to save bounds on move/resize
