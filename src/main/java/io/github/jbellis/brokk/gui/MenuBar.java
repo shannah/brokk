@@ -134,21 +134,24 @@ public class MenuBar {
 
         editMenu.addSeparator();
 
-        var copyMenuItem = new JMenuItem("Copy");
+        JMenuItem copyMenuItem;
+        JMenuItem pasteMenuItem;
+
+        if (hasProject) {
+            copyMenuItem = new JMenuItem(chrome.getGlobalCopyAction());
+            pasteMenuItem = new JMenuItem(chrome.getGlobalPasteAction());
+        } else {
+            copyMenuItem = new JMenuItem("Copy");
+            copyMenuItem.setEnabled(false);
+            pasteMenuItem = new JMenuItem("Paste");
+            pasteMenuItem.setEnabled(false);
+        }
+        copyMenuItem.setText("Copy");
         copyMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        copyMenuItem.addActionListener(e -> {
-            var selectedFragments = chrome.getSelectedFragments();
-            chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.COPY, selectedFragments);
-        });
-        copyMenuItem.setEnabled(hasProject);
         editMenu.add(copyMenuItem);
 
-        var pasteMenuItem = new JMenuItem("Paste");
+        pasteMenuItem.setText("Paste");
         pasteMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        pasteMenuItem.addActionListener(e -> {
-            chrome.getContextPanel().performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
-        });
-        pasteMenuItem.setEnabled(hasProject);
         editMenu.add(pasteMenuItem);
 
         menuBar.add(editMenu);

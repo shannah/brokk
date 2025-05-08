@@ -41,6 +41,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     // Global Undo/Redo Actions
     private GlobalUndoAction globalUndoAction;
     private GlobalRedoAction globalRedoAction;
+    // Global Copy/Paste Actions
+    private GlobalCopyAction globalCopyAction;
+    private GlobalPasteAction globalPasteAction;
     // necessary for undo/redo because clicking on menubar takes focus from whatever had it
     private Component lastRelevantFocusOwner = null;
 
@@ -85,9 +88,12 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // contextPanel and historyOutputPanel will be null until onComplete
         this.globalUndoAction = new GlobalUndoAction("Undo");
         this.globalRedoAction = new GlobalRedoAction("Redo");
+        this.globalCopyAction = new GlobalCopyAction("Copy");
+        this.globalPasteAction = new GlobalPasteAction("Paste");
 
         // 4) Register global keyboard shortcuts
-        registerGlobalKeyboardShortcuts();
+        // Global keyboard shortcuts will be registered in onComplete, after all components are set up
+        // to ensure actions can correctly determine their initial enabled state.
 
         if (contextManager == null) {
             disableActionButtons();
@@ -137,47 +143,40 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             // Set initial enabled state for global actions after all components are ready
             this.globalUndoAction.updateEnabledState();
             this.globalRedoAction.updateEnabledState();
+            this.globalCopyAction.updateEnabledState();
+            this.globalPasteAction.updateEnabledState();
 
             // Listen for focus changes to update action states and track relevant focus
             KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
                 Component newFocusOwner = (Component) evt.getNewValue();
                 // Update lastRelevantFocusOwner only if the new focus owner is one of our primary targets
-                if (newFocusOwner != null
-                    && (newFocusOwner == instructionsPanel.getCommandInputField()
-                        || SwingUtilities.isDescendingFrom(newFocusOwner, contextPanel)
-                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())))
+                if (newFocusOwner != null && instructionsPanel != null && contextPanel != null && historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null && historyOutputPanel.getHistoryTable() != null)
                 {
-                    logger.debug(lastRelevantFocusOwner);
-                    this.lastRelevantFocusOwner = newFocusOwner;
+                    if (newFocusOwner == instructionsPanel.getCommandInputField()
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, contextPanel)
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getLlmStreamArea())) // Check for LLM area
+                    {
+                        this.lastRelevantFocusOwner = newFocusOwner;
+                    }
+                    // else: lastRelevantFocusOwner remains unchanged if focus moves to a menu or irrelevant component
                 }
-                // else: lastRelevantFocusOwner remains unchanged if focus moves to a menu or irrelevant component
 
                 if (globalUndoAction != null) globalUndoAction.updateEnabledState();
                 if (globalRedoAction != null) globalRedoAction.updateEnabledState();
+                if (globalCopyAction != null) globalCopyAction.updateEnabledState();
+                if (globalPasteAction != null) globalPasteAction.updateEnabledState();
             });
 
             // Listen for context changes (Chrome already implements IContextManager.ContextListener)
             contextManager.addContextListener(this);
-
-            // Initialize global undo/redo actions
-            this.globalUndoAction = new GlobalUndoAction("Undo");
-            this.globalRedoAction = new GlobalRedoAction("Redo");
-            this.globalUndoAction.updateEnabledState();
-            this.globalRedoAction.updateEnabledState();
-
-            // Listen for focus changes to update action states
-            KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
-                if (globalUndoAction != null) globalUndoAction.updateEnabledState();
-                if (globalRedoAction != null) globalRedoAction.updateEnabledState();
-            });
-
-            // Listen for context changes
-            contextManager.addContextListener(this);
-
         }
 
         // Build menu (now that everything else is ready)
         frame.setJMenuBar(MenuBar.buildMenuBar(this));
+
+        // Register global keyboard shortcuts now that actions are fully initialized
+        registerGlobalKeyboardShortcuts();
 
         // Show the window
         frame.setVisible(true);
@@ -454,15 +453,15 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoYKeyStroke, "globalRedo");
         rootPane.getActionMap().put("globalRedo", globalRedoAction);
 
-        // Cmd/Ctrl+V => paste
+        // Cmd/Ctrl+C => global copy
+        var copyKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(copyKeyStroke, "globalCopy");
+        rootPane.getActionMap().put("globalCopy", globalCopyAction);
+
+        // Cmd/Ctrl+V => global paste
         var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
-        rootPane.getActionMap().put("globalPaste", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                contextPanel.performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
-            }
-        });
+        rootPane.getActionMap().put("globalPaste", globalPasteAction);
     }
 
     @Override
@@ -527,6 +526,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // We need to ensure the global action states are updated even if focus didn't change.
         if (globalUndoAction != null) globalUndoAction.updateEnabledState();
         if (globalRedoAction != null) globalRedoAction.updateEnabledState();
+        if (globalCopyAction != null) globalCopyAction.updateEnabledState();
+        if (globalPasteAction != null) globalPasteAction.updateEnabledState();
 
         // Also update HistoryOutputPanel's local buttons
         if (historyOutputPanel != null) historyOutputPanel.updateUndoRedoButtonStates();
@@ -957,6 +958,14 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         return globalRedoAction;
     }
 
+    public Action getGlobalCopyAction() {
+        return globalCopyAction;
+    }
+
+    public Action getGlobalPasteAction() {
+        return globalPasteAction;
+    }
+
     private boolean isFocusInContextArea(Component focusOwner) {
         if (focusOwner == null) return false;
         // Check if focus is within ContextPanel or HistoryOutputPanel's historyTable
@@ -965,6 +974,16 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                                  SwingUtilities.isDescendingFrom(focusOwner, historyOutputPanel.getHistoryTable());
         return inContextPanel || inHistoryTable;
     }
+
+    private boolean isFocusInTextCopyableArea(Component focusOwner) {
+        if (focusOwner == null) return false;
+        boolean inCommandInput = instructionsPanel != null && instructionsPanel.getCommandInputField() != null &&
+                                 lastRelevantFocusOwner == instructionsPanel.getCommandInputField();
+        boolean inLlmStreamArea = historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null &&
+                                 SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea());
+        return inCommandInput || inLlmStreamArea;
+    }
+
 
     // --- Global Undo/Redo Action Classes ---
     private class GlobalUndoAction extends AbstractAction {
@@ -1022,6 +1041,89 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 canRedoNow = contextManager.getContextHistory().hasRedoStates();
             }
             setEnabled(canRedoNow);
+        }
+    }
+
+    // --- Global Copy/Paste Action Classes ---
+    private class GlobalCopyAction extends AbstractAction {
+        public GlobalCopyAction(String name) {
+            super(name);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (lastRelevantFocusOwner == null) {
+                return;
+            }
+            if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                instructionsPanel.getCommandInputField().copy();
+            } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea())) {
+                historyOutputPanel.getLlmStreamArea().copy(); // Assumes MarkdownOutputPanel has copy()
+            } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, contextPanel) ||
+                        SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
+                // If focus is in ContextPanel, use its selected fragments.
+                // If focus is in HistoryTable, it's like "Copy All" from ContextPanel.
+                List<ContextFragment> fragmentsToCopy = List.of(); // Default to "all"
+                if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, contextPanel)) {
+                    fragmentsToCopy = contextPanel.getSelectedFragments();
+                }
+                contextPanel.performContextActionAsync(ContextPanel.ContextAction.COPY, fragmentsToCopy);
+            }
+        }
+
+        public void updateEnabledState() {
+            if (lastRelevantFocusOwner == null) {
+                setEnabled(false);
+                return;
+            }
+
+            boolean canCopyNow = false;
+            if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                var field = instructionsPanel.getCommandInputField();
+                canCopyNow = (field.getSelectedText() != null && !field.getSelectedText().isEmpty()) || !field.getText().isEmpty();
+            } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea())) {
+                var llmArea = historyOutputPanel.getLlmStreamArea();
+                String selectedText = llmArea.getSelectedText();
+                canCopyNow = (selectedText != null && !selectedText.isEmpty()) || !llmArea.getDisplayedText().isEmpty();
+            } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, contextPanel) ||
+                        SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
+                // ContextPanel's copy action is enabled if contextManager is available,
+                // as it can copy the goal even if the context itself is empty.
+                canCopyNow = contextManager != null;
+            }
+            setEnabled(canCopyNow);
+        }
+    }
+
+    private class GlobalPasteAction extends AbstractAction {
+        public GlobalPasteAction(String name) {
+            super(name);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (lastRelevantFocusOwner == null) {
+                return;
+            }
+
+            if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                instructionsPanel.getCommandInputField().paste();
+            } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, contextPanel)) {
+                contextPanel.performContextActionAsync(ContextPanel.ContextAction.PASTE, List.of());
+            }
+        }
+
+        public void updateEnabledState() {
+            boolean canPasteNow = false;
+            if (lastRelevantFocusOwner == null) {
+                // leave it false
+            } else if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                canPasteNow = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().isDataFlavorAvailable(java.awt.datatransfer.DataFlavor.stringFlavor);
+            } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, contextPanel)) {
+                // ContextPanel's doPasteAction checks clipboard content type. Enable if CM is available.
+                canPasteNow = contextManager != null;
+            }
+            setEnabled(canPasteNow);
         }
     }
 

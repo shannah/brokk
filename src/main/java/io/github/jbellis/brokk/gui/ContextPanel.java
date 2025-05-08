@@ -24,12 +24,14 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.event.KeyEvent;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
@@ -382,12 +384,22 @@ public class ContextPanel extends JPanel {
         // Set selection mode to allow multiple selection
         contextTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
-        // Add Ctrl+V shortcut for paste in the table
-        contextTable.registerKeyboardAction(
-                e -> performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of()),
-                KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
-                JComponent.WHEN_FOCUSED
-        );
+        // Install custom TransferHandler for copy operations
+        contextTable.setTransferHandler(new TransferHandler() {
+            @Override
+            public int getSourceActions(JComponent c) {
+                return COPY;
+            }
+
+            @Override
+            protected Transferable createTransferable(JComponent c) {
+                String contentToCopy = getSelectedContent(getSelectedFragments());
+                if (contentToCopy != null && !contentToCopy.isEmpty()) {
+                    return new StringSelection(contentToCopy);
+                }
+                return null;
+            }
+        });
 
         // Setup right-click popup menu for when no rows are selected
         tablePopupMenu = new JPopupMenu();
@@ -564,7 +576,6 @@ public class ContextPanel extends JPanel {
         // Add the listener to the summary panel
         contextSummaryPanel.addMouseListener(panelPopupAndFocusListener);
     }
-
 
     /**
      * Gets the list of selected fragments
@@ -1008,11 +1019,19 @@ public class ContextPanel extends JPanel {
         }
     }
 
-    private void doCopyAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
+    private void doCopyAction(List<? extends ContextFragment> selectedFragments) {
+        var content = getSelectedContent(selectedFragments);
+        var sel = new java.awt.datatransfer.StringSelection(content);
+        var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        cb.setContents(sel, sel);
+        chrome.systemOutput("Content copied to clipboard"); 
+    }
+
+    private @NotNull String getSelectedContent(List<? extends ContextFragment> selectedFragments) {
         String content;
         if (selectedFragments.isEmpty()) {
             // gather entire context
-            var msgs = CopyExternalPrompts.instance.collectMessages(contextManager); 
+            var msgs = CopyExternalPrompts.instance.collectMessages(contextManager);
             var combined = new StringBuilder();
             for (var m : msgs) {
                 if (!(m instanceof AiMessage)) {
@@ -1021,7 +1040,7 @@ public class ContextPanel extends JPanel {
             }
 
             // Get instructions from context
-            combined.append("\n<goal>\n").append(chrome.getInputText()).append("\n</goal>"); 
+            combined.append("\n<goal>\n").append(chrome.getInputText()).append("\n</goal>");
             content = combined.toString();
         } else {
             // copy only selected fragments
@@ -1038,11 +1057,7 @@ public class ContextPanel extends JPanel {
             }
             content = sb.toString();
         }
-
-        var sel = new java.awt.datatransfer.StringSelection(content);
-        var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-        cb.setContents(sel, sel);
-        chrome.systemOutput("Content copied to clipboard"); 
+        return content;
     }
 
     private void doPasteAction() {

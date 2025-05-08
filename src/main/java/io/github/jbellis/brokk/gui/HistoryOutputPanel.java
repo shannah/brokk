@@ -576,6 +576,10 @@ public class HistoryOutputPanel extends JPanel {
         return llmScrollPane;
     }
 
+    public MarkdownOutputPanel getLlmStreamArea() {
+        return llmStreamArea;
+    }
+
     public void clearLlmOutput() {
         llmStreamArea.clear();
     }

@@ -411,6 +411,114 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         logger.debug("Compacted all messages for better text selection");
     }
 
+    // --- Text Access and Manipulation Methods for Copy/Paste ---
+
+    /**
+     * Returns all displayed text content from the messages.
+     * This concatenates the pure text of each message.
+     *
+     * @return A string containing all displayed text.
+     */
+    public String getDisplayedText() {
+        return messages.stream()
+                .map(Messages::getText) // Gets the actual content of the message
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    /**
+     * Gets the currently selected text from all underlying text components.
+     * Traverses the component hierarchy to find JTextPanes, JEditorPanes, or JTextAreas
+     * and concatenates their selected text.
+     *
+     * @return The selected text, or an empty string if no text is selected.
+     */
+    public String getSelectedText() {
+        var sb = new StringBuilder();
+        for (var renderer : messageRenderers) {
+            // renderer.getRoot() is the JComponent (likely a JPanel) holding the rendered blocks for a single message.
+            // We need to look inside this root for text components.
+            collectSelectedText(renderer.getRoot(), sb);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Helper method to recursively collect selected text from a component and its children.
+     *
+     * @param comp The component to search within.
+     * @param accumulator A StringBuilder to append selected text to.
+     */
+    private void collectSelectedText(Component comp, StringBuilder accumulator) {
+        String selected = null;
+        if (comp instanceof JTextPane textPane) {
+            selected = textPane.getSelectedText();
+        } else if (comp instanceof JEditorPane editorPane) {
+            selected = editorPane.getSelectedText();
+        } else if (comp instanceof JTextArea textArea) {
+            selected = textArea.getSelectedText();
+        }
+
+        if (selected != null && !selected.isEmpty()) {
+            if (accumulator.length() > 0) {
+                accumulator.append("\n"); // Separator for selections from different components
+            }
+            accumulator.append(selected);
+        }
+
+        if (comp instanceof Container container) {
+            for (var child : container.getComponents()) {
+                collectSelectedText(child, accumulator);
+            }
+        }
+    }
+
+    /**
+     * Copies text to the system clipboard.
+     * If a text component within this panel has focus, its own copy action is triggered.
+     * Otherwise, if there is any selected text (aggregated from `getSelectedText()`), that is copied.
+     */
+    public void copy() {
+        // Attempt to delegate to a focused text component first
+        for (var renderer : messageRenderers) {
+            var focusedTextComponent = findFocusedTextComponentIn(renderer.getRoot());
+            if (focusedTextComponent != null) {
+                focusedTextComponent.copy(); // Trigger the component's native copy action
+                return;
+            }
+        }
+
+        // If no specific text component is focused, copy aggregated selected text
+        var selectedText = getSelectedText();
+        if (selectedText != null && !selectedText.isEmpty()) {
+            var sel = new java.awt.datatransfer.StringSelection(selectedText);
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(sel, sel);
+        }
+        // If no text is focused and no text is selected, this method does nothing,
+        // mirroring standard text component behavior.
+    }
+
+    /**
+     * Helper method to find a focused JTextComponent within a given component hierarchy.
+     *
+     * @param comp The root component of the hierarchy to search.
+     * @return The focused JTextComponent if found, otherwise null.
+     */
+    private javax.swing.text.JTextComponent findFocusedTextComponentIn(Component comp) {
+        if (comp instanceof javax.swing.text.JTextComponent tc && tc.isFocusOwner()) {
+            return tc;
+        }
+
+        if (comp instanceof Container container) {
+            for (var child : container.getComponents()) {
+                var focused = findFocusedTextComponentIn(child);
+                if (focused != null) {
+                    return focused;
+                }
+            }
+        }
+        return null;
+    }
+
     // --- Scrollable interface methods ---
 
     @Override
