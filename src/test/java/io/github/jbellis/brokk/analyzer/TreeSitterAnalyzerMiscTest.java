@@ -4,7 +4,6 @@ import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.git.IGitRepo;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import scala.Option;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -95,22 +94,22 @@ public class TreeSitterAnalyzerMiscTest {
     @Test
     void testGetSkeletonHeader() {
         // Test case 1: Class in JSX
-        Option<String> jsxClassHeader = jsAnalyzer.getSkeletonHeader("JsxClass");
-        assertTrue(jsxClassHeader.isDefined(), "Skeleton header for JsxClass should be defined.");
+        Optional<String> jsxClassHeader = jsAnalyzer.getSkeletonHeader("JsxClass");
+        assertTrue(jsxClassHeader.isPresent(), "Skeleton header for JsxClass should be defined.");
         assertEquals("export class JsxClass {", jsxClassHeader.get().trim());
 
         // Test case 2: Arrow function component in JSX
-        Option<String> jsxArrowFnHeader = jsAnalyzer.getSkeletonHeader("JsxArrowFnComponent");
-        assertTrue(jsxArrowFnHeader.isDefined(), "Skeleton header for JsxArrowFnComponent should be defined.");
+        Optional<String> jsxArrowFnHeader = jsAnalyzer.getSkeletonHeader("JsxArrowFnComponent");
+        assertTrue(jsxArrowFnHeader.isPresent(), "Skeleton header for JsxArrowFnComponent should be defined.");
         assertEquals("export JsxArrowFnComponent({ name }) => ...", jsxArrowFnHeader.get().trim());
         
         // Test case 3: Regular function in JS
-        Option<String> utilFuncHeader = jsAnalyzer.getSkeletonHeader("util"); // From Hello.js
-        assertTrue(utilFuncHeader.isDefined(), "Skeleton header for util function should be defined.");
+        Optional<String> utilFuncHeader = jsAnalyzer.getSkeletonHeader("util"); // From Hello.js
+        assertTrue(utilFuncHeader.isPresent(), "Skeleton header for util function should be defined.");
         assertEquals("export function util() ...", utilFuncHeader.get().trim());
 
         // Test case 4: Non-existent FQ name
-        Option<String> nonExistentHeader = jsAnalyzer.getSkeletonHeader("NonExistentSymbol");
+        Optional<String> nonExistentHeader = jsAnalyzer.getSkeletonHeader("NonExistentSymbol");
         assertTrue(nonExistentHeader.isEmpty(), "Skeleton header for a non-existent symbol should be empty.");
     }
 
@@ -274,15 +273,15 @@ public class TreeSitterAnalyzerMiscTest {
     @Test
     void testGetMethodSource_Js() {
         // Test case 1: Method in Hello.js
-        Option<String> greetMethodSourceOpt = jsAnalyzer.getMethodSource("Hello.greet");
-        assertTrue(greetMethodSourceOpt.isDefined(), "Source for 'Hello.greet' should be found.");
+        Optional<String> greetMethodSourceOpt = jsAnalyzer.getMethodSource("Hello.greet");
+        assertTrue(greetMethodSourceOpt.isPresent(), "Source for 'Hello.greet' should be found.");
         String expectedGreetMethodSource = """
         greet() { console.log("hi"); }""";
         assertEquals(expectedGreetMethodSource.stripIndent().trim(), greetMethodSourceOpt.get().stripIndent().trim());
 
         // Test case 2: Method in Hello.jsx
-        Option<String> renderMethodSourceOpt = jsAnalyzer.getMethodSource("JsxClass.render");
-        assertTrue(renderMethodSourceOpt.isDefined(), "Source for 'JsxClass.render' should be found.");
+        Optional<String> renderMethodSourceOpt = jsAnalyzer.getMethodSource("JsxClass.render");
+        assertTrue(renderMethodSourceOpt.isPresent(), "Source for 'JsxClass.render' should be found.");
         String expectedRenderMethodSource = """
         render() {
                 return <div className="class-jsx">Hello from JSX Class</div>;
@@ -290,15 +289,15 @@ public class TreeSitterAnalyzerMiscTest {
         assertEquals(expectedRenderMethodSource.stripIndent().trim(), renderMethodSourceOpt.get().stripIndent().trim());
 
         // Test case 3: Exported function in Hello.js
-        Option<String> utilFuncSourceOpt = jsAnalyzer.getMethodSource("util");
-        assertTrue(utilFuncSourceOpt.isDefined(), "Source for 'util' function should be found.");
+        Optional<String> utilFuncSourceOpt = jsAnalyzer.getMethodSource("util");
+        assertTrue(utilFuncSourceOpt.isPresent(), "Source for 'util' function should be found.");
         String expectedUtilFuncSource = """
         export function util() { return 42; }""";
         assertEquals(expectedUtilFuncSource.stripIndent().trim(), utilFuncSourceOpt.get().stripIndent().trim());
 
         // Test case 4: Exported arrow function in Hello.jsx
-        Option<String> jsxArrowFnSourceOpt = jsAnalyzer.getMethodSource("JsxArrowFnComponent");
-        assertTrue(jsxArrowFnSourceOpt.isDefined(), "Source for 'JsxArrowFnComponent' should be found.");
+        Optional<String> jsxArrowFnSourceOpt = jsAnalyzer.getMethodSource("JsxArrowFnComponent");
+        assertTrue(jsxArrowFnSourceOpt.isPresent(), "Source for 'JsxArrowFnComponent' should be found.");
         // Note: The source for an arrow function assigned to a const/let is just the arrow function part.
         String expectedJsxArrowFnSource = """
         ({ name }) => {
@@ -311,15 +310,15 @@ public class TreeSitterAnalyzerMiscTest {
         assertEquals(expectedJsxArrowFnSource.stripIndent().trim(), jsxArrowFnSourceOpt.get().stripIndent().trim());
 
         // Test case 5: Local (non-exported) arrow function in Hello.jsx
-        Option<String> localJsxArrowFnSourceOpt = jsAnalyzer.getMethodSource("LocalJsxArrowFn");
-        assertTrue(localJsxArrowFnSourceOpt.isDefined(), "Source for 'LocalJsxArrowFn' should be found.");
+        Optional<String> localJsxArrowFnSourceOpt = jsAnalyzer.getMethodSource("LocalJsxArrowFn");
+        assertTrue(localJsxArrowFnSourceOpt.isPresent(), "Source for 'LocalJsxArrowFn' should be found.");
         String expectedLocalJsxArrowFnSource = """
         () => <button>Click Me</button>""";
         assertEquals(expectedLocalJsxArrowFnSource.stripIndent().trim(), localJsxArrowFnSourceOpt.get().stripIndent().trim());
 
         // Test case 6: Local (non-exported) plain function in Hello.jsx
-        Option<String> plainJsxFuncSourceOpt = jsAnalyzer.getMethodSource("PlainJsxFunc");
-        assertTrue(plainJsxFuncSourceOpt.isDefined(), "Source for 'PlainJsxFunc' should be found.");
+        Optional<String> plainJsxFuncSourceOpt = jsAnalyzer.getMethodSource("PlainJsxFunc");
+        assertTrue(plainJsxFuncSourceOpt.isPresent(), "Source for 'PlainJsxFunc' should be found.");
         String expectedPlainJsxFuncSource = """
         function PlainJsxFunc() {
             return <article>Some article content</article>;
@@ -327,15 +326,15 @@ public class TreeSitterAnalyzerMiscTest {
         assertEquals(expectedPlainJsxFuncSource.stripIndent().trim(), plainJsxFuncSourceOpt.get().stripIndent().trim());
 
         // Test case 7: Non-existent method
-        Option<String> nonExistentMethodSourceOpt = jsAnalyzer.getMethodSource("NonExistent.method");
+        Optional<String> nonExistentMethodSourceOpt = jsAnalyzer.getMethodSource("NonExistent.method");
         assertTrue(nonExistentMethodSourceOpt.isEmpty(), "Requesting source for a non-existent method should return Option.empty().");
 
         // Test case 8: Existing symbol that is a class, not a function
-        Option<String> classAsMethodSourceOpt = jsAnalyzer.getMethodSource("Hello");
+        Optional<String> classAsMethodSourceOpt = jsAnalyzer.getMethodSource("Hello");
         assertTrue(classAsMethodSourceOpt.isEmpty(), "Requesting method source for a class symbol should return Option.empty().");
         
         // Test case 9: Existing symbol that is a field, not a function
-        Option<String> fieldAsMethodSourceOpt = jsAnalyzer.getMethodSource("_module_.TOP_CONST_JS");
+        Optional<String> fieldAsMethodSourceOpt = jsAnalyzer.getMethodSource("_module_.TOP_CONST_JS");
         assertTrue(fieldAsMethodSourceOpt.isEmpty(), "Requesting method source for a field symbol should return Option.empty().");
     }
 }

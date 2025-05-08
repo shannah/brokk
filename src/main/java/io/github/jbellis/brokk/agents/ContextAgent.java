@@ -423,7 +423,7 @@ public class ContextAgent {
         return stream
                 .map(cu -> {
                     var skeletonOpt = analyzer.getSkeleton(cu.fqName());
-                    String skeleton = skeletonOpt.isDefined() ? skeletonOpt.get() : "";
+                    String skeleton = skeletonOpt.isPresent() ? skeletonOpt.get() : "";
                     return Map.entry(cu, skeleton);
                 })
                 .filter(entry -> !entry.getValue().isEmpty())

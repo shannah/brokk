@@ -819,7 +819,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         for (var element : stacktrace.getFrames()) {
             var methodFullName = element.getClassName() + "." + element.getMethodName();
             var methodSource = analyzer.getMethodSource(methodFullName);
-            if (methodSource.isDefined()) {
+            if (methodSource.isPresent()) {
                 String className = ContextFragment.toClassname(methodFullName);
                 // Use getDefinition to find the class CodeUnit and add it to sources
                 analyzer.getDefinition(className)

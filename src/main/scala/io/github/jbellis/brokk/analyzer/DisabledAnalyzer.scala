@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.analyzer
 
 import java.util
 import java.util.Collections
+import java.util.Optional
 
 /**
  * An IAnalyzer implementation that does nothing and returns empty results.
@@ -25,11 +26,11 @@ class DisabledAnalyzer extends IAnalyzer {
   override def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[scala.Tuple2[CodeUnit, java.lang.Double]] =
     Collections.emptyList()
 
-  override def getSkeleton(className: String): Option[String] =
-    None
+  override def getSkeleton(className: String): Optional[String] =
+    Optional.empty()
 
-  override def getSkeletonHeader(className: String): Option[String] =
-    None
+  override def getSkeletonHeader(className: String): Optional[String] =
+    Optional.empty()
 
   override def getFileFor(fqcn: String): java.util.Optional[ProjectFile] = {
     java.util.Optional.empty()
@@ -41,8 +42,8 @@ class DisabledAnalyzer extends IAnalyzer {
   override def getUses(symbol: String): util.List[CodeUnit] =
     Collections.emptyList()
 
-  override def getMethodSource(methodName: String): Option[String] =
-    None
+  override def getMethodSource(methodName: String): Optional[String] =
+    Optional.empty()
 
   override def getClassSource(className: String): java.lang.String =
     ""

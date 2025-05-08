@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.analyzer;
 
-import scala.Option;
 import scala.Tuple2;
 
 import java.util.*;
@@ -35,11 +34,11 @@ public interface IAnalyzer {
     }
 
     // Summarization
-    default Option<String> getSkeleton(String className) {
+    default Optional<String> getSkeleton(String className) {
         throw new UnsupportedOperationException();
     }
 
-    default Option<String> getSkeletonHeader(String className) {
+    default Optional<String> getSkeletonHeader(String className) {
         throw new UnsupportedOperationException();
     }
 
@@ -47,7 +46,7 @@ public interface IAnalyzer {
      * Gets the source code for a given method name. If multiple methods match (e.g. overloads),
      * their source code snippets are concatenated (separated by newlines). If none match, returns None.
      */
-    default Option<String> getMethodSource(String fqName) {
+    default Optional<String> getMethodSource(String fqName) {
         throw new UnsupportedOperationException();
     }
 
@@ -62,8 +61,8 @@ public interface IAnalyzer {
     default Map<CodeUnit, String> getSkeletons(ProjectFile file) {
         Map<CodeUnit, String> skeletons = new HashMap<>();
         for (CodeUnit cls : getDeclarationsInFile(file)) {
-            Option<String> skelOpt = getSkeleton(cls.fqName());
-            if (skelOpt.isDefined()) {
+            Optional<String> skelOpt = getSkeleton(cls.fqName());
+            if (skelOpt.isPresent()) {
                 skeletons.put(cls, skelOpt.get());
             }
         }

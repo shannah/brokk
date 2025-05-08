@@ -11,10 +11,10 @@ import io.shiftleft.codepropertygraph.generated.language.*
 import io.shiftleft.codepropertygraph.generated.nodes.{Call, Method, TypeDecl}
 import io.shiftleft.semanticcpg.language.*
 import io.shiftleft.semanticcpg.layers.LayerCreatorContext
-import scala.jdk.OptionConverters.RichOptional
 
 import java.io.{Closeable, IOException}
 import java.nio.file.Path
+import java.util.Optional
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters.IterableIsParallelizable
@@ -22,6 +22,7 @@ import scala.concurrent.ExecutionContext
 import scala.io.Source
 import scala.util.Try
 import scala.util.matching.Regex
+import scala.jdk.OptionConverters.RichOptional
 
 /**
  * An abstract base for language-specific analyzers.
@@ -136,7 +137,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     classesForPagerank = (adjacency.keys ++ adjacency.values.flatMap(_.keys)).toSet
   }
 
-  override def getMethodSource(fqName: String): Option[String] = {
+  override def getMethodSource(fqName: String): Optional[String] = {
     val resolvedMethodName = resolveMethodName(fqName)
     val methods = methodsFromName(resolvedMethodName)
 
@@ -151,7 +152,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       }.toOption
     }.flatten
 
-    if (sources.isEmpty) None else Some(sources.mkString("\n\n"))
+    if (sources.isEmpty) Optional.empty() else Optional.of(sources.mkString("\n\n"))
   }
 
   override def getClassSource(fqcn: String): String = {
@@ -192,9 +193,9 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   /**
    * Builds a structural skeleton for a given class by name (simple or FQCN).
    */
-  override def getSkeleton(className: String): Option[String] = {
+  override def getSkeleton(className: String): Optional[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
-    if (decls.isEmpty) None else Some(outlineTypeDecl(decls.head))
+    if (decls.isEmpty) Optional.empty() else Optional.of(outlineTypeDecl(decls.head))
   }
 
   /**
@@ -277,10 +278,10 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   /**
    * Returns just the class signature and field declarations, without method details.
    */
-  override def getSkeletonHeader(className: String): Option[String] = {
+  override def getSkeletonHeader(className: String): Optional[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
-    if (decls.isEmpty) None
-    else Some(headerString(decls.head, 0) + "  [... methods not shown ...]\n}")
+    if (decls.isEmpty) Optional.empty()
+    else Optional.of(headerString(decls.head, 0) + "  [... methods not shown ...]\n}")
   }
 
   private def headerString(td: TypeDecl, indent: Int): String = {

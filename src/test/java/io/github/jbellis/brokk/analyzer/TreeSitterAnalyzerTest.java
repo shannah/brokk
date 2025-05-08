@@ -103,25 +103,24 @@ public final class TreeSitterAnalyzerTest {
         String funcASkeleton = skelA.get(funcA_CU);
         assertTrue(funcASkeleton.contains("def funcA():"), "funcA skeleton content error.");
 
-        var funcASummary = """
-        def funcA(): …
-        """;
+        var funcASummary = "def funcA(): ...\n";
         assertEquals(funcASummary.trim(), funcASkeleton.trim());
 
-        var classASummary = """
-        class A:
-          def __init__(self): …
-          def method1(self) -> None: …
-          def method2(self, input_str: str, other_input: int = None) -> str: …
-          def method3(self) -> Callable[[int], int]: …
-          @staticmethod
-          def method4(foo: float, bar: int) -> int: …
-          def method5(self) -> None: …
-          def method6(self) -> None: …
-        """; // Note: PythonAnalyzer.getLanguageSpecificIndent() might affect exact string match if not "  "
-        assertEquals(classASummary.stripIndent().trim(), classASkeleton.trim(), "Class A skeleton mismatch.");
+        // Replaced text block with standard string concatenation due to persistent compiler errors
+        var classASummary = "class A:\n" +
+                            "  def __init__(self): ...\n" +
+                            "  def method1(self) -> None: ...\n" +
+                            "  def method2(self, input_str: str, other_input: int = None) -> str: ...\n" +
+                            "  def method3(self) -> Callable[[int], int]: ...\n" +
+                            "  @staticmethod\n" +
+                            "  def method4(foo: float, bar: int) -> int: ...\n" +
+                            "  def method5(self) -> None: ...\n" +
+                            "  def method6(self) -> None: ...\n";
+        // Note: PythonAnalyzer.getLanguageSpecificIndent() might affect exact string match if not "  "
+        assertEquals(classASummary.trim(), classASkeleton.trim(), "Class A skeleton mismatch.");
 
         assertEquals(Set.of(classA_CU), analyzer.getDeclarationsInFile(fileA), "getClassesInFile mismatch for file A");
+        assertTrue(analyzer.getSkeleton(funcA_CU.fqName()).isPresent(), "Skeleton for funcA_CU should be present");
         assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA_CU.fqName()).get().trim(), "getSkeleton mismatch for funcA");
     }
 
@@ -207,7 +206,7 @@ public final class TreeSitterAnalyzerTest {
 
         assertEquals(Set.of(classA_CU), analyzer.getDeclarationsInFile(fileA), "getClassesInFile mismatch for file A.");
         var classASkeletonOpt = analyzer.getSkeleton(classA_CU.fqName());
-        assertTrue(classASkeletonOpt.isDefined(), "Skeleton for classA fqName '" + classA_CU.fqName() + "' should be found.");
+        assertTrue(classASkeletonOpt.isPresent(), "Skeleton for classA fqName '" + classA_CU.fqName() + "' should be found.");
         assertEquals(normalize.apply(classASkeleton), normalize.apply(classASkeletonOpt.get()), "getSkeleton for classA fqName mismatch.");
     }
 

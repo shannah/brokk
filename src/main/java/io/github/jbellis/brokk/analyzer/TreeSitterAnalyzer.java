@@ -4,7 +4,6 @@ import io.github.jbellis.brokk.IProject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.treesitter.*;
-import scala.Option;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -176,7 +175,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     @Override public boolean isCpg() { return false; }
 
     @Override
-    public scala.Option<String> getSkeletonHeader(String fqName) {
+    public Optional<String> getSkeletonHeader(String fqName) {
         return getSkeleton(fqName).map(s ->
             s.lines().findFirst().orElse("").stripTrailing()
         );
@@ -301,17 +300,17 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
 
     @Override
-    public scala.Option<String> getSkeleton(String fqName) {
+    public Optional<String> getSkeleton(String fqName) {
         Optional<CodeUnit> cuOpt = signatures.keySet().stream()
                                           .filter(c -> c.fqName().equals(fqName))
                                           .findFirst();
         if (cuOpt.isPresent()) {
             String skeleton = reconstructFullSkeleton(cuOpt.get());
             log.trace("getSkeleton: fqName='{}', found=true", fqName);
-            return scala.Option.apply(skeleton);
+            return Optional.of(skeleton);
         }
         log.trace("getSkeleton: fqName='{}', found=false", fqName);
-        return scala.Option.empty();
+        return Optional.empty();
     }
 
     @Override
@@ -337,7 +336,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     }
 
     @Override
-    public scala.Option<String> getMethodSource(String fqName) {
+    public Optional<String> getMethodSource(String fqName) {
         return getDefinition(fqName)
                 .filter(CodeUnit::isFunction)
                 .flatMap(cu -> {
@@ -361,9 +360,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                     // taking the first range is safer.
                     var range = ranges.getFirst();
                     return Optional.of(src.substring(range.startByte(), range.endByte()));
-                })
-                .map(scala.Option::apply)
-                .orElse(scala.Option.empty());
+                });
     }
 
 

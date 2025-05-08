@@ -7,7 +7,8 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows
 import org.junit.jupiter.api.Test
 
 import java.nio.file.Path
-import scala.jdk.OptionConverters.* // Import for Optional conversion
+import java.util.Optional
+import scala.jdk.OptionConverters.RichOptional
 import scala.jdk.javaapi.*
 import scala.jdk.javaapi.CollectionConverters.asScala
 
@@ -35,7 +36,9 @@ class AnalyzerTest {
   @Test
   def extractMethodSource(): Unit = {
     val analyzer = getAnalyzer
-    val source = analyzer.getMethodSource("A.method2").get
+    val sourceOpt: Optional[String] = analyzer.getMethodSource("A.method2")
+    assertTrue(sourceOpt.isPresent)
+    val source = sourceOpt.get()
 
     val expected =
       """    public String method2(String input) {
@@ -53,7 +56,9 @@ class AnalyzerTest {
   @Test
   def extractMethodSourceNested(): Unit = {
     val analyzer = getAnalyzer
-    val source = analyzer.getMethodSource("A$AInner$AInnerInner.method7").get
+    val sourceOpt: Optional[String] = analyzer.getMethodSource("A$AInner$AInnerInner.method7")
+    assertTrue(sourceOpt.isPresent)
+    val source = sourceOpt.get()
 
     val expected =
       """            public void method7() {
@@ -66,7 +71,9 @@ class AnalyzerTest {
   @Test
   def extractMethodSourceConstructor(): Unit = {
     val analyzer = getAnalyzer
-    val source = analyzer.getMethodSource("B.<init>").get
+    val sourceOpt: Optional[String] = analyzer.getMethodSource("B.<init>")
+    assertTrue(sourceOpt.isPresent)
+    val source = sourceOpt.get()
 
     val expected =
       """    public B() {
@@ -127,7 +134,9 @@ class AnalyzerTest {
 
   @Test
   def getSkeletonTestA(): Unit = {
-    val skeleton = getAnalyzer.getSkeleton("A").get
+    val skeletonOpt = getAnalyzer.getSkeleton("A")
+    assertTrue(skeletonOpt.isPresent)
+    val skeleton = skeletonOpt.get()
     // https://github.com/joernio/joern/issues/5297
     //    |  public Function<Integer, Integer> method3() {...}
     val expected =
@@ -156,7 +165,9 @@ class AnalyzerTest {
 
   @Test
   def getSkeletonTestD(): Unit = {
-    val skeleton = getAnalyzer.getSkeleton("D").get
+    val skeletonOpt = getAnalyzer.getSkeleton("D")
+    assertTrue(skeletonOpt.isPresent)
+    val skeleton = skeletonOpt.get()
     val expected =
       """class D {
         |  public void methodD1() {...}
@@ -176,7 +187,9 @@ class AnalyzerTest {
 
   @Test
   def getGetSkeletonHeaderTest(): Unit = {
-    val skeleton = getAnalyzer.getSkeletonHeader("D").get
+    val skeletonOpt = getAnalyzer.getSkeletonHeader("D")
+    assertTrue(skeletonOpt.isPresent)
+    val skeleton = skeletonOpt.get()
     val expected =
       """class D {
         |  public int field1;

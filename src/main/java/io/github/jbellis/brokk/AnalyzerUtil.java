@@ -7,7 +7,6 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
-import scala.Option;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -44,7 +43,7 @@ public class AnalyzerUtil {
             Map<String, List<String>> groupedMethods = new LinkedHashMap<>();
             for (var cu : methodUses) {
                 var source = analyzer.getMethodSource(cu.fqName());
-                if (source.isDefined()) {
+                if (source.isPresent()) {
                     String classname = ContextFragment.toClassname(cu.fqName());
                     groupedMethods.computeIfAbsent(classname, k -> new ArrayList<>()).add(source.get());
                     sources.add(cu);
@@ -122,7 +121,7 @@ public class AnalyzerUtil {
         var coalescedUnits = coalesceInnerClasses(classes);
         return coalescedUnits.stream()
                 .map(cu -> Map.entry(cu, analyzer.getSkeleton(cu.fqName())))
-                .filter(entry -> entry.getValue().isDefined())
+                .filter(entry -> entry.getValue().isPresent())
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get()));
     }
 
@@ -187,8 +186,8 @@ public class AnalyzerUtil {
                 .flatMap(Optional::stream)    // Convert Optional<CodeUnit> to Stream<CodeUnit>
                 .filter(CodeUnit::isClass)    // Ensure it's a class CodeUnit
                 .map(cu -> {
-                    Option<String> skeletonOpt = analyzer.getSkeleton(cu.fqName()); // Use fqName from CodeUnit
-                    return skeletonOpt.isDefined() ? Map.entry(cu, skeletonOpt.get()) : null; // Create entry if skeleton exists
+                    Optional<String> skeletonOpt = analyzer.getSkeleton(cu.fqName()); // Use fqName from CodeUnit
+                    return skeletonOpt.isPresent() ? Map.entry(cu, skeletonOpt.get()) : null; // Create entry if skeleton exists
                 })
                 .filter(Objects::nonNull) // Filter out null entries (where skeleton wasn't found)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -213,7 +212,7 @@ public class AnalyzerUtil {
             if (methodName != null && !methodName.isBlank()) {
                 // Attempt to get the source code for the method
                 var methodSourceOpt = analyzer.getMethodSource(methodName);
-                if (methodSourceOpt.isDefined()) {
+                if (methodSourceOpt.isPresent()) {
                     // If source is found, add it to the map with a header comment
                     String methodSource = methodSourceOpt.get();
                     sources.put(methodName, "// Source for " + methodName + "\n" + methodSource);

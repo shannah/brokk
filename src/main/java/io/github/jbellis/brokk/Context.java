@@ -330,10 +330,10 @@ public class Context implements Serializable {
             }
 
             if (eligible) {
-                var opt = analyzer.getSkeleton(fqcn);
-                if (opt.isDefined()) {
-                    skeletonMap.put(codeUnit, opt.get());
-                }
+                 var opt = analyzer.getSkeleton(fqcn);
+                 if (opt.isPresent()) {
+                     skeletonMap.put(codeUnit, opt.get());
+                 }
             }
             if (skeletonMap.size() >= topK) {
                 break;

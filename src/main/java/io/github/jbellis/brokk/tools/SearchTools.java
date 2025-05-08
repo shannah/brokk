@@ -10,7 +10,6 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import scala.Option;
 import scala.Tuple2;
 
 import java.io.IOException;
@@ -284,9 +283,9 @@ public class SearchTools {
         var skResult = pageRankResults.stream().distinct()
                 .limit(10) // padding in case of not defined
                 .map(fqcn -> getAnalyzer().getSkeleton(fqcn))
-                .filter(Option::isDefined)
+                .filter(Optional::isPresent)
                 .limit(5)
-                .map(Option::get)
+                .map(Optional::get)
                 .collect(Collectors.joining("\n\n"));
 
         var formattedSkeletons = skResult.isEmpty() ? "" : "# Summaries of the top related classes: \n\n" + skResult + "\n\n";
@@ -308,8 +307,8 @@ public class SearchTools {
         }
 
         var result = classNames.stream().distinct().map(fqcn -> getAnalyzer().getSkeleton(fqcn))
-                .filter(Option::isDefined)
-                .map(Option::get)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
                 .collect(Collectors.joining("\n\n"));
 
         if (result.isEmpty()) {
@@ -384,7 +383,7 @@ public class SearchTools {
         for (String methodName : methodNames) {
             if (!methodName.isBlank()) {
                 var methodSourceOpt = getAnalyzer().getMethodSource(methodName);
-                if (methodSourceOpt.isDefined()) {
+                if (methodSourceOpt.isPresent()) {
                     String methodSource = methodSourceOpt.get();
                     if (!processedMethodSources.contains(methodSource)) {
                         processedMethodSources.add(methodSource);

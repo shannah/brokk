@@ -93,7 +93,7 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected String bodyPlaceholder() {
-        return "…";
+        return "...";
     }
 
     @Override
