@@ -523,20 +523,46 @@ public class ContextPanel extends JPanel {
 
         add(contextSummaryPanel, BorderLayout.SOUTH);
 
+        // Listener for table scroll pane (focus on click, specific popup for empty area)
         tableScrollPane.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                contextTable.requestFocusInWindow();
+                // Retain existing specific behavior for scroll pane clicks (focus table)
+                // Popup is handled by handleScrollPanePopup
+                if (!e.isPopupTrigger() && SwingUtilities.isLeftMouseButton(e)) {
+                    contextTable.requestFocusInWindow();
+                }
             }
         });
 
-        // Add a mouse listener to the panel itself to focus the table
-        this.addMouseListener(new MouseAdapter() {
+        // Shared listener for panel-wide context menu and focus
+        MouseAdapter panelPopupAndFocusListener = new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                contextTable.requestFocusInWindow();
+                if (!e.isPopupTrigger() && SwingUtilities.isLeftMouseButton(e)) {
+                    contextTable.requestFocusInWindow();
+                }
             }
-        });
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    tablePopupMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    tablePopupMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            }
+        };
+
+        // Add the listener to the panel itself
+        this.addMouseListener(panelPopupAndFocusListener);
+        // Add the listener to the summary panel
+        contextSummaryPanel.addMouseListener(panelPopupAndFocusListener);
     }
 
 
