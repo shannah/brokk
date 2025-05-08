@@ -189,7 +189,7 @@ class AnalyzerTest {
   @Test
   def getAllClassesTest(): Unit = {
     val analyzer = getAnalyzer
-    val classes = analyzer.getAllClasses
+    val classes = analyzer.getAllDeclarations
   }
 
   @Test
@@ -255,7 +255,7 @@ class AnalyzerTest {
   def getClassesInFileTest(): Unit = {
     val analyzer = getAnalyzer
     val file = analyzer.toFile("D.java").get
-    val classes = analyzer.getClassesInFile(file)
+    val classes = analyzer.getDeclarationsInFile(file)
     val expected = Set(
       CodeUnit.cls(file, "", "D"),
       CodeUnit.cls(file, "", "D$DSub"),
@@ -268,7 +268,7 @@ class AnalyzerTest {
   def classesInPackagedFileTest(): Unit = {
     val analyzer = getAnalyzer
     val file = analyzer.toFile("Packaged.java").get
-    val classes = analyzer.getClassesInFile(file)
+    val classes = analyzer.getDeclarationsInFile(file)
     assertEquals(Set(CodeUnit.cls(file, "io.github.jbellis.brokk", "Foo")), asScala(classes).toSet)
   }
 

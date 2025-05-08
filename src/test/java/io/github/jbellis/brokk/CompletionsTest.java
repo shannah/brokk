@@ -52,7 +52,7 @@ public class CompletionsTest {
 
 
         @Override
-        public List<CodeUnit> getAllClasses() {
+        public List<CodeUnit> getAllDeclarations() {
             return allClasses;
         }
 

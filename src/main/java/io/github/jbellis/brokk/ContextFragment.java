@@ -194,7 +194,7 @@ public interface ContextFragment extends Serializable {
 
         @Override
         public Set<CodeUnit> sources(IAnalyzer analyzer) {
-            return analyzer.getClassesInFile(file);
+            return analyzer.getDeclarationsInFile(file);
         }
 
         @Override

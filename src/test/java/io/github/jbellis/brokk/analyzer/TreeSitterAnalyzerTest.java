@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -81,7 +80,7 @@ public final class TreeSitterAnalyzerTest {
 
         ProjectFile fileA = new ProjectFile(project.getRoot(), "a/A.py");
         // Skeletons are now reconstructed. We check CodeUnits first.
-        var classesInFileA = analyzer.getClassesInFile(fileA);
+        var classesInFileA = analyzer.getDeclarationsInFile(fileA);
         var classA_CU = CodeUnit.cls(fileA, "a", "A");
         assertTrue(classesInFileA.contains(classA_CU), "File A should contain class A.");
 
@@ -122,7 +121,7 @@ public final class TreeSitterAnalyzerTest {
         """; // Note: PythonAnalyzer.getLanguageSpecificIndent() might affect exact string match if not "  "
         assertEquals(classASummary.stripIndent().trim(), classASkeleton.trim(), "Class A skeleton mismatch.");
 
-        assertEquals(Set.of(classA_CU), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A");
+        assertEquals(Set.of(classA_CU), analyzer.getDeclarationsInFile(fileA), "getClassesInFile mismatch for file A");
         assertEquals(funcASummary.trim(), analyzer.getSkeleton(funcA_CU.fqName()).get().trim(), "getSkeleton mismatch for funcA");
     }
 
@@ -151,8 +150,8 @@ public final class TreeSitterAnalyzerTest {
         assertEquals("export_like = \"not really\"", skelVars.get(exportLikeCU).strip()); // Note: Query captures the whole assignment
 
         // Ensure these are not mistaken for classes
-        assertFalse(analyzer.getClassesInFile(varsPyFile).contains(topValueCU), "TOP_VALUE should not be in classes list.");
-        assertFalse(analyzer.getClassesInFile(varsPyFile).contains(exportLikeCU), "export_like should not be in classes list.");
+        assertFalse(analyzer.getDeclarationsInFile(varsPyFile).contains(topValueCU), "TOP_VALUE should not be in classes list.");
+        assertFalse(analyzer.getDeclarationsInFile(varsPyFile).contains(exportLikeCU), "export_like should not be in classes list.");
 
         // Verify that getTopLevelDeclarations includes these fields
         var topLevelDecls = ((TreeSitterAnalyzer)analyzer).topLevelDeclarations.get(varsPyFile);
@@ -176,7 +175,7 @@ public final class TreeSitterAnalyzerTest {
         ProjectFile fileA = new ProjectFile(project.getRoot(), "A.cs");
         var classA_CU = CodeUnit.cls(fileA, "TestNamespace", "A");
 
-        assertTrue(analyzer.getClassesInFile(fileA).contains(classA_CU), "File A.cs should contain class A.");
+        assertTrue(analyzer.getDeclarationsInFile(fileA).contains(classA_CU), "File A.cs should contain class A.");
 
         var skelA = analyzer.getSkeletons(fileA);
         assertFalse(skelA.isEmpty(), "Skeletons map for file A.cs should not be empty.");
@@ -206,7 +205,7 @@ public final class TreeSitterAnalyzerTest {
                              cu.identifier().startsWith("annotation"));
         assertFalse(hasAnnotationSignature, "No signatures from 'annotation' captures expected.");
 
-        assertEquals(Set.of(classA_CU), analyzer.getClassesInFile(fileA), "getClassesInFile mismatch for file A.");
+        assertEquals(Set.of(classA_CU), analyzer.getDeclarationsInFile(fileA), "getClassesInFile mismatch for file A.");
         var classASkeletonOpt = analyzer.getSkeleton(classA_CU.fqName());
         assertTrue(classASkeletonOpt.isDefined(), "Skeleton for classA fqName '" + classA_CU.fqName() + "' should be found.");
         assertEquals(normalize.apply(classASkeleton), normalize.apply(classASkeletonOpt.get()), "getSkeleton for classA fqName mismatch.");
@@ -237,7 +236,7 @@ public final class TreeSitterAnalyzerTest {
         assertTrue(skelMixed.containsKey(topLevelStruct), "Skeletons should contain TopLevelStruct.");
 
         Set<CodeUnit> expectedClassesMixed = Set.of(topLevelClass, myTestAttributeClass, namespacedClass, nsInterface, topLevelStruct);
-        assertEquals(expectedClassesMixed, analyzer.getClassesInFile(mixedScopeFile), "getClassesInFile mismatch for MixedScope.cs");
+        assertEquals(expectedClassesMixed, analyzer.getDeclarationsInFile(mixedScopeFile), "getClassesInFile mismatch for MixedScope.cs");
 
         ProjectFile nestedNamespacesFile = new ProjectFile(project.getRoot(), "NestedNamespaces.cs");
         var skelNested = analyzer.getSkeletons(nestedNamespacesFile);
@@ -254,7 +253,7 @@ public final class TreeSitterAnalyzerTest {
         assertTrue(skelNested.containsKey(anotherClass), "Skeletons should contain AnotherTopLevelNs.AnotherClass.");
 
         Set<CodeUnit> expectedClassesNested = Set.of(myNestedClass, myNestedInterface, outerClass, anotherClass);
-        assertEquals(expectedClassesNested, analyzer.getClassesInFile(nestedNamespacesFile), "getClassesInFile mismatch for NestedNamespaces.cs");
+        assertEquals(expectedClassesNested, analyzer.getDeclarationsInFile(nestedNamespacesFile), "getClassesInFile mismatch for NestedNamespaces.cs");
     }
 
     /* -------------------- JavaScript / JSX -------------------- */
@@ -305,7 +304,7 @@ public final class TreeSitterAnalyzerTest {
         """.stripIndent();
         assertEquals(expectedPlainJsxFuncSkeleton.trim(), skelJsx.get(plainJsxFunc).trim(), "PlainJsxFunc skeleton mismatch");
 
-        assertEquals(Set.of(jsxClass), analyzer.getClassesInFile(jsxFile), "getClassesInFile mismatch for Hello.jsx");
+        assertEquals(Set.of(jsxClass), analyzer.getDeclarationsInFile(jsxFile), "getClassesInFile mismatch for Hello.jsx");
         assertEquals(expectedExportedArrowFnSkeleton.trim(), analyzer.getSkeleton(jsxArrowFn.fqName()).get().trim(), "getSkeleton mismatch for JsxArrowFnComponent FQ name");
 
         ProjectFile jsFile = new ProjectFile(project.getRoot(), "Hello.js");
@@ -413,7 +412,7 @@ public final class TreeSitterAnalyzerTest {
         assertEquals("let localVarJs = \"abc\"", skelVars.get(localVarJsCU).strip());
 
         // Ensure these are not mistaken for classes
-        Set<CodeUnit> classesInFile = analyzer.getClassesInFile(varsJsFile);
+        Set<CodeUnit> classesInFile = analyzer.getDeclarationsInFile(varsJsFile);
         assertFalse(classesInFile.contains(topConstJsCU), "_module_.TOP_CONST_JS should not be in classes list.");
         assertFalse(classesInFile.contains(localVarJsCU), "_module_.localVarJs should not be in classes list.");
     }

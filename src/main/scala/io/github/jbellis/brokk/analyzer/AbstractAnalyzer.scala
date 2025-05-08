@@ -111,7 +111,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
    * by language. By default, we check that the typeDecl is present
    * and has some members or methods.
    */
-  override def isClassInProject(className: String): Boolean = {
+  def isClassInProject(className: String): Boolean = {
     val td = cpg.typeDecl.fullNameExact(className).l
     td.nonEmpty && !(td.member.isEmpty && td.method.isEmpty && td.derivedTypeDecl.isEmpty)
   }
@@ -252,8 +252,8 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     targetMap.update(target, targetMap.getOrElse(target, 0) + count)
   }
 
-  override def getFileFor(fqcn: String): java.util.Optional[ProjectFile] = {
-    val scalaOpt = cpg.typeDecl.fullNameExact(fqcn).headOption.flatMap(toFile)
+  override def getFileFor(fqName: String): java.util.Optional[ProjectFile] = {
+    val scalaOpt = cpg.typeDecl.fullNameExact(fqName).headOption.flatMap(toFile)
     scalaOpt match
       case Some(file) => java.util.Optional.of(file)
       case None       => java.util.Optional.empty()
@@ -270,7 +270,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   // using cpg.all doesn't work because there are always-present nodes for files and the ANY typedecl
   override def isEmpty: Boolean = cpg.member.isEmpty
 
-  override def getAllClasses: java.util.List[CodeUnit] = {
+  override def getAllDeclarations: java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     cpg.typeDecl
       .filter(toFile(_).isDefined)
@@ -815,26 +815,18 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     (matchingClasses ++ matchingMethods ++ matchingFields).asJava
   }
 
-  /**
-   * Finds a single CodeUnit definition matching the exact symbol name.
-   *
-   * @param symbol The exact, case-sensitive FQ name of the class, method, or field.
-   *               Symbols are checked in that order, so if you have a field and a method with the same name,
-   *               the method will be returned.
-   * @return An Optional containing the CodeUnit if exactly one match is found, otherwise empty.
-   */
-  override def getDefinition(symbol: String): java.util.Optional[CodeUnit] = {
+  override def getDefinition(fqName: String): java.util.Optional[CodeUnit] = {
     // lots of similarity to searchDefinitions, but that uses pattern-matching fullName and this
     // uses fullNameExact so trying to share code seems like more trouble than it's worth
     import scala.jdk.CollectionConverters.*
 
     // Try finding as a class
     val classMatch = cpg.typeDecl
-      .fullNameExact(symbol)
+      .fullNameExact(fqName)
       .filter(td => isClassInProject(td.fullName)) // Filter TypeDecl based on its fullName
       .flatMap { td =>
         toFile(td).flatMap { file =>
-          cuClass(symbol, file)
+          cuClass(fqName, file)
         }
       }
       .headOption
@@ -844,7 +836,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     // Try finding as a method
     // First, find all raw method nodes matching the resolved symbol name within project classes
     val rawMethodMatches = cpg.method
-      .filter(m => resolveMethodName(chopColon(m.fullName)) == symbol)
+      .filter(m => resolveMethodName(chopColon(m.fullName)) == fqName)
       .filter(m => m.typeDecl.fullName.headOption.exists(isClassInProject))
       .l
 
@@ -854,7 +846,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       val theMethod = rawMethodMatches.head
       val methodCodeUnitOpt = theMethod.typeDecl.headOption
         .flatMap(toFile) // Get Option[ProjectFile]
-        .flatMap(file => cuFunction(symbol, file)) // Call cuFunction
+        .flatMap(file => cuFunction(fqName, file)) // Call cuFunction
 
       // Convert Option[CodeUnit] to java.util.Optional[CodeUnit]
       // Moved the closing brace after the match statement
@@ -865,10 +857,10 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     } // Moved closing brace here
 
     // Try finding as a field (symbol must be className.fieldName)
-    val lastDot = symbol.lastIndexOf('.')
+    val lastDot = fqName.lastIndexOf('.')
     if (lastDot > 0) {
-      val className = symbol.substring(0, lastDot)
-      val fieldName = symbol.substring(lastDot + 1)
+      val className = fqName.substring(0, lastDot)
+      val fieldName = fqName.substring(lastDot + 1)
 
       val fieldMatch = cpg.member
         .nameExact(fieldName)
@@ -1031,10 +1023,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       .asJava
   }
 
-  /**
-   * Gets all classes in a given file.
-   */
-  override def getClassesInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
+  override def getDeclarationsInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     cpg.typeDecl.l
       .filter(td => toFile(td).contains(file))

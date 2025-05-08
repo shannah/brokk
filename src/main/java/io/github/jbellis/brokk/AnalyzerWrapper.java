@@ -184,7 +184,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                 Code Intelligence found %d classes in %,d ms.
                 Since this was slow, code intelligence will only refresh when explicitly requested via the Context menu.
                 You can change this in the Settings -> Project dialog.
-                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration);
+                """.stripIndent().formatted(analyzer.getAllDeclarations().size(), duration);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
             } else if (duration > 5000) {
@@ -193,7 +193,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                 Code Intelligence found %d classes in %,d ms.
                 Since this was slow, code intelligence will only refresh on restart, or when explicitly requested via the Context menu.
                 You can change this in the Settings -> Project dialog.
-                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration);
+                """.stripIndent().formatted(analyzer.getAllDeclarations().size(), duration);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
             } else {
@@ -203,7 +203,7 @@ public class AnalyzerWrapper implements AutoCloseable {
                 If this is fewer than expected, it's probably because Brokk only looks for %s files.
                 If this is not a useful subset of your project, you can change it in the Settings -> Project
                 dialog, or disable Code Intelligence by setting the language to NONE.
-                """.stripIndent().formatted(analyzer.getAllClasses().size(), duration, language.getExtensions(), Language.NONE);
+                """.stripIndent().formatted(analyzer.getAllDeclarations().size(), duration, language.getExtensions(), Language.NONE);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
                 startWatcher();

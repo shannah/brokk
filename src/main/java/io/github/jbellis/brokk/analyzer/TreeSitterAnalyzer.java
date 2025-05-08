@@ -137,7 +137,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     @Override public boolean isEmpty() { return topLevelDeclarations.isEmpty() && signatures.isEmpty(); }
 
     @Override
-    public List<CodeUnit> getAllClasses() {
+    public List<CodeUnit> getAllDeclarations() {
         Set<CodeUnit> allClasses = new HashSet<>();
         topLevelDeclarations.values().forEach(allClasses::addAll);
         childrenByParent.values().forEach(allClasses::addAll); // Children lists
@@ -159,7 +159,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     }
 
     @Override
-    public Set<CodeUnit> getClassesInFile(ProjectFile file) {
+    public Set<CodeUnit> getDeclarationsInFile(ProjectFile file) {
         List<CodeUnit> topCUs = topLevelDeclarations.getOrDefault(file, List.of());
         if (topCUs.isEmpty()) return Set.of();
 

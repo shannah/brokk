@@ -6,7 +6,7 @@ import scala.Tuple2;
 import java.util.*;
 
 public interface IAnalyzer {
-
+    // Basics
     default boolean isEmpty() {
         throw new UnsupportedOperationException();
     }
@@ -15,57 +15,14 @@ public interface IAnalyzer {
         throw new UnsupportedOperationException();
     }
 
-    default List<CodeUnit> getAllClasses() {
-        throw new UnsupportedOperationException();
-    }
-
-    default List<CodeUnit> getMembersInClass(String fqClass) {
-        throw new UnsupportedOperationException();
-    }
-
-    default Set<CodeUnit> getClassesInFile(ProjectFile file) {
-        throw new UnsupportedOperationException();
-    }
-
-    default boolean isClassInProject(String className) {
+    // CPG methods
+    default List<CodeUnit> getUses(String symbol) {
         throw new UnsupportedOperationException();
     }
 
     default List<Tuple2<CodeUnit, Double>> getPagerank(Map<String, Double> seedClassWeights,
                                                        int k,
                                                        boolean reversed) {
-        throw new UnsupportedOperationException();
-    }
-
-    default Option<String> getSkeleton(String className) {
-        throw new UnsupportedOperationException();
-    }
-
-    default Option<String> getSkeletonHeader(String className) {
-        throw new UnsupportedOperationException();
-    }
-
-    default Optional<ProjectFile> getFileFor(String fqcn) {
-        throw new UnsupportedOperationException();
-    }
-
-    default Optional<CodeUnit> getDefinition(String symbol) {
-        throw new UnsupportedOperationException();
-    }
-
-    default List<CodeUnit> searchDefinitions(String pattern) {
-        throw new UnsupportedOperationException();
-    }
-
-    default List<CodeUnit> getUses(String symbol) {
-        throw new UnsupportedOperationException();
-    }
-
-    default Option<String> getMethodSource(String methodName) {
-        throw new UnsupportedOperationException();
-    }
-
-    default String getClassSource(String className) {
         throw new UnsupportedOperationException();
     }
 
@@ -77,13 +34,67 @@ public interface IAnalyzer {
         throw new UnsupportedOperationException();
     }
 
+    // Summarization
+    default Option<String> getSkeleton(String className) {
+        throw new UnsupportedOperationException();
+    }
+
+    default Option<String> getSkeletonHeader(String className) {
+        throw new UnsupportedOperationException();
+    }
+
+    default Option<String> getMethodSource(String methodName) {
+        throw new UnsupportedOperationException();
+    }
+
+    default String getClassSource(String className) {
+        throw new UnsupportedOperationException();
+    }
+
+    default Map<CodeUnit, String> getSkeletons(ProjectFile file) {
+        Map<CodeUnit, String> skeletons = new HashMap<>();
+        for (CodeUnit cls : getDeclarationsInFile(file)) {
+            Option<String> skelOpt = getSkeleton(cls.fqName());
+            if (skelOpt.isDefined()) {
+                skeletons.put(cls, skelOpt.get());
+            }
+        }
+        return skeletons;
+    }
+
+    default List<CodeUnit> getMembersInClass(String fqClass) {
+        throw new UnsupportedOperationException();
+    }
+
+    // Everything else
+    default List<CodeUnit> getAllDeclarations() {
+        throw new UnsupportedOperationException();
+    }
+
     /**
-     * Locates the source file and line range for the given fully-qualified method name.
-     * The {@code paramNames} list contains the *parameter variable names* (not types).
-     * If there is only a single match, or exactly one match with matching param names, return it.
-     * Otherwise throw {@code SymbolNotFoundException} or {@code SymbolAmbiguousException}.
+     * Gets all classes in a given file.
      */
-    default FunctionLocation getFunctionLocation(String fqMethodName, List<String> paramNames) {
+    default Set<CodeUnit> getDeclarationsInFile(ProjectFile file) {
+        throw new UnsupportedOperationException();
+    }
+
+    default Optional<ProjectFile> getFileFor(String fqName) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Finds a single CodeUnit definition matching the exact symbol name.
+     *
+     * @param fqName The exact, case-sensitive FQ name of the class, method, or field.
+     *               Symbols are checked in that order, so if you have a field and a method with the same name,
+     *               the method will be returned.
+     * @return An Optional containing the CodeUnit if exactly one match is found, otherwise empty.
+     */
+    default Optional<CodeUnit> getDefinition(String fqName) {
+        throw new UnsupportedOperationException();
+    }
+
+    default List<CodeUnit> searchDefinitions(String pattern) {
         throw new UnsupportedOperationException();
     }
 
@@ -100,15 +111,14 @@ public interface IAnalyzer {
         throw new UnsupportedOperationException();
     }
 
-    default Map<CodeUnit, String> getSkeletons(ProjectFile file) {
-        Map<CodeUnit, String> skeletons = new HashMap<>();
-        for (CodeUnit cls : getClassesInFile(file)) {
-            Option<String> skelOpt = getSkeleton(cls.fqName());
-            if (skelOpt.isDefined()) {
-                skeletons.put(cls, skelOpt.get());
-            }
-        }
-        return skeletons;
+    /**
+     * Locates the source file and line range for the given fully-qualified method name.
+     * The {@code paramNames} list contains the *parameter variable names* (not types).
+     * If there is only a single match, or exactly one match with matching param names, return it.
+     * Otherwise throw {@code SymbolNotFoundException} or {@code SymbolAmbiguousException}.
+     */
+    default FunctionLocation getFunctionLocation(String fqMethodName, List<String> paramNames) {
+        throw new UnsupportedOperationException();
     }
 
     /**

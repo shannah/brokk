@@ -13,18 +13,15 @@ class DisabledAnalyzer extends IAnalyzer {
   override def isCpg: Boolean =
     false
 
-  override def getAllClasses: util.List[CodeUnit] =
+  override def getAllDeclarations: util.List[CodeUnit] =
     Collections.emptyList()
 
   override def getMembersInClass(fqClass: String): util.List[CodeUnit] =
     Collections.emptyList()
 
-  override def getClassesInFile(file: ProjectFile): util.Set[CodeUnit] =
+  override def getDeclarationsInFile(file: ProjectFile): util.Set[CodeUnit] =
     Collections.emptySet()
-
-  override def isClassInProject(className: String): Boolean =
-    false
-
+  
   override def getPagerank(seedClassWeights: java.util.Map[String, java.lang.Double], k: Int, reversed: Boolean = false): java.util.List[scala.Tuple2[CodeUnit, java.lang.Double]] =
     Collections.emptyList()
 
