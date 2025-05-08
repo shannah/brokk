@@ -213,6 +213,17 @@ public class HistoryOutputPanel extends JPanel {
         var scrollPane = new JScrollPane(historyTable);
         scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         AutoScroller.install(scrollPane);
+        BorderUtils.addFocusBorder(scrollPane, historyTable);
+
+        // Add MouseListener to scrollPane's viewport to request focus for historyTable
+        scrollPane.getViewport().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getSource() == scrollPane.getViewport()) { // Click was on the viewport itself
+                    historyTable.requestFocusInWindow();
+                }
+            }
+        });
 
         // Add undo/redo buttons at the bottom, side by side
         var buttonPanel = new JPanel();
