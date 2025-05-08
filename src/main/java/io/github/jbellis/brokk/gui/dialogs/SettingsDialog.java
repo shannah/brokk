@@ -48,6 +48,9 @@ public class SettingsDialog extends JDialog {
     private JComboBox<String> searchModelComboBox;
     private JComboBox<Project.ReasoningLevel> searchReasoningComboBox;
     private JComboBox<Project.ReasoningLevel> architectReasoningComboBox;
+    // Theme radio buttons (Global)
+    private JRadioButton lightThemeRadio;
+    private JRadioButton darkThemeRadio;
     // Project -> General tab specific fields
     private JTextArea styleGuideArea;
     private JTextArea commitFormatArea;
@@ -74,12 +77,37 @@ public class SettingsDialog extends JDialog {
         projectPanel = createProjectPanel();
         tabbedPane.addTab("Project", null, projectPanel, "Settings specific to the current project");
 
-        // Enable/disable project tab based on whether a project is open
-        projectPanel.setEnabled(chrome.getProject() != null);
-        for (Component comp : projectPanel.getComponents()) {
-            comp.setEnabled(projectPanel.isEnabled());
+        // Enable/disable project-dependent tab and its contents based on whether a project is open
+        var projectIsOpen = chrome.getProject() != null;
+
+        projectPanel.setEnabled(projectIsOpen);
+        // Iterating through components of projectPanel's main content (which is the subTabbedPane or a JLabel)
+        Component projectActualContent = projectPanel.getComponent(0); // Assuming first child is the main content
+        if (projectActualContent != null) {
+            projectActualContent.setEnabled(projectIsOpen);
+            if (projectActualContent instanceof Container) {
+                for (Component comp : ((Container) projectActualContent).getComponents()) {
+                    comp.setEnabled(projectIsOpen);
+                    if (comp instanceof JTabbedPane) { // If it's the sub-tabbed pane, enable/disable its tabs too
+                        JTabbedPane subTabs = (JTabbedPane) comp;
+                        for (int i = 0; i < subTabs.getTabCount(); i++) {
+                            subTabs.setEnabledAt(i, projectIsOpen);
+                            // And the components within those tabs
+                            Component tabContent = subTabs.getComponentAt(i);
+                            if (tabContent != null) {
+                                tabContent.setEnabled(projectIsOpen);
+                                if (tabContent instanceof Container) {
+                                    for (Component innerComp : ((Container)tabContent).getComponents()) {
+                                        innerComp.setEnabled(projectIsOpen);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        tabbedPane.setEnabledAt(1, chrome.getProject() != null); // Index 1 is the Project tab
+        tabbedPane.setEnabledAt(tabbedPane.indexOfComponent(projectPanel), projectIsOpen); // Enable/disable the Project tab itself
 
         // Buttons Panel
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -114,48 +142,99 @@ public class SettingsDialog extends JDialog {
         getContentPane().add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    private JPanel createGlobalPanel() {
-        var panel = new JPanel(new GridBagLayout()); // Use GridBagLayout for better alignment
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    private JTabbedPane createGlobalPanel() {
+        var globalSubTabbedPane = new JTabbedPane(JTabbedPane.TOP);
+
+        // Service Tab
+        var servicePanel = createServicePanel();
+        globalSubTabbedPane.addTab("Service", null, servicePanel, "Service configuration");
+
+        // Appearance Tab
+        var appearancePanel = createAppearancePanel();
+        globalSubTabbedPane.addTab("Appearance", null, appearancePanel, "Theme settings");
+
+        // Models Tab
+        var project = chrome.getProject(); // Models settings depend on project context
+        var modelsPanel = createModelsPanel(project);
+        globalSubTabbedPane.addTab("Models", null, modelsPanel, "Model selection and configuration");
+
+        // Enable/disable components within the Models panel based on project state
+        // The Models tab itself (within globalSubTabbedPane) remains enabled.
+        boolean projectIsOpen = (project != null);
+        modelsPanel.setEnabled(projectIsOpen);
+        for (Component comp : modelsPanel.getComponents()) {
+            comp.setEnabled(projectIsOpen);
+            // If a component is a container (like a sub-panel for reasoning), recursively enable/disable its children.
+            // This is particularly important if createModelsPanel returns a panel that itself contains other panels/components.
+            if (comp instanceof Container) {
+                setEnabledRecursive((Container) comp, projectIsOpen);
+            }
+        }
+        // Special handling for JComboBox renderers if they show "Off" when disabled
+        if (architectReasoningComboBox != null) updateReasoningComboBox(architectModelComboBox, architectReasoningComboBox, chrome.getContextManager().getModels());
+        if (codeReasoningComboBox != null) updateReasoningComboBox(codeModelComboBox, codeReasoningComboBox, chrome.getContextManager().getModels());
+        if (askReasoningComboBox != null) updateReasoningComboBox(askModelComboBox, askReasoningComboBox, chrome.getContextManager().getModels());
+        if (editReasoningComboBox != null) updateReasoningComboBox(editModelComboBox, editReasoningComboBox, chrome.getContextManager().getModels());
+        if (searchReasoningComboBox != null) updateReasoningComboBox(searchModelComboBox, searchReasoningComboBox, chrome.getContextManager().getModels());
+
+
+        return globalSubTabbedPane;
+    }
+
+    private void setEnabledRecursive(Container container, boolean enabled) {
+        for (Component c : container.getComponents()) {
+            c.setEnabled(enabled);
+            if (c instanceof Container) {
+                setEnabledRecursive((Container) c, enabled);
+            }
+        }
+    }
+
+
+    private JPanel createServicePanel() {
+        var servicePanel = new JPanel(new GridBagLayout());
+        servicePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); // Padding for content
         var gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 2, 2, 2);
-        gbc.anchor = GridBagConstraints.WEST; // Align components to the left
+        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.anchor = GridBagConstraints.WEST;
         int row = 0;
 
         // Brokk Key Input
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0.0;
-        panel.add(new JLabel("Brokk Key:"), gbc);
+        servicePanel.add(new JLabel("Brokk Key:"), gbc);
 
-        brokkKeyField = new JTextField(20); // Initialize the field
+        brokkKeyField = new JTextField(20);
         brokkKeyField.setText(Project.getBrokkKey());
         gbc.gridx = 1;
         gbc.gridy = row++;
         gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL; // Make field expand horizontally
-        panel.add(brokkKeyField, gbc);
-        row++; // Increment row after adding the key field
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        servicePanel.add(brokkKeyField, gbc);
 
         // Balance Display
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.WEST;
-        panel.add(new JLabel("Balance:"), gbc);
+        servicePanel.add(new JLabel("Balance:"), gbc);
 
-        var balanceField = new JTextField("Loading..."); // Initial loading text
+        var balanceField = new JTextField("Loading...");
         balanceField.setEditable(false);
-        balanceField.setColumns(8); // Give it a reasonable minimum size
+        balanceField.setColumns(8);
+        var balanceDisplayPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        balanceDisplayPanel.add(balanceField);
+        var topUpUrl = Models.TOP_UP_URL;
+        var topUpLabel = new BrowserLabel(topUpUrl, "Top Up");
+        balanceDisplayPanel.add(topUpLabel);
+
         gbc.gridx = 1;
         gbc.gridy = row++;
         gbc.weightx = 0.0; // Don't let balance field grow
         gbc.fill = GridBagConstraints.NONE;
-        // Create a sub-panel to hold balance and top-up link together
-        var balancePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0)); // Left align, 5px horizontal gap
+        servicePanel.add(balanceDisplayPanel, gbc);
 
-        // Asynchronously fetch and display balance
         var contextManager = chrome.getContextManager();
         var models = contextManager.getModels();
         contextManager.submitBackgroundTask("Fetching user balance", () -> {
@@ -164,145 +243,125 @@ public class SettingsDialog extends JDialog {
                 SwingUtilities.invokeLater(() -> balanceField.setText(String.format("$%.2f", balance)));
             } catch (java.io.IOException e) {
                 logger.debug("Failed to fetch user balance", e);
-                SwingUtilities.invokeLater(() -> balanceField.setText("Error")); // Indicate error
+                SwingUtilities.invokeLater(() -> balanceField.setText("Error"));
             }
         });
 
-        balancePanel.add(balanceField);
-
-        var topUpUrl = Models.TOP_UP_URL;
-        var topUpLabel = new BrowserLabel(topUpUrl, "Top Up");
-        balancePanel.add(topUpLabel);
-
-        panel.add(balancePanel, gbc); // Add the balance panel to the main panel
-        row++; // Increment row after adding the balance panel
-
-        // Sign-up/login link using BrowserLabel
-        gbc.gridx = 1; // Position under the balance panel (in the second column)
-        gbc.gridy = row++; // Use current row, then increment
+        // Sign-up/login link
         var signupUrl = "https://brokk.ai";
         var signupLabel = new BrowserLabel(signupUrl, "Sign up or get your key at " + signupUrl);
-        // Make it look like the old italic label
         signupLabel.setFont(signupLabel.getFont().deriveFont(Font.ITALIC));
-        gbc.fill = GridBagConstraints.HORIZONTAL; // Allow it to fill horizontally if needed
-        gbc.weightx = 1.0; // Allow horizontal expansion
-        panel.add(signupLabel, gbc);
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(2, 5, 8, 5); // Extra bottom margin for spacing
+        servicePanel.add(signupLabel, gbc);
+        gbc.insets = new Insets(2, 5, 2, 5); // Reset insets
 
-        // --- LLM Proxy Setting ---
-        // Reset constraints for the next section
+        // LLM Proxy Setting
         gbc.gridx = 0;
-        gbc.gridy = row; // Use the incremented row
+        gbc.gridy = row;
         gbc.weightx = 0.0;
-        panel.add(new JLabel("LLM Proxy:"), gbc);
+        gbc.fill = GridBagConstraints.NONE;
+        servicePanel.add(new JLabel("LLM Proxy:"), gbc);
 
-        // Brokk vs localhost selection
         brokkProxyRadio = new JRadioButton("Brokk");
-        // Removed italic on proxy radio label to keep standard font
         localhostProxyRadio = new JRadioButton("Localhost");
-        // Removed italic on proxy radio label to keep standard font
         var proxyGroup = new ButtonGroup();
         proxyGroup.add(brokkProxyRadio);
         proxyGroup.add(localhostProxyRadio);
 
-        // Brokk radio on this row
-        gbc.gridx = 1;
-        gbc.gridy = row++;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        panel.add(brokkProxyRadio, gbc);
-
-        // Localhost radio on next line
-        gbc.gridy = row++;
-        panel.add(localhostProxyRadio, gbc);
-
-        // Informational label under localhost
-        gbc.insets = new Insets(0, 25, 2, 2);
-        gbc.gridy = row++;
-        var proxyInfoLabel = new JLabel("Brokk will look for a litellm proxy on localhost:4000");
-        proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
-        panel.add(proxyInfoLabel, gbc);
-
-        // Add restart requirement note
-        gbc.gridy = row++;
-        var restartLabel = new JLabel("Restart required after changing proxy settings");
-        restartLabel.setFont(restartLabel.getFont().deriveFont(Font.ITALIC));
-        panel.add(restartLabel, gbc);
-
-        gbc.insets = new Insets(2, 2, 2, 2);
-
-        // Load initial proxy setting via enum
         if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
             brokkProxyRadio.setSelected(true);
         } else {
             localhostProxyRadio.setSelected(true);
         }
-        // -- Apply LLM Proxy Setting --
-        if (brokkProxyRadio.isSelected()) {
-            Project.setLlmProxySetting(Project.LlmProxySetting.BROKK);
-        } else {
-            Project.setLlmProxySetting(Project.LlmProxySetting.LOCALHOST);
-        }
 
-        // Reset fill for the next label
-        gbc.fill = GridBagConstraints.NONE;
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        servicePanel.add(brokkProxyRadio, gbc);
 
+        gbc.gridy = row++;
+        servicePanel.add(localhostProxyRadio, gbc);
 
-        // --- Theme Selection ---
-        row++; // Move to next row for theme
+        var proxyInfoLabel = new JLabel("Brokk will look for a litellm proxy on localhost:4000");
+        proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
+        gbc.insets = new Insets(0, 25, 2, 5); // Indent
+        gbc.gridy = row++;
+        servicePanel.add(proxyInfoLabel, gbc);
+
+        var restartLabel = new JLabel("Restart required after changing proxy settings");
+        restartLabel.setFont(restartLabel.getFont().deriveFont(Font.ITALIC));
+        gbc.gridy = row++;
+        servicePanel.add(restartLabel, gbc);
+        gbc.insets = new Insets(2, 5, 2, 5); // Reset insets
+
+        // Add vertical glue to push content up
+        gbc.gridy = row;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.VERTICAL;
+        servicePanel.add(Box.createVerticalGlue(), gbc);
+        return servicePanel;
+    }
+
+    private JPanel createAppearancePanel() {
+        var appearancePanel = new JPanel(new GridBagLayout());
+        appearancePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); // Padding for content
+        var gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        int row = 0;
+
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0.0;
-        panel.add(new JLabel("Theme:"), gbc);
+        appearancePanel.add(new JLabel("Theme:"), gbc);
 
-        var lightRadio = new JRadioButton("Light");
-        var darkRadio = new JRadioButton("Dark");
+        lightThemeRadio = new JRadioButton("Light");
+        darkThemeRadio = new JRadioButton("Dark");
         var themeGroup = new ButtonGroup();
-        themeGroup.add(lightRadio);
-        themeGroup.add(darkRadio);
+        themeGroup.add(lightThemeRadio);
+        themeGroup.add(darkThemeRadio);
 
-        if (Project.getTheme().equals("dark")) { // Use Project.getTheme()
-            darkRadio.setSelected(true);
+        if (Project.getTheme().equals("dark")) {
+            darkThemeRadio.setSelected(true);
         } else {
-            lightRadio.setSelected(true);
+            lightThemeRadio.setSelected(true);
         }
+        lightThemeRadio.putClientProperty("theme", false);
+        darkThemeRadio.putClientProperty("theme", true);
 
-        lightRadio.putClientProperty("theme", false);
-        darkRadio.putClientProperty("theme", true);
-
-        // Light radio on this row
         gbc.gridx = 1;
         gbc.gridy = row++;
-        gbc.weightx = 1.0; // Let radio take space
+        gbc.weightx = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
-        panel.add(lightRadio, gbc);
+        appearancePanel.add(lightThemeRadio, gbc);
 
-        // Dark radio on next line
         gbc.gridy = row++;
-        panel.add(darkRadio, gbc);
+        appearancePanel.add(darkThemeRadio, gbc);
 
-        // Reset fill for the next item
-        gbc.fill = GridBagConstraints.NONE;
-
-        // Add vertical glue to push components to the top
-        gbc.gridx = 0;
+        // Add vertical glue to push content up
         gbc.gridy = row;
-        gbc.gridwidth = 2; // Span across both columns
-        gbc.weighty = 1.0; // Take up remaining vertical space
+        gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.VERTICAL;
-        panel.add(Box.createVerticalGlue(), gbc);
-
-        return panel;
+        appearancePanel.add(Box.createVerticalGlue(), gbc);
+        return appearancePanel;
     }
+
 
     private JPanel createProjectPanel() {
         var project = chrome.getProject();
-        var outerPanel = new JPanel(new BorderLayout());
+        // Name change for clarity, this is the panel returned for the "Project" tab
+        var projectTabRootPanel = new JPanel(new BorderLayout());
         if (project == null) {
-            outerPanel.add(new JLabel("No project is open."), BorderLayout.CENTER);
-            return outerPanel;
+            projectTabRootPanel.add(new JLabel("No project is open."), BorderLayout.CENTER);
+            return projectTabRootPanel;
         }
 
-        // Create a sub-tabbed pane for Project settings: Build and Other
+        // Create a sub-tabbed pane for Project settings: General, Build, Data Retention
         var subTabbedPane = new JTabbedPane(JTabbedPane.TOP);
 
         // ----- Build Tab -----
@@ -570,13 +629,8 @@ public class SettingsDialog extends JDialog {
         dataRetentionPanel = new DataRetentionPanel(project); // Create the panel instance
         subTabbedPane.addTab("Data Retention", dataRetentionPanel); // Add the new tab
 
-        // ----- Models Tab -----
-        var modelsPanel = createModelsPanel(project);
-        subTabbedPane.addTab("Models", modelsPanel);
-
-        var outerPanelContainer = new JPanel(new BorderLayout());
-        outerPanelContainer.add(subTabbedPane, BorderLayout.CENTER);
-        return outerPanelContainer;
+        projectTabRootPanel.add(subTabbedPane, BorderLayout.CENTER);
+        return projectTabRootPanel;
     }
 
     /**
@@ -700,6 +754,8 @@ public class SettingsDialog extends JDialog {
      * on a tidy four-column grid and lets both the model and reasoning
      * combo-boxes grow with the window, so the dialog remains readable even
      * when long model names are present.
+     *
+     * If the project is null, a placeholder panel is returned.
      */
     /**
      * Builds the “Models” tab in a compact two-column grid:
@@ -711,9 +767,18 @@ public class SettingsDialog extends JDialog {
      * Each model type gets its own block separated by extra vertical padding.
      * Labels are right-aligned; we omit the words “Model:” / “Reasoning:” and all
      * colons, per user request.  Combo-boxes keep their preferred size (no weightx).
+     *
+     * @param project The current project, or null if no project is open.
+     * @return A JPanel for the Models tab.
      */
-    private JPanel createModelsPanel(Project project)
-    {
+    private JPanel createModelsPanel(Project project) {
+        if (project == null) {
+            var placeholderPanel = new JPanel(new BorderLayout());
+            placeholderPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            placeholderPanel.add(new JLabel("No project is open. Model settings are project-specific."), BorderLayout.CENTER);
+            return placeholderPanel;
+        }
+
         var panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
@@ -899,7 +964,6 @@ public class SettingsDialog extends JDialog {
 
     private void applySettings() {
         // Apply Global Settings
-        var globalPanel = (JPanel) tabbedPane.getComponentAt(0); // Assuming Global is the first tab
 
         // -- Apply Brokk Key --
         String currentBrokkKey = Project.getBrokkKey();
@@ -935,30 +999,26 @@ public class SettingsDialog extends JDialog {
 
 
         // -- Apply Theme --
-        // -- Apply Theme --
-        // Find the selected theme radio button directly in the global panel
-        boolean foundSelectedTheme = false;
-        for (Component comp : globalPanel.getComponents()) {
-            if (comp instanceof JRadioButton radio && radio.isSelected() && radio.getClientProperty("theme") != null) {
-                boolean newIsDark = (Boolean) radio.getClientProperty("theme");
-                String newTheme = newIsDark ? "dark" : "light";
-                // Only switch theme if it actually changed
-                if (!newTheme.equals(Project.getTheme())) {
-                    chrome.switchTheme(newIsDark); // switchTheme calls Project.setTheme internally
-                    logger.debug("Applied Theme: {}", newTheme);
-                }
-                foundSelectedTheme = true;
-                break;
+        if (darkThemeRadio != null && lightThemeRadio != null) { // Ensure they were initialized
+            boolean newIsDark = darkThemeRadio.isSelected();
+            String newTheme = newIsDark ? "dark" : "light";
+            if (!newTheme.equals(Project.getTheme())) {
+                chrome.switchTheme(newIsDark); // switchTheme calls Project.setTheme internally
+                logger.debug("Applied Theme: {}", newTheme);
             }
-        }
-        if (!foundSelectedTheme) {
-             // This shouldn't happen if the ButtonGroup ensures one is always selected, but log just in case.
-            logger.warn("No theme radio button was selected in SettingsDialog.");
+        } else {
+            // This case should ideally not be hit if panel construction is correct.
+            logger.warn("Theme radio buttons not initialized, cannot apply theme settings.");
         }
 
-        // Apply Project Settings (if project is open and tab is enabled)
+        // Apply Project Settings (if project is open)
+        // Model settings are also project-specific and handled below.
         var project = chrome.getProject();
-        if (project != null && tabbedPane.isEnabledAt(1)) {
+        if (project != null) {
+            // --- Apply settings from "Project" tab ---
+            // (This checks tabbedPane.isEnabledAt(1) implicitly by project != null,
+            // as the tab's enabled state is tied to project presence)
+
             // Get current details to compare against and preserve non-editable fields
             var currentDetails = project.getBuildDetails();
 
@@ -1196,32 +1256,101 @@ public class SettingsDialog extends JDialog {
      * inside the Project settings.  If the requested tab is not found—or no project
      * is open—the dialog falls back to its default view.
      */
-    public static void showSettingsDialog(Chrome chrome, String targetTabName)
-    {
+    public static void showSettingsDialog(Chrome chrome, String targetTabName) {
         var dialog = new SettingsDialog(chrome.getFrame(), chrome);
 
-        // Only attempt inner‑tab selection when (a) a project is present and
-        // (b) the caller named a tab.
-        if (targetTabName != null && chrome.getProject() != null) {
-            // 1. Select the outer “Project” tab so its inner JTabbedPane is visible.
-            dialog.tabbedPane.setSelectedComponent(dialog.projectPanel);
+        if (targetTabName != null) {
+            boolean tabSelected = false;
 
-            // 2. Locate the inner JTabbedPane (added to the CENTER of projectPanel’s BorderLayout).
-            for (var comp : dialog.projectPanel.getComponents()) {
-                if (comp instanceof JTabbedPane subTabbedPane) {
-                    // 3. Find and select the requested inner tab.
-                    for (int i = 0; i < subTabbedPane.getTabCount(); i++) {
-                        if (targetTabName.equals(subTabbedPane.getTitleAt(i))) {
-                            subTabbedPane.setSelectedIndex(i);
-                            break;
+            // Determine if target is a Global sub-tab
+            boolean isGlobalSubTab = "Service".equals(targetTabName) ||
+                                     "Appearance".equals(targetTabName) ||
+                                     "Models".equals(targetTabName);
+
+            // Determine if target is a Project sub-tab
+            boolean isProjectSubTab = "General".equals(targetTabName) ||
+                                      "Build".equals(targetTabName) ||
+                                      "Data Retention".equals(targetTabName);
+
+
+            if (isGlobalSubTab) {
+                // Select "Global" top-level tab first
+                for (int i = 0; i < dialog.tabbedPane.getTabCount(); i++) {
+                    if ("Global".equals(dialog.tabbedPane.getTitleAt(i))) {
+                        if (dialog.tabbedPane.isEnabledAt(i)) {
+                            dialog.tabbedPane.setSelectedIndex(i);
+                            // Now select the sub-tab
+                            Component globalTabContent = dialog.tabbedPane.getComponentAt(i);
+                            if (globalTabContent instanceof JTabbedPane globalSubTabbedPane) {
+                                for (int j = 0; j < globalSubTabbedPane.getTabCount(); j++) {
+                                    if (targetTabName.equals(globalSubTabbedPane.getTitleAt(j))) {
+                                        // The "Models" sub-tab's content might be disabled, but the tab itself is selectable.
+                                        // Its content (the panel from createModelsPanel) handles its own enabled state.
+                                        globalSubTabbedPane.setSelectedIndex(j);
+                                        tabSelected = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                             logger.warn("Top-level 'Global' tab is unexpectedly disabled.");
                         }
+                        break;
                     }
-                    break; // we found the inner tabbed‑pane; nothing more to search
+                }
+            } else if (isProjectSubTab && chrome.getProject() != null) {
+                // Select "Project" top-level tab first
+                for (int i = 0; i < dialog.tabbedPane.getTabCount(); i++) {
+                    if ("Project".equals(dialog.tabbedPane.getTitleAt(i))) {
+                        if (dialog.tabbedPane.isEnabledAt(i)) {
+                            dialog.tabbedPane.setSelectedIndex(i);
+                            // Now select the sub-tab within Project
+                            // dialog.projectPanel is the root panel for the "Project" tab.
+                            Component projectTabContent = dialog.projectPanel;
+                            if (projectTabContent instanceof JPanel) {
+                                for (var comp : ((JPanel) projectTabContent).getComponents()) {
+                                    if (comp instanceof JTabbedPane subTabbedPane) {
+                                        for (int j = 0; j < subTabbedPane.getTabCount(); j++) {
+                                            if (targetTabName.equals(subTabbedPane.getTitleAt(j))) {
+                                                if (subTabbedPane.isEnabledAt(j)) {
+                                                    subTabbedPane.setSelectedIndex(j);
+                                                    tabSelected = true;
+                                                } else {
+                                                    logger.warn("Project sub-tab '{}' is disabled.", targetTabName);
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        break; // Found the inner JTabbedPane
+                                    }
+                                }
+                            }
+                        } else {
+                            logger.warn("Top-level 'Project' tab is disabled, cannot select sub-tab '{}'.", targetTabName);
+                        }
+                        break;
+                    }
+                }
+            } else {
+                // Try to select a top-level tab directly (e.g., if targetTabName is "Global" or "Project")
+                for (int i = 0; i < dialog.tabbedPane.getTabCount(); i++) {
+                    if (targetTabName.equals(dialog.tabbedPane.getTitleAt(i))) {
+                        if (dialog.tabbedPane.isEnabledAt(i)) {
+                            dialog.tabbedPane.setSelectedIndex(i);
+                            tabSelected = true;
+                        } else {
+                            logger.warn("Target tab '{}' is disabled, cannot select.", targetTabName);
+                        }
+                        break;
+                    }
                 }
             }
-        }
 
-        dialog.setVisible(true);   // show the modal dialog
+            if (!tabSelected) {
+                 logger.warn("Could not find or select target settings tab: {}", targetTabName);
+            }
+        }
+        dialog.setVisible(true); // show the modal dialog
     }
 
     /**

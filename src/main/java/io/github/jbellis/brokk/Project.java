@@ -276,46 +276,51 @@ public class Project implements IProject, AutoCloseable {
      * Gets the configured model name for architect/agent tasks.
      */
     public String getArchitectModelName() {
-        return workspaceProps.getProperty(ARCHITECT_MODEL_KEY);
+        var props = loadGlobalProperties();
+        return props.getProperty(ARCHITECT_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
      * Sets the model name for architect/agent tasks.
      */
     public void setArchitectModelName(String modelName) {
-        workspaceProps.setProperty(ARCHITECT_MODEL_KEY, modelName);
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(ARCHITECT_MODEL_KEY, modelName);
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the configured model name for code generation tasks.
      */
     public String getCodeModelName() {
-        // Default to gemini-2.5-pro-preview
-        return workspaceProps.getProperty(CODE_MODEL_KEY);
+        var props = loadGlobalProperties();
+        return props.getProperty(CODE_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
      * Sets the model name for code generation tasks.
      */
     public void setCodeModelName(String modelName) {
-        workspaceProps.setProperty(CODE_MODEL_KEY, modelName);
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(CODE_MODEL_KEY, modelName);
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the configured model name for ask tasks.
      */
     public String getAskModelName() {
-        return workspaceProps.getProperty(ASK_MODEL_KEY);
+        var props = loadGlobalProperties();
+        return props.getProperty(ASK_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
      * Sets the model name for ask tasks.
      */
     public void setAskModelName(String modelName) {
-        workspaceProps.setProperty(ASK_MODEL_KEY, modelName);
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(ASK_MODEL_KEY, modelName);
+        saveGlobalProperties(props);
     }
 
 
@@ -323,90 +328,102 @@ public class Project implements IProject, AutoCloseable {
      * Gets the configured model name for edit tasks.
      */
     public String getEditModelName() {
-        return workspaceProps.getProperty(EDIT_MODEL_KEY);
+        var props = loadGlobalProperties();
+        return props.getProperty(EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
      * Sets the model name for edit tasks.
      */
     public void setEditModelName(String modelName) {
-        workspaceProps.setProperty(EDIT_MODEL_KEY, modelName);
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(EDIT_MODEL_KEY, modelName);
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the reasoning level for architect tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getArchitectReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(ARCHITECT_REASONING_KEY), ReasoningLevel.DEFAULT);
+        var props = loadGlobalProperties();
+        return ReasoningLevel.fromString(props.getProperty(ARCHITECT_REASONING_KEY), ReasoningLevel.HIGH);
     }
 
     /**
      * Sets the reasoning level for architect tasks.
      */
     public void setArchitectReasoningLevel(ReasoningLevel level) {
-        workspaceProps.setProperty(ARCHITECT_REASONING_KEY, level.name());
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(ARCHITECT_REASONING_KEY, level.name());
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the reasoning level for code tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getCodeReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(CODE_REASONING_KEY), ReasoningLevel.DEFAULT);
+        var props = loadGlobalProperties();
+        return ReasoningLevel.fromString(props.getProperty(CODE_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
      * Sets the reasoning level for code tasks.
      */
     public void setCodeReasoningLevel(ReasoningLevel level) {
-        workspaceProps.setProperty(CODE_REASONING_KEY, level.name());
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(CODE_REASONING_KEY, level.name());
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the reasoning level for ask tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getAskReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(ASK_REASONING_KEY), ReasoningLevel.DEFAULT);
+        var props = loadGlobalProperties();
+        return ReasoningLevel.fromString(props.getProperty(ASK_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
      * Sets the reasoning level for ask tasks.
      */
     public void setAskReasoningLevel(ReasoningLevel level) {
-        workspaceProps.setProperty(ASK_REASONING_KEY, level.name());
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(ASK_REASONING_KEY, level.name());
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the reasoning level for edit tasks. Defaults to LOW.
      */
     public ReasoningLevel getEditReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(EDIT_REASONING_KEY), ReasoningLevel.LOW);
+        var props = loadGlobalProperties();
+        return ReasoningLevel.fromString(props.getProperty(EDIT_REASONING_KEY), ReasoningLevel.LOW);
     }
 
     /**
      * Sets the reasoning level for edit tasks.
      */
     public void setEditReasoningLevel(ReasoningLevel level) {
-        workspaceProps.setProperty(EDIT_REASONING_KEY, level.name());
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(EDIT_REASONING_KEY, level.name());
+        saveGlobalProperties(props);
     }
 
     /**
      * Gets the reasoning level for search tasks. Defaults to DEFAULT.
      */
     public ReasoningLevel getSearchReasoningLevel() {
-        return ReasoningLevel.fromString(workspaceProps.getProperty(SEARCH_REASONING_KEY), ReasoningLevel.DEFAULT);
+        var props = loadGlobalProperties();
+        return ReasoningLevel.fromString(props.getProperty(SEARCH_REASONING_KEY), ReasoningLevel.DEFAULT);
     }
 
     /**
      * Sets the reasoning level for search tasks.
      */
     public void setSearchReasoningLevel(ReasoningLevel level) {
-        workspaceProps.setProperty(SEARCH_REASONING_KEY, level.name());
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(SEARCH_REASONING_KEY, level.name());
+        saveGlobalProperties(props);
     }
 
     /**
@@ -414,16 +431,17 @@ public class Project implements IProject, AutoCloseable {
      * Falls back to the default search model if not set.
      */
     public String getSearchModelName() {
-        // Default to gemini-2.5-pro-preview
-        return workspaceProps.getProperty(SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+        var props = loadGlobalProperties();
+        return props.getProperty(SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
     }
 
     /**
      * Sets the model name for search/RAG tasks.
      */
     public void setSearchModelName(String modelName) {
-        workspaceProps.setProperty(SEARCH_MODEL_KEY, modelName);
-        saveWorkspaceProperties();
+        var props = loadGlobalProperties();
+        props.setProperty(SEARCH_MODEL_KEY, modelName);
+        saveGlobalProperties(props);
     }
 
     /**
@@ -1091,6 +1109,8 @@ public class Project implements IProject, AutoCloseable {
     @Override
     public List<String> overrideMissingModels(Set<String> availableModels, String genericDefaultModel) {
         var warnings = new ArrayList<String>();
+        var globalProps = loadGlobalProperties();
+        boolean changed = false;
 
         // Define preferred defaults for each model type
         var preferredDefaults = Map.of(ARCHITECT_MODEL_KEY, Models.O3,
@@ -1102,7 +1122,7 @@ public class Project implements IProject, AutoCloseable {
         for (var e : preferredDefaults.entrySet()) {
             var key = e.getKey();
             var preferredDefault = e.getValue();
-            var configuredModel = workspaceProps.getProperty(key);
+            var configuredModel = globalProps.getProperty(key);
             String modelToUse;
             String reason;
 
@@ -1111,25 +1131,41 @@ public class Project implements IProject, AutoCloseable {
                 modelToUse = configuredModel;
                 reason = "Using configured model";
             } else {
-                // Configured model is unavailable, check preferred default
+                // Configured model is unavailable or null, check preferred default
                 if (availableModels.contains(preferredDefault)) {
                     modelToUse = preferredDefault;
-                    warnings.add(String.format("Configured %s model '%s' is not available. Temporarily using preferred default '%s'.",
-                                               key, configuredModel, modelToUse));
-                    reason = String.format("Overriding unavailable configured model '%s' with available preferred default '%s'", configuredModel, modelToUse);
+                    if (configuredModel != null && !configuredModel.isBlank()) { // Only warn if there was a specific (but unavailable) configuration
+                        warnings.add(String.format("Configured %s model '%s' is not available. Temporarily using preferred default '%s'.",
+                                                   key, configuredModel, modelToUse));
+                    }
+                    reason = String.format("Setting %s model to available preferred default '%s' (configured was '%s')", key, modelToUse, configuredModel);
                 } else {
                     // Preferred default is also unavailable, use generic default
                     modelToUse = genericDefaultModel;
-                    warnings.add(String.format("Configured %s model '%s' and preferred default '%s' are not available. Temporarily using generic default '%s'.",
-                                               key, configuredModel, preferredDefault, modelToUse));
-                    reason = String.format("Overriding unavailable configured model '%s' and unavailable preferred default '%s' with generic default '%s'", configuredModel, preferredDefault, modelToUse);
+                     if (configuredModel != null && !configuredModel.isBlank()) { // Warn if there was a specific configuration
+                        warnings.add(String.format("Configured %s model '%s' and preferred default '%s' are not available. Temporarily using generic default '%s'.",
+                                                   key, configuredModel, preferredDefault, modelToUse));
+                    } else if (!availableModels.contains(preferredDefault)) { // Warn if preferred default was also unavailable
+                         warnings.add(String.format("Preferred default %s model '%s' is not available. Temporarily using generic default '%s'.",
+                                                    key, preferredDefault, modelToUse));
+                     }
+                    reason = String.format("Setting %s model to generic default '%s' (configured was '%s', preferred default was '%s')", key, modelToUse, configuredModel, preferredDefault);
                 }
             }
 
-            // Set the determined model in memory
+            // Set the determined model in globalProps if it's different from what was loaded or if it was null
             assert modelToUse != null;
-            workspaceProps.setProperty(key, modelToUse);
-            logger.debug("{} model set to '{}' in memory. Reason: {}.", key, modelToUse, reason);
+            if (!modelToUse.equals(configuredModel)) {
+                globalProps.setProperty(key, modelToUse);
+                changed = true;
+                logger.debug("{} model set to '{}' in global properties (was '{}'). Reason: {}.", key, modelToUse, configuredModel, reason);
+            } else {
+                logger.trace("{} model remains '{}'. Reason: {}.", key, modelToUse, reason);
+            }
+        }
+
+        if (changed) {
+            saveGlobalProperties(globalProps);
         }
         return warnings;
     }
