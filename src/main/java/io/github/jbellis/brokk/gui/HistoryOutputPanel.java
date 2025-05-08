@@ -160,12 +160,14 @@ public class HistoryOutputPanel extends JPanel {
                 int row = historyTable.getSelectedRow();
                 if (row >= 0 && row < historyTable.getRowCount()) {
                     // Get the context object from the hidden third column
-                    var ctx = (Context)historyModel.getValueAt(row, 2);
-                    contextManager.setSelectedContext(ctx);
-                    chrome.loadContext(ctx);
+                    var ctx = (Context) historyModel.getValueAt(row, 2);
+                    if (ctx != null) { // Check for null, though unlikely with current logic
+                        contextManager.setSelectedContext(ctx);
+                        chrome.loadContext(ctx);
+                    }
                 }
-             }
-         });
+            }
+        });
 
          // Add mouse listener for right-click context menu and double-click action
          historyTable.addMouseListener(new MouseAdapter() {
@@ -270,7 +272,25 @@ public class HistoryOutputPanel extends JPanel {
         panel.setMinimumSize(preferredSize);
         panel.setMaximumSize(new Dimension(preferredWidth, Integer.MAX_VALUE)); // Fixed width, flexible height
 
+        updateUndoRedoButtonStates();
+
         return panel;
+    }
+
+    /**
+     * Updates the enabled state of the local Undo and Redo buttons
+     * based on the current state of the ContextHistory.
+     */
+    public void updateUndoRedoButtonStates() {
+        SwingUtilities.invokeLater(() -> {
+            if (contextManager != null && contextManager.getContextHistory() != null) {
+                undoButton.setEnabled(contextManager.getContextHistory().hasUndoStates());
+                redoButton.setEnabled(contextManager.getContextHistory().hasRedoStates());
+            } else {
+                undoButton.setEnabled(false);
+                redoButton.setEnabled(false);
+            }
+        });
     }
 
     /**
@@ -349,7 +369,7 @@ public class HistoryOutputPanel extends JPanel {
             int currentRow = 0;
 
             // Add rows for each context in history
-            for (var ctx : contextManager.getContextHistory()) {
+            for (var ctx : contextManager.getContextHistoryList()) {
                 // Add emoji for AI responses, empty for user actions
                 String emoji = (ctx.getParsedOutput() != null) ? "🤖" : "";
                 historyModel.addRow(new Object[]{

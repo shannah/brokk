@@ -212,6 +212,23 @@ public class ContextHistory {
         }
         return selectedContext;
     }
+
+    /**
+     * Check if there are states to undo to (more than the initial context)
+     * @return true if undo is possible, false otherwise
+     */
+    public synchronized boolean hasUndoStates() {
+        return history.size() > 1;
+    }
+
+    /**
+     * Check if there are states to redo
+     * @return true if redo is possible, false otherwise
+     */
+    public synchronized boolean hasRedoStates() {
+        return !redoHistory.isEmpty();
+    }
+
     /**
      * Inverts changes from a popped context to revert to prior state, returning a new context for re-inversion
      */

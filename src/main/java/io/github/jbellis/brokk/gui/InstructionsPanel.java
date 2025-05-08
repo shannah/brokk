@@ -261,6 +261,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         updateButtonStates();
     }
 
+    public UndoManager getCommandInputUndoManager() {
+        return commandInputUndoManager;
+    }
+
+    public JTextArea getCommandInputField() {
+        return commandInputField;
+    }
+
     private JTextArea buildCommandInputField() {
         var area = new JTextArea(3, 40);
         // The BorderUtils will now handle the border, including focus behavior and padding.

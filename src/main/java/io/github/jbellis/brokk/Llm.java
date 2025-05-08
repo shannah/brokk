@@ -388,7 +388,7 @@ public class Llm {
         return doSingleStreamingCall(request, echo);
     }
 
-    private OpenAiChatRequestParameters.@NotNull Builder getParamsBuilder() {
+    private OpenAiChatRequestParameters.Builder getParamsBuilder() {
         OpenAiChatRequestParameters.Builder builder = OpenAiChatRequestParameters.builder();
 
         if (this.tagRetain) {

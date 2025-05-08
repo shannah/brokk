@@ -105,21 +105,31 @@ public class MenuBar {
         // Edit menu
         var editMenu = new JMenu("Edit");
 
-        var undoItem = new JMenuItem("Undo");
+        JMenuItem undoItem;
+        JMenuItem redoItem;
+
+        if (hasProject) {
+            undoItem = new JMenuItem(chrome.getGlobalUndoAction());
+            redoItem = new JMenuItem(chrome.getGlobalRedoAction());
+        } else {
+            // Create disabled menu items if no project (and thus no global actions)
+            undoItem = new JMenuItem("Undo");
+            undoItem.setEnabled(false);
+            redoItem = new JMenuItem("Redo");
+            redoItem.setEnabled(false);
+        }
+
+        undoItem.setText("Undo"); // Ensure text is set if Action's name is different or null
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        undoItem.addActionListener(e -> {
-            chrome.contextManager.undoContextAsync();
-        });
-        undoItem.setEnabled(hasProject);
         editMenu.add(undoItem);
 
-        var redoItem = new JMenuItem("Redo");
+        redoItem.setText("Redo"); // Ensure text is set
+        // Standard accelerators for redo
+        // Ctrl+Shift+Z or Cmd+Shift+Z
         redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
                                                        Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
-        redoItem.addActionListener(e -> {
-            chrome.contextManager.redoContextAsync();
-        });
-        redoItem.setEnabled(hasProject);
+        // For Windows/Linux, Ctrl+Y is also common. Adding it as an alternative if the Action itself doesn't set it.
+        // However, JMenuItem only supports one accelerator. The global keyboard shortcut in Chrome handles Ctrl+Y.
         editMenu.add(redoItem);
 
         editMenu.addSeparator();

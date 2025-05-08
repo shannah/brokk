@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class Chrome implements AutoCloseable, IConsoleIO {
+public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.ContextListener {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
 
     // Used as the default text for the background tasks label
@@ -37,6 +37,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // Dependencies:
     ContextManager contextManager;
     private Context activeContext; // Track the currently displayed context
+
+    // Global Undo/Redo Actions
+    private GlobalUndoAction globalUndoAction;
+    private GlobalRedoAction globalRedoAction;
+    // necessary for undo/redo because clicking on menubar takes focus from whatever had it
+    private Component lastRelevantFocusOwner = null;
 
     // Swing components:
     final JFrame frame;
@@ -72,7 +78,13 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         frame.setLayout(new BorderLayout());
 
         // 3) Main panel (top area + bottom area)
-        frame.add(buildMainPanel(), BorderLayout.CENTER);
+        frame.add(buildMainPanel(), BorderLayout.CENTER); // instructionsPanel is created here
+
+        // Initialize global undo/redo actions now that instructionsPanel is available
+        // contextManager is also available (passed in constructor)
+        // contextPanel and historyOutputPanel will be null until onComplete
+        this.globalUndoAction = new GlobalUndoAction("Undo");
+        this.globalRedoAction = new GlobalRedoAction("Redo");
 
         // 4) Register global keyboard shortcuts
         registerGlobalKeyboardShortcuts();
@@ -121,6 +133,47 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             // Force layout update for the bottom panel
             bottomPanel.revalidate();
             bottomPanel.repaint();
+
+            // Set initial enabled state for global actions after all components are ready
+            this.globalUndoAction.updateEnabledState();
+            this.globalRedoAction.updateEnabledState();
+
+            // Listen for focus changes to update action states and track relevant focus
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
+                Component newFocusOwner = (Component) evt.getNewValue();
+                // Update lastRelevantFocusOwner only if the new focus owner is one of our primary targets
+                if (newFocusOwner != null
+                    && (newFocusOwner == instructionsPanel.getCommandInputField()
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, contextPanel)
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())))
+                {
+                    logger.debug(lastRelevantFocusOwner);
+                    this.lastRelevantFocusOwner = newFocusOwner;
+                }
+                // else: lastRelevantFocusOwner remains unchanged if focus moves to a menu or irrelevant component
+
+                if (globalUndoAction != null) globalUndoAction.updateEnabledState();
+                if (globalRedoAction != null) globalRedoAction.updateEnabledState();
+            });
+
+            // Listen for context changes (Chrome already implements IContextManager.ContextListener)
+            contextManager.addContextListener(this);
+
+            // Initialize global undo/redo actions
+            this.globalUndoAction = new GlobalUndoAction("Undo");
+            this.globalRedoAction = new GlobalRedoAction("Redo");
+            this.globalUndoAction.updateEnabledState();
+            this.globalRedoAction.updateEnabledState();
+
+            // Listen for focus changes to update action states
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
+                if (globalUndoAction != null) globalUndoAction.updateEnabledState();
+                if (globalRedoAction != null) globalRedoAction.updateEnabledState();
+            });
+
+            // Listen for context changes
+            contextManager.addContextListener(this);
+
         }
 
         // Build menu (now that everything else is ready)
@@ -389,25 +442,17 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // Cmd/Ctrl+Z => undo
         var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
-        rootPane.getActionMap().put("globalUndo", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                instructionsPanel.disableButtons();
-                contextManager.undoContextAsync();
-            }
-        });
+        rootPane.getActionMap().put("globalUndo", globalUndoAction);
 
-        // Cmd/Ctrl+Shift+Z => redo
+        // Cmd/Ctrl+Shift+Z (or Cmd/Ctrl+Y) => redo
         var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z,
                                                    Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK);
+        // For Windows/Linux, Ctrl+Y is also common for redo
+        var redoYKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Y, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
-        rootPane.getActionMap().put("globalRedo", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                instructionsPanel.disableButtons();
-                contextManager.redoContextAsync();
-            }
-        });
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoYKeyStroke, "globalRedo");
+        rootPane.getActionMap().put("globalRedo", globalRedoAction);
 
         // Cmd/Ctrl+V => paste
         var pasteKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_V, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
@@ -473,6 +518,22 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         if (frame != null) {
             frame.dispose();
         }
+    }
+
+    @Override
+    public void contextChanged(Context newCtx) {
+        // This method is called by ContextManager when its history might have changed
+        // (e.g., after an undo/redo operation affecting context or any pushContext).
+        // We need to ensure the global action states are updated even if focus didn't change.
+        if (globalUndoAction != null) globalUndoAction.updateEnabledState();
+        if (globalRedoAction != null) globalRedoAction.updateEnabledState();
+
+        // Also update HistoryOutputPanel's local buttons
+        if (historyOutputPanel != null) historyOutputPanel.updateUndoRedoButtonStates();
+
+        // Update the main context table and history table display
+        loadContext(newCtx); // Handles contextPanel update and historyOutputPanel.resetLlmOutput
+        updateContextHistoryTable(newCtx); // Handles historyOutputPanel.updateHistoryTable
     }
 
     /**
@@ -882,6 +943,86 @@ public class Chrome implements AutoCloseable, IConsoleIO {
 
     public ContextPanel getContextPanel() {
         return contextPanel;
+    }
+
+    public HistoryOutputPanel getHistoryOutputPanel() {
+        return historyOutputPanel;
+    }
+
+    public Action getGlobalUndoAction() {
+        return globalUndoAction;
+    }
+
+    public Action getGlobalRedoAction() {
+        return globalRedoAction;
+    }
+
+    private boolean isFocusInContextArea(Component focusOwner) {
+        if (focusOwner == null) return false;
+        // Check if focus is within ContextPanel or HistoryOutputPanel's historyTable
+        boolean inContextPanel = contextPanel != null && SwingUtilities.isDescendingFrom(focusOwner, contextPanel);
+        boolean inHistoryTable = historyOutputPanel != null && historyOutputPanel.getHistoryTable() != null &&
+                                 SwingUtilities.isDescendingFrom(focusOwner, historyOutputPanel.getHistoryTable());
+        return inContextPanel || inHistoryTable;
+    }
+
+    // --- Global Undo/Redo Action Classes ---
+    private class GlobalUndoAction extends AbstractAction {
+        public GlobalUndoAction(String name) {
+            super(name);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                if (instructionsPanel.getCommandInputUndoManager().canUndo()) {
+                    instructionsPanel.getCommandInputUndoManager().undo();
+                }
+            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+                if (contextManager.getContextHistory().hasUndoStates()) {
+                    contextManager.undoContextAsync();
+                }
+            }
+        }
+
+        public void updateEnabledState() {
+            boolean canUndoNow = false;
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                canUndoNow = instructionsPanel.getCommandInputUndoManager().canUndo();
+            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+                canUndoNow = contextManager.getContextHistory().hasUndoStates();
+            }
+            setEnabled(canUndoNow);
+        }
+    }
+
+    private class GlobalRedoAction extends AbstractAction {
+        public GlobalRedoAction(String name) {
+            super(name);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                if (instructionsPanel.getCommandInputUndoManager().canRedo()) {
+                    instructionsPanel.getCommandInputUndoManager().redo();
+                }
+            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+                if (contextManager.getContextHistory().hasRedoStates()) {
+                    contextManager.redoContextAsync();
+                }
+            }
+        }
+
+        public void updateEnabledState() {
+            boolean canRedoNow = false;
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+                canRedoNow = instructionsPanel.getCommandInputUndoManager().canRedo();
+            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+                canRedoNow = contextManager.getContextHistory().hasRedoStates();
+            }
+            setEnabled(canRedoNow);
+        }
     }
 
     /**

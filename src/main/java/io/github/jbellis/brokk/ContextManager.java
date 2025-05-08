@@ -1635,8 +1635,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return newContext.getTaskHistory().getLast();
     }
 
-    public List<Context> getContextHistory() {
+    public List<Context> getContextHistoryList() {
         return contextHistory.getHistory();
+    }
+
+    public ContextHistory getContextHistory() {
+        return contextHistory;
     }
 
     // Convert a throwable to a string with full stack trace
