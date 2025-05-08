@@ -8,7 +8,6 @@ import javax.swing.event.ListDataEvent;
 import javax.swing.event.ListDataListener;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
-import javax.swing.text.JTextComponent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 
@@ -18,7 +17,7 @@ import java.awt.event.ComponentEvent;
  * by selecting the appropriate growth detection mechanism at runtime.
  */
 public final class AutoScroller {
-    private static final Logger LOG = LogManager.getLogger(AutoScroller.class);
+    private static final Logger logger = LogManager.getLogger(AutoScroller.class);
 
     private AutoScroller() {
         // Utility class, no instances
@@ -47,23 +46,23 @@ public final class AutoScroller {
         // Growth detector - dispatch by type
         if (view instanceof JTable table) {
             table.getModel().addTableModelListener(new TableModelAdapter(state));
-            LOG.debug("[AutoScroller] Installed TableModelListener for JTable");
+            logger.trace("[AutoScroller] Installed TableModelListener for JTable");
         } else if (view instanceof JList<?> list) {
             list.getModel().addListDataListener(new ListDataAdapter(state));
-            LOG.debug("[AutoScroller] Installed ListDataListener for JList");
+            logger.trace("[AutoScroller] Installed ListDataListener for JList");
         } else if (view.getClass().getName().equals("io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel")) {
             try {
                 var mopClass = Class.forName("io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel");
                 var addTextChangeListenerMethod = mopClass.getMethod("addTextChangeListener", Runnable.class);
                 addTextChangeListenerMethod.invoke(view, (Runnable) state::contentGrew);
-                LOG.debug("[AutoScroller] Installed text change listener for MarkdownOutputPanel");
+                logger.trace("[AutoScroller] Installed text change listener for MarkdownOutputPanel");
             } catch (Exception e) {
-                LOG.error("[AutoScroller] Failed to install text change listener for MarkdownOutputPanel", e);
+                logger.error("[AutoScroller] Failed to install text change listener for MarkdownOutputPanel", e);
             }
         } else {
             // Fallback for custom components
             final int[] lastHeight = {view.getHeight()};
-            ((JComponent) view).addComponentListener(new ComponentAdapter() {
+            view.addComponentListener(new ComponentAdapter() {
                 @Override
                 public void componentResized(ComponentEvent e) {
                     int newH = e.getComponent().getHeight();
@@ -73,7 +72,7 @@ public final class AutoScroller {
                     lastHeight[0] = newH;
                 }
             });
-            LOG.debug("[AutoScroller] Installed ComponentListener fallback for {}", view.getClass().getSimpleName());
+            logger.trace("[AutoScroller] Installed ComponentListener fallback for {}", view.getClass().getSimpleName());
         }
     }
 
@@ -90,14 +89,14 @@ public final class AutoScroller {
             // Add mouse wheel listener to detect user intent to scroll away
             bar.getParent().addMouseWheelListener(e -> {
                 autoFollow = false;
-                LOG.debug("[AutoScroller] Mouse wheel event detected, autoFollow=false");
+                logger.trace("[AutoScroller] Mouse wheel event detected, autoFollow=false");
             });
             // Add mouse listener for thumb drag start
             bar.addMouseListener(new java.awt.event.MouseAdapter() {
                 @Override
                 public void mousePressed(java.awt.event.MouseEvent e) {
                     autoFollow = false;
-                    LOG.debug("[AutoScroller] Mouse drag on scrollbar detected, autoFollow=false");
+                    logger.trace("[AutoScroller] Mouse drag on scrollbar detected, autoFollow=false");
                 }
             });
         }
@@ -109,9 +108,9 @@ public final class AutoScroller {
             // Check if user scrolled back to bottom (within reattach tolerance)
             if (!autoFollow && currentValue + m.getExtent() >= currentMax - REATTACH_TOLERANCE) {
                 autoFollow = true;
-                LOG.debug("[AutoScroller] User scrolled back to bottom, autoFollow=true (value={}, extent={}, max={})", currentValue, m.getExtent(), currentMax);
+                logger.trace("[AutoScroller] User scrolled back to bottom, autoFollow=true (value={}, extent={}, max={})", currentValue, m.getExtent(), currentMax);
             }
-            LOG.debug("[AutoScroller] autoFollow={} (value={}, extent={}, max={})", autoFollow, currentValue, m.getExtent(), currentMax);
+            logger.trace("[AutoScroller] autoFollow={} (value={}, extent={}, max={})", autoFollow, currentValue, m.getExtent(), currentMax);
         }
 
         void contentGrew() {
@@ -121,7 +120,7 @@ public final class AutoScroller {
             SwingUtilities.invokeLater(() -> {
                 var m = bar.getModel();
                 bar.setValue(m.getMaximum() - m.getExtent());
-                LOG.debug("[AutoScroller] auto-scroll to {}", bar.getValue());
+                logger.trace("[AutoScroller] auto-scroll to {}", bar.getValue());
             });
         }
     }
