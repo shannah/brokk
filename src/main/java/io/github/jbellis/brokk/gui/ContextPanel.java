@@ -481,6 +481,8 @@ public class ContextPanel extends JPanel {
         var tableScrollPane = new JScrollPane(contextTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         tableScrollPane.setPreferredSize(new Dimension(600, 150));
 
+        BorderUtils.addFocusBorder(tableScrollPane, contextTable);
+
         // Add a mouse listener to the scroll pane for right-clicks on empty areas
         tableScrollPane.addMouseListener(new MouseAdapter() {
             @Override

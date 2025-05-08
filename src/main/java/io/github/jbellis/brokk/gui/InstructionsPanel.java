@@ -260,10 +260,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     private JTextArea buildCommandInputField() {
         var area = new JTextArea(3, 40);
-        area.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Color.GRAY),
-                BorderFactory.createEmptyBorder(2, 5, 2, 5)
-        ));
+        // The BorderUtils will now handle the border, including focus behavior and padding.
+        // Original padding was EmptyBorder(2, 5, 2, 5) inside the gray line.
+        // New padding via BorderUtils is EmptyBorder(1, 1, 1, 1) inside the gray line.
+        BorderUtils.addFocusBorder(area, area);
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
         area.setRows(3); // Initial rows
