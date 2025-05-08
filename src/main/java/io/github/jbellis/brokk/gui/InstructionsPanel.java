@@ -76,6 +76,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JTextArea systemArea;
     private final JScrollPane systemScrollPane;
     private final JLabel commandResultLabel;
+    private final ContextManager contextManager; // Can be null if Chrome is initialized without one
     private JTable referenceFileTable;
     private JScrollPane tableScrollPane;
     private JLabel failureReasonLabel;
@@ -109,14 +110,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                                    new Font(Font.DIALOG, Font.BOLD, 12)));
 
         this.chrome = chrome;
+        this.contextManager = chrome.getContextManager(); // Store potentially null CM
 
         // Initialize components
         commandInputField = buildCommandInputField(); // Build first to add listener
-        micButton = new VoiceInputButton(commandInputField, chrome.getContextManager(), () -> {
+        micButton = new VoiceInputButton(commandInputField, contextManager, () -> {
             activateCommandInput();
             chrome.actionOutput("Recording");
-        },
-                                         chrome::toolError);
+        }, chrome::toolError);
         systemArea = new JTextArea();
         systemScrollPane = buildSystemMessagesArea();
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
@@ -247,8 +248,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 chrome.getFrame().getRootPane().setDefaultButton(codeButton);
             }
         });
-        // Add this panel as a listener to context changes
-        chrome.getContextManager().addContextListener(this);
+
+        // Add this panel as a listener to context changes, only if CM is available
+        if (this.contextManager != null) {
+            this.contextManager.addContextListener(this);
+        }
+
+        // Set initial button states based on CM availability
+        updateButtonStates();
     }
 
     private JTextArea buildCommandInputField() {
@@ -831,7 +838,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void processInputSuggestions(long myGen, String snapshot) {
         logger.trace("Starting suggestion task generation {}", myGen);
-        var contextManager = chrome.getContextManager(); // Get latest context manager
+
+        if (contextManager == null) {
+            logger.warn("Task {} cannot provide suggestions: ContextManager is not available.", myGen);
+            SwingUtilities.invokeLater(() -> showFailureLabel("Context features unavailable"));
+            return;
+        }
 
         // 0. Initial staleness check
         if (myGen != suggestionGeneration.get()) {
@@ -1469,8 +1481,38 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             deepScanButton.setEnabled(false);
+            micButton.setEnabled(false); // Disable mic during operations
+            configureModelsButton.setEnabled(false); // Disable model config during operations
             stopButton.setEnabled(true);
             chrome.disableHistoryPanel();
+        });
+    }
+
+    /**
+     * Updates the enabled state of all action buttons based on project load status
+     * and ContextManager availability. Called initially and when actions complete.
+     */
+    private void updateButtonStates() {
+        SwingUtilities.invokeLater(() -> {
+            boolean projectLoaded = chrome.getProject() != null;
+            boolean cmAvailable = this.contextManager != null;
+
+            agentButton.setEnabled(projectLoaded && cmAvailable);
+            codeButton.setEnabled(projectLoaded && cmAvailable);
+            askButton.setEnabled(projectLoaded && cmAvailable);
+            searchButton.setEnabled(projectLoaded && cmAvailable);
+            runButton.setEnabled(cmAvailable); // Requires CM for getRoot()
+            deepScanButton.setEnabled(projectLoaded && cmAvailable && commandInputField.isEnabled());
+            configureModelsButton.setEnabled(projectLoaded && cmAvailable); // Requires CM for Models
+            micButton.setEnabled(cmAvailable); // VoiceInputButton constructor takes CM
+
+            stopButton.setEnabled(false); // Stop is only enabled when an action is running
+
+            if (projectLoaded && cmAvailable) {
+                chrome.enableHistoryPanel();
+            } else {
+                chrome.disableHistoryPanel();
+            }
         });
     }
 
@@ -1488,19 +1530,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     public void enableButtons() {
-        SwingUtilities.invokeLater(() -> {
-            // Buttons are enabled if a project is loaded; specific model availability is checked in action handlers.
-            boolean projectLoaded = chrome.getProject() != null;
-            agentButton.setEnabled(projectLoaded);
-            codeButton.setEnabled(projectLoaded);
-            askButton.setEnabled(projectLoaded);
-            searchButton.setEnabled(projectLoaded);
-            runButton.setEnabled(true); // Run button is always enabled
-            deepScanButton.setEnabled(projectLoaded && commandInputField.isEnabled()); // Enable deep scan if input is active
-            stopButton.setEnabled(false);
-            configureModelsButton.setEnabled(projectLoaded);
-            chrome.enableHistoryPanel();
-        });
+        // Called when an action completes. Reset buttons based on current CM/project state.
+        updateButtonStates();
     }
 
     /**
@@ -1562,9 +1593,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             java.util.function.Function<Models, Map<String, String>> modelSource,
             Consumer<String> onModelSelect) {
         var popupMenu = new JPopupMenu();
-        var contextManager = chrome.getContextManager();
-        var modelsInstance = contextManager.getModels();
+        if (this.contextManager == null) {
+            var item = new JMenuItem("Models unavailable (ContextManager not ready)");
+            item.setEnabled(false);
+            popupMenu.add(item);
+            if (chrome.themeManager != null) {
+                chrome.themeManager.registerPopupMenu(popupMenu);
+            }
+            return popupMenu;
+        }
 
+        var modelsInstance = this.contextManager.getModels();
         Map<String, String> availableModelsMap = modelSource.apply(modelsInstance);
 
         if (availableModelsMap.isEmpty() || (availableModelsMap.size() == 1 && availableModelsMap.containsKey(Models.UNAVAILABLE))) {
