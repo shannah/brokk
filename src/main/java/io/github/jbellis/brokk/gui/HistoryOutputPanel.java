@@ -472,17 +472,19 @@ public class HistoryOutputPanel extends JPanel {
     /**
      * Sets the text in the LLM output area
      */
-    public void resetLlmOutput(ContextFragment.TaskFragment output) {
+    public void resetLlmOutput(ContextFragment.TaskFragment output, boolean forceScrollToTop) {
         // this is called by the context selection listener, but when we just finished streaming a response
-        // we don't want scroll-to-top behavior (blocking state means we're still in streaming mode)
-        if (llmStreamArea.isBlocking() || llmStreamArea.getRawMessages().equals(output.messages())) {
-            return;
-        }
-
+        // we don't want scroll-to-top behavior (forceScrollToTop will be false in this case)
         setLlmOutput(output);
-        // Scroll to the top
         SwingUtilities.invokeLater(() -> {
-            llmScrollPane.getVerticalScrollBar().setValue(0);
+            if (forceScrollToTop) {
+                // Scroll to the top
+                llmScrollPane.getVerticalScrollBar().setValue(0);
+            } else {
+                // Scroll to the bottom
+                JScrollBar scrollBar = llmScrollPane.getVerticalScrollBar();
+                scrollBar.setValue(scrollBar.getMaximum());
+            }
         });
     }
 

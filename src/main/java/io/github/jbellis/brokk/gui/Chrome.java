@@ -31,6 +31,9 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     // For collapsing/expanding the Git panel
     private int lastGitPanelDividerLocation = -1;
 
+    // is the change of the context triggered by a user or the system?
+    private boolean internalContextChange = true;
+
     // Dependencies:
     ContextManager contextManager;
     private Context activeContext; // Track the currently displayed context
@@ -294,6 +297,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
         // if the user is selecting a different context, as opposed to a background task
         // updating the summary or autocontext.
         logger.trace("Loading context.  active={}, new={}", activeContext == null ? "null" : activeContext.getId(), ctx.getId());
+        // If internalContextChange is true, it means it's a programmatic selection (new history item),
+        // so don't force scroll. Otherwise (user click), do force scroll. Do not scroll the welcome message (id=1)
+        boolean forceScrollToTop = !this.internalContextChange || ctx.getId() == 1;
+
         boolean resetOutput = (activeContext == null || activeContext.getId() != ctx.getId());
         activeContext = ctx;
 
@@ -301,11 +308,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
             contextPanel.populateContextTable(ctx);
             if (resetOutput) {
                 if (ctx.getParsedOutput() != null) {
-                    historyOutputPanel.resetLlmOutput(ctx.getParsedOutput());
+                    historyOutputPanel.resetLlmOutput(ctx.getParsedOutput(), forceScrollToTop);
                 } else {
                     historyOutputPanel.clearLlmOutput();
                 }
-
             }
             updateCaptureButtons();
         });
@@ -781,7 +787,12 @@ public class Chrome implements AutoCloseable, IConsoleIO {
     }
 
     public void updateContextHistoryTable(Context contextToSelect) {
-        historyOutputPanel.updateHistoryTable(contextToSelect);
+        this.internalContextChange = true;
+        try {
+            historyOutputPanel.updateHistoryTable(contextToSelect);
+        } finally {
+            SwingUtilities.invokeLater(() -> this.internalContextChange = false);
+        }
     }
 
     public boolean isPositionOnScreen(int x, int y) {

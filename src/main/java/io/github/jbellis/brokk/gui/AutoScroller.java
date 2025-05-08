@@ -75,9 +75,6 @@ public final class AutoScroller {
             });
             LOG.debug("[AutoScroller] Installed ComponentListener fallback for {}", view.getClass().getSimpleName());
         }
-
-        // Scroll to bottom once after listeners are registered
-        SwingUtilities.invokeLater(state::contentGrew);
     }
 
     /**
