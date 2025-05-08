@@ -706,4 +706,29 @@ public class Context implements Serializable {
                            null,
                            CompletableFuture.completedFuture("Reset context to historical state"));
     }
+
+    /**
+     * Creates a new Context that copies specific elements, including task history, from the provided source context.
+     * This creates a reset point by:
+     * - Using the files and fragments from the source context
+     * - Using the history messages from the source context
+     * - Setting up properly for rebuilding autoContext
+     * - Clearing parsed output and original contents
+     * - Setting a suitable action description
+     */
+    public static Context createFromIncludingHistory(Context sourceContext, Context currentContext) {
+        assert sourceContext != null;
+        assert currentContext != null;
+
+        // New ID for the reset point
+        return new Context(newId(), // New ID for the reset point
+                           currentContext.contextManager,
+                           sourceContext.editableFiles,
+                           sourceContext.readonlyFiles,
+                           sourceContext.virtualFragments,
+                           sourceContext.taskHistory, // Use task history from sourceContext
+                           Map.of(),
+                           null,
+                           CompletableFuture.completedFuture("Reset context and history to historical state"));
+    }
 }

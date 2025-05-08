@@ -655,6 +655,20 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
+    /**
+     * Reset the context and history to match the files, fragments, and history from a historical context
+     */
+    public Future<?> resetContextToIncludingHistoryAsync(Context targetContext) {
+        return submitUserTask("Resetting context and history", () -> {
+            try {
+                pushContext(ctx -> Context.createFromIncludingHistory(targetContext, ctx));
+                io.systemOutput("Reset workspace and history to historical state");
+            } catch (CancellationException cex) {
+                io.systemOutput("Reset workspace and history canceled.");
+            }
+        });
+    }
+
 
     /**
      * Adds any virtual fragment directly
