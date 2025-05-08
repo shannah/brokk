@@ -27,6 +27,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.undo.UndoManager;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -96,6 +97,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final AtomicLong suggestionGeneration = new AtomicLong(0);
     private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false); // Flag to prevent self-refresh from table actions
     private JPanel overlayPanel; // Panel used to initially disable command input
+    private final UndoManager commandInputUndoManager;
     private boolean lowBalanceNotified = false;
     private boolean freeTierNotified = false;
     private String lastCheckedInputText = null;
@@ -111,6 +113,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         this.chrome = chrome;
         this.contextManager = chrome.getContextManager(); // Store potentially null CM
+        this.commandInputUndoManager = new UndoManager();
 
         // Initialize components
         commandInputField = buildCommandInputField(); // Build first to add listener
@@ -270,6 +273,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         area.setMinimumSize(new Dimension(100, 80));
         area.setEnabled(false); // Start disabled
         area.setText(PLACEHOLDER_TEXT); // Keep placeholder, will be cleared on activation
+        area.getDocument().addUndoableEditListener(commandInputUndoManager);
 
         // Add Ctrl+Enter shortcut to trigger the default button
         var ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, java.awt.event.InputEvent.CTRL_DOWN_MASK);
@@ -284,6 +288,33 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 }
             }
         });
+
+        // Add Undo (Ctrl+Z) and Redo (Ctrl+Y or Ctrl+Shift+Z) actions
+        var undoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, java.awt.event.InputEvent.CTRL_DOWN_MASK);
+        var redoKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Y, java.awt.event.InputEvent.CTRL_DOWN_MASK);
+        var redoAlternativeKeyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_Z, java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+
+        area.getInputMap().put(undoKeyStroke, "undo");
+        area.getActionMap().put("undo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (commandInputUndoManager.canUndo()) {
+                    commandInputUndoManager.undo();
+                }
+            }
+        });
+
+        area.getInputMap().put(redoKeyStroke, "redo");
+        area.getInputMap().put(redoAlternativeKeyStroke, "redo"); // Alternative for redo
+        area.getActionMap().put("redo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (commandInputUndoManager.canRedo()) {
+                    commandInputUndoManager.redo();
+                }
+            }
+        });
+
 
         return area;
     }
@@ -687,6 +718,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
                         // Set text and request focus
                         commandInputField.setText(item);
+                        commandInputUndoManager.discardAllEdits(); // Clear undo history for new text
                         commandInputField.requestFocusInWindow();
                     });
                     historyMenu.add(menuItem);
@@ -763,6 +795,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     public void clearCommandInput() {
         commandInputField.setText("");
+        commandInputUndoManager.discardAllEdits(); // Clear undo history as well
     }
 
     public void requestCommandInputFocus() {
