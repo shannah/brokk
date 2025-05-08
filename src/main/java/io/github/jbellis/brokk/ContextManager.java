@@ -597,7 +597,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             UndoResult result = contextHistory.undo(1, io);
             if (result.wasUndone()) {
                 var currentContext = contextHistory.topContext();
-                io.updateContextHistoryTable(currentContext);
+                notifyContextListeners(currentContext);
                 project.saveContext(currentContext);
                 io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
             } else {
@@ -615,7 +615,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             UndoResult result = contextHistory.undoUntil(targetContext, io);
             if (result.wasUndone()) {
                 var currentContext = contextHistory.topContext();
-                io.updateContextHistoryTable(currentContext);
+                notifyContextListeners(currentContext);
                 project.saveContext(currentContext);
                 io.systemOutput("Undid " + result.steps() + " step" + (result.steps() > 1 ? "s" : "") + "!");
             } else {
@@ -632,7 +632,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             boolean wasRedone = contextHistory.redo(io);
             if (wasRedone) {
                 var currentContext = contextHistory.topContext();
-                io.updateContextHistoryTable(currentContext);
+                notifyContextListeners(currentContext);
                 project.saveContext(currentContext);
                 io.systemOutput("Redo!");
             } else {
@@ -1227,11 +1227,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return null;
         }
 
-        for (var listener : contextListeners) {
-            listener.contextChanged(newContext);
-        }
-
-        io.updateContextHistoryTable(newContext);
+        notifyContextListeners(newContext);
         project.saveContext(newContext);
         if (newContext.getTaskHistory().isEmpty()) {
             return newContext;
@@ -1269,6 +1265,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public void setSelectedContext(Context context) {
         contextHistory.setSelectedContext(context);
+    }
+
+    private void notifyContextListeners(Context context) {
+        for (var listener : contextListeners) {
+            listener.contextChanged(context);
+        }
     }
 
     private String formattedOrNull(ContextFragment fragment)
