@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.git.LocalFileRepo;
 import io.github.jbellis.brokk.util.AtomicWrites;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -1035,6 +1036,7 @@ public class Project implements IProject, AutoCloseable {
      *
      * @return The saved key, or an empty string if not set.
      */
+    @NotNull
     public static String getBrokkKey() {
         var props = loadGlobalProperties();
         return props.getProperty("brokkApiKey", ""); // Default to empty string

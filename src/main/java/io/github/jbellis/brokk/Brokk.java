@@ -5,7 +5,8 @@ import com.github.tjake.jlama.model.ModelSupport;
 import com.github.tjake.jlama.safetensors.DType;
 import com.github.tjake.jlama.safetensors.SafeTensorSupport;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.dialogs.SettingsDialog; // Import SettingsDialog
+import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
+import io.github.jbellis.brokk.gui.dialogs.StartupDialog;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,6 +15,7 @@ import java.awt.*;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -91,40 +93,97 @@ public class Brokk {
                 logger.warn("Failed to set LAF, using default", e);
             }
 
-            // Ensure a Brokk key is set before doing anything else
-            SettingsDialog.showSignupDialog();
-
-            // Check for --no-project flag
+            // Check for command-line flags
             boolean noProjectFlag = false;
+            boolean noKeyFlag = false;
             String projectPathArg = null;
-            
+
             for (String arg : args) {
                 if (arg.equals("--no-project")) {
                     noProjectFlag = true;
+                } else if (arg.equals("--no-key")) {
+                    noKeyFlag = true;
                 } else if (!arg.startsWith("--")) {
                     projectPathArg = arg;
                 }
             }
-            
-            // If a project path is provided, use it
-            if (projectPathArg != null) {
-                var projectPath = Path.of(projectPathArg);
-                openProject(projectPath);
-            } else {
-                // No project specified - attempt to load open projects if any
-                var openProjects = Project.getOpenProjects();
 
-                if (noProjectFlag || openProjects.isEmpty()) {
-                    var io = new Chrome(null);
-                    io.onComplete();
-                    openProjectWindows.put(EMPTY_PROJECT, io);
-                } else {
-                    // Open all previously open projects
-                    logger.info("Opening previously open projects {}", openProjects);
-                    for (var projectPath : openProjects) {
-                        openProject(projectPath);
+            // Determine initial project path
+            Path determinedProjectPath = null;
+            if (projectPathArg != null) {
+                determinedProjectPath = Path.of(projectPathArg).toAbsolutePath().normalize();
+            } else if (!noProjectFlag) { // only check recent if not --no-project
+                var openProjects = Project.getOpenProjects();
+                if (!openProjects.isEmpty()) {
+                    determinedProjectPath = openProjects.getFirst();
+                }
+            }
+
+            // Validate Brokk API Key, unless --no-key is specified
+            String currentBrokkKey = "";
+            boolean keyIsValid = false;
+            if (!noKeyFlag) {
+                currentBrokkKey = Project.getBrokkKey();
+                if (!currentBrokkKey.isEmpty()) {
+                    try {
+                        Models.validateKey(currentBrokkKey);
+                        keyIsValid = true;
+                    } catch (IOException e) {
+                        // Network error during startup validation. Key might be valid, but we can't confirm.
+                        // Treat as invalid for now to ensure dialog handles re-validation or offline use.
+                        logger.error("Network error validating existing Brokk key at startup. Will re-evaluate in dialog.", e);
+                    } catch (IllegalArgumentException e) {
+                        logger.warn("Existing Brokk key is invalid: {}", e.getMessage());
                     }
                 }
+            } // If noKeyFlag is true, currentBrokkKey is "" and keyIsValid is false.
+
+            // Validate project path
+            boolean projectPathIsValid = false;
+            if (determinedProjectPath != null) {
+                try {
+                    Path realProjectPath = determinedProjectPath.toRealPath(); // Resolve symlinks
+                    if (Files.isDirectory(realProjectPath)) {
+                        projectPathIsValid = true;
+                        determinedProjectPath = realProjectPath; // Use the real path
+                    } else {
+                        logger.warn("Project path is not a directory: {}", realProjectPath);
+                    }
+                } catch (IOException e) { // Includes NoSuchFileException
+                    logger.warn("Project path is not valid or not accessible: {}. Error: {}", determinedProjectPath, e.getMessage());
+                }
+            }
+
+            // Exit if a specific project path was given via CLI and it's invalid
+            if (projectPathArg != null && !projectPathIsValid) {
+                System.out.printf("Specified project path `%s` does not appear to be a valid directory%n", projectPathArg);
+                System.exit(1);
+            }
+
+            // Attempt to open directly if all conditions met
+            if ((keyIsValid || noKeyFlag) && projectPathIsValid) {
+                openProject(determinedProjectPath);
+                return;
+            }
+
+            // One or both are missing/invalid, show the startup dialog
+            StartupDialog.DialogMode mode;
+            Path initialProjectPathForDialog = projectPathIsValid ? determinedProjectPath : null;
+
+            if (!keyIsValid && !projectPathIsValid) {
+                mode = StartupDialog.DialogMode.REQUIRE_BOTH;
+            } else if (!keyIsValid) {
+                mode = StartupDialog.DialogMode.REQUIRE_KEY_ONLY;
+            } else { // keyIsValid (implicitly true here due to outer if) && !projectPathIsValid
+                mode = StartupDialog.DialogMode.REQUIRE_PROJECT_ONLY;
+            }
+
+            Path projectToOpen = StartupDialog.showDialog(null, currentBrokkKey, keyIsValid, initialProjectPathForDialog, mode);
+            if (projectToOpen != null) {
+                openProject(projectToOpen);
+            } else {
+                logger.info("Startup dialog was closed or exited. Shutting down.");
+                System.exit(0);
             }
         });
     }
@@ -165,11 +224,11 @@ public class Brokk {
             logger.debug("Project {} has no Data Retention Policy set. Showing dialog.", projectPath.getFileName());
             // Run the dialog on the EDT after the main frame setup might have happened
             SwingUtilities.invokeLater(() -> {
-                 SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
-                 // After dialog is closed (policy is set), ensure UI reflects any consequences if needed
-                 // e.g., update model list if policy affects it. (Future enhancement)
-                 // Models.refreshAvailableModels(); // TODO: Implement model refresh based on policy
-                 io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
+                SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
+                // After dialog is closed (policy is set), ensure UI reflects any consequences if needed
+                // e.g., update model list if policy affects it. (Future enhancement)
+                // Models.refreshAvailableModels(); // TODO: Implement model refresh based on policy
+                io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
             });
         }
 
@@ -178,8 +237,7 @@ public class Brokk {
         openProjectWindows.put(projectPath, io);
 
         // Window listener that removes from maps; only exit if not in re-opening and zero windows remain
-        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter()
-        {
+        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosed(java.awt.event.WindowEvent e)
             {
@@ -192,7 +250,7 @@ public class Brokk {
 
                 Project.removeFromOpenProjects(projectPath);
                 logger.debug("Removed project from open windows map: {}", projectPath);
-                
+
                 if (reOpeningProjects.contains(projectPath)) {
                     reOpeningProjects.remove(projectPath);
                     openProject(projectPath);
