@@ -529,6 +529,14 @@ public class ContextPanel extends JPanel {
                 contextTable.requestFocusInWindow();
             }
         });
+
+        // Add a mouse listener to the panel itself to focus the table
+        this.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                contextTable.requestFocusInWindow();
+            }
+        });
     }
 
 
