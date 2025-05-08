@@ -15,6 +15,7 @@ import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
+import io.github.jbellis.brokk.gui.components.SplitButton;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 
@@ -65,8 +67,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JTextArea commandInputField;
     private final VoiceInputButton micButton;
     private final JButton agentButton;
-    private final JButton codeButton;
-    private final JButton askButton;
+    private final SplitButton codeButton;
+    private final SplitButton askButton;
     private final JButton searchButton;
     private final JButton runButton;
     private final JButton stopButton;
@@ -125,15 +127,33 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         agentButton.setToolTipText("Run the multi-step agent to execute the current plan");
         agentButton.addActionListener(e -> runArchitectCommand());
 
-        codeButton = new JButton("Code");
+        codeButton = new SplitButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
-        codeButton.setToolTipText("Tell the LLM to write code to solve this problem using the current context");
-        codeButton.addActionListener(e -> runCodeCommand());
+        codeButton.setToolTipText("Tell the LLM to write code using the current context (click ▼ for model options)");
+        codeButton.addActionListener(e -> runCodeCommand()); // Main button action
+        codeButton.setMenuSupplier(() -> createModelSelectionMenu(
+                models -> models.getAvailableModels(),
+                modelName -> {
+                    StreamingChatLanguageModel selectedModel = chrome.getContextManager().getModels().get(modelName, Project.ReasoningLevel.DEFAULT);
+                    if (selectedModel != null) {
+                        runCodeCommand(selectedModel);
+                    }
+                }
+        ));
 
-        askButton = new JButton("Ask");
+        askButton = new SplitButton(" Ask");
         askButton.setMnemonic(KeyEvent.VK_A);
-        askButton.setToolTipText("Ask the LLM a question about the current context");
-        askButton.addActionListener(e -> runAskCommand());
+        askButton.setToolTipText("Ask the LLM a question about the current context (click ▼ for model options)");
+        askButton.addActionListener(e -> runAskCommand()); // Main button action
+        askButton.setMenuSupplier(() -> createModelSelectionMenu(
+                models -> models.getAvailableModels(),
+                modelName -> {
+                    StreamingChatLanguageModel selectedModel = chrome.getContextManager().getModels().get(modelName, Project.ReasoningLevel.DEFAULT);
+                    if (selectedModel != null) {
+                        runAskCommand(selectedModel);
+                    }
+                }
+        ));
 
         searchButton = new JButton("Search");
         searchButton.setMnemonic(KeyEvent.VK_S);
@@ -578,6 +598,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButtonsPanel.add(askButton);
         actionButtonsPanel.add(searchButton);
         actionButtonsPanel.add(runButton);
+
+        // Set preferred size of codeButton and askButton to match searchButton
+        Dimension buttonSize = agentButton.getPreferredSize();
+        codeButton.setPreferredSize(buttonSize);
+        askButton.setPreferredSize(buttonSize);
+
         // thinkButton is moved next to the reference table
         return actionButtonsPanel;
     }
@@ -871,8 +897,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Update state
         this.lastCheckedInputText = snapshot;
         this.lastCheckedEmbeddings = newEmbeddings;
-        // No more staleness checks so that we don't throw away the suggestions for this one only to discover
-        // that the one that canceled it was not semantically different enough
+
+        // 7. Staleness check *after* updating state but *before* running ContextAgent.
+        // This ensures that if a *newer* task has already updated lastCheckedInputText/Embeddings
+        // (because it was semantically different from what *this* task saw as `lastChecked...`),
+        // then this current (now older) task won't proceed.
+        if (myGen != suggestionGeneration.get()) {
+            logger.trace("Task {} is stale after updating its own state but before ContextAgent, aborting.", myGen);
+            return;
+        }
 
         // 8. Run ContextAgent
         logger.debug("Task {} fetching QUICK context recommendations for: '{}'", myGen, snapshot);
@@ -1304,7 +1337,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // the core logic execution to contextManager.submitAction, which calls back
     // into the private execute* methods above.
 
+    // Public entry point for default Code model
     public void runCodeCommand() {
+        var contextManager = chrome.getContextManager();
+        prepareAndRunCodeCommand(contextManager.getCodeModel());
+    }
+
+    // Public entry point for selected Code model from SplitButton
+    public void runCodeCommand(StreamingChatLanguageModel modelToUse) {
+        prepareAndRunCodeCommand(modelToUse);
+    }
+
+    // Core method to prepare and submit the Code action
+    private void prepareAndRunCodeCommand(StreamingChatLanguageModel modelToUse) {
         var input = getInstructions();
         if (input.isBlank()) {
             chrome.toolErrorRaw("Please enter a command or text");
@@ -1313,22 +1358,31 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var contextManager = chrome.getContextManager();
         var models = contextManager.getModels();
-        var codeModel = contextManager.getCodeModel();
 
-        if (contextHasImages() && !models.supportsVision(codeModel)) {
-            showVisionSupportErrorDialog(models.nameOf(codeModel) + " (Code)");
-            return; // Abort if model doesn't support vision and context has images
+        if (contextHasImages() && !models.supportsVision(modelToUse)) {
+            showVisionSupportErrorDialog(models.nameOf(modelToUse) + " (Code)");
+            return;
         }
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
-        disableButtons();
-        submitAction("Code", input, () -> {
-            executeCodeCommand(codeModel, input);
-        });
+        // disableButtons() is called by submitAction via chrome.disableActionButtons()
+        submitAction("Code", input, () -> executeCodeCommand(modelToUse, input));
     }
 
+    // Public entry point for default Ask model
     public void runAskCommand() {
+        var contextManager = chrome.getContextManager();
+        prepareAndRunAskCommand(contextManager.getAskModel());
+    }
+
+    // Public entry point for selected Ask model from SplitButton
+    public void runAskCommand(StreamingChatLanguageModel modelToUse) {
+        prepareAndRunAskCommand(modelToUse);
+    }
+
+    // Core method to prepare and submit the Ask action
+    private void prepareAndRunAskCommand(StreamingChatLanguageModel modelToUse) {
         var input = getInstructions();
         if (input.isBlank()) {
             chrome.toolErrorRaw("Please enter a question");
@@ -1337,22 +1391,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var contextManager = chrome.getContextManager();
         var models = contextManager.getModels();
-        var askModel = contextManager.getAskModel(); // Use dedicated Ask model
 
-        // --- Vision Check ---
-        if (contextHasImages() && !models.supportsVision(askModel)) {
-            showVisionSupportErrorDialog(models.nameOf(askModel) + " (Ask)");
-            return; // Abort if model doesn't support vision and context has images
+        if (contextHasImages() && !models.supportsVision(modelToUse)) {
+            showVisionSupportErrorDialog(models.nameOf(modelToUse) + " (Ask)");
+            return;
         }
-        // --- End Vision Check ---
 
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
-        disableButtons();
-        // Submit the action, calling the private execute method inside the lambda
-        submitAction("Ask", input, () -> {
-            executeAskCommand(askModel, input);
-        });
+        // disableButtons() is called by submitAction via chrome.disableActionButtons()
+        submitAction("Ask", input, () -> executeAskCommand(modelToUse, input));
     }
 
     public void runSearchCommand() {
@@ -1508,5 +1556,42 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         return (float) (dot / denominator);
+    }
+
+    private JPopupMenu createModelSelectionMenu(
+            java.util.function.Function<Models, Map<String, String>> modelSource,
+            Consumer<String> onModelSelect) {
+        var popupMenu = new JPopupMenu();
+        var contextManager = chrome.getContextManager();
+        var modelsInstance = contextManager.getModels();
+
+        Map<String, String> availableModelsMap = modelSource.apply(modelsInstance);
+
+        if (availableModelsMap.isEmpty() || (availableModelsMap.size() == 1 && availableModelsMap.containsKey(Models.UNAVAILABLE))) {
+            var item = new JMenuItem(Models.UNAVAILABLE);
+            item.setEnabled(false);
+            popupMenu.add(item);
+        } else {
+            // Sort model names for consistent menu order
+            availableModelsMap.keySet().stream().sorted().forEach(modelName -> {
+                // Skip the generic "UNAVAILABLE" entry if other, real models are present
+                if (modelName.equals(Models.UNAVAILABLE) && availableModelsMap.size() > 1) {
+                    return;
+                }
+                var item = new JMenuItem(modelName);
+                if (modelName.equals(Models.UNAVAILABLE)) {
+                    item.setEnabled(false);
+                } else {
+                    item.addActionListener(e -> onModelSelect.accept(modelName));
+                }
+                popupMenu.add(item);
+            });
+        }
+
+        // Apply theme to the popup menu itself and its items
+        if (chrome.themeManager != null) {
+            chrome.themeManager.registerPopupMenu(popupMenu);
+        }
+        return popupMenu;
     }
 }
