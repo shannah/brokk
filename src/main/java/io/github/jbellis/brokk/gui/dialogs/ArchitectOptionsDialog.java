@@ -65,13 +65,13 @@ public class ArchitectOptionsDialog {
             };
 
             // Create checkboxes for each option
+            var contextCb = createCheckbox.apply("Deep Scan", "Begin by calling Deep Scan to update the workspace");
+            contextCb.setSelected(currentOptions.includeContextAgent());
+
             var codeCb = createCheckbox.apply("Code Agent", "Allow invoking the Code Agent to modify files");
             codeCb.setSelected(currentOptions.includeCodeAgent());
 
-            var contextCb = createCheckbox.apply("Context Agent", "Suggest relevant workspace additions based on the goal");
-            contextCb.setSelected(currentOptions.includeContextAgent());
-
-            var validationCb = createCheckbox.apply("Validation Agent", "Suggest relevant test files for Code Agent");
+            var validationCb = createCheckbox.apply("Validation Agent", "Infer test files to include with each Code Agent call");
             validationCb.setSelected(currentOptions.includeValidationAgent());
 
             var analyzerCb = createCheckbox.apply("Code Intelligence Tools", "Allow direct querying of code structure (e.g., find usages, call graphs)");
