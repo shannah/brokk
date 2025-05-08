@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.Brokk;
+import io.github.jbellis.brokk.BuildInfo;
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
@@ -279,7 +280,7 @@ public class MenuBar {
                 icon = new ImageIcon(scaledImage);
             }
             JOptionPane.showMessageDialog(chrome.getFrame(),
-                                          "Brokk Version %s\n\nCopyright (c) 2025 Brokk, Inc.".formatted(chrome.getContextManager().loadVersion()),
+                                          "Brokk Version %s\n\nCopyright (c) 2025 Brokk, Inc.".formatted(BuildInfo.version()),
                                           "About Brokk",
                                           JOptionPane.INFORMATION_MESSAGE,
                                           icon);

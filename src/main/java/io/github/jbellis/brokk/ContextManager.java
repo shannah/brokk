@@ -955,7 +955,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             throw new UncheckedIOException(e1);
         }
 
-        var version = loadVersion();
+        var version = BuildInfo.version();
 
         // Get configured models for display
         String architectModelName = project.getArchitectModelName();
@@ -991,10 +991,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                            editModelName != null ? editModelName : "(Not Set)",
                                            searchModelName != null ? searchModelName : "(Not Set)",
                                            quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
-    }
-
-    public String loadVersion() {
-        return BuildInfo.version();
     }
 
     /**
