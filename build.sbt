@@ -55,7 +55,7 @@ libraryDependencies ++= Seq(
   "io.joern" %% "semanticcpg" % "4.0.320",
   
   // Utilities
-  "com.formdev" % "flatlaf" % "3.5.4",
+  "com.formdev" % "flatlaf" % "3.6",
   "com.fifesoft" % "rsyntaxtextarea" % "3.5.4",
   "com.fifesoft" % "autocomplete" % "3.3.2",
   "io.github.java-diff-utils" % "java-diff-utils" % "4.15",
