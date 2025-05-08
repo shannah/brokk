@@ -34,6 +34,7 @@ public class StartupDialog extends JDialog {
 
     private StartupDialog(Frame owner, String initialKey, boolean keyInitiallyValid, Path initialProjectPath, DialogMode mode) {
         super(owner, "Welcome to Brokk", true);
+        io.github.jbellis.brokk.gui.Chrome.applyIcon(this);
         this.initialKey = initialKey;
         this.keyInitiallyValid = keyInitiallyValid;
         this.initialProjectPath = initialProjectPath;

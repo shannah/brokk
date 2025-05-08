@@ -892,22 +892,10 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public static JFrame newFrame(String title) {
         JFrame frame = new JFrame(title);
-
-        try {
-            var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
-            if (iconUrl != null) {
-                var icon = new ImageIcon(iconUrl);
-                frame.setIconImage(icon.getImage());
-            } else {
-                LogManager.getLogger(Chrome.class).warn("Could not find resource {}", Brokk.ICON_RESOURCE);
-            }
-        } catch (Exception e) {
-            LogManager.getLogger(Chrome.class).warn("Failed to set application icon", e);
-        }
-
+        applyIcon(frame);
         return frame;
     }
-    
+
     /**
      * Creates a new JDialog with the Brokk icon set properly.
      *
@@ -918,20 +906,27 @@ public class Chrome implements AutoCloseable, IConsoleIO {
      */
     public static JDialog newDialog(Frame owner, String title, boolean modal) {
         JDialog dialog = new JDialog(owner, title, modal);
-        
+        applyIcon(dialog);
+        return dialog;
+    }
+
+    /**
+     * Applies the application icon to the given window (JFrame or JDialog).
+     *
+     * @param window The window to set the icon for.
+     */
+    public static void applyIcon(Window window) {
         try {
             var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
             if (iconUrl != null) {
                 var icon = new ImageIcon(iconUrl);
-                dialog.setIconImage(icon.getImage());
+                window.setIconImage(icon.getImage());
             } else {
                 LogManager.getLogger(Chrome.class).warn("Could not find resource {}", Brokk.ICON_RESOURCE);
             }
         } catch (Exception e) {
-            LogManager.getLogger(Chrome.class).warn("Failed to set application icon", e);
+            LogManager.getLogger(Chrome.class).warn("Failed to set application icon for window", e);
         }
-        
-        return dialog;
     }
 
     /**
