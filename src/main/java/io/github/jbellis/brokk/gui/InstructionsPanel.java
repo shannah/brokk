@@ -520,6 +520,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }, "Summarize files");
                 });
                 menu.add(summarizeItem);
+                menu.addSeparator();
+
+                JMenuItem refreshSuggestionsItem = new JMenuItem("Refresh Suggestions");
+                refreshSuggestionsItem.addActionListener(e1 -> triggerContextSuggestion(null));
+                menu.add(refreshSuggestionsItem);
 
                 if (chrome.themeManager != null) chrome.themeManager.registerPopupMenu(menu);
                 menu.show(referenceFileTable, e.getX(), e.getY());
