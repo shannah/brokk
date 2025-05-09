@@ -175,7 +175,7 @@ public class MenuBar {
         editFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editFilesItem.addActionListener(e -> {
             chrome.getContextPanel().performContextActionAsync(
-                    ContextPanel.ContextAction.EDIT, List.of());
+                    WorkspacePanel.ContextAction.EDIT, List.of());
         });
         editFilesItem.setEnabled(hasProject && chrome.getProject().hasGit());
         contextMenu.add(editFilesItem);
@@ -184,7 +184,7 @@ public class MenuBar {
         readFilesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         readFilesItem.addActionListener(e -> {
             chrome.getContextPanel().performContextActionAsync(
-                    ContextPanel.ContextAction.READ, List.of());
+                    WorkspacePanel.ContextAction.READ, List.of());
         });
         readFilesItem.setEnabled(hasProject);
         contextMenu.add(readFilesItem);
@@ -237,7 +237,7 @@ public class MenuBar {
         summarizeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         summarizeItem.addActionListener(e -> {
             chrome.getContextPanel().performContextActionAsync(
-                    ContextPanel.ContextAction.SUMMARIZE, List.of());
+                    WorkspacePanel.ContextAction.SUMMARIZE, List.of());
         });
         summarizeItem.setEnabled(hasProject);
         contextMenu.add(summarizeItem);
@@ -272,7 +272,7 @@ public class MenuBar {
     dropAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
     dropAllItem.addActionListener(e -> {
             chrome.getContextPanel().performContextActionAsync(
-                    ContextPanel.ContextAction.DROP, List.of());
+                    WorkspacePanel.ContextAction.DROP, List.of());
         });
         dropAllItem.setEnabled(hasProject);
         contextMenu.add(dropAllItem);

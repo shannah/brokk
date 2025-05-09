@@ -47,8 +47,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-public class ContextPanel extends JPanel {
-    private static final Logger logger = LogManager.getLogger(ContextPanel.class);
+public class WorkspacePanel extends JPanel {
+    private static final Logger logger = LogManager.getLogger(WorkspacePanel.class);
     private final String EMPTY_CONTEXT = "Empty Workspace--use Edit or Read or Summarize to add content";
 
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
@@ -83,7 +83,7 @@ public class ContextPanel extends JPanel {
     /**
      * Constructor for the context panel
      */
-    public ContextPanel(Chrome chrome, ContextManager contextManager) {
+    public WorkspacePanel(Chrome chrome, ContextManager contextManager) {
         super(new BorderLayout());
         this.chrome = chrome;
         this.contextManager = contextManager;
