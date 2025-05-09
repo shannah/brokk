@@ -108,7 +108,7 @@ public class GitPanel extends JPanel
      */
     public void setCommitMessageText(String message)
     {
-        SwingUtilities.invokeLater(() -> commitTab.setCommitMessageText(message));
+        commitTab.setCommitMessageText(message);
     }
 
     /**

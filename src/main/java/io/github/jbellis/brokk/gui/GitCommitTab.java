@@ -324,7 +324,7 @@ public class GitCommitTab extends JPanel {
                 } catch (Exception ex) {
                     logger.error("Error committing files:", ex);
                     SwingUtilities.invokeLater(() ->
-                        chrome.toolErrorRaw("Error committing files: " + ex.getMessage())
+                                                       chrome.toolErrorRaw("Error committing files: " + ex.getMessage())
                     );
                 }
             });
@@ -629,14 +629,14 @@ public class GitCommitTab extends JPanel {
      * This method performs the synchronous LLM call.
      *
      * @param project  The current project, used to get configuration like commit format.
- * @param diffText The text difference to analyze for the commit message.
- * @return The inferred commit message string, or null if no message could be generated or an error occurred.
- */
-private String inferCommitMessage(Project project, String diffText) {
-    var messages = CommitPrompts.instance.collectMessages(project, diffText);
-    if (messages.isEmpty()) {
-        SwingUtilities.invokeLater(() -> chrome.systemOutput("Nothing to commit for suggestion"));
-        return null;
+     * @param diffText The text difference to analyze for the commit message.
+     * @return The inferred commit message string, or null if no message could be generated or an error occurred.
+     */
+    private String inferCommitMessage(Project project, String diffText) {
+        var messages = CommitPrompts.instance.collectMessages(project, diffText);
+        if (messages.isEmpty()) {
+            SwingUtilities.invokeLater(() -> chrome.systemOutput("Nothing to commit for suggestion"));
+            return null;
         }
 
         // Use quickest model for commit messages via ContextManager
@@ -673,16 +673,20 @@ private String inferCommitMessage(Project project, String diffText) {
      * Sets the text in the commit message area (used by LLM suggestions).
      */
     public void setCommitMessageText(String message) {
-        commitMessageArea.setText(message);
+        SwingUtilities.invokeLater(() -> commitMessageArea.setText(message));
     }
 
     public void disableButtons() {
-        stashButton.setEnabled(false);
-        commitButton.setEnabled(false);
+        SwingUtilities.invokeLater(() -> {
+            stashButton.setEnabled(false);
+            commitButton.setEnabled(false);
+        });
     }
 
     public void enableButtons() {
-        stashButton.setEnabled(true);
-        commitButton.setEnabled(true);
+        SwingUtilities.invokeLater(() -> {
+            stashButton.setEnabled(true);
+            commitButton.setEnabled(true);
+        });
     }
 }

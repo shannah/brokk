@@ -43,6 +43,7 @@ import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 
@@ -794,9 +795,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * it returns an empty string, otherwise it returns the actual text content.
      */
     public String getInstructions() {
-        return instructionsArea.getText().equals(PLACEHOLDER_TEXT)
-               ? ""
-               : instructionsArea.getText();
+        return SwingUtil.runOnEDT(() -> {
+            return instructionsArea.getText().equals(PLACEHOLDER_TEXT)
+                   ? ""
+                   : instructionsArea.getText();
+        }, "");
     }
 
     /**
@@ -804,12 +807,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * This prevents the placeholder from reappearing inadvertently.
      */
     public void clearCommandInput() {
-        instructionsArea.setText("");
-        commandInputUndoManager.discardAllEdits(); // Clear undo history as well
+        SwingUtilities.invokeLater(() -> {
+            instructionsArea.setText("");
+            commandInputUndoManager.discardAllEdits(); // Clear undo history as well
+        });
     }
 
     public void requestCommandInputFocus() {
-        instructionsArea.requestFocus();
+        SwingUtilities.invokeLater(instructionsArea::requestFocus);
     }
 
     /**
@@ -817,7 +822,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Moved from HistoryOutputPanel.
      */
     public void setCommandResultText(String text) {
-        commandResultLabel.setText(text);
+        SwingUtilities.invokeLater(() -> commandResultLabel.setText(text));
     }
 
     /**
@@ -825,7 +830,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Moved from HistoryOutputPanel.
      */
     public void clearCommandResultText() {
-        commandResultLabel.setText(" "); // Set back to space to maintain height
+        SwingUtilities.invokeLater(() -> commandResultLabel.setText(" ")); // Set back to space to maintain height
     }
 
     /**
@@ -833,18 +838,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Moved from HistoryOutputPanel.
      */
     public void appendSystemOutput(String message) {
-        // Format timestamp as HH:MM
-        String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        SwingUtilities.invokeLater(() -> {
+            // Format timestamp as HH:MM
+            String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
 
-        // Add newline if needed
-        if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
-            systemArea.append("\n");
-        }
+            // Add newline if needed
+            if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
+                systemArea.append("\n");
+            }
 
-        // Append timestamped message
-        systemArea.append(timestamp + ": " + message);
-        // Scroll to bottom
-        SwingUtilities.invokeLater(() -> systemArea.setCaretPosition(systemArea.getDocument().getLength()));
+            // Append timestamped message
+            systemArea.append(timestamp + ": " + message);
+            // Scroll to bottom
+            systemArea.setCaretPosition(systemArea.getDocument().getLength());
+        });
     }
 
 
@@ -1557,9 +1564,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public Future<?> submitAction(String action, String input, Runnable task) {
         var cm = chrome.getContextManager();
         // need to set the correct parser here since we're going to append to the same fragment during the action
-        action = (action + " MODE").toUpperCase();
-        chrome.setLlmOutput(new ContextFragment.TaskFragment(cm.getParserForWorkspace(), List.of(new UserMessage(action, input)), input));
-        return cm.submitUserTask(action, true, () -> {
+        String finalAction = (action + " MODE").toUpperCase();
+        SwingUtilities.invokeLater(() -> {
+            chrome.setLlmOutput(new ContextFragment.TaskFragment(cm.getParserForWorkspace(), List.of(new UserMessage(finalAction, input)), input));
+        });
+        return cm.submitUserTask(finalAction, true, () -> {
             try {
                 task.run();
             } finally {
