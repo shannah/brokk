@@ -245,32 +245,40 @@ public class GitRepo implements Closeable, IGitRepo {
         var statusResult = git.status().call();
         var uncommittedFilesWithStatus = new HashSet<ModifiedFile>();
 
-        statusResult.getAdded().stream()
-                .map(path -> new ProjectFile(root, path))
-                .map(pf -> new ModifiedFile(pf, "new"))
-                .forEach(uncommittedFilesWithStatus::add);
+        // Collect all unique paths from the statuses we are interested in
+        var allRelevantPaths = new HashSet<String>();
+        allRelevantPaths.addAll(statusResult.getAdded());
+        allRelevantPaths.addAll(statusResult.getRemoved());
+        allRelevantPaths.addAll(statusResult.getMissing());
+        allRelevantPaths.addAll(statusResult.getModified());
+        allRelevantPaths.addAll(statusResult.getChanged());
 
-        Stream.concat(
-                statusResult.getRemoved().stream()
-                        .map(path -> new ProjectFile(root, path))
-                        .map(pf -> new ModifiedFile(pf, "deleted")),
-                statusResult.getMissing().stream()
-                        .map(path -> new ProjectFile(root, path))
-                        .map(pf -> new ModifiedFile(pf, "deleted"))
-        )
-        .distinct() // Avoid duplicate ModifiedFile objects if a path is in both removed and missing
-        .forEach(uncommittedFilesWithStatus::add);
+        for (var path : allRelevantPaths) {
+            var projectFile = new ProjectFile(root, path);
+            String determinedStatus;
 
-        Stream.concat(
-                statusResult.getModified().stream()
-                        .map(path -> new ProjectFile(root, path))
-                        .map(pf -> new ModifiedFile(pf, "modified")),
-                statusResult.getChanged().stream()
-                        .map(path -> new ProjectFile(root, path))
-                        .map(pf -> new ModifiedFile(pf, "modified"))
-        )
-        .distinct() // Avoid duplicate ModifiedFile objects if a path is in both modified and changed
-        .forEach(uncommittedFilesWithStatus::add);
+            // Determine status based on "git commit -a" behavior:
+            // 1. Added files are "new".
+            // 2. Files missing from working tree are "deleted".
+            // 3. Otherwise, any other change (modified in WT, changed in index,
+            //    or staged for removal but existing in WT) is "modified".
+            if (statusResult.getAdded().contains(path)) {
+                determinedStatus = "new";
+            } else if (statusResult.getMissing().contains(path)) {
+                determinedStatus = "deleted";
+            } else if (statusResult.getModified().contains(path)
+                    || statusResult.getChanged().contains(path)
+                    || statusResult.getRemoved().contains(path))
+            {
+                // If removed from index but present in WT, it's a modification for "commit -a"
+                determinedStatus = "modified";
+            } else {
+                // This should not be reached if `path` originated from one of the status sets
+                // used to populate `allRelevantPaths` and the logic above is complete.
+                throw new AssertionError("Path " + path + " from relevant git status sets did not receive a determined status.");
+            }
+            uncommittedFilesWithStatus.add(new ModifiedFile(projectFile, determinedStatus));
+        }
 
         return uncommittedFilesWithStatus;
     }
