@@ -626,10 +626,29 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.LINE_AXIS));
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
-        // Action Button Bar
-        JPanel actionButtonBar = buildActionBar();
-        actionButtonBar.setAlignmentY(Component.CENTER_ALIGNMENT);
-        bottomPanel.add(actionButtonBar);
+        // Add action buttons directly to the bottom panel
+        bottomPanel.add(agentButton);
+        bottomPanel.add(Box.createHorizontalStrut(H_GAP));
+        bottomPanel.add(codeButton);
+        bottomPanel.add(Box.createHorizontalStrut(H_GAP));
+        bottomPanel.add(askButton);
+        bottomPanel.add(Box.createHorizontalStrut(H_GAP));
+        bottomPanel.add(searchButton);
+        bottomPanel.add(Box.createHorizontalStrut(H_GAP));
+        bottomPanel.add(runButton);
+
+        // Set preferred size of codeButton and askButton to match agentButton
+        // This needs to be done after buttons are potentially realized/packed by layout
+        SwingUtilities.invokeLater(() -> {
+            Dimension buttonSize = agentButton.getPreferredSize();
+            if (buttonSize != null && buttonSize.width > 0 && buttonSize.height > 0) {
+                codeButton.setPreferredSize(buttonSize);
+                askButton.setPreferredSize(buttonSize);
+                // Revalidate parent if sizes changed to ensure layout updates
+                bottomPanel.revalidate();
+                bottomPanel.repaint();
+            }
+        });
 
         // Add flexible space between action buttons and stop button
         bottomPanel.add(Box.createHorizontalGlue());
@@ -639,33 +658,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         bottomPanel.add(stopButton);
 
         return bottomPanel;
-    }
-
-    // Helper to build just the action buttons (Code, Ask, Search, Run)
-    private JPanel buildActionBar() {
-        JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
-        actionButtonsPanel.add(agentButton);
-        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
-
-        actionButtonsPanel.add(codeButton);
-        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
-
-        actionButtonsPanel.add(askButton);
-        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
-
-        actionButtonsPanel.add(searchButton);
-        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
-
-        actionButtonsPanel.add(runButton);
-
-        // Set preferred size of codeButton and askButton to match searchButton
-        Dimension buttonSize = agentButton.getPreferredSize();
-        codeButton.setPreferredSize(buttonSize);
-        askButton.setPreferredSize(buttonSize);
-
-        // thinkButton is moved next to the reference table
-        return actionButtonsPanel;
     }
 
     /**
