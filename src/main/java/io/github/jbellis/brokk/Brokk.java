@@ -134,9 +134,13 @@ public class Brokk {
                         Models.validateKey(currentBrokkKey);
                         keyIsValid = true;
                     } catch (IOException e) {
-                        // Network error during startup validation. Key might be valid, but we can't confirm.
-                        // Treat as invalid for now to ensure dialog handles re-validation or offline use.
-                        logger.error("Network error validating existing Brokk key at startup. Will re-evaluate in dialog.", e);
+                        // Network error during startup validation. Assume key is valid so user can get into his project
+                        logger.warn("Network error validating existing Brokk key at startup. Will re-evaluate in dialog.", e);
+                        keyIsValid = true;
+                        JOptionPane.showMessageDialog(null,
+                                                      "Network error talking to Brokk. AI services may be unavailable.",
+                                                      "Network error",
+                                                      JOptionPane.ERROR_MESSAGE);
                     } catch (IllegalArgumentException e) {
                         logger.warn("Existing Brokk key is invalid: {}", e.getMessage());
                     }
@@ -166,7 +170,7 @@ public class Brokk {
             }
 
             // Attempt to open directly if all conditions met
-            if ((keyIsValid || noKeyFlag) && projectPathIsValid) {
+            if (keyIsValid && projectPathIsValid) {
                 openProject(determinedProjectPath);
                 return;
             }

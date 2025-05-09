@@ -981,9 +981,9 @@ public class SettingsDialog extends JDialog {
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(this,
                                                   "Network error: " + ex.getMessage(),
-                                                  "Unable to reach Brokk service",
+                                                  "Unable to reach Brokk service to validate key.",
                                                   JOptionPane.ERROR_MESSAGE);
-                    return;
+                    // allow key to save
                 }
             }
             Project.setBrokkKey(newBrokkKey);
