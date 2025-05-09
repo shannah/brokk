@@ -113,6 +113,10 @@ public interface IContextManager {
     }
 
     default Llm getLlm(StreamingChatLanguageModel model, String taskDescription) {
-        return new Llm(model, taskDescription, this, getProject().getDataRetentionPolicy() == Project.DataRetentionPolicy.IMPROVE_BROKK);
+        return getLlm(model, taskDescription, false);
+    }
+
+    default Llm getLlm(StreamingChatLanguageModel model, String taskDescription, boolean allowPartialResponses) {
+        return new Llm(model, taskDescription, this, allowPartialResponses, getProject().getDataRetentionPolicy() == Project.DataRetentionPolicy.IMPROVE_BROKK);
     }
 }

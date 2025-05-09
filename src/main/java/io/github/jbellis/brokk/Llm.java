@@ -25,13 +25,17 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiTokenUsage;
+import dev.langchain4j.model.output.FinishReason;
 import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -64,12 +68,14 @@ public class Llm {
     final IContextManager contextManager;
     private final int MAX_ATTEMPTS = 8; // Keep retry logic for now
     private final StreamingChatLanguageModel model;
+    private final boolean allowPartialResponses;
     private final boolean tagRetain;
 
-    public Llm(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager, boolean tagRetain) {
+    public Llm(StreamingChatLanguageModel model, String taskDescription, IContextManager contextManager, boolean allowPartialResponses, boolean tagRetain) {
         this.model = model;
         this.contextManager = contextManager;
         this.io = contextManager.getIo();
+        this.allowPartialResponses = allowPartialResponses;
         this.tagRetain = tagRetain;
         var historyBaseDir = getHistoryBaseDir(contextManager.getProject().getRoot());
 
@@ -121,9 +127,12 @@ public class Llm {
         // latch for awaiting the complete response
         var latch = new CountDownLatch(1);
         var cancelled = new AtomicBoolean(false);
-        var lock = new ReentrantLock();
-        var errorRef = new AtomicReference<Throwable>(null);
-        var atomicResponse = new AtomicReference<ChatResponse>();
+        var lock = new ReentrantLock(); // Used by ifNotCancelled
+
+        // Variables to store results from callbacks
+        var accumulatedTextBuilder = new StringBuilder();
+        var completedChatResponse = new AtomicReference<ChatResponse>();
+        var errorRef = new AtomicReference<Throwable>();
 
         Consumer<Runnable> ifNotCancelled = (r) -> {
             lock.lock();
@@ -140,6 +149,7 @@ public class Llm {
             @Override
             public void onPartialResponse(String token) {
                 ifNotCancelled.accept(() -> {
+                    accumulatedTextBuilder.append(token);
                     if (echo) {
                         io.llmOutput(token, ChatMessageType.AI);
                         io.hideOutputSpinner();
@@ -151,26 +161,19 @@ public class Llm {
             public void onCompleteResponse(ChatResponse response) {
                 ifNotCancelled.accept(() -> {
                     io.hideOutputSpinner();
-                    if (echo) {
-                        io.llmOutput("\n", ChatMessageType.AI);
-                    }
-                    atomicResponse.set(response);
                     if (response == null) {
+                        if (completedChatResponse.get() != null) {
+                            logger.debug("Got a null response from LC4J after a successful one!?");
+                            // ignore the null response
+                            return;
+                        }
                         // I think this isn't supposed to happen, but seeing it when litellm throws back a 400.
                         // Fake an exception so the caller can treat it like other errors
                         errorRef.set(new HttpException(400, "BadRequestError (no further information, the response was null; check litellm logs)"));
                     } else {
-                        if (response.tokenUsage() == null) {
-                            logger.warn("Null token usage !? in {}", response);
-                        } else {
-                            var tu = (OpenAiTokenUsage) response.tokenUsage();
-                            var template = "Token usage: {} input ({} cached), {} output ({} reasoning)";
-                            logger.debug(template,
-                                         tu.inputTokenCount(),
-                                         (tu.inputTokensDetails() == null) ? "?" : tu.inputTokensDetails().cachedTokens(),
-                                         tu.outputTokenCount(),
-                                         (tu.outputTokensDetails() == null) ? "?" : tu.outputTokensDetails().reasoningTokens());
-                        }
+                        completedChatResponse.set(response);
+                        String tokens = response.tokenUsage() == null ? "null token usage!?" : formatTokensUsage(response);
+                        logger.debug("Request complete ({}) with {}", response.finishReason(), tokens);
                     }
                     latch.countDown();
                 });
@@ -180,8 +183,7 @@ public class Llm {
             public void onError(Throwable th) {
                 ifNotCancelled.accept(() -> {
                     io.hideOutputSpinner();
-                    io.toolErrorRaw("LLM error: " + th.getMessage());
-                    // Instead of interrupting, just record it so we can retry from the caller
+                    io.toolErrorRaw("LLM error: " + th.getMessage()); // Immediate feedback for user
                     errorRef.set(th);
                     latch.countDown();
                 });
@@ -192,25 +194,48 @@ public class Llm {
             latch.await();
         } catch (InterruptedException e) {
             lock.lock();
-            cancelled.set(true);
+            cancelled.set(true); // Ensure callback stops echoing
             lock.unlock();
-            throw e;
+            throw e; // Propagate interruption
         }
 
-        var streamingError = errorRef.get();
-        if (streamingError != null) {
-            // Return an error result
-            logger.debug(streamingError);
-            return new StreamingResult(null, streamingError);
+        // At this point, latch has been counted down and we have a result or an error
+        var error = errorRef.get();
+
+        if (error != null) {
+            // If no partial text, just return null response
+            var partialText = accumulatedTextBuilder.toString();
+            if (partialText.isEmpty()) {
+                return new StreamingResult(null, error);
+            }
+
+            // Construct a ChatResponse from accumulated partial text
+            var aiMessage = AiMessage.from(partialText);
+            var responseFromPartialData = ChatResponse.builder()
+                    .aiMessage(aiMessage)
+                    .finishReason(FinishReason.OTHER)
+                    .build();
+
+            logger.debug("LLM call resulted in error: {}. Partial text captured: {} chars", error.getMessage(), partialText.length());
+            return new StreamingResult(responseFromPartialData, null, error);
         }
 
-        var cr = atomicResponse.get();
-        if (cr == null) {
-            // also an error
-            logger.warn("Null response from LLM");
-            return new StreamingResult(null, new IllegalStateException("No ChatResponse from model"));
+        // Happy path: successful completion, no errors
+        var response = completedChatResponse.get(); // Will be null if an error occurred or onComplete got null
+        assert response != null : "If no error, completedChatResponse must be set by onCompleteResponse";
+        if (echo) {
+            io.llmOutput("\n", ChatMessageType.AI);
         }
-        return new StreamingResult(cr, null);
+        return new StreamingResult(response, null);
+    }
+
+    private static @NotNull String formatTokensUsage(ChatResponse response) {
+        var tu = (OpenAiTokenUsage) response.tokenUsage();
+        var template = "token usage: %,d input (%s cached), %,d output (%s reasoning)";
+        return template.formatted(tu.inputTokenCount(),
+                                  (tu.inputTokensDetails() == null) ? "?" : "%,d".formatted(tu.inputTokensDetails().cachedTokens()),
+                                  tu.outputTokenCount(),
+                                  (tu.outputTokensDetails() == null) ? "?" : "%,d".formatted(tu.outputTokensDetails().reasoningTokens()));
     }
 
     /**
@@ -289,24 +314,21 @@ public class Llm {
             }
 
             response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
-            if (response.error == null) {
-                // Check if we got a non-empty response
-                var cr = response.chatResponse;
-                boolean isEmpty = (cr.aiMessage().text() == null || cr.aiMessage().text().isBlank())
-                        && !cr.aiMessage().hasToolExecutionRequests();
-                if (!isEmpty) {
-                    // Success!
-                    return response;
-                }
-            }
-            // some error or empty response
+            var cr = response.chatResponse;
+            boolean isEmpty = (Messages.getText(cr.aiMessage()).isEmpty()) && !cr.aiMessage().hasToolExecutionRequests();
             lastError = response.error;
+            if (!isEmpty && (lastError == null || allowPartialResponses)) {
+                // Success!
+                return response;
+            }
+
+            // don't retry on bad request errors
             if (lastError != null && lastError.getMessage().contains("BadRequestError")) {
-                // don't retry on bad request errors
+                logger.debug("Stopping on BadRequestError", lastError);
                 break;
             }
 
-            logger.debug("LLM error / empty message. Will retry. Attempt={}", attempt);
+            logger.debug("LLM error == {}, isEmpty == {}. Will retry. Attempt={}", lastError, isEmpty, attempt);
             if (attempt == maxAttempts) {
                 break; // done
             }
@@ -994,8 +1016,14 @@ public class Llm {
     }
 
     /**
-     * The result of a streaming call. Usually you only need the final ChatResponse
-     * unless cancelled or error is non-null.
+     * The result of a streaming call:
+     * - chatResponse: processed response with tool emulation
+     * - originalResponse: exactly what we got back from the LLM
+     * - error: like it says
+     *
+     * Generally, only one of (chatResponse, error) is not null, but there is one edge case:
+     * if the LLM hangs up abruptly after starting its response, we'll forge a chatResponse with the partial result
+     * and also include the error that we got from the HTTP layer. In this case originalResponse will be null
      */
     public record StreamingResult(ChatResponse chatResponse,
                                   ChatResponse originalResponse,
@@ -1015,10 +1043,18 @@ public class Llm {
                 return """
                        [Error: %s]
                        %s
-                       """.formatted(error.getMessage(), originalResponse == null ? "[Null response]" : originalResponse.toString());
+                       """.formatted(formatThrowable(error), originalResponse == null ? "[Null response]" : originalResponse.toString());
             }
 
             return originalResponse.toString();
+        }
+
+        private String formatThrowable(Throwable th) {
+            var baos = new ByteArrayOutputStream();
+            try (var ps = new PrintStream(baos)) {
+                th.printStackTrace(ps);
+            }
+            return baos.toString(StandardCharsets.UTF_8);
         }
 
         /**

@@ -5,6 +5,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.output.FinishReason;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.Llm.StreamingResult;
 import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
@@ -17,6 +18,7 @@ import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.LogDescription;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,7 +61,7 @@ public class CodeAgent {
     public SessionResult runSession(String userInput, boolean forArchitect) {
         var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
-        var coder = contextManager.getLlm(model, "Code: " + userInput);
+        var coder = contextManager.getLlm(model, "Code: " + userInput, true);
 
         // Track original contents of files before any changes
         var originalContents = new HashMap<ProjectFile, String>();
@@ -92,62 +94,93 @@ public class CodeAgent {
                                                                        parser,
                                                                        sessionMessages,
                                                                        nextRequest);
-            StreamingResult streamingResult = null;
+            StreamingResult streamingResult;
             try {
                 streamingResult = coder.sendRequest(allMessages, true);
-                stopDetails = checkLlmResult(streamingResult, io);
             } catch (InterruptedException e) {
                 logger.debug("CodeAgent interrupted during sendRequest");
                 stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.INTERRUPTED);
+                break;
             }
-            if (stopDetails != null) break;
+
+            var llmResponse = streamingResult.chatResponse();
+            var llmError = streamingResult.error();
+
+            boolean hasUsableContent = llmResponse != null && !Messages.getText(llmResponse.aiMessage()).isBlank();
+            if (!hasUsableContent) {
+                String message;
+                if (llmError != null) {
+                    message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending session";
+                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, llmError.getMessage());
+                } else {
+                    message = "Empty LLM response even after retries. Ending session";
+                    stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE, message);
+                }
+                io.toolErrorRaw(message);
+                logger.debug(message);
+                break;
+            }
 
             // Append request/response to session history
-            var llmResponse = streamingResult.chatResponse();
             sessionMessages.add(nextRequest);
             sessionMessages.add(llmResponse.aiMessage());
 
             String llmText = llmResponse.aiMessage().text();
-            logger.debug("got response");
+            logger.debug("Got response (potentially partial if LLM connection was cut off)");
 
             // Parse any edit blocks from LLM response
             var parseResult = parser.parseEditBlocks(llmText, contextManager.getRepo().getTrackedFiles());
             var newlyParsedBlocks = parseResult.blocks();
             blocks.addAll(newlyParsedBlocks);
 
-            if (parseResult.parseError() == null) {
-                // No parse errors
-                parseFailures = 0;
-            } else {
+            var isPartialResponse = llmError != null || streamingResult.chatResponse().finishReason() == FinishReason.LENGTH;
+            UserMessage messageForRetry = null;
+            String consoleLogForRetry = null;
+
+            // handle parse errors and incomplete responses
+            if (parseResult.parseError() != null) {
                 if (newlyParsedBlocks.isEmpty()) {
-                    // No blocks parsed successfully
+                    // Pure parse failure (no blocks parsed from this segment)
                     parseFailures++;
                     if (parseFailures > MAX_PARSE_ATTEMPTS) {
                         stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.PARSE_ERROR);
                         io.systemOutput("Parse error limit reached; ending session");
-                        break;
+                        break; // Exit main loop
                     }
-                    nextRequest = new UserMessage(parseResult.parseError());
-                    io.llmOutput("Failed to parse LLM response; retrying", ChatMessageType.CUSTOM);
+                    messageForRetry = new UserMessage(parseResult.parseError());
+                    consoleLogForRetry = "Failed to parse LLM response; retrying";
                 } else {
-                    // Partial parse => ask LLM to continue from last parsed block
-                    parseFailures = 0;
-                    var partialMsg = """
-                                     It looks like we got cut off. The last block I successfully parsed was:
-                                     
-                                     <block>
-                                     %s
-                                     </block>
-                                     
-                                     Please continue from there (WITHOUT repeating that one).
-                                     """.stripIndent().formatted(newlyParsedBlocks.getLast());
-                    nextRequest = new UserMessage(partialMsg);
-                    io.llmOutput("Incomplete response after %d blocks parsed; retrying".formatted(newlyParsedBlocks.size()),
-                                 ChatMessageType.CUSTOM);
+                    // Some blocks parsed, then a parse error (partial parse)
+                    parseFailures = 0; // Reset, as we got some good blocks.
+                    messageForRetry = new UserMessage(getContinueFromLastBlockPrompt(newlyParsedBlocks.getLast()));
+                    consoleLogForRetry = "Malformed or incomplete response after %d blocks parsed; asking LLM to continue/fix".formatted(newlyParsedBlocks.size());
                 }
+            } else {
+                parseFailures = 0; // Current segment is clean.
+
+                if (isPartialResponse) {
+                    // LLM indicated its response was cut short (e.g., length limit),
+                    // BUT the part received so far is syntactically valid.
+                    if (newlyParsedBlocks.isEmpty()) {
+                        // No blocks parsed yet from this segment (e.g., LLM sent introductory text and then got cut off)
+                        messageForRetry = new UserMessage("It looks like the response was cut off before you provided any code blocks. Please continue with your response.");
+                        consoleLogForRetry = "LLM indicated response was partial before any blocks (no parse error); asking to continue";
+                    } else {
+                        // We have valid blocks from the partial response.
+                        messageForRetry = new UserMessage(getContinueFromLastBlockPrompt(newlyParsedBlocks.getLast()));
+                        consoleLogForRetry = "LLM indicated response was partial after %d clean blocks; asking to continue".formatted(newlyParsedBlocks.size());
+                    }
+                }
+            }
+            if (messageForRetry != null) {
+                nextRequest = messageForRetry;
+                logger.debug(consoleLogForRetry);
+                io.llmOutput(consoleLogForRetry, ChatMessageType.CUSTOM);
                 continue;
             }
 
+            // If we reach here, it means the LLM segment was considered complete and correct for now.
+            // Proceed to apply accumulated `blocks`.
             logger.debug("{} total unapplied blocks", blocks.size());
 
             // If no blocks are pending and we haven't applied anything yet, we're done
@@ -482,28 +515,6 @@ public class CodeAgent {
     }
 
     /**
-     * Checks if a streaming result is empty or errored. If so, logs and returns StopDetails;
-     * otherwise returns null to proceed.
-     */
-    private static SessionResult.StopDetails checkLlmResult(StreamingResult streamingResult, IConsoleIO io) {
-        if (streamingResult.error() != null) {
-            io.systemOutput("LLM returned an error even after retries. Ending session");
-            return new SessionResult.StopDetails(SessionResult.StopReason.LLM_ERROR, streamingResult.error().getMessage());
-        }
-
-        var llmResponse = streamingResult.chatResponse();
-        assert llmResponse != null; // enforced by SR
-        var text = llmResponse.aiMessage().text();
-        if (text.isBlank()) {
-            io.systemOutput("Blank LLM response even after retries. Ending session.");
-            return new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE);
-        }
-
-        return null;
-    }
-
-
-    /**
      * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
      * If `rejectReadonlyEdits` is true, it returns a list of read-only files attempted to be edited.
      * Otherwise, it returns an empty list.
@@ -685,5 +696,22 @@ public class CodeAgent {
                      """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM);
         // Add the combined error and output to the history for the next request
         return result.error() + "\n\n" + result.output();
+    }
+
+    /**
+     * Generates a user message to ask the LLM to continue when a response appears to be cut off.
+     * @param lastBlock The last successfully parsed block from the incomplete response.
+     * @return A formatted string to be used as a UserMessage.
+     */
+    private static String getContinueFromLastBlockPrompt(EditBlock.SearchReplaceBlock lastBlock) {
+        return """
+               It looks like we got cut off. The last block I successfully parsed was:
+               
+               <block>
+               %s
+               </block>
+               
+               Please continue from there (WITHOUT repeating that one).
+               """.stripIndent().formatted(lastBlock);
     }
 }
