@@ -69,14 +69,29 @@ public class VoiceInputButton extends JButton {
         this.onError = onError;
         this.customSymbolsFuture = customSymbolsFuture;
 
+        // Determine standard button height to make this button square
+        var referenceButton = new JButton(" "); // Use a single space or "Hg" for height calculation
+        int normalButtonHeight = referenceButton.getPreferredSize().height;
+
+        // Determine appropriate icon size, leaving some padding similar to default button margins
+        Insets buttonMargin = UIManager.getInsets("Button.margin");
+        if (buttonMargin == null) {
+            // Fallback if Look and Feel doesn't provide Button.margin
+            // These values are typical for many L&Fs
+            buttonMargin = new Insets(2, 14, 2, 14);
+        }
+        // Calculate icon size to fit within button height considering vertical margins
+        int iconDisplaySize = normalButtonHeight - (buttonMargin.top + buttonMargin.bottom);
+        iconDisplaySize = Math.max(8, iconDisplaySize); // Ensure a minimum practical size
+
         // Load mic icons
         try {
             micOnIcon = new ImageIcon(getClass().getResource("/mic-on.png"));
             micOffIcon = new ImageIcon(getClass().getResource("/mic-off.png"));
-            // Scale icons if needed
-            micOnIcon = new ImageIcon(micOnIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
-            micOffIcon = new ImageIcon(micOffIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH));
-            logger.trace("Successfully loaded mic icons");
+            // Scale icons to fit the dynamic button size
+            micOnIcon = new ImageIcon(micOnIcon.getImage().getScaledInstance(iconDisplaySize, iconDisplaySize, Image.SCALE_SMOOTH));
+            micOffIcon = new ImageIcon(micOffIcon.getImage().getScaledInstance(iconDisplaySize, iconDisplaySize, Image.SCALE_SMOOTH));
+            logger.trace("Successfully loaded and scaled mic icons to {}x{}", iconDisplaySize, iconDisplaySize);
         } catch (Exception e) {
             logger.warn("Failed to load mic icons", e);
             // We'll fall back to text if icons can't be loaded
@@ -88,12 +103,14 @@ public class VoiceInputButton extends JButton {
         if (micOffIcon != null) {
             setIcon(micOffIcon);
         } else {
-            setText("Mic");
+            setText("Mic"); // Fallback text if icons fail to load
         }
         
-        setPreferredSize(new Dimension(32, 32));
-        setMinimumSize(new Dimension(32, 32));
-        setMaximumSize(new Dimension(32, 32));
+        Dimension buttonSize = new Dimension(normalButtonHeight, normalButtonHeight);
+        setPreferredSize(buttonSize);
+        setMinimumSize(buttonSize);
+        setMaximumSize(buttonSize);
+        setMargin(new Insets(0,0,0,0)); // Remove default margins to center icon better if it's the only content
         
         // Track recording state
         putClientProperty("isRecording", false);
