@@ -58,8 +58,7 @@ public class LlmTest {
 
 
         };
-        var models = new Models();
-        models.reinit(project);
+        var models = new Models(project);
         contextManager = new IContextManager() {
             @Override
             public IConsoleIO getIo() {
