@@ -4,6 +4,7 @@ import com.github.tjake.jlama.model.AbstractModel;
 import com.github.tjake.jlama.model.ModelSupport;
 import com.github.tjake.jlama.safetensors.DType;
 import com.github.tjake.jlama.safetensors.SafeTensorSupport;
+import io.github.jbellis.brokk.gui.CheckThreadViolationRepaintManager;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.gui.dialogs.StartupDialog;
@@ -83,6 +84,10 @@ public class Brokk {
         // 3) On macOS, optionally set the app name for the Dock:
         if (System.getProperty("os.name").toLowerCase().contains("mac")) {
             System.setProperty("apple.awt.application.name", "Brokk");
+        }
+
+        if (Boolean.getBoolean("brokk.devmode")) {
+            RepaintManager.setCurrentManager(new CheckThreadViolationRepaintManager());
         }
 
         SwingUtilities.invokeLater(() -> {

@@ -106,3 +106,4 @@ testFrameworks += new TestFramework("com.github.sbt.junit.JupiterFramework")
 Compile / run / fork := true
 javaOptions += "-ea"
 javaOptions += "--add-modules=jdk.incubator.vector"
+javaOptions += "-Dbrokk.devmode=true"
