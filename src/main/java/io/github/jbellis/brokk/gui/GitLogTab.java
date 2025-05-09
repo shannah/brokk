@@ -319,9 +319,42 @@ public class GitLogTab extends JPanel {
         // Context menu actions
         addToContextItem.addActionListener(e -> {
             int[] selectedRows = commitsTable.getSelectedRows();
-            if (selectedRows.length >= 1) {
-                // Now we rely on GitUIUtils for the multi-commit diff
-                GitUiUtil.addCommitRangeToContext(contextManager, chrome, selectedRows, commitsTableModel);
+            if (selectedRows.length == 0) {
+                return;
+            }
+
+            java.util.Arrays.sort(selectedRows); // Ensure rows are sorted for contiguous group detection
+
+            var contiguousRowGroups = new ArrayList<List<Integer>>();
+            if (selectedRows.length > 0) {
+                var currentGroup = new ArrayList<Integer>();
+                currentGroup.add(selectedRows[0]);
+                contiguousRowGroups.add(currentGroup);
+
+                for (int i = 1; i < selectedRows.length; i++) {
+                    if (selectedRows[i] == selectedRows[i - 1] + 1) {
+                        // Current row is contiguous with the previous one, add to current group
+                        currentGroup.add(selectedRows[i]);
+                    } else {
+                        // Start of a new non-contiguous group
+                        currentGroup = new ArrayList<>();
+                        currentGroup.add(selectedRows[i]);
+                        contiguousRowGroups.add(currentGroup);
+                    }
+                }
+            }
+
+            for (var group : contiguousRowGroups) {
+                if (group.isEmpty()) { // Should not happen with the logic above, but good practice
+                    continue;
+                }
+                // Convert the list of rows for the current group to an int array
+                int[] groupAsIntArray = group.stream().mapToInt(Integer::intValue).toArray();
+
+                // Call the utility method for each contiguous group of rows.
+                // It's assumed that addCommitRangeToContext will derive the
+                // first and last commit of this specific group and add one fragment.
+                GitUiUtil.addCommitRangeToContext(contextManager, chrome, groupAsIntArray, commitsTableModel);
             }
         });
         softResetItem.addActionListener(e -> {
