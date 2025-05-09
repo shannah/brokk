@@ -32,6 +32,7 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
+import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
@@ -398,6 +399,17 @@ public class WorkspacePanel extends JPanel {
                     return new StringSelection(contentToCopy);
                 }
                 return null;
+            }
+        });
+
+        // Add Ctrl+V paste handler for the table
+        var pasteKeyStroke = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        var pasteActionKey = "pasteAction";
+        contextTable.getInputMap(JComponent.WHEN_FOCUSED).put(pasteKeyStroke, pasteActionKey);
+        contextTable.getActionMap().put(pasteActionKey, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                performContextActionAsync(ContextAction.PASTE, List.of());
             }
         });
 

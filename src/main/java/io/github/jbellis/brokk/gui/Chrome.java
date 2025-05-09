@@ -1097,6 +1097,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         }
     }
 
+    // for paste from menubar -- ctrl-v paste is handled in individual components
     private class GlobalPasteAction extends AbstractAction {
         public GlobalPasteAction(String name) {
             super(name);
