@@ -39,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -104,6 +105,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private boolean freeTierNotified = false;
     private String lastCheckedInputText = null;
     private float[][] lastCheckedEmbeddings = null;
+    private List<FileReferenceData> pendingQuickContext = null;
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2));
@@ -936,6 +938,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // 0. Initial staleness check
         if (myGen != suggestionGeneration.get()) {
             logger.trace("Task {} is stale (current gen {}), aborting early.", myGen, suggestionGeneration.get());
+            showPendingContext(null);
             return;
         }
 
@@ -946,7 +949,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             // 1. Quick literal check
             if (snapshot.equals(lastCheckedInputText)) {
                 logger.trace("Task {} input is literally unchanged (not forced), aborting.", myGen);
-                clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
+                showPendingContext(null);
                 return;
             }
         } else {
@@ -972,6 +975,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // 3. Staleness check before embedding
         if (myGen != suggestionGeneration.get()) {
             logger.trace("Task {} is stale before embedding, aborting.", myGen);
+            showPendingContext(null);
             return;
         }
 
@@ -989,6 +993,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // 5. Staleness check after embedding
         if (myGen != suggestionGeneration.get()) {
             logger.trace("Task {} is stale after embedding, aborting.", myGen);
+            showPendingContext(null);
             return;
         }
 
@@ -998,24 +1003,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             if (!isDifferent) {
                 logger.trace("Task {} input is semantically similar (not forced), aborting ContextAgent.", myGen);
-                clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
+                showPendingContext(null);
                 return;
             }
         } else {
             logger.trace("Task {} is forced, skipping semantic similarity check.", myGen);
-        }
-
-        // Update state (always update if we got this far, forced or not)
-        this.lastCheckedInputText = snapshot;
-        this.lastCheckedEmbeddings = newEmbeddings;
-
-        // 7. Staleness check *after* updating state but *before* running ContextAgent.
-        // This ensures that if a *newer* task has already updated lastCheckedInputText/Embeddings
-        // (because it was semantically different from what *this* task saw as `lastChecked...`),
-        // then this current (now older) task won't proceed.
-        if (myGen != suggestionGeneration.get()) {
-            logger.trace("Task {} is stale after updating its own state but before ContextAgent, aborting.", myGen);
-            return;
         }
 
         // 8. Run ContextAgent
@@ -1026,24 +1018,36 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             ContextAgent agent = new ContextAgent(contextManager, model, snapshot, false);
             recommendations = agent.getRecommendations();
 
-            // 10. Process results and schedule UI update
-            if (recommendations.success()) {
-                var fileRefs = recommendations.fragments().stream()
-                        .flatMap(f -> f.files(contextManager.getProject()).stream())
-                        .distinct()
-                        .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
-                        .toList();
-                if (fileRefs.isEmpty()) {
-                    logger.debug("Task {} found no relevant files.", myGen);
-                    SwingUtilities.invokeLater(() -> showFailureLabel("No quick suggestions"));
-                } else {
-                    logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
-                    SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
-                }
-            } else {
+            // 10. Process results
+            if (!recommendations.success()) {
                 logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
-                SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
+                showPendingContext(recommendations.reasoning());
+                return;
             }
+
+            var fileRefs = recommendations.fragments().stream()
+                    .flatMap(f -> f.files(contextManager.getProject()).stream())
+                    .distinct()
+                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
+                    .toList();
+            if (fileRefs.isEmpty()) {
+                logger.debug("Task {} found no relevant files.", myGen);
+                showPendingContext("No quick suggestions");
+                return;
+            }
+
+            // Update the UI with our new recommendations, or save them for the next task to use
+            logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
+            if (myGen == suggestionGeneration.get()) {
+                SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
+                pendingQuickContext = null;
+            } else {
+                pendingQuickContext = fileRefs;
+            }
+
+            // Set our snapshot as the new semantic baseline
+            this.lastCheckedInputText = snapshot;
+            this.lastCheckedEmbeddings = newEmbeddings;
         } catch (InterruptedException ex) {
             // shouldn't happen
             throw new RuntimeException(ex);
@@ -1053,6 +1057,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 logger.trace("Task {} cleared forceSuggestions.", myGen);
             }
         }
+    }
+
+    private void showPendingContext(@Nullable String failureExplanation) {
+        // do this on the serial task thread, before we move to the EDT
+        var contextToDisplay = pendingQuickContext;
+        pendingQuickContext = null;
+
+        SwingUtilities.invokeLater(() -> {
+            if (contextToDisplay != null) {
+                showSuggestionsTable(contextToDisplay);
+            } else if (failureExplanation != null) {
+                showFailureLabel(failureExplanation);
+            }
+        });
     }
 
     /**
@@ -1100,27 +1118,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // If lengths match and all similarities are above threshold, it's not different enough.
         // Do NOT update lastCheckedEmbeddings here, keep the previous ones for the next comparison.
         return false;
-    }
-
-    /**
-     * Helper to clear transient failure messages (like "Waiting for model...") from the UI
-     * *only if* the current generation matches the provided `taskGen` (meaning no newer
-     * task has started) and the message indicates a known transient state.
-     * This prevents clearing a valid error message from a newer task.
-     */
-    private void clearTransientFailureLabelIfStale(long taskGen) {
-        SwingUtilities.invokeLater(() -> {
-            if (taskGen == suggestionGeneration.get() && failureReasonLabel.isVisible()) {
-                String currentLabelText = failureReasonLabel.getText();
-                // Add more transient message prefixes if needed
-                if (currentLabelText != null && currentLabelText.startsWith("Waiting for model")) {
-                    logger.trace("Clearing transient failure label '{}' as task {} determined input unchanged/similar.", currentLabelText, taskGen);
-                    failureReasonLabel.setVisible(false);
-                    // Optionally show the (likely empty) table again
-                    suggestionCardLayout.show(suggestionContentPanel, "TABLE");
-                }
-            }
-        });
     }
 
     /**
@@ -1191,6 +1188,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                             return;
                         }
 
+                        freeTierNotified = true;
                         var panel = new JPanel();
                         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
                         panel.setAlignmentX(Component.LEFT_ALIGNMENT);
