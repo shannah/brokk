@@ -152,7 +152,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 // Update lastRelevantFocusOwner only if the new focus owner is one of our primary targets
                 if (newFocusOwner != null && instructionsPanel != null && workspacePanel != null && historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null && historyOutputPanel.getHistoryTable() != null)
                 {
-                    if (newFocusOwner == instructionsPanel.getCommandInputField()
+                    if (newFocusOwner == instructionsPanel.getInstructionsArea()
                         || SwingUtilities.isDescendingFrom(newFocusOwner, workspacePanel)
                         || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())
                         || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getLlmStreamArea())) // Check for LLM area
@@ -977,8 +977,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     private boolean isFocusInTextCopyableArea(Component focusOwner) {
         if (focusOwner == null) return false;
-        boolean inCommandInput = instructionsPanel != null && instructionsPanel.getCommandInputField() != null &&
-                                 lastRelevantFocusOwner == instructionsPanel.getCommandInputField();
+        boolean inCommandInput = instructionsPanel != null && instructionsPanel.getInstructionsArea() != null &&
+                                 lastRelevantFocusOwner == instructionsPanel.getInstructionsArea();
         boolean inLlmStreamArea = historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null &&
                                  SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea());
         return inCommandInput || inLlmStreamArea;
@@ -993,7 +993,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 if (instructionsPanel.getCommandInputUndoManager().canUndo()) {
                     instructionsPanel.getCommandInputUndoManager().undo();
                 }
@@ -1006,7 +1006,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         public void updateEnabledState() {
             boolean canUndoNow = false;
-            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 canUndoNow = instructionsPanel.getCommandInputUndoManager().canUndo();
             } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
                 canUndoNow = contextManager.getContextHistory().hasUndoStates();
@@ -1022,7 +1022,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 if (instructionsPanel.getCommandInputUndoManager().canRedo()) {
                     instructionsPanel.getCommandInputUndoManager().redo();
                 }
@@ -1035,7 +1035,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         public void updateEnabledState() {
             boolean canRedoNow = false;
-            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+            if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 canRedoNow = instructionsPanel.getCommandInputUndoManager().canRedo();
             } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
                 canRedoNow = contextManager.getContextHistory().hasRedoStates();
@@ -1055,8 +1055,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             if (lastRelevantFocusOwner == null) {
                 return;
             }
-            if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
-                instructionsPanel.getCommandInputField().copy();
+            if (lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
+                instructionsPanel.getInstructionsArea().copy();
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea())) {
                 historyOutputPanel.getLlmStreamArea().copy(); // Assumes MarkdownOutputPanel has copy()
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel) ||
@@ -1078,8 +1078,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             }
 
             boolean canCopyNow = false;
-            if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
-                var field = instructionsPanel.getCommandInputField();
+            if (lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
+                var field = instructionsPanel.getInstructionsArea();
                 canCopyNow = (field.getSelectedText() != null && !field.getSelectedText().isEmpty()) || !field.getText().isEmpty();
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea())) {
                 var llmArea = historyOutputPanel.getLlmStreamArea();
@@ -1106,8 +1106,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 return;
             }
 
-            if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
-                instructionsPanel.getCommandInputField().paste();
+            if (lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
+                instructionsPanel.getInstructionsArea().paste();
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel)) {
                 workspacePanel.performContextActionAsync(WorkspacePanel.ContextAction.PASTE, List.of());
             }
@@ -1117,7 +1117,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             boolean canPasteNow = false;
             if (lastRelevantFocusOwner == null) {
                 // leave it false
-            } else if (lastRelevantFocusOwner == instructionsPanel.getCommandInputField()) {
+            } else if (lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 canPasteNow = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().isDataFlavorAvailable(java.awt.datatransfer.DataFlavor.stringFlavor);
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel)) {
                 // ContextPanel's doPasteAction checks clipboard content type. Enable if CM is available.

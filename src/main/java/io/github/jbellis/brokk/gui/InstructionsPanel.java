@@ -65,7 +65,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static final int TRUNCATION_LENGTH = 100;    // Characters
 
     private final Chrome chrome;
-    private final JTextArea commandInputField;
+    private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
     private final JButton agentButton;
     private final SplitButton codeButton;
@@ -116,8 +116,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.commandInputUndoManager = new UndoManager();
 
         // Initialize components
-        commandInputField = buildCommandInputField(); // Build first to add listener
-        micButton = new VoiceInputButton(commandInputField, contextManager, () -> {
+        instructionsArea = buildCommandInputField(); // Build first to add listener
+        micButton = new VoiceInputButton(instructionsArea, contextManager, () -> {
             activateCommandInput();
             chrome.actionOutput("Recording");
         }, chrome::toolError);
@@ -202,7 +202,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Initialize and configure the context suggestion timer
         contextSuggestionTimer = new Timer(100, this::triggerContextSuggestion);
         contextSuggestionTimer.setRepeats(false);
-        commandInputField.getDocument().addDocumentListener(new DocumentListener() {
+        instructionsArea.getDocument().addDocumentListener(new DocumentListener() {
             private void checkAndHandleSuggestions() {
                 if (getInstructions().split("\\s+").length >= 2) {
                     contextSuggestionTimer.restart();
@@ -265,8 +265,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return commandInputUndoManager;
     }
 
-    public JTextArea getCommandInputField() {
-        return commandInputField;
+    public JTextArea getInstructionsArea() {
+        return instructionsArea;
     }
 
     private JTextArea buildCommandInputField() {
@@ -351,7 +351,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
 
         // Command Input Field
-        JScrollPane commandScrollPane = new JScrollPane(commandInputField);
+        JScrollPane commandScrollPane = new JScrollPane(instructionsArea);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Use preferred size for layout
         commandScrollPane.setMinimumSize(new Dimension(100, 80));
@@ -727,9 +727,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         setCommandInputAndDeepScanEnabled(true);
 
                         // Set text and request focus
-                        commandInputField.setText(item);
+                        instructionsArea.setText(item);
                         commandInputUndoManager.discardAllEdits(); // Clear undo history for new text
-                        commandInputField.requestFocusInWindow();
+                        instructionsArea.requestFocusInWindow();
                     });
                     historyMenu.add(menuItem);
                 }
@@ -794,9 +794,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * it returns an empty string, otherwise it returns the actual text content.
      */
     public String getInstructions() {
-        return commandInputField.getText().equals(PLACEHOLDER_TEXT)
+        return instructionsArea.getText().equals(PLACEHOLDER_TEXT)
                ? ""
-               : commandInputField.getText();
+               : instructionsArea.getText();
     }
 
     /**
@@ -804,12 +804,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * This prevents the placeholder from reappearing inadvertently.
      */
     public void clearCommandInput() {
-        commandInputField.setText("");
+        instructionsArea.setText("");
         commandInputUndoManager.discardAllEdits(); // Clear undo history as well
     }
 
     public void requestCommandInputFocus() {
-        commandInputField.requestFocus();
+        instructionsArea.requestFocus();
     }
 
     /**
@@ -1598,7 +1598,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             askButton.setEnabled(projectLoaded && cmAvailable);
             searchButton.setEnabled(projectLoaded && cmAvailable);
             runButton.setEnabled(cmAvailable); // Requires CM for getRoot()
-            deepScanButton.setEnabled(projectLoaded && cmAvailable && commandInputField.isEnabled());
+            deepScanButton.setEnabled(projectLoaded && cmAvailable && instructionsArea.isEnabled());
             configureModelsButton.setEnabled(projectLoaded && cmAvailable); // Requires CM for Models
             micButton.setEnabled(cmAvailable); // VoiceInputButton constructor takes CM
 
@@ -1632,10 +1632,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         overlayPanel.setVisible(false); // Hide the overlay
         setCommandInputAndDeepScanEnabled(true); // Enable input and deep scan button
         // Clear placeholder only if it's still present
-        if (commandInputField.getText().equals(PLACEHOLDER_TEXT)) {
+        if (instructionsArea.getText().equals(PLACEHOLDER_TEXT)) {
             clearCommandInput();
         }
-        commandInputField.requestFocusInWindow(); // Give it focus
+        instructionsArea.requestFocusInWindow(); // Give it focus
     }
 
     /**
@@ -1644,7 +1644,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * @param enabled true to enable, false to disable.
      */
     void setCommandInputAndDeepScanEnabled(boolean enabled) {
-        commandInputField.setEnabled(enabled);
+        instructionsArea.setEnabled(enabled);
         this.deepScanButton.setEnabled(enabled);
     }
 
