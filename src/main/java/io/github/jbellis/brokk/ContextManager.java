@@ -212,13 +212,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.toolRegistry.register(new WorkspaceTools(this));
 
         // Load saved context or create a new one
-        var welcomeMessage = buildWelcomeMessage();
-        var initialContext = project.loadContext(this, welcomeMessage);
-        if (initialContext == null) {
-            initialContext = new Context(this, welcomeMessage);
-        }
-        contextHistory.setInitialContext(initialContext);
-        chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
+        submitBackgroundTask("Loading saved context", () -> {
+            var welcomeMessage = buildWelcomeMessage();
+            var initialContext = project.loadContext(this, welcomeMessage);
+            if (initialContext == null) {
+                initialContext = new Context(this, welcomeMessage);
+            }
+            contextHistory.setInitialContext(initialContext);
+            chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
+        });
 
         // Ensure style guide and build details are loaded/generated asynchronously
         ensureStyleGuide();
