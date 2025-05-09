@@ -15,10 +15,7 @@ import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
-import io.github.jbellis.brokk.util.ImageUtil;
-import io.github.jbellis.brokk.util.LoggingExecutorService;
-import io.github.jbellis.brokk.util.Messages;
-import io.github.jbellis.brokk.util.StackTrace;
+import io.github.jbellis.brokk.util.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -125,7 +122,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             Set.of(InterruptedException.class));
 
     private final Path root;
-    private final Models models;
+    private final ModelsWrapper models;
     private Project project; // Initialized in resolveCircularReferences
     private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
 
@@ -154,7 +151,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         this.root = root.toAbsolutePath().normalize();
         this.contextHistory = new ContextHistory();
-        this.models = new Models();
+        this.models = new ModelsWrapper();
         userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
         });
@@ -371,7 +368,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     @Override
     public Models getModels() {
-        return models;
+        return models.get();
     }
 
     /**
@@ -1471,6 +1468,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 })
                 .collect(Collectors.joining("\n"));
         return EditBlockParser.getParserFor(allText);
+    }
+
+    public Models reloadModels() {
+        models.reinit(project);
+        return models.get();
     }
 
     @FunctionalInterface

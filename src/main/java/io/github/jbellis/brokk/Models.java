@@ -94,30 +94,7 @@ public final class Models {
     private volatile boolean isFreeTierOnly = false; // Store balance status
 
     // Constructor - could potentially take project-specific config later
-    public Models() {
-    }
-
-    /**
-     * Returns the display name for a given model instance
-     */
-    public String nameOf(StreamingChatLanguageModel model) {
-        // langchain4j "name" corresponds to our "location"
-        var location = model.defaultRequestParameters().modelName();
-        // Find the key (display name) in the modelLocations map corresponding to the location value
-        return modelLocations.entrySet().stream()
-                .filter(entry -> entry.getValue().equals(location))
-                .map(Map.Entry::getKey)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Model location not found in known models: " + location));
-    }
-
-    /**
-     * Initializes models by fetching available models from LiteLLM.
-     * Call this after constructing the Models instance.
-     *
-     * @param project The project whose settings (like data retention policy) should be used.
-     */
-    public void reinit(IProject project) {
+    public Models(IProject project) {
         // Get and handle data retention policy
         var policy = project.getDataRetentionPolicy();
         if (policy == Project.DataRetentionPolicy.UNSET) {
@@ -147,8 +124,8 @@ public final class Models {
             // Choose the first available chat model as the default fallback
             var availableNames = getAvailableModels().keySet();
             var defaultModelName = availableNames.stream().findFirst().orElse(UNAVAILABLE);
-             var warnings = project.overrideMissingModels(availableNames, defaultModelName);
-             warnings.forEach(logger::debug);
+            var warnings = project.overrideMissingModels(availableNames, defaultModelName);
+            warnings.forEach(logger::debug);
         }
 
         // these should always be available
@@ -176,6 +153,20 @@ public final class Models {
             logger.info("Found transcription model at {}", sttLocation);
             sttModel = new OpenAIStt(sttLocation);
         }
+    }
+
+    /**
+     * Returns the display name for a given model instance
+     */
+    public String nameOf(StreamingChatLanguageModel model) {
+        // langchain4j "name" corresponds to our "location"
+        var location = model.defaultRequestParameters().modelName();
+        // Find the key (display name) in the modelLocations map corresponding to the location value
+        return modelLocations.entrySet().stream()
+                .filter(entry -> entry.getValue().equals(location))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Model location not found in known models: " + location));
     }
 
     public float getUserBalance() throws IOException {

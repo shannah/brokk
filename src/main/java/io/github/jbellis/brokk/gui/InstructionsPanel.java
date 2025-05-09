@@ -1169,18 +1169,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         var contextManager = chrome.getContextManager();
-        var models = contextManager.getModels();
-
         contextManager.submitBackgroundTask("", () -> {
             try {
-                float balance = models.getUserBalance();
+                float balance = contextManager.getModels().getUserBalance();
                 logger.debug("Checked balance: ${}", String.format("%.2f", balance));
 
                 // If balance drops below the minimum paid threshold, reinitialize models to enforce free tier
                 if (balance < Models.MINIMUM_PAID_BALANCE) {
                     logger.debug("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Models.MINIMUM_PAID_BALANCE);
                     // This will refetch models and apply the lowBalance filter based on MINIMUM_PAID_BALANCE
-                    models.reinit(contextManager.getProject());
+                    contextManager.reloadModels();
 
                     SwingUtilities.invokeLater(() -> {
                         if (freeTierNotified) {
