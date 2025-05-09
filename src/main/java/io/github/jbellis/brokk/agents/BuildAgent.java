@@ -246,8 +246,8 @@ public class BuildAgent {
     public String reportBuildDetails(
             @P("List of build files involved in the build, including module build files") List<String> buildfiles,
             @P("List of identified third-party dependencies") List<String> dependencies,
-            @P("Command to build or lint incrementally, e.g. mvn compile, cargo check, pyflakes .") String buildLintCommand,
-            @P("Command to run all tests") String testAllCommand,
+            @P("Command to build or lint incrementally, e.g. mvn compile, cargo check, pyflakes. If a linter is not clearly in use, don't guess! it will cause problems; just leave it blank.") String buildLintCommand,
+            @P("Command to run all tests. If no test framework is clearly in use, don't guess! it will cause problems; just leave it blank.") String testAllCommand,
             @P("""
                Instructions and details about the build process, including environment configurations
                and any idiosyncracies observed. Include information on how to run other test configurations, especially

@@ -673,7 +673,7 @@ public class CodeAgent {
      * @return empty string if the build was successful or skipped, error message otherwise.
      */
     private static String checkBuild(String verificationCommand, IContextManager cm, IConsoleIO io) throws InterruptedException {
-        if (verificationCommand == null) {
+        if (verificationCommand == null || verificationCommand.isBlank()) {
             io.llmOutput("\nNo verification command specified, skipping build/check.", ChatMessageType.CUSTOM);
             return "";
         }
