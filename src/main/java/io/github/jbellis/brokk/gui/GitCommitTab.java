@@ -35,7 +35,7 @@ public class GitCommitTab extends JPanel {
     // Commit tab UI
     private JTable uncommittedFilesTable;
     private JButton suggestMessageButton;
-    private RSyntaxTextArea commitMessageArea;
+    private JTextArea commitMessageArea;
     private JButton commitButton;
     private JButton stashButton;
     private final Map<ProjectFile, String> fileStatusMap = new HashMap<>();
@@ -215,11 +215,9 @@ public class GitCommitTab extends JPanel {
         JPanel messagePanel = new JPanel(new BorderLayout());
         messagePanel.add(new JLabel("Commit/Stash Description:"), BorderLayout.NORTH);
 
-        commitMessageArea = new org.fife.ui.rsyntaxtextarea.RSyntaxTextArea(2, 50);
-        commitMessageArea.setSyntaxEditingStyle(org.fife.ui.rsyntaxtextarea.SyntaxConstants.SYNTAX_STYLE_NONE);
+        commitMessageArea = new JTextArea(2, 50);
         commitMessageArea.setLineWrap(true);
         commitMessageArea.setWrapStyleWord(true);
-        commitMessageArea.setHighlightCurrentLine(false);
         messagePanel.add(new JScrollPane(commitMessageArea), BorderLayout.CENTER);
 
         commitBottomPanel.add(messagePanel, BorderLayout.CENTER);
