@@ -10,6 +10,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Manages UI theme settings and application across the application.
@@ -60,7 +61,7 @@ public class GuiTheme {
             }
             
             // Apply theme to RSyntaxTextArea components
-            applyRSyntaxTheme(themeName);
+            applyRSyntaxThemeAsync(themeName);
             
             // Update the UI
             SwingUtilities.updateComponentTreeUI(frame);
@@ -84,21 +85,28 @@ public class GuiTheme {
      * Applies the appropriate theme to all RSyntaxTextArea components
      * @param themeName "dark" or "light"
      */
-    public void applyRSyntaxTheme(String themeName) {
-        String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/" +
-                              (themeName.equals(THEME_DARK) ? "dark.xml" : "default.xml");
-        try {
-            var theme = Theme.load(getClass().getResourceAsStream(themeResource));
-            
-            // Apply to all RSyntaxTextArea components in open windows
-            for (Window window : Window.getWindows()) {
-                if (window instanceof JFrame) {
-                    applyThemeToFrame((JFrame)window, theme);
-                }
+    public void applyRSyntaxThemeAsync(String themeName) {
+        // loading the theme is relatively slow, so move it off of the EDT
+        CompletableFuture.runAsync(() -> {
+            String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/"
+                    + (themeName.equals(THEME_DARK) ? "dark.xml" : "default.xml");
+            Theme theme;
+            try {
+                theme = Theme.load(getClass().getResourceAsStream(themeResource));
+            } catch (Exception e) {
+                logger.error("Could not load {}", themeName, e);
+                return;
             }
-        } catch (Exception e) {
-            logger.warn("Could not apply " + themeName + " theme to RSyntaxTextArea", e);
-        }
+
+            // Apply to all RSyntaxTextArea components in open windows
+            SwingUtil.runOnEDT(() -> {
+                for (Window window : Window.getWindows()) {
+                    if (window instanceof JFrame) {
+                        applyThemeToFrame((JFrame) window, theme);
+                    }
+                }
+            });
+        });
     }
     
     /**
