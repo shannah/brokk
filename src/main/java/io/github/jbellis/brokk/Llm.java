@@ -315,7 +315,7 @@ public class Llm {
 
             response = doSingleSendMessage(model, messages, tools, toolChoice, echo);
             var cr = response.chatResponse;
-            boolean isEmpty = (Messages.getText(cr.aiMessage()).isEmpty()) && !cr.aiMessage().hasToolExecutionRequests();
+            boolean isEmpty = cr == null || (Messages.getText(cr.aiMessage()).isEmpty()) && !cr.aiMessage().hasToolExecutionRequests();
             lastError = response.error;
             if (!isEmpty && (lastError == null || allowPartialResponses)) {
                 // Success!
