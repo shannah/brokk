@@ -42,11 +42,13 @@ public class PreviewImagePanel extends JPanel {
         }
 
         public void setImage(Image image) {
-            this.image = (BufferedImage)image;
-            removeAll();
-            setupUI();
-            revalidate();
-            repaint();
+            SwingUtilities.invokeLater(() -> {
+                this.image = (BufferedImage)image;
+                removeAll();
+                setupUI();
+                revalidate();
+                repaint();
+            });
         }
 
     private void setupUI() {

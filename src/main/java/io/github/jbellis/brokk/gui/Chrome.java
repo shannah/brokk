@@ -521,20 +521,22 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     @Override
     public void contextChanged(Context newCtx) {
-        // This method is called by ContextManager when its history might have changed
-        // (e.g., after an undo/redo operation affecting context or any pushContext).
-        // We need to ensure the global action states are updated even if focus didn't change.
-        if (globalUndoAction != null) globalUndoAction.updateEnabledState();
-        if (globalRedoAction != null) globalRedoAction.updateEnabledState();
-        if (globalCopyAction != null) globalCopyAction.updateEnabledState();
-        if (globalPasteAction != null) globalPasteAction.updateEnabledState();
+        SwingUtilities.invokeLater(() -> {
+            // This method is called by ContextManager when its history might have changed
+            // (e.g., after an undo/redo operation affecting context or any pushContext).
+            // We need to ensure the global action states are updated even if focus didn't change.
+            if (globalUndoAction != null) globalUndoAction.updateEnabledState();
+            if (globalRedoAction != null) globalRedoAction.updateEnabledState();
+            if (globalCopyAction != null) globalCopyAction.updateEnabledState();
+            if (globalPasteAction != null) globalPasteAction.updateEnabledState();
 
-        // Also update HistoryOutputPanel's local buttons
-        if (historyOutputPanel != null) historyOutputPanel.updateUndoRedoButtonStates();
+            // Also update HistoryOutputPanel's local buttons
+            if (historyOutputPanel != null) historyOutputPanel.updateUndoRedoButtonStates();
 
-        // Update the main context table and history table display
-        loadContext(newCtx); // Handles contextPanel update and historyOutputPanel.resetLlmOutput
-        updateContextHistoryTable(newCtx); // Handles historyOutputPanel.updateHistoryTable
+            // Update the main context table and history table display
+            loadContext(newCtx); // Handles contextPanel update and historyOutputPanel.resetLlmOutput
+            updateContextHistoryTable(newCtx); // Handles historyOutputPanel.updateHistoryTable
+        });
     }
 
     /**

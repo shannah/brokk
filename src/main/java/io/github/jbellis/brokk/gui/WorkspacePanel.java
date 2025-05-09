@@ -581,13 +581,15 @@ public class WorkspacePanel extends JPanel {
      * Gets the list of selected fragments
      */
     public List<ContextFragment> getSelectedFragments() {
-        var fragments = new ArrayList<ContextFragment>();
-        int[] selectedRows = contextTable.getSelectedRows();
-        var tableModel = (DefaultTableModel) contextTable.getModel();
-        for (int row : selectedRows) {
-            fragments.add((ContextFragment) tableModel.getValueAt(row, FRAGMENT_COLUMN));
-        }
-        return fragments;
+        return SwingUtil.runOnEDT(() -> {
+            var fragments = new ArrayList<ContextFragment>();
+            int[] selectedRows = contextTable.getSelectedRows();
+            var tableModel = (DefaultTableModel) contextTable.getModel();
+            for (int row : selectedRows) {
+                fragments.add((ContextFragment) tableModel.getValueAt(row, FRAGMENT_COLUMN));
+            }
+            return fragments;
+        }, List.of());
     }
 
     /**

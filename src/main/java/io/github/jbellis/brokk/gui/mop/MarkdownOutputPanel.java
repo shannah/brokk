@@ -1,8 +1,10 @@
 package io.github.jbellis.brokk.gui.mop;
 
-import dev.langchain4j.data.message.*;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.TaskEntry;
+import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
@@ -121,10 +123,12 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             logger.debug("Ignoring clear() request while blocking is enabled");
             return;
         }
-        logger.debug("Clearing all content from MarkdownOutputPanel");
-        internalClear();
-        revalidate();
-        repaint();
+        SwingUtilities.invokeLater(() -> {
+            logger.debug("Clearing all content from MarkdownOutputPanel");
+            internalClear();
+            revalidate();
+            repaint();
+        });
         textChangeListeners.forEach(Runnable::run); // Notify listeners about the change
     }
 
@@ -267,14 +271,15 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             logger.debug("Ignoring setText() request while blocking is enabled");
             return;
         }
-        
-        internalClear();
+        SwingUtilities.invokeLater(() -> {
+            internalClear();
 
-        if (newOutput == null) {
-            return;
-        }
+            if (newOutput == null) {
+                return;
+            }
 
-        setText(newOutput.messages());
+            setText(newOutput.messages());
+        });
     }
 
     // private for changing theme -- parser doesn't need to change
@@ -301,18 +306,19 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             logger.debug("Ignoring setText(TaskEntry) request while blocking is enabled");
             return;
         }
-        
-        if (taskEntry == null) {
-            clear();
-            return;
-        }
+        SwingUtilities.invokeLater(() -> {
+            if (taskEntry == null) {
+                clear();
+                return;
+            }
 
-        if (taskEntry.isCompressed()) {
-            setText(List.of(Messages.customSystem(taskEntry.summary())));
-        } else {
-            var taskFragment = taskEntry.log();
-            setText(taskFragment.messages());
-        }
+            if (taskEntry.isCompressed()) {
+                setText(List.of(Messages.customSystem(taskEntry.summary())));
+            } else {
+                var taskFragment = taskEntry.log();
+                setText(taskFragment.messages());
+            }
+        });
     }
 
     /**
@@ -433,13 +439,15 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      * @return The selected text, or an empty string if no text is selected.
      */
     public String getSelectedText() {
-        var sb = new StringBuilder();
-        for (var renderer : messageRenderers) {
-            // renderer.getRoot() is the JComponent (likely a JPanel) holding the rendered blocks for a single message.
-            // We need to look inside this root for text components.
-            collectSelectedText(renderer.getRoot(), sb);
-        }
-        return sb.toString();
+        return SwingUtil.runOnEDT(() -> {
+            var sb = new StringBuilder();
+            for (var renderer : messageRenderers) {
+                // renderer.getRoot() is the JComponent (likely a JPanel) holding the rendered blocks for a single message.
+                // We need to look inside this root for text components.
+                collectSelectedText(renderer.getRoot(), sb);
+            }
+            return sb.toString();
+        }, "");
     }
 
     /**
@@ -478,23 +486,25 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      * Otherwise, if there is any selected text (aggregated from `getSelectedText()`), that is copied.
      */
     public void copy() {
-        // Attempt to delegate to a focused text component first
-        for (var renderer : messageRenderers) {
-            var focusedTextComponent = findFocusedTextComponentIn(renderer.getRoot());
-            if (focusedTextComponent != null) {
-                focusedTextComponent.copy(); // Trigger the component's native copy action
-                return;
+        SwingUtilities.invokeLater(() -> {
+            // Attempt to delegate to a focused text component first
+            for (var renderer : messageRenderers) {
+                var focusedTextComponent = findFocusedTextComponentIn(renderer.getRoot());
+                if (focusedTextComponent != null) {
+                    focusedTextComponent.copy(); // Trigger the component's native copy action
+                    return;
+                }
             }
-        }
 
-        // If no specific text component is focused, copy aggregated selected text
-        var selectedText = getSelectedText();
-        if (selectedText != null && !selectedText.isEmpty()) {
-            var sel = new java.awt.datatransfer.StringSelection(selectedText);
-            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(sel, sel);
-        }
-        // If no text is focused and no text is selected, this method does nothing,
-        // mirroring standard text component behavior.
+            // If no specific text component is focused, copy aggregated selected text
+            var selectedText = getSelectedText(); // getSelectedText is already wrapped
+            if (selectedText != null && !selectedText.isEmpty()) {
+                var sel = new java.awt.datatransfer.StringSelection(selectedText);
+                java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(sel, sel);
+            }
+            // If no text is focused and no text is selected, this method does nothing,
+            // mirroring standard text component behavior.
+        });
     }
 
     /**
