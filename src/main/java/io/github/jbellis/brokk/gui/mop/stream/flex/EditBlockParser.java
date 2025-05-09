@@ -61,7 +61,7 @@ public class EditBlockParser extends AbstractBlockParser {
         // Set filename in the node immediately if available
         if (currentFilename != null && !currentFilename.isBlank()) {
             block.setFilename(currentFilename);
-            logger.debug("Setting filename in constructor: {}", currentFilename);
+            logger.trace("Setting filename in constructor: {}", currentFilename);
         }
     }
     
@@ -90,14 +90,14 @@ public class EditBlockParser extends AbstractBlockParser {
                     if (headMatcher.matches() && headMatcher.group(1) != null) {
                         currentFilename = headMatcher.group(1).trim();
                         block.setFilename(currentFilename);
-                        logger.debug("Set filename from HEAD line: {}", currentFilename);
+                        logger.trace("Set filename from HEAD line: {}", currentFilename);
                     }
                 } else if (possibleFilename != null && !possibleFilename.isBlank()) {
                     // Got a valid filename
                     currentFilename = possibleFilename;
                     block.setFilename(currentFilename);
                     phase = Phase.SEARCH;
-                    logger.debug("Set filename from line after fence: {}", currentFilename);
+                    logger.trace("Set filename from line after fence: {}", currentFilename);
                 }
                 return BlockContinue.atIndex(state.getIndex());
                 
@@ -214,7 +214,7 @@ public class EditBlockParser extends AbstractBlockParser {
                     // Check if this line is a fence opening
                     Matcher fenceMatcher = OPENING_FENCE.matcher(lineStr);
                     if (fenceMatcher.matches()) {
-                        // logger.debug("Found potential fence opening: {}", line);
+                        // logger.trace("Found potential fence opening: {}", line);
                         
                         // Look-ahead: is there a <<<<<<< SEARCH before the closing fence?
                         var doc = line.getBaseSequence();          // whole document
@@ -247,7 +247,7 @@ public class EditBlockParser extends AbstractBlockParser {
                         // If token contains . or / treat it as a filename
                         if (token != null && looksLikePath(token)) {
                             filenameFromFence = token;
-                            logger.debug("Found filename in fence line: {}", filenameFromFence);
+                            logger.trace("Found filename in fence line: {}", filenameFromFence);
                         }
                         
                         // SEARCH found -> treat as fenced edit-block
@@ -316,7 +316,7 @@ public class EditBlockParser extends AbstractBlockParser {
                             }
                         }
                         
-                        logger.debug("Found edit block start: {}, filename: {}", line, filename);
+                        logger.trace("Found edit block start: {}, filename: {}", line, filename);
                         
                         return BlockStart.of(new EditBlockParser(openingMarker, searchKeyword, searchText, false, filename))
                                 .atIndex(state.getIndex());

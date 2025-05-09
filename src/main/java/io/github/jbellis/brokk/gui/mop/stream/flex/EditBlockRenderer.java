@@ -42,7 +42,7 @@ public class EditBlockRenderer implements NodeRenderer {
         int dels = node.getDels();
         int changed = node.getChangedLines();
         
-        logger.debug("Rendering edit block with id={}, file={}, adds={}, dels={}, changed={}, status={}", 
+        logger.trace("Rendering edit block with id={}, file={}, adds={}, dels={}, changed={}, status={}",
                      id, filename, adds, dels, changed, node.getStatus());
         
         // Output a self-closing placeholder tag with data attributes
