@@ -46,6 +46,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
+import static io.github.jbellis.brokk.gui.Constants.*;
+
 
 /**
  * The InstructionsPanel encapsulates the command input area, history dropdown,
@@ -273,8 +275,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private JTextArea buildCommandInputField() {
         var area = new JTextArea(3, 40);
         // The BorderUtils will now handle the border, including focus behavior and padding.
-        // Original padding was EmptyBorder(2, 5, 2, 5) inside the gray line.
-        // New padding via BorderUtils is EmptyBorder(1, 1, 1, 1) inside the gray line.
         BorderUtils.addFocusBorder(area, area);
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
@@ -329,21 +329,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     private JPanel buildTopBarPanel() {
-        JPanel topBarPanel = new JPanel(new BorderLayout(5, 0));
-        topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 5));
+        JPanel topBarPanel = new JPanel(new BorderLayout(H_GAP, 0));
+        topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, H_PAD, 2, H_PAD));
 
         // Left Panel (Mic + History) (West)
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         leftPanel.add(micButton);
+        leftPanel.add(Box.createHorizontalStrut(H_GAP));
 
         JButton historyButton = new JButton("History ▼");
         historyButton.setToolTipText("Select a previous instruction from history");
         historyButton.addActionListener(e -> showHistoryMenu(historyButton));
         leftPanel.add(historyButton);
+        leftPanel.add(Box.createHorizontalStrut(H_GAP));
+
         leftPanel.add(configureModelsButton); // Add the new button here
 
         topBarPanel.add(leftPanel, BorderLayout.WEST);
-
         return topBarPanel;
     }
 
@@ -368,6 +370,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         layeredPane.setLayout(new OverlayLayout(layeredPane)); // Or use custom layout if needed
         layeredPane.setPreferredSize(commandScrollPane.getPreferredSize()); // Match size
         layeredPane.setMinimumSize(commandScrollPane.getMinimumSize());
+        layeredPane.setBorder(new EmptyBorder(0, H_PAD, 0, H_PAD));
 
         // Add components to layers
         layeredPane.add(commandScrollPane, JLayeredPane.DEFAULT_LAYER); // Input field at the bottom
@@ -548,7 +551,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // ----- create failure reason label ----------------------------------------------------
         this.failureReasonLabel = new JLabel();
         failureReasonLabel.setFont(referenceFileTable.getFont()); // Use same font as table/badges
-        failureReasonLabel.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5)); // Add some padding
+        failureReasonLabel.setBorder(BorderFactory.createEmptyBorder(0, H_PAD, 0, H_PAD));
         failureReasonLabel.setVisible(false); // Initially hidden
 
         // ----- create content panel with CardLayout -------------------------------------------
@@ -558,8 +561,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         suggestionContentPanel.add(failureReasonLabel, "LABEL");
 
         // ----- create container panel for button and content (table/label) -------------------
-        var suggestionAreaPanel = new JPanel(new BorderLayout(5, 0)); // 5px horizontal gap
-        suggestionAreaPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0)); // Add vertical padding
+        var suggestionAreaPanel = new JPanel(new BorderLayout(H_GLUE, 0));
+        suggestionAreaPanel.setBorder(BorderFactory.createEmptyBorder(V_GLUE, H_PAD, V_GLUE, H_PAD));
 
         // Add the Deep Scan button to the left
         suggestionAreaPanel.add(deepScanButton, BorderLayout.WEST);
@@ -640,12 +643,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     // Helper to build just the action buttons (Code, Ask, Search, Run)
     private JPanel buildActionBar() {
-        JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         actionButtonsPanel.setBorder(BorderFactory.createEmptyBorder());
         actionButtonsPanel.add(agentButton);
+        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
+
         actionButtonsPanel.add(codeButton);
+        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
+
         actionButtonsPanel.add(askButton);
+        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
+
         actionButtonsPanel.add(searchButton);
+        actionButtonsPanel.add(Box.createHorizontalStrut(H_GAP));
+
         actionButtonsPanel.add(runButton);
 
         // Set preferred size of codeButton and askButton to match searchButton
@@ -689,7 +700,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private JLabel buildCommandResultLabel() {
         var label = new JLabel(" "); // Start with a space to ensure height
-        label.setBorder(new EmptyBorder(2, 5, 2, 5));
+        label.setBorder(new EmptyBorder(2, H_PAD, 2, H_PAD));
         return label;
     }
 
@@ -1217,7 +1228,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
                     lowBalanceNotified = true;
                     SwingUtilities.invokeLater(() -> {
-                        var panel = new JPanel(new BorderLayout(0, 5)); // Panel for text and link
+                        var panel = new JPanel(new BorderLayout(0, V_GAP)); // Panel for text and link
                         var balanceMessage = String.format("Low account balance: $%.2f.", balance);
                         panel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
 
