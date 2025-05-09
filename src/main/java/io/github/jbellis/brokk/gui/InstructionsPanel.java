@@ -43,7 +43,6 @@ import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static io.github.jbellis.brokk.gui.Constants.*;
@@ -70,7 +69,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final Chrome chrome;
     private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
-    private final JButton agentButton;
+    private final JButton architectButton;
     private final SplitButton codeButton;
     private final SplitButton askButton;
     private final JButton searchButton;
@@ -129,10 +128,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
         // Initialize Buttons first
-        agentButton = new JButton("Architect"); // Initialize the agent button
-        agentButton.setMnemonic(KeyEvent.VK_G); // Mnemonic for Agent
-        agentButton.setToolTipText("Run the multi-step agent to execute the current plan");
-        agentButton.addActionListener(e -> runArchitectCommand());
+        architectButton = new JButton("Architect"); // Initialize the agent button
+        architectButton.setMnemonic(KeyEvent.VK_G); // Mnemonic for Agent
+        architectButton.setToolTipText("Run the multi-step agent to execute the current plan");
+        architectButton.addActionListener(e -> runArchitectCommand());
 
         codeButton = new SplitButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
@@ -627,7 +626,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
         // Add action buttons directly to the bottom panel
-        bottomPanel.add(agentButton);
+        bottomPanel.add(architectButton);
         bottomPanel.add(Box.createHorizontalStrut(H_GAP));
         bottomPanel.add(codeButton);
         bottomPanel.add(Box.createHorizontalStrut(H_GAP));
@@ -640,7 +639,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Set preferred size of codeButton and askButton to match agentButton
         // This needs to be done after buttons are potentially realized/packed by layout
         SwingUtilities.invokeLater(() -> {
-            Dimension buttonSize = agentButton.getPreferredSize();
+            Dimension buttonSize = architectButton.getPreferredSize();
             if (buttonSize != null && buttonSize.width > 0 && buttonSize.height > 0) {
                 codeButton.setPreferredSize(buttonSize);
                 askButton.setPreferredSize(buttonSize);
@@ -1583,7 +1582,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // Methods to disable and enable buttons.
     public void disableButtons() {
         SwingUtilities.invokeLater(() -> {
-            agentButton.setEnabled(false);
+            architectButton.setEnabled(false);
             codeButton.setEnabled(false);
             askButton.setEnabled(false);
             searchButton.setEnabled(false);
@@ -1605,7 +1604,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             boolean projectLoaded = chrome.getProject() != null;
             boolean cmAvailable = this.contextManager != null;
 
-            agentButton.setEnabled(projectLoaded && cmAvailable);
+            architectButton.setEnabled(projectLoaded && cmAvailable);
             codeButton.setEnabled(projectLoaded && cmAvailable);
             askButton.setEnabled(projectLoaded && cmAvailable);
             searchButton.setEnabled(projectLoaded && cmAvailable);
