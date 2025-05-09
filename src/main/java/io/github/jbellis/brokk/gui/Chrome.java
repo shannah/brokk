@@ -341,7 +341,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
      * Lightweight method to preview a context without updating history
      * Only updates the LLM text area and context panel display
      */
-    public void loadContext(Context ctx) {
+    public void setContext(Context ctx) {
         assert ctx != null;
 
         // If the new context is logically distinct from the active one, update the text.
@@ -534,7 +534,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             if (historyOutputPanel != null) historyOutputPanel.updateUndoRedoButtonStates();
 
             // Update the main context table and history table display
-            loadContext(newCtx); // Handles contextPanel update and historyOutputPanel.resetLlmOutput
+            setContext(newCtx); // Handles contextPanel update and historyOutputPanel.resetLlmOutput
             updateContextHistoryTable(newCtx); // Handles historyOutputPanel.updateHistoryTable
         });
     }

@@ -163,7 +163,7 @@ public class HistoryOutputPanel extends JPanel {
                     var ctx = (Context) historyModel.getValueAt(row, 2);
                     if (ctx != null) { // Check for null, though unlikely with current logic
                         contextManager.setSelectedContext(ctx);
-                        chrome.loadContext(ctx);
+                        chrome.setContext(ctx);
                     }
                 }
             }
