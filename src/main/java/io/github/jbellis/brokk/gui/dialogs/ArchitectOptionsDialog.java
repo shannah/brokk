@@ -1,9 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.Project;
-import io.github.jbellis.brokk.agents.ArchitectAgent;
-import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.SwingUtil;
@@ -12,7 +9,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -37,7 +33,7 @@ public class ArchitectOptionsDialog {
         var resultHolder = new AtomicReference<ArchitectAgent.ArchitectOptions>();
 
         // Use invokeAndWait to run the dialog logic on the EDT and wait for completion
-        SwingUtil.runOnEDT(() -> {
+        SwingUtil.runOnEdt(() -> {
             // Initial checks must happen *inside* the EDT task now
             var isCpg = contextManager.getAnalyzerWrapper().isCpg();
             // Use last options as default for this session

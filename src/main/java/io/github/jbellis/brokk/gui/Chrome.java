@@ -389,12 +389,12 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     @Override
     public String getLlmOutputText() {
-        return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmOutputText(), null);
+        return SwingUtil.runOnEdt(() -> historyOutputPanel.getLlmOutputText(), null);
     }
 
     @Override
     public List<ChatMessage> getLlmRawMessages() {
-        return SwingUtil.runOnEDT(() -> historyOutputPanel.getLlmRawMessages(), null);
+        return SwingUtil.runOnEdt(() -> historyOutputPanel.getLlmRawMessages(), null);
     }
 
     private JComponent buildBackgroundStatusLabel() {

@@ -799,7 +799,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * it returns an empty string, otherwise it returns the actual text content.
      */
     public String getInstructions() {
-        return SwingUtil.runOnEDT(() -> {
+        return SwingUtil.runOnEdt(() -> {
             return instructionsArea.getText().equals(PLACEHOLDER_TEXT)
                    ? ""
                    : instructionsArea.getText();

@@ -593,7 +593,7 @@ public class WorkspacePanel extends JPanel {
      * Gets the list of selected fragments
      */
     public List<ContextFragment> getSelectedFragments() {
-        return SwingUtil.runOnEDT(() -> {
+        return SwingUtil.runOnEdt(() -> {
             var fragments = new ArrayList<ContextFragment>();
             int[] selectedRows = contextTable.getSelectedRows();
             var tableModel = (DefaultTableModel) contextTable.getModel();
@@ -914,7 +914,7 @@ public class WorkspacePanel extends JPanel {
     private String showSymbolSelectionDialog(String title, Set<CodeUnitType> typeFilter) {
         var analyzer = contextManager.getAnalyzerUninterrupted();
         var dialogRef = new AtomicReference<SymbolSelectionDialog>();
-        SwingUtil.runOnEDT(() -> {
+        SwingUtil.runOnEdt(() -> {
             var dialog = new SymbolSelectionDialog(chrome.getFrame(), analyzer, title, typeFilter);
             dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight());
             dialog.setLocationRelativeTo(chrome.getFrame());
@@ -938,7 +938,7 @@ public class WorkspacePanel extends JPanel {
     private CallGraphDialog showCallGraphDialog(String title, boolean isCallerGraph) {
         var analyzer = contextManager.getAnalyzerUninterrupted();
         var dialogRef = new AtomicReference<CallGraphDialog>();
-        SwingUtil.runOnEDT(() -> {
+        SwingUtil.runOnEdt(() -> {
             var dialog = new CallGraphDialog(chrome.getFrame(), analyzer, title, isCallerGraph);
             dialog.setSize((int) (chrome.getFrame().getWidth() * 0.9), dialog.getHeight());
             dialog.setLocationRelativeTo(chrome.getFrame());
@@ -1350,7 +1350,7 @@ public class WorkspacePanel extends JPanel {
      */
     private MultiFileSelectionDialog.Selection showMultiSourceSelectionDialog(String title, boolean allowExternalFiles, Future<Set<ProjectFile>> projectCompletionsFuture, Set<SelectionMode> modes) {
         var dialogRef = new AtomicReference<MultiFileSelectionDialog>();
-        SwingUtil.runOnEDT(() -> {
+        SwingUtil.runOnEdt(() -> {
             var dialog = new MultiFileSelectionDialog(chrome.getFrame(), contextManager, title, allowExternalFiles, projectCompletionsFuture, modes);
             // Use dialog's preferred size after packing, potentially adjust width
             dialog.setSize(Math.max(600, dialog.getWidth()), Math.max(550, dialog.getHeight()));

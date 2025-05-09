@@ -99,7 +99,7 @@ public class GuiTheme {
             }
 
             // Apply to all RSyntaxTextArea components in open windows
-            SwingUtil.runOnEDT(() -> {
+            SwingUtil.runOnEdt(() -> {
                 for (Window window : Window.getWindows()) {
                     if (window instanceof JFrame) {
                         applyThemeToFrame((JFrame) window, theme);

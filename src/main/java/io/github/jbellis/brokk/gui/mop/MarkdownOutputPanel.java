@@ -439,7 +439,7 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
      * @return The selected text, or an empty string if no text is selected.
      */
     public String getSelectedText() {
-        return SwingUtil.runOnEDT(() -> {
+        return SwingUtil.runOnEdt(() -> {
             var sb = new StringBuilder();
             for (var renderer : messageRenderers) {
                 // renderer.getRoot() is the JComponent (likely a JPanel) holding the rendered blocks for a single message.

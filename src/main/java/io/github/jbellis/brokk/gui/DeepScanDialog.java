@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
 import com.google.common.collect.Streams;
-import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.agents.ContextAgent;
@@ -130,7 +129,7 @@ class DeepScanDialog {
                     chrome.systemOutput("Deep Scan complete: No relevant fragments found");
                 } else {
                     chrome.systemOutput("Deep Scan complete: Found %d relevant fragments".formatted(allSuggestedFragments.size()));
-                    SwingUtil.runOnEDT(() -> showDialog(chrome, allSuggestedFragments, reasoning));
+                    SwingUtil.runOnEdt(() -> showDialog(chrome, allSuggestedFragments, reasoning));
                 }
             } catch (InterruptedException ie) {
                 // Handle interruption of the user task thread (e.g., while waiting on future.get())

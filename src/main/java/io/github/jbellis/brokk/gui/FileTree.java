@@ -606,14 +606,14 @@ public class FileTree extends JTree {
                 List<DefaultMutableTreeNode> children = performLoadChildren(fileNode);
 
                 // Update the Swing model synchronously on the EDT
-                SwingUtil.runOnEDT(() -> updateModelWithChildren(node, fileNode, children));
+                SwingUtil.runOnEdt(() -> updateModelWithChildren(node, fileNode, children));
                 modelLogger.trace("Synchronous load complete for: {}", fileNode.getFile().getAbsolutePath());
                 return true;
             } catch (Exception e) { // Catch exceptions from performLoadChildren or invokeAndWait
                 modelLogger.error("Error during synchronous load for: {}", fileNode.getFile().getAbsolutePath(), e);
                 // Update node to show error state on EDT (use invokeLater if invokeAndWait failed)
                 try {
-                    SwingUtil.runOnEDT(() -> updateModelWithError(node, fileNode));
+                    SwingUtil.runOnEdt(() -> updateModelWithError(node, fileNode));
                 } catch (Exception edtEx) {
                     modelLogger.error("Failed to update model with error state for {}", fileNode.getFile().getAbsolutePath(), edtEx);
                 }
