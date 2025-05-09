@@ -86,6 +86,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JButton deepScanButton;
     private final JPanel centerPanel;
     private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
+    private final AtomicBoolean forceSuggestions = new AtomicBoolean(false);
     // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
     private final ExecutorService suggestionWorker = Executors.newSingleThreadExecutor(r -> {
         Thread t = Executors.defaultThreadFactory().newThread(r);
@@ -95,7 +96,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     });
     // Generation counter to identify the latest suggestion request
     private final AtomicLong suggestionGeneration = new AtomicLong(0);
-    private final AtomicBoolean suppressExternalSuggestionsTrigger = new AtomicBoolean(false); // Flag to prevent self-refresh from table actions
     private JPanel overlayPanel; // Panel used to initially disable command input
     private final UndoManager commandInputUndoManager;
     private boolean lowBalanceNotified = false;
@@ -200,7 +200,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         initializeReferenceFileTable();
 
         // Initialize and configure the context suggestion timer
-        contextSuggestionTimer = new Timer(200, this::triggerContextSuggestion);
+        contextSuggestionTimer = new Timer(100, this::triggerContextSuggestion);
         contextSuggestionTimer.setRepeats(false);
         commandInputField.getDocument().addDocumentListener(new DocumentListener() {
             private void checkAndHandleSuggestions() {
@@ -475,14 +475,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 // Edit option
                 JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
                 editItem.addActionListener(e1 -> {
-                    chrome.contextManager.submitContextTask("Edit files", () -> {
+                    withTemporaryListenerDetachment(() -> {
                         if (targetRef.getRepoFile() != null) {
-                            suppressExternalSuggestionsTrigger.set(true);
                             cm.editFiles(List.of(targetRef.getRepoFile()));
                         } else {
                             chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
                         }
-                    });
+                    }, "Edit files");
                 });
                 // Disable for dependency projects
                 if (cm.getProject() != null && !cm.getProject().hasGit()) {
@@ -494,23 +493,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 // Read option
                 JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
                 readItem.addActionListener(e1 -> {
-                    chrome.contextManager.submitContextTask("Read files", () -> {
+                    withTemporaryListenerDetachment(() -> {
                         if (targetRef.getRepoFile() != null) {
-                            suppressExternalSuggestionsTrigger.set(true);
                             cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
                         } else {
                             chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
                         }
-                    });
+                    }, "Read files");
                 });
                 menu.add(readItem);
 
                 // Summarize option
                 JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
                 summarizeItem.addActionListener(e1 -> {
-                    chrome.contextManager.submitContextTask("Summarize files", () -> {
+                    withTemporaryListenerDetachment(() -> {
                         if (targetRef.getRepoFile() != null) {
-                            suppressExternalSuggestionsTrigger.set(true);
                             boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
                             if (success) {
                                 chrome.systemOutput("Summarized " + targetRef.getFullPath());
@@ -520,7 +517,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         } else {
                             chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
                         }
-                    });
+                    }, "Summarize files");
                 });
                 menu.add(summarizeItem);
 
@@ -846,6 +843,38 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
 
+    /**
+     * Executes a context-modifying operation with temporary listener detachment to avoid
+     * triggering context suggestions for our own actions.
+     * 
+     * @param action The operation to execute with the listener detached
+     * @param taskDescription A description for the context task
+     */
+    private void withTemporaryListenerDetachment(Runnable action, String taskDescription) {
+        if (contextManager == null) {
+            logger.warn("Cannot execute with listener detachment: ContextManager is null");
+            return;
+        }
+        
+        // First detach this panel as a listener
+        contextManager.removeContextListener(this);
+        
+        // Submit the task
+        chrome.contextManager.submitContextTask(taskDescription, () -> {
+            try {
+                // Execute the action
+                action.run();
+            } finally {
+                // Always re-attach the listener when done
+                SwingUtilities.invokeLater(() -> {
+                    // Re-add on EDT to avoid concurrent modification issues
+                    contextManager.addContextListener(this);
+                    logger.debug("Listener re-attached after {}", taskDescription);
+                });
+            }
+        });
+    }
+    
     // --- Private Execution Logic ---
 
     /**
@@ -865,6 +894,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Increment generation and submit the task
         long myGen = suggestionGeneration.incrementAndGet();
+        if (e == null) { // If triggered externally (e.g., context change)
+            forceSuggestions.set(true);
+            logger.trace("Forcing suggestion at generation {} due to external trigger", myGen);
+        }
         logger.trace("Submitting suggestion task generation {}", myGen);
         suggestionWorker.submit(() -> processInputSuggestions(myGen, goal));
     }
@@ -892,14 +925,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             return;
         }
 
-        // 1. Quick literal check
-        if (snapshot.equals(lastCheckedInputText)) {
-            logger.trace("Task {} input is literally unchanged, aborting.", myGen);
-            clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
-            return;
+        boolean currentForceState = forceSuggestions.get(); // Read the state for this task
+
+        // Conditionally skip checks if currentForceState is true
+        if (!currentForceState) {
+            // 1. Quick literal check
+            if (snapshot.equals(lastCheckedInputText)) {
+                logger.trace("Task {} input is literally unchanged (not forced), aborting.", myGen);
+                clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
+                return;
+            }
+        } else {
+            logger.trace("Task {} is forced, skipping literal check.", myGen);
         }
 
-        // 2. Embedding Model Check
+        // 2. Embedding Model Check (This check MUST run even if forced, as we need the model)
         if (!Brokk.embeddingModelFuture.isDone()) {
             SwingUtilities.invokeLater(() -> showFailureLabel("Waiting for model download"));
             logger.trace("Task {} waiting for model.", myGen);
@@ -938,16 +978,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             return;
         }
 
-        // 6. Semantic Comparison
-        boolean isDifferent = isSemanticallyDifferent(snapshot, newEmbeddings);
+        if (!currentForceState) {
+            // 6. Semantic Comparison
+            boolean isDifferent = isSemanticallyDifferent(snapshot, newEmbeddings);
 
-        if (!isDifferent) {
-            logger.trace("Task {} input is semantically similar, aborting ContextAgent.", myGen);
-            clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
-            return;
+            if (!isDifferent) {
+                logger.trace("Task {} input is semantically similar (not forced), aborting ContextAgent.", myGen);
+                clearTransientFailureLabelIfStale(myGen); // Clear "Waiting for model..." if applicable
+                return;
+            }
+        } else {
+            logger.trace("Task {} is forced, skipping semantic similarity check.", myGen);
         }
 
-        // Update state
+        // Update state (always update if we got this far, forced or not)
         this.lastCheckedInputText = snapshot;
         this.lastCheckedEmbeddings = newEmbeddings;
 
@@ -967,27 +1011,33 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         try {
             ContextAgent agent = new ContextAgent(contextManager, model, snapshot, false);
             recommendations = agent.getRecommendations();
-        } catch (InterruptedException ex) {
-            throw new RuntimeException();
-        }
 
-        // 10. Process results and schedule UI update
-        if (recommendations.success()) {
-            var fileRefs = recommendations.fragments().stream()
-                    .flatMap(f -> f.files(contextManager.getProject()).stream())
-                    .distinct()
-                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
-                    .toList();
-            if (fileRefs.isEmpty()) {
-                logger.debug("Task {} found no relevant files.", myGen);
-                SwingUtilities.invokeLater(() -> showFailureLabel("No quick suggestions"));
+            // 10. Process results and schedule UI update
+            if (recommendations.success()) {
+                var fileRefs = recommendations.fragments().stream()
+                        .flatMap(f -> f.files(contextManager.getProject()).stream())
+                        .distinct()
+                        .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
+                        .toList();
+                if (fileRefs.isEmpty()) {
+                    logger.debug("Task {} found no relevant files.", myGen);
+                    SwingUtilities.invokeLater(() -> showFailureLabel("No quick suggestions"));
+                } else {
+                    logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
+                    SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
+                }
             } else {
-                logger.debug("Task {} updating quick reference table with {} suggestions", myGen, fileRefs.size());
-                SwingUtilities.invokeLater(() -> showSuggestionsTable(fileRefs));
+                logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
+                SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
             }
-        } else {
-            logger.debug("Task {} quick context suggestion failed: {}", myGen, recommendations.reasoning());
-            SwingUtilities.invokeLater(() -> showFailureLabel(recommendations.reasoning()));
+        } catch (InterruptedException ex) {
+            // shouldn't happen
+            throw new RuntimeException(ex);
+        } finally {
+            if (currentForceState) {
+                forceSuggestions.set(false);
+                logger.trace("Task {} cleared forceSuggestions.", myGen);
+            }
         }
     }
 
@@ -1559,12 +1609,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     @Override
     public void contextChanged(Context newCtx) {
-        // Check if the update was triggered by one of the table's own actions
-        if (suppressExternalSuggestionsTrigger.getAndSet(false)) {
-            logger.debug("Suppressing context suggestion due to internal table action.");
-            return;
-        }
-
         // Otherwise, proceed with the normal suggestion logic by submitting a task
         logger.debug("Context changed externally, triggering suggestion check.");
         triggerContextSuggestion(null); // Use null ActionEvent to indicate non-timer trigger

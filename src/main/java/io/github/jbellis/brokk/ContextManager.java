@@ -138,8 +138,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     @Override
-    public void addContextListener(ContextListener listener) {
-        contextListeners.add(Objects.requireNonNull(listener));
+    public void addContextListener(@NotNull ContextListener listener) {
+        contextListeners.add(listener);
+    }
+
+    @Override
+    public void removeContextListener(@NotNull ContextListener listener) {
+        contextListeners.remove(listener);
     }
 
     /**
