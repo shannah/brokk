@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceDat
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.components.SplitButton;
+import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
@@ -464,75 +465,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                 ? fileRefs.get(0)
                                 : findClickedReference(e.getPoint(), row, fileRefs);
                 assert targetRef != null;
-
-                var cm = chrome.getContextManager();
-                JPopupMenu menu = new JPopupMenu();
-
-                JMenuItem showContentsItem = new JMenuItem("Show Contents");
-                showContentsItem.addActionListener(e1 -> {
-                    if (targetRef.getRepoFile() != null) {
-                        chrome.openFragmentPreview(new ContextFragment.ProjectPathFragment(targetRef.getRepoFile()));
-                    }
-                });
-                menu.add(showContentsItem);
-                menu.addSeparator();
-
-                // Edit option
-                JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
-                editItem.addActionListener(e1 -> {
-                    withTemporaryListenerDetachment(() -> {
-                        if (targetRef.getRepoFile() != null) {
-                            cm.editFiles(List.of(targetRef.getRepoFile()));
-                        } else {
-                            chrome.toolErrorRaw("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
-                        }
-                    }, "Edit files");
-                });
-                // Disable for dependency projects
-                if (cm.getProject() != null && !cm.getProject().hasGit()) {
-                    editItem.setEnabled(false);
-                    editItem.setToolTipText("Editing not available without Git");
-                }
-                menu.add(editItem);
-
-                // Read option
-                JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
-                readItem.addActionListener(e1 -> {
-                    withTemporaryListenerDetachment(() -> {
-                        if (targetRef.getRepoFile() != null) {
-                            cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
-                        } else {
-                            chrome.toolErrorRaw("Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
-                        }
-                    }, "Read files");
-                });
-                menu.add(readItem);
-
-                // Summarize option
-                JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
-                summarizeItem.addActionListener(e1 -> {
-                    withTemporaryListenerDetachment(() -> {
-                        if (targetRef.getRepoFile() != null) {
-                            boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
-                            if (success) {
-                                chrome.systemOutput("Summarized " + targetRef.getFullPath());
-                            } else {
-                                chrome.toolErrorRaw("No summarizable code found");
-                            }
-                        } else {
-                            chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
-                        }
-                    }, "Summarize files");
-                });
-                menu.add(summarizeItem);
-                menu.addSeparator();
-
-                JMenuItem refreshSuggestionsItem = new JMenuItem("Refresh Suggestions");
-                refreshSuggestionsItem.addActionListener(e1 -> triggerContextSuggestion(null));
-                menu.add(refreshSuggestionsItem);
-
-                if (chrome.themeManager != null) chrome.themeManager.registerPopupMenu(menu);
-                menu.show(referenceFileTable, e.getX(), e.getY());
+                
+                // Use the utility to show the context menu
+                ContextMenuUtils.showFileRefMenu(
+                    referenceFileTable, 
+                    targetRef, 
+                    chrome, 
+                    () -> triggerContextSuggestion(null)
+                );
             }
         });
 
