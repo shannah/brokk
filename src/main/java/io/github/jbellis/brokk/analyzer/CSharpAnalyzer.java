@@ -47,16 +47,17 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
         // C# doesn't have standard package structure like Java/Python based on folders.
         // Namespaces are declared in code. The namespaceName parameter provides this.
         // The classChain parameter is used for Joern-style short name generation.
+        // Captures for class-like (class, struct, interface) constructs are unified to "class.definition".
         String packageName = namespaceName;
 
         CodeUnit result;
         try {
             result = switch (captureName) {
-                case "class.definition", "interface.definition", "struct.definition" -> {
+                case "class.definition" -> { // Covers class, interface, struct
                     String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
                     yield CodeUnit.cls(file, packageName, finalShortName);
                 }
-                case "method.definition" -> {
+                case "function.definition" -> {
                     String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
                     yield CodeUnit.fn(file, packageName, finalShortName);
                 }
@@ -64,7 +65,7 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
                     String finalShortName = (classChain.isEmpty() ? "" : classChain + "$") + simpleName + ".<init>";
                     yield CodeUnit.fn(file, packageName, finalShortName);
                 }
-                case "field.definition", "property.definition" -> {
+                case "field.definition" -> { // Covers fields and properties
                     String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
                     yield CodeUnit.field(file, packageName, finalShortName);
                 }
@@ -102,9 +103,9 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected SkeletonType getSkeletonTypeForCapture(String captureName) {
         return switch (captureName) {
-            case "class.definition", "interface.definition", "struct.definition" -> SkeletonType.CLASS_LIKE;
-            case "method.definition", "constructor.definition" -> SkeletonType.FUNCTION_LIKE;
-            case "field.definition", "property.definition" -> SkeletonType.FIELD_LIKE;
+            case "class.definition" -> SkeletonType.CLASS_LIKE; // Covers class, interface, struct
+            case "function.definition", "constructor.definition" -> SkeletonType.FUNCTION_LIKE;
+            case "field.definition" -> SkeletonType.FIELD_LIKE; // Covers fields and properties
             default -> SkeletonType.UNSUPPORTED;
         };
     }
