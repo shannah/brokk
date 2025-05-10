@@ -384,7 +384,7 @@ public class SettingsDialog extends JDialog {
         instructionsScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 
         var details = project.getBuildDetails();
-        logger.debug("Initial Build Details: {}", details);
+        logger.trace("Initial Build Details: {}", details);
         // Build/Lint Command
         gbc.gridx = 0;
         gbc.gridy = row;
@@ -1042,12 +1042,12 @@ public class SettingsDialog extends JDialog {
                                                         newTestAll,
                                                         newInstructions,
                                                         newExcludedDirs);
-
-            logger.debug("Applying Build Details: {}", newDetails);
+            logger.trace("Applying Build Details: {}", newDetails);
 
             // Only save if details have actually changed
             if (!newDetails.equals(currentDetails)) {
                 project.saveBuildDetails(newDetails);
+                logger.debug("Applied Build Details changes.");
             }
 
             // Apply CPG Refresh Setting
