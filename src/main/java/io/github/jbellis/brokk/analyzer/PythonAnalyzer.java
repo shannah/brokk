@@ -12,6 +12,8 @@ import java.util.Set;
 
 public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
+    private static final TSLanguage PY_LANGUAGE = new TreeSitterPython();
+
     public PythonAnalyzer(IProject project, Set<String> excludedFiles) {
         super(project, excludedFiles);
     }
@@ -22,7 +24,7 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected TSLanguage getTSLanguage() {
-        return new TreeSitterPython(); // Instantiate the bonede language object
+        return PY_LANGUAGE;
     }
 
     @Override
@@ -203,13 +205,20 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
         }
     }
 
-    @Override
-    protected boolean isClassLike(TSNode node) {
-        if (node == null || node.isNull()) {
-            return false;
-        }
-        return "class_definition".equals(node.getType());
-    }
-
+    // isClassLike is now implemented in the base class using LanguageSyntaxProfile.
     // buildClassMemberSkeletons is no longer directly called for parent skeleton string generation.
+
+    @Override
+    protected LanguageSyntaxProfile getLanguageSyntaxProfile() {
+        return new LanguageSyntaxProfile(
+                Set.of("class_definition"),
+                Set.of("function_definition"),
+                Set.of("assignment", "typed_parameter"), // 'assignment' for module/class level, 'typed_parameter' if self.x for instance vars
+                Set.of("decorator"),
+                "name",        // identifierFieldName (for functions, classes. Fields are handled by query)
+                "body",        // bodyFieldName
+                "parameters",  // parametersFieldName
+                "return_type"  // returnTypeFieldName
+        );
+    }
 }

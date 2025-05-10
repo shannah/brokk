@@ -11,10 +11,12 @@ import java.util.Collections;
 import java.util.Set;
 
 public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
+    private static final TSLanguage JS_LANGUAGE = new TreeSitterJavascript();
+
     public JavascriptAnalyzer(IProject project, Set<String> excludedFiles) { super(project, excludedFiles); }
     public JavascriptAnalyzer(IProject project) { this(project, Collections.emptySet()); }
 
-    @Override protected TSLanguage getTSLanguage() { return new TreeSitterJavascript(); }
+    @Override protected TSLanguage getTSLanguage() { return JS_LANGUAGE; }
 
     @Override protected String getQueryResource() { return "treesitter/javascript.scm"; }
 
@@ -169,20 +171,24 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
         return cu.isClass() ? "}" : "";
     }
 
-    @Override
-    protected boolean isClassLike(TSNode node) {
-        if (node == null || node.isNull()) {
-            return false;
-        }
-        // JavaScript classes can be declarations or expressions.
-        return switch (node.getType()) {
-            case "class_declaration", "class_expression", "class" -> true; // "class" for older/generic tree-sitter grammars
-            default -> false;
-        };
-    }
+    // isClassLike is now implemented in the base class using LanguageSyntaxProfile
 
     // buildClassMemberSkeletons is no longer directly called for parent skeleton string generation.
     // If JS needs to identify children not caught by main query for the childrenByParent map,
-    // that logic would need to be integrated into analyzeFileDeclarations or a new helper.
+    // that logic would need to to be integrated into analyzeFileDeclarations or a new helper.
     // For now, assume main query captures are sufficient for JS CUs.
+
+    @Override
+    protected LanguageSyntaxProfile getLanguageSyntaxProfile() {
+        return new LanguageSyntaxProfile(
+                Set.of("class_declaration", "class_expression", "class"), // "class" for older/generic tree-sitter grammars
+                Set.of("function_declaration", "arrow_function", "method_definition", "function_expression"),
+                Set.of("variable_declarator"), // Assuming definition node for field is variable_declarator
+                Set.of(), // JS standard decorators are not directly captured as simple preceding nodes by current query.
+                "name",       // identifierFieldName
+                "body",       // bodyFieldName (applies to function_declaration, method_definition, class_declaration)
+                "parameters", // parametersFieldName
+                ""            // returnTypeFieldName (JS doesn't have a standard named child for return type like C# or Python)
+        );
+    }
 }

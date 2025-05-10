@@ -13,6 +13,8 @@ import java.util.Set;
 public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(CSharpAnalyzer.class);
 
+    private static final TSLanguage CS_LANGUAGE = new TreeSitterCSharp();
+
     public CSharpAnalyzer(IProject project, Set<String> excludedFiles) {
         super(project, excludedFiles);
         log.debug("CSharpAnalyzer: Constructor called for project: {} with {} excluded files", project, excludedFiles.size());
@@ -25,9 +27,8 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected TSLanguage getTSLanguage() {
-        var lang = new TreeSitterCSharp(); // Instantiate the bonede language object
-        log.trace("CSharpAnalyzer: getTSLanguage() returning: {}", lang.getClass().getName());
-        return lang;
+        log.trace("CSharpAnalyzer: getTSLanguage() returning cached: {}", CS_LANGUAGE.getClass().getName());
+        return CS_LANGUAGE;
     }
 
     @Override
@@ -143,16 +144,21 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
         return cu.isClass() ? "}" : ""; // Simplified: assuming only classes need closers for now
     }
 
-    @Override
-    protected boolean isClassLike(TSNode node) {
-        if (node == null || node.isNull()) {
-            return false;
-        }
-        return switch (node.getType()) {
-            case "class_declaration", "interface_declaration", "struct_declaration", "record_declaration", "record_struct_declaration" -> true;
-            default -> false;
-        };
-    }
+    // isClassLike is now implemented in the base class using LanguageSyntaxProfile
 
     // buildClassMemberSkeletons is no longer directly called for parent skeleton string generation.
+
+    @Override
+    protected LanguageSyntaxProfile getLanguageSyntaxProfile() {
+        return new LanguageSyntaxProfile(
+                Set.of("class_declaration", "interface_declaration", "struct_declaration", "record_declaration", "record_struct_declaration"),
+                Set.of("method_declaration", "constructor_declaration", "local_function_statement"), // Added local_function_statement
+                Set.of("field_declaration", "property_declaration", "event_field_declaration"), // Added event_field_declaration
+                Set.of("attribute_list"),
+                "name", // identifierFieldName
+                "body", // bodyFieldName
+                "parameters", // parametersFieldName
+                "type"  // returnTypeFieldName (used by method_declaration for its return type node)
+        );
+    }
 }

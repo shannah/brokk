@@ -38,6 +38,28 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     private final IProject project;
     protected final Set<String> normalizedExcludedFiles;
 
+    protected record LanguageSyntaxProfile(
+        Set<String> classLikeNodeTypes,
+        Set<String> functionLikeNodeTypes,
+        Set<String> fieldLikeNodeTypes,
+        Set<String> decoratorNodeTypes,
+        String identifierFieldName,
+        String bodyFieldName,
+        String parametersFieldName,
+        String returnTypeFieldName
+    ) {
+        public LanguageSyntaxProfile {
+            Objects.requireNonNull(classLikeNodeTypes);
+            Objects.requireNonNull(functionLikeNodeTypes);
+            Objects.requireNonNull(fieldLikeNodeTypes);
+            Objects.requireNonNull(decoratorNodeTypes);
+            Objects.requireNonNull(identifierFieldName);
+            Objects.requireNonNull(bodyFieldName);
+            Objects.requireNonNull(parametersFieldName);
+            Objects.requireNonNull(returnTypeFieldName); // Can be empty string if not applicable
+        }
+    }
+
     private static record Range(int startByte, int endByte, int startLine, int endLine) {}
 
     private record FileAnalysisResult(List<CodeUnit> topLevelCUs,
@@ -368,6 +390,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /** Tree-sitter TSLanguage grammar to use (e.g. {@code new TreeSitterPython()}). */
     protected abstract TSLanguage getTSLanguage();
 
+    /** Provides the language-specific syntax profile. */
+    protected abstract LanguageSyntaxProfile getLanguageSyntaxProfile();
+
     /** Class-path resource for the query (e.g. {@code "treesitter/python.scm"}). */
     protected abstract String getQueryResource();
 
@@ -409,7 +434,12 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
      * @param node The TSNode to check.
      * @return true if the node is a class-like declaration, false otherwise.
      */
-    protected abstract boolean isClassLike(TSNode node);
+    protected boolean isClassLike(TSNode node) {
+        if (node == null || node.isNull()) {
+            return false;
+        }
+        return getLanguageSyntaxProfile().classLikeNodeTypes().contains(node.getType());
+    }
 
     /** Captures that should be ignored entirely. */
     protected Set<String> getIgnoredCaptures() { return Set.of(); }
@@ -493,7 +523,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                     } else {
                         log.warn("Expected name capture '{}' not found for definition '{}' in match for file {}. Falling back to extractSimpleName on definition node.",
                                  expectedNameCapture, captureName, file);
-                        simpleName = extractSimpleName(definitionNode, src).orElse(null);
+                        simpleName = extractSimpleName(definitionNode, src).orElse(null); // extractSimpleName is now non-static
                     }
 
                     if (simpleName != null && !simpleName.isBlank()) {
@@ -549,7 +579,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             TSNode tempParent = node.getParent();
             while (tempParent != null && !tempParent.isNull() && !tempParent.equals(currentRootNode)) {
                 if (isClassLike(tempParent)) {
-                    extractSimpleName(tempParent, src).ifPresent(parentName -> {
+                    extractSimpleName(tempParent, src).ifPresent(parentName -> { // extractSimpleName is now non-static
                         if (!parentName.isBlank()) enclosingClassNames.add(0, parentName);
                     });
                 }
@@ -690,12 +720,15 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         TSNode effectiveDefinitionNode = definitionNode; // Default to the given node
 
         // Handle Python's decorated_definition structure specifically for decorators
+        var profile = getLanguageSyntaxProfile();
+        // Handle Python's decorated_definition structure specifically for decorators
+        // TODO: Generalize this further if other languages have similar compound decorator structures.
         if ("decorated_definition".equals(definitionNode.getType()) && project.getAnalyzerLanguage() == Language.PYTHON) {
             for (int i = 0; i < definitionNode.getNamedChildCount(); i++) {
                 TSNode child = definitionNode.getNamedChild(i);
-                if ("decorator".equals(child.getType())) {
+                if (profile.decoratorNodeTypes().contains(child.getType())) {
                     signatureLines.add(textSlice(child, src).stripLeading());
-                } else if ("function_definition".equals(child.getType()) || "class_definition".equals(child.getType())) {
+                } else if (profile.functionLikeNodeTypes().contains(child.getType()) || profile.classLikeNodeTypes().contains(child.getType())) {
                     // In Python, the 'definition' field of a decorated_definition holds the actual func/class def.
                     // Check if the query gave us decorated_definition but named a function_definition inside it.
                     // The primaryCaptureName would be function.definition in that case.
@@ -707,7 +740,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             // effectiveDefinitionNode is now set to the actual function_definition.
         } else {
             // General decorator handling for other languages (or non-decorated Python items)
-            List<TSNode> decorators = getPrecedingDecorators(definitionNode, src);
+            List<TSNode> decorators = getPrecedingDecorators(definitionNode);
             for (TSNode decoratorNode : decorators) {
                 signatureLines.add(textSlice(decoratorNode, src).stripLeading());
             }
@@ -717,11 +750,11 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         switch (skeletonType) {
             case CLASS_LIKE: {
                 String exportPrefix = getVisibilityPrefix(effectiveDefinitionNode, src);
-                TSNode bodyNode = effectiveDefinitionNode.getChildByFieldName("body");
+                TSNode bodyNode = effectiveDefinitionNode.getChildByFieldName(profile.bodyFieldName());
                 String classSignatureText;
                 if (bodyNode != null && !bodyNode.isNull()) {
                     classSignatureText = textSlice(effectiveDefinitionNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
-                } else { 
+                } else {
                     classSignatureText = textSlice(effectiveDefinitionNode, src);
                     if (classSignatureText.endsWith("{")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                     else if (classSignatureText.endsWith(";")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
@@ -734,7 +767,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 buildFunctionSkeleton(effectiveDefinitionNode, Optional.of(simpleName), src, "", signatureLines);
                 break;
             case FIELD_LIKE: {
-                String exportPrefix = getVisibilityPrefix(definitionNode, src);
+                String exportPrefix = getVisibilityPrefix(definitionNode, src); // definitionNode is correct here, not effectiveDefinitionNode
                 signatureLines.add(exportPrefix + textSlice(definitionNode, src).stripLeading().strip());
                 break;
             }
@@ -771,33 +804,56 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     }
 
     protected void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines) {
+        var profile = getLanguageSyntaxProfile();
         String functionName;
-        TSNode nameNode = funcNode.getChildByFieldName("name");
+        TSNode nameNode = funcNode.getChildByFieldName(profile.identifierFieldName());
 
         if (nameNode != null && !nameNode.isNull()) {
             functionName = textSlice(nameNode, src);
         } else if (providedNameOpt.isPresent()) {
             functionName = providedNameOpt.get();
         } else {
-            String funcNodeText = textSlice(funcNode, src);
-            log.warn("Function node type {} has no 'name' field and no name was provided. Raw text: {}", funcNode.getType(), funcNodeText.lines().findFirst().orElse(""));
-            lines.add(indent + funcNodeText);
-            log.warn("-> Falling back to raw text slice for function skeleton due to missing name.");
-            return;
+            // Try to extract name using extractSimpleName as a last resort if the specific field isn't found/helpful
+            // This could happen for anonymous functions or if identifierFieldName isn't 'name' and not directly on funcNode.
+            Optional<String> extractedNameOpt = extractSimpleName(funcNode, src);
+            if (extractedNameOpt.isPresent()) {
+                functionName = extractedNameOpt.get();
+            } else {
+                String funcNodeText = textSlice(funcNode, src);
+                log.warn("Function node type {} has no name field '{}' and no name was provided or extracted. Raw text: {}",
+                         funcNode.getType(), profile.identifierFieldName(), funcNodeText.lines().findFirst().orElse(""));
+                lines.add(indent + funcNodeText);
+                log.warn("-> Falling back to raw text slice for function skeleton due to missing name.");
+                return;
+            }
         }
 
-        TSNode paramsNode = funcNode.getChildByFieldName("parameters");
-        TSNode returnTypeNode = funcNode.getChildByFieldName("return_type"); // Might be null for JS/TS
-        TSNode bodyNode = funcNode.getChildByFieldName("body"); // Used by language-specific renderers
+        TSNode paramsNode = funcNode.getChildByFieldName(profile.parametersFieldName());
+        TSNode returnTypeNode = null;
+        if (!profile.returnTypeFieldName().isEmpty()) {
+            returnTypeNode = funcNode.getChildByFieldName(profile.returnTypeFieldName());
+        }
+        TSNode bodyNode = funcNode.getChildByFieldName(profile.bodyFieldName());
 
-        if (paramsNode == null || paramsNode.isNull() || bodyNode == null || bodyNode.isNull()) {
+        // Parameter and body nodes are usually essential for a valid function signature.
+        // Return type can often be omitted.
+        if (paramsNode == null || paramsNode.isNull()) {
               String funcNodeText = textSlice(funcNode, src);
-              log.warn("Could not find essential parts (params, body) for function node type '{}', name '{}'. Raw text: {}",
-                       funcNode.getType(), functionName, funcNodeText.lines().findFirst().orElse(""));
-              lines.add(indent + funcNodeText); // Use funcNodeText which is already sliced
-              log.warn("-> Falling back to raw text slice for function skeleton for '{}'.", functionName);
+              log.warn("Could not find parameters node (field '{}') for function node type '{}', name '{}'. Raw text: {}",
+                       profile.parametersFieldName(), funcNode.getType(), functionName, funcNodeText.lines().findFirst().orElse(""));
+              lines.add(indent + funcNodeText);
+              log.warn("-> Falling back to raw text slice for function skeleton for '{}' due to missing parameters.", functionName);
               return;
-         }
+        }
+        // Body node is essential for some languages to distinguish declaration from call or for placeholder
+        if (bodyNode == null || bodyNode.isNull()) {
+            // This might be acceptable for abstract methods or interface methods in some languages
+            // but renderFunctionDeclaration typically expects it for the placeholder.
+            // For now, we'll log and proceed, as some renderers might handle it (e.g. C# method_declaration can lack body for extern).
+            log.debug("Body node (field '{}') not found for function node type '{}', name '{}'. Renderer must handle this.",
+                     profile.bodyFieldName(), funcNode.getType(), functionName);
+        }
+
 
         String exportPrefix = getVisibilityPrefix(funcNode, src);
         String asyncPrefix = "";
@@ -842,11 +898,15 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                                                         String returnTypeText,
                                                         String indent);
 
-    /** Finds decorator nodes immediately preceding a function or class node. */
-    private List<TSNode> getPrecedingDecorators(TSNode decoratedNode, String src) {
+    /** Finds decorator nodes immediately preceding a given node. */
+    private List<TSNode> getPrecedingDecorators(TSNode decoratedNode) {
         List<TSNode> decorators = new ArrayList<>();
+        var decoratorNodeTypes = getLanguageSyntaxProfile().decoratorNodeTypes();
+        if (decoratorNodeTypes.isEmpty()) {
+            return decorators;
+        }
         TSNode current = decoratedNode.getPrevSibling();
-        while (current != null && !current.isNull() && "decorator".equals(current.getType())) {
+        while (current != null && !current.isNull() && decoratorNodeTypes.contains(current.getType())) {
             decorators.add(current);
             current = current.getPrevSibling();
         }
@@ -871,32 +931,37 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
     /**
      * Fallback to extract a simple name from a declaration node when an explicit `.name` capture isn't found.
-     * Tries finding a child node with field name "name", then falls back to the first child of type "identifier".
+     * Tries finding a child node with field name specified in LanguageSyntaxProfile.
      * Needs the source string `src` for substring extraction.
      */
-    private static Optional<String> extractSimpleName(TSNode decl, String src) {
+    private Optional<String> extractSimpleName(TSNode decl, String src) {
         Optional<String> nameOpt = Optional.empty();
+        String identifierFieldName = getLanguageSyntaxProfile().identifierFieldName();
+        if (identifierFieldName.isEmpty()) {
+            log.warn("Identifier field name is empty in LanguageSyntaxProfile for node type {} at line {}. Cannot extract simple name by field.",
+                     decl.getType(), decl.getStartPoint().getRow() + 1);
+            return Optional.empty();
+        }
+
         try {
-            // Try finding a child node with field name "name" first.
-            TSNode nameNode = decl.getChildByFieldName("name");
+            TSNode nameNode = decl.getChildByFieldName(identifierFieldName);
             if (nameNode != null && !nameNode.isNull()) {
                 nameOpt = Optional.of(src.substring(nameNode.getStartByte(), nameNode.getEndByte()));
             } else {
-                 // Log failure specific to getChildByFieldName before falling back or failing
-                 log.warn("getChildByFieldName('name') returned null or isNull for node type {} at line {}",
-                          decl.getType(), decl.getStartPoint().getRow() + 1);
+                 log.warn("getChildByFieldName('{}') returned null or isNull for node type {} at line {}",
+                          identifierFieldName, decl.getType(), decl.getStartPoint().getRow() + 1);
             }
-            // Fallback removed. If getChildByFieldName fails, we assume name extraction isn't straightforward.
         } catch (Exception e) {
-             log.warn("Error extracting simple name from node type {} for node starting with '{}...': {}",
-                      decl.getType(), src.substring(decl.getStartByte(), Math.min(decl.getEndByte(), decl.getStartByte() + 20)), e.getMessage());
+             log.warn("Error extracting simple name using field '{}' from node type {} for node starting with '{}...': {}",
+                      identifierFieldName, decl.getType(), src.substring(decl.getStartByte(), Math.min(decl.getEndByte(), decl.getStartByte() + 20)), e.getMessage());
         }
-        // If we reach here, it means the try block finished without returning (i.e., getChildByFieldName failed or an exception occurred).
+
         if (nameOpt.isEmpty()) {
-            log.warn("extractSimpleName: Failed using getChildByFieldName('name') for node type {} at line {}",
-                     decl.getType(), decl.getStartPoint().getRow() + 1);
+            log.warn("extractSimpleName: Failed using getChildByFieldName('{}') for node type {} at line {}",
+                     identifierFieldName, decl.getType(), decl.getStartPoint().getRow() + 1);
         }
-        log.trace("extractSimpleName: DeclNode={}, ExtractedName='{}'", decl.getType(), nameOpt.orElse("N/A"));
+        log.trace("extractSimpleName: DeclNode={}, IdentifierField='{}', ExtractedName='{}'",
+                  decl.getType(), identifierFieldName, nameOpt.orElse("N/A"));
         return nameOpt;
     }
 
