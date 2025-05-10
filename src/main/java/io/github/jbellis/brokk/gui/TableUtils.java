@@ -72,7 +72,12 @@ public final class TableUtils {
             // Convert the value to a list of FileReferenceData
             List<FileReferenceList.FileReferenceData> fileRefs = convertToFileReferences(value);
 
-            FileReferenceList component = new FileReferenceList(fileRefs);
+            // Get the available width from the column
+            int colWidth = table.getColumnModel().getColumn(column).getWidth();
+            
+            // Use the AdaptiveFileReferenceList instead of regular FileReferenceList
+            FileReferenceList.AdaptiveFileReferenceList component = 
+                new FileReferenceList.AdaptiveFileReferenceList(fileRefs, colWidth, 4);
 
             // Set colors based on selection
             if (isSelected) {
@@ -90,6 +95,13 @@ public final class TableUtils {
 
             // Set border to match the editor's border for consistency when transitioning
             component.setBorder(BorderFactory.createEmptyBorder(1, 2, 1, 2));
+            
+            // Update row height if necessary to fit the component, but only if there are file references
+            // This preserves reasonable row height for other columns when no badges are present
+            int prefHeight = component.getPreferredSize().height;
+            if (!fileRefs.isEmpty() && table.getRowHeight(row) != prefHeight) {
+                table.setRowHeight(row, prefHeight);
+            }
 
             return component;
         }
@@ -170,6 +182,7 @@ public final class TableUtils {
                 int currentX = 0;
                 var visibleFiles = new ArrayList<FileReferenceData>();
                 
+                // 1. Provisional pass - fill with real badges
                 for (var ref : fileReferences) {
                     int badgeWidth = fm.stringWidth(ref.getFileName()) + borderInsets * 2;
                     if (!visibleFiles.isEmpty()) {
@@ -184,19 +197,37 @@ public final class TableUtils {
                     }
                 }
                 
-                // If not all files fit, add an overflow badge
                 int remaining = fileReferences.size() - visibleFiles.size();
                 if (remaining > 0) {
+                    // 2. Compute overflow badge width
+                    String overflowText = "+ " + remaining + " more";
+                    int overflowWidth = fm.stringWidth(overflowText) + borderInsets * 2;
+                    
+                    // Add gap in front of overflow badge if there are visible files
+                    int need = (visibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
+                    
+                    // 3. Make space by removing trailing real badges if required
+                    while (!visibleFiles.isEmpty() && currentX + need > availableWidth) {
+                        var last = visibleFiles.remove(visibleFiles.size() - 1);
+                        int lastWidth = fm.stringWidth(last.getFileName()) + borderInsets * 2;
+                        currentX -= lastWidth;
+                        if (!visibleFiles.isEmpty()) currentX -= hgap;
+                        remaining++;
+                        overflowText = "+ " + remaining + " more";
+                        overflowWidth = fm.stringWidth(overflowText) + borderInsets * 2;
+                        need = (visibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
+                    }
+
                     // Display visible files first
                     super.setFileReferences(visibleFiles);
                     
-                    // Create overflow badge
-                    JLabel overflow = this.createBadgeLabel("+ " + remaining + " more");
+                    // Create overflow badge with updated text
+                    JLabel overflow = this.createBadgeLabel(overflowText);
                     overflow.putClientProperty("allFiles", fileReferences);
                     overflow.putClientProperty("hgap", hgap);
                     overflow.setToolTipText("Show all " + fileReferences.size() + " files");
                     
-                    // Add overflow badge
+                    // Always add overflow badge - even if no space, it will wrap to next line
                     add(overflow);
                 } else {
                     // All files fit, show them all
