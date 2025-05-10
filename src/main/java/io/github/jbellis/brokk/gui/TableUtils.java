@@ -130,6 +130,80 @@ public final class TableUtils {
             this();
             setFileReferences(fileReferences);
         }
+        
+        /**
+         * Adaptive subclass that shows only file references that fit within an available width,
+         * with an optional overflow indicator.
+         */
+        static class AdaptiveFileReferenceList extends FileReferenceList {
+            private final List<FileReferenceData> allFiles;
+            private final int availableWidth;
+            private final int hgap;
+            
+            /**
+             * Creates a new AdaptiveFileReferenceList with the given files and width constraints.
+             * 
+             * @param files The complete list of file references
+             * @param availableWidth The maximum available width in pixels
+             * @param hgap The horizontal gap between badges
+             */
+            public AdaptiveFileReferenceList(List<FileReferenceData> files, int availableWidth, int hgap) {
+                super();
+                this.allFiles = new ArrayList<>(files);
+                this.availableWidth = availableWidth;
+                this.hgap = hgap;
+                setFileReferences(files);
+            }
+            
+            @Override
+            public void setFileReferences(List<FileReferenceData> fileReferences) {
+                if (fileReferences == null || fileReferences.isEmpty()) {
+                    super.setFileReferences(fileReferences);
+                    return;
+                }
+
+                // Calculate which files will fit in the available width
+                var font = getFont().deriveFont(getFont().getSize() * 0.85f);
+                var fm = getFontMetrics(font);
+                int borderInsets = (int) Math.ceil(BORDER_THICKNESS) + 6; // Must match createBadgeLabel
+                
+                int currentX = 0;
+                var visibleFiles = new ArrayList<FileReferenceData>();
+                
+                for (var ref : fileReferences) {
+                    int badgeWidth = fm.stringWidth(ref.getFileName()) + borderInsets * 2;
+                    if (!visibleFiles.isEmpty()) {
+                        currentX += hgap; // Add gap between badges
+                    }
+                    
+                    if (currentX + badgeWidth <= availableWidth) {
+                        visibleFiles.add(ref);
+                        currentX += badgeWidth;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // If not all files fit, add an overflow badge
+                int remaining = fileReferences.size() - visibleFiles.size();
+                if (remaining > 0) {
+                    // Display visible files first
+                    super.setFileReferences(visibleFiles);
+                    
+                    // Create overflow badge
+                    JLabel overflow = this.createBadgeLabel("+ " + remaining + " more");
+                    overflow.putClientProperty("allFiles", fileReferences);
+                    overflow.putClientProperty("hgap", hgap);
+                    overflow.setToolTipText("Show all " + fileReferences.size() + " files");
+                    
+                    // Add overflow badge
+                    add(overflow);
+                } else {
+                    // All files fit, show them all
+                    super.setFileReferences(fileReferences);
+                }
+            }
+        }
 
 
         /**
@@ -190,7 +264,7 @@ public final class TableUtils {
             return selected;
         }
 
-        private JLabel createBadgeLabel(String text) {
+        protected JLabel createBadgeLabel(String text) {
             JLabel label = new JLabel(text) {
                 @Override
                 protected void paintComponent(Graphics g) {
