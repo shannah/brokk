@@ -42,13 +42,11 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     protected CodeUnit createCodeUnit(ProjectFile file,
                                       String captureName,
                                       String simpleName,
-                                      String namespaceName,
+                                      String packageName, // Changed from namespaceName
                                       String classChain) {
-        // C# doesn't have standard package structure like Java/Python based on folders.
-        // Namespaces are declared in code. The namespaceName parameter provides this.
+        // The packageName parameter is now supplied by determinePackageName.
         // The classChain parameter is used for Joern-style short name generation.
         // Captures for class-like (class, struct, interface) constructs are unified to "class.definition".
-        String packageName = namespaceName;
 
         CodeUnit result;
         try {
@@ -71,14 +69,14 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
                 }
                 // Ignore other captures
                 default -> {
-                    log.warn("Unhandled capture name in CSharpAnalyzer.createCodeUnit: '{}' for simple name '{}', namespace '{}', classChain '{}' in file {}. Returning null.",
-                             captureName, simpleName, namespaceName, classChain, file);
+                    log.warn("Unhandled capture name in CSharpAnalyzer.createCodeUnit: '{}' for simple name '{}', package '{}', classChain '{}' in file {}. Returning null.",
+                             captureName, simpleName, packageName, classChain, file);
                     yield null;
                 }
             };
         } catch (Exception e) {
-            log.warn("Exception in CSharpAnalyzer.createCodeUnit for capture '{}', name '{}', file '{}', namespace '{}', classChain '{}': {}",
-                     captureName, simpleName, file, namespaceName, classChain, e.getMessage(), e);
+            log.warn("Exception in CSharpAnalyzer.createCodeUnit for capture '{}', name '{}', file '{}', package '{}', classChain '{}': {}",
+                     captureName, simpleName, file, packageName, classChain, e.getMessage(), e);
             return null;
         }
         log.trace("CSharpAnalyzer.createCodeUnit: returning {}", result);
@@ -143,6 +141,28 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     protected String getLanguageSpecificCloser(CodeUnit cu) {
         // C# classes, interfaces, structs, enums, namespaces use { }
         return cu.isClass() ? "}" : ""; // Simplified: assuming only classes need closers for now
+    }
+
+    @Override
+    protected String determinePackageName(ProjectFile file, TSNode definitionNode, TSNode rootNode, String src) {
+        // C# namespaces are determined by traversing up from the definition node
+        // to find enclosing namespace_declaration nodes.
+        // The 'file' parameter is not used here as namespace is derived from AST content.
+        java.util.List<String> namespaceParts = new java.util.ArrayList<>();
+        TSNode current = definitionNode.getParent(); // Start from the parent of the definition node
+
+        while (current != null && !current.isNull() && !current.equals(rootNode)) {
+            if ("namespace_declaration".equals(current.getType())) {
+                TSNode nameNode = current.getChildByFieldName("name");
+                if (nameNode != null && !nameNode.isNull()) {
+                    String nsPart = textSlice(nameNode, src);
+                    namespaceParts.add(nsPart); // Added from innermost to outermost
+                }
+            }
+            current = current.getParent();
+        }
+        Collections.reverse(namespaceParts); // Reverse to get outermost.innermost
+        return String.join(".", namespaceParts);
     }
 
     // isClassLike is now implemented in the base class using LanguageSyntaxProfile

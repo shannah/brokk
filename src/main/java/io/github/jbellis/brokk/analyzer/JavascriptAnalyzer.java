@@ -24,14 +24,14 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     protected CodeUnit createCodeUnit(ProjectFile file,
                                       String captureName,
                                       String simpleName,
-                                      String namespaceName, // namespaceName is currently not used by JS specific queries
+                                      String packageName, // Changed from namespaceName
                                       String classChain)
     {
-        var pkg = computePackagePath(file);
+        // The packageName parameter is now supplied by determinePackageName.
         return switch (captureName) {
             case "class.definition" -> {
                 String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
-                yield CodeUnit.cls(file, pkg, finalShortName);
+                yield CodeUnit.cls(file, packageName, finalShortName);
             }
             case "function.definition" -> {
                 String finalShortName;
@@ -40,7 +40,7 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
                 } else { // It's a top-level function in the file
                     finalShortName = simpleName;
                 }
-                yield CodeUnit.fn(file, pkg, finalShortName);
+                yield CodeUnit.fn(file, packageName, finalShortName);
             }
             case "field.definition" -> { // For class fields or top-level variables
                 String finalShortName;
@@ -51,7 +51,7 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
                 } else {
                     finalShortName = classChain + "." + simpleName;
                 }
-                yield CodeUnit.field(file, pkg, finalShortName);
+                yield CodeUnit.field(file, packageName, finalShortName);
             }
             default -> {
                 log.debug("Ignoring capture in JavascriptAnalyzer: {} with name: {} and classChain: {}", captureName, simpleName, classChain);
@@ -169,6 +169,22 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected String getLanguageSpecificCloser(CodeUnit cu) {
         return cu.isClass() ? "}" : "";
+    }
+
+    @Override
+    protected String determinePackageName(ProjectFile file, TSNode definitionNode, TSNode rootNode, String src) {
+        // JavaScript package naming is directory-based, relative to the project root.
+        // The definitionNode, rootNode, and src parameters are not used for JS package determination here.
+        var projectRoot = getProject().getRoot();
+        var filePath = file.absPath();
+        var parentDir = filePath.getParent();
+
+        if (parentDir == null || parentDir.equals(projectRoot)) {
+            return ""; // File is in the project root
+        }
+
+        var relPath = projectRoot.relativize(parentDir);
+        return relPath.toString().replace('/', '.').replace('\\', '.');
     }
 
     // isClassLike is now implemented in the base class using LanguageSyntaxProfile

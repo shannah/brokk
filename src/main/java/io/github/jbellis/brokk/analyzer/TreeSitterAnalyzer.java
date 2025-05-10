@@ -423,8 +423,19 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     protected abstract CodeUnit createCodeUnit(ProjectFile file,
                                                String captureName,
                                                String simpleName,
-                                               String namespaceName,
+                                               String packageName,
                                                String classChain);
+
+    /**
+     * Determines the package or namespace name for a given definition.
+     *
+     * @param file The project file being analyzed.
+     * @param definitionNode The TSNode representing the definition (e.g., class, function).
+     * @param rootNode The root TSNode of the file's syntax tree.
+     * @param src The source code of the file.
+     * @return The package or namespace name, or an empty string if not applicable.
+     */
+    protected abstract String determinePackageName(ProjectFile file, TSNode definitionNode, TSNode rootNode, String src);
 
     /**
      * Checks if the given AST node represents a class-like declaration
@@ -574,7 +585,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.trace("Processing definition: Name='{}', Capture='{}', Node Type='{}'",
                       simpleName, primaryCaptureName, node.getType());
 
-            String namespace = extractNamespace(node, currentRootNode, src);
+            String packageName = determinePackageName(file, node, currentRootNode, src);
             List<String> enclosingClassNames = new ArrayList<>();
             TSNode tempParent = node.getParent();
             while (tempParent != null && !tempParent.isNull() && !tempParent.equals(currentRootNode)) {
@@ -588,7 +599,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             String classChain = String.join("$", enclosingClassNames);
             log.trace("Computed classChain for simpleName='{}': '{}'", simpleName, classChain);
 
-            CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, namespace, classChain);
+            CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, packageName, classChain);
             log.trace("createCodeUnit returned: {}", cu);
 
             if (cu == null) {
@@ -600,8 +611,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.trace("Built signature for '{}': [{}]", simpleName, signature == null ? "NULL" : signature.isBlank() ? "BLANK" : signature.lines().findFirst().orElse("EMPTY"));
 
             if (file.getFileName().equals("vars.py") && primaryCaptureName.equals("field.definition")) {
-                log.info("[vars.py DEBUG] Processing entry for vars.py field: Node Type='{}', SimpleName='{}', CaptureName='{}', Namespace='{}', ClassChain='{}'", 
-                         node.getType(), simpleName, primaryCaptureName, namespace, classChain);
+                log.info("[vars.py DEBUG] Processing entry for vars.py field: Node Type='{}', SimpleName='{}', CaptureName='{}', PackageName='{}', ClassChain='{}'",
+                         node.getType(), simpleName, primaryCaptureName, packageName, classChain);
                 log.info("[vars.py DEBUG] CU created: {}, Signature: [{}]", cu, signature == null ? "NULL_SIG" : signature.isBlank() ? "BLANK_SIG" : signature.lines().findFirst().orElse("EMPTY_SIG"));
             }
 
@@ -963,43 +974,6 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         log.trace("extractSimpleName: DeclNode={}, IdentifierField='{}', ExtractedName='{}'",
                   decl.getType(), identifierFieldName, nameOpt.orElse("N/A"));
         return nameOpt;
-    }
-
-    private String extractNamespace(TSNode definitionNode, TSNode rootNode, String src) {
-        List<String> namespaceParts = new ArrayList<>();
-        TSNode current = definitionNode.getParent(); // Start from the parent of the definition node
-
-        while (current != null && !current.isNull() && !current.equals(rootNode)) {
-            if ("namespace_declaration".equals(current.getType())) {
-                TSNode nameNode = current.getChildByFieldName("name");
-                if (nameNode != null && !nameNode.isNull()) {
-                    String nsPart = textSlice(nameNode, src);
-                    namespaceParts.add(nsPart); // Added from innermost to outermost
-                }
-            }
-            current = current.getParent();
-        }
-        Collections.reverse(namespaceParts); // Reverse to get outermost.innermost
-        return String.join(".", namespaceParts);
-    }
-
-    /**
-     * Computes a package path based on the file's directory structure relative to the project root.
-     * Path separators are replaced with dots.
-     * @param file The file for which to compute the package path.
-     * @return The package path string, or an empty string if the file is in the project root.
-     */
-    protected String computePackagePath(ProjectFile file) {
-        Path projectRoot = getProject().getRoot();
-        Path filePath = file.absPath();
-        Path parentDir = filePath.getParent();
-
-        if (parentDir == null || parentDir.equals(projectRoot)) {
-            return ""; // File is in the project root
-        }
-
-        var rel = projectRoot.relativize(parentDir);
-        return rel.toString().replace('/', '.').replace('\\', '.');
     }
 
     private static String loadResource(String path) {

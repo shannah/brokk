@@ -36,12 +36,10 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     protected CodeUnit createCodeUnit(ProjectFile file,
                                       String captureName,
                                       String simpleName,
-                                      String namespaceName,
+                                      String packageName, // Changed from namespaceName
                                       String classChain) {
-        // Calculate package path based on directory structure relative to project root
-        // The namespaceName parameter is ignored for Python, as its packaging is directory-based.
+        // The packageName parameter is now supplied by determinePackageName.
         // The classChain parameter is used for Joern-style short name generation.
-        String packagePath = computePythonPackagePath(file); // e.g., "a" for "a/A.py"
 
         // Extract module name from filename using the inherited getFileName() method
         String moduleName = file.getFileName();
@@ -53,16 +51,16 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
             return switch (captureName) {
                 case "class.definition" -> {
                     String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
-                    yield CodeUnit.cls(file, packagePath, finalShortName);
+                    yield CodeUnit.cls(file, packageName, finalShortName);
                 }
                 case "function.definition" -> {
                     String finalShortName = classChain.isEmpty() ? (moduleName + "." + simpleName) : (classChain + "." + simpleName);
-                    yield CodeUnit.fn(file, packagePath, finalShortName);
+                    yield CodeUnit.fn(file, packageName, finalShortName);
                 }
                 case "field.definition" -> { // For class attributes or top-level variables
                     if (file.getFileName().equals("vars.py")) {
-                        log.info("[vars.py DEBUG PythonAnalyzer.createCodeUnit] file: {}, captureName: {}, simpleName: {}, namespaceName: {}, classChain: {}, packagePath: {}, moduleName: {}",
-                                 file.getFileName(), captureName, simpleName, namespaceName, classChain, packagePath, moduleName);
+                        log.info("[vars.py DEBUG PythonAnalyzer.createCodeUnit] file: {}, captureName: {}, simpleName: {}, packageName: {}, classChain: {}, moduleName: {}",
+                                 file.getFileName(), captureName, simpleName, packageName, classChain, moduleName);
                     }
                     String finalShortName;
                     if (classChain.isEmpty()) {
@@ -72,7 +70,7 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                     } else {
                         finalShortName = classChain + "." + simpleName;
                     }
-                    yield CodeUnit.field(file, packagePath, finalShortName);
+                    yield CodeUnit.field(file, packageName, finalShortName);
                 }
                 default -> {
                     // Log or handle unexpected captures if necessary
@@ -140,13 +138,10 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
         return ""; // Python uses indentation, no explicit closer for classes/functions
     }
 
-    /**
-     * Computes the Python package path based on directory structure relative to project root and __init__.py files.
-     * Does *not* include the filename/module name itself.
-     * @param file The file to get the package path for
-     * @return The package path (e.g., "a" for "a/A.py", "" for top-level "B.py")
-     */
-    private String computePythonPackagePath(ProjectFile file) {
+    @Override
+    protected String determinePackageName(ProjectFile file, TSNode definitionNode, TSNode rootNode, String src) {
+        // Python's package naming is directory-based, relative to project root or __init__.py markers.
+        // The definitionNode, rootNode, and src parameters are not used for Python package determination.
         var absPath = file.absPath();
         var projectRoot = getProject().getRoot();
         var parentDir = absPath.getParent();
@@ -156,29 +151,9 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
             return "";
         }
 
-        // Find the effective package root by checking for __init__.py files upwards
-        var current = parentDir;
-        var packageRoot = projectRoot; // Default to project root if no __init__.py found above
-
-        while (current != null && !current.equals(projectRoot)) {
-            if (Files.exists(current.resolve("__init__.py"))) {
-                // Found an __init__.py, this directory is part of the package path, continue checking parent
-                 packageRoot = current; // Keep track of the highest dir with __init__.py that is *below* parentDir
-            } else {
-                 // No __init__.py here, the package path effectively stops *below* this directory
-                 // If packageRoot is still projectRoot, it means no __init__.py was found at all in the hierarchy.
-                 // If packageRoot points to a directory below 'current', that's our limit.
-                 break; // Stop searching upwards
-            }
-             // Special case: If the immediate parent has __init__.py, its parent is the effective root.
-             // Need to find the highest directory containing __init__.py *between* projectRoot and parentDir.
-            current = current.getParent();
-        }
-
-
         // Find the highest directory containing __init__.py between project root and the file's parent
         var effectivePackageRoot = projectRoot;
-        current = parentDir;
+        var current = parentDir;
         while (current != null && !current.equals(projectRoot)) {
             if (Files.exists(current.resolve("__init__.py"))) {
                 effectivePackageRoot = current; // Found a potential root, keep checking higher
@@ -186,23 +161,23 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
             current = current.getParent();
         }
 
-
-        // Calculate the relative path from the effective package root's PARENT
+        // Calculate the relative path from the (parent of the effective package root OR project root)
         // to the file's parent directory.
         Path rootForRelativize = effectivePackageRoot.equals(projectRoot) ? projectRoot : effectivePackageRoot.getParent();
-        if (rootForRelativize == null) rootForRelativize = projectRoot; // Safety for top-level package roots
+        if (rootForRelativize == null) { // Should not happen if projectRoot is valid
+            rootForRelativize = projectRoot;
+        }
 
+        // If parentDir is not under rootForRelativize (e.g. parentDir is projectRoot, effectivePackageRoot is deeper due to missing __init__.py)
+        // or if parentDir is the same as rootForRelativize, then there's no relative package path.
+        if (!parentDir.startsWith(rootForRelativize) || parentDir.equals(rootForRelativize)) {
+             return "";
+        }
 
-        // Calculate the path parts that form the package name
         var relPath = rootForRelativize.relativize(parentDir);
 
         // Convert path separators to dots for package name
-        // Handle edge case where parentDir is the rootForRelativize (empty relative path)
-        if (relPath.toString().isEmpty()) {
-            return "";
-        } else {
-            return relPath.toString().replace('/', '.').replace('\\', '.');
-        }
+        return relPath.toString().replace('/', '.').replace('\\', '.');
     }
 
     // isClassLike is now implemented in the base class using LanguageSyntaxProfile.
