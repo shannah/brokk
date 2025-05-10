@@ -29,7 +29,8 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
                 "constructor.definition", SkeletonType.FUNCTION_LIKE,
                 "field.definition", SkeletonType.FIELD_LIKE
             ),
-            "" // asyncKeywordNodeType (C# async is a modifier, handled by textSlice not as a distinct first child type)
+            "", // asyncKeywordNodeType (C# async is a modifier, handled by textSlice not as a distinct first child type)
+            Set.of() // modifierNodeTypes
     );
 
 

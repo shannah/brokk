@@ -27,7 +27,8 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                 "function.definition", SkeletonType.FUNCTION_LIKE,
                 "field.definition", SkeletonType.FIELD_LIKE
             ),
-            "async" // asyncKeywordNodeType
+            "async", // asyncKeywordNodeType
+            Set.of() // modifierNodeTypes
     );
 
     public PythonAnalyzer(IProject project, Set<String> excludedFiles) {

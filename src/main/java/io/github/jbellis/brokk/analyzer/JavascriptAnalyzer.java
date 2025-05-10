@@ -26,7 +26,8 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
                 "function.definition", SkeletonType.FUNCTION_LIKE,
                 "field.definition", SkeletonType.FIELD_LIKE
             ),
-            "async" // asyncKeywordNodeType
+            "async", // asyncKeywordNodeType
+            Set.of() // modifierNodeTypes
     );
 
     public JavascriptAnalyzer(IProject project, Set<String> excludedFiles) { super(project, excludedFiles); }

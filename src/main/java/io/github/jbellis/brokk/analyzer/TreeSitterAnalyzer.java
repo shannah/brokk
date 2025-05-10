@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public abstract class TreeSitterAnalyzer implements IAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(TreeSitterAnalyzer.class);
+    // Use System.out.println for quick debugging during tests; log4j files are not visible here.
 
     // Native library loading is assumed automatic by the io.github.bonede.tree_sitter library.
 
@@ -48,7 +49,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         String parametersFieldName,
         String returnTypeFieldName,
         Map<String, SkeletonType> captureConfiguration,
-        String asyncKeywordNodeType
+        String asyncKeywordNodeType,
+        Set<String> modifierNodeTypes
     ) {
         public LanguageSyntaxProfile {
             Objects.requireNonNull(classLikeNodeTypes);
@@ -61,6 +63,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             Objects.requireNonNull(returnTypeFieldName);    // Can be empty string if not applicable
             Objects.requireNonNull(captureConfiguration);
             Objects.requireNonNull(asyncKeywordNodeType); // Can be empty string if not applicable
+            Objects.requireNonNull(modifierNodeTypes);
         }
     }
 
@@ -811,8 +814,48 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
     /* ---------- Granular Signature Rendering Callbacks (Formatting) ---------- */
     protected String getFunctionDeclarationKeyword(TSNode funcNode, String src) { return ""; }
+
+    /**
+     * Formats the parameter list for a function. Subclasses may override to provide
+     * language-specific formatting using the full AST subtree. The default
+     * implementation simply returns the raw text of {@code parametersNode}.
+     *
+     * @param parametersNode The TSNode representing the parameter list.
+     * @param src The source code.
+     * @return The formatted parameter list text.
+     */
+    protected String formatParameterList(TSNode parametersNode, String src) {
+        return parametersNode == null || parametersNode.isNull() ? "" : textSlice(parametersNode, src);
+    }
+
+    /**
+     * @deprecated Use {@link #formatParameterList(TSNode, String)} instead for AST-aware formatting.
+     * This method is kept for backward compatibility for subclasses that might still override it.
+     */
+    @Deprecated
     protected String formatParameterList(String paramsText) { return paramsText; }
+
+    /**
+     * Formats the return-type portion of a function signature. Subclasses may
+     * override to provide language-specific formatting. The default implementation
+     * returns the raw text of {@code returnTypeNode} (or an empty string if the
+     * node is null).
+     *
+     * @param returnTypeNode The TSNode representing the return type.
+     * @param src The source code.
+     * @return The formatted return type text.
+     */
+    protected String formatReturnType(TSNode returnTypeNode, String src) {
+        return returnTypeNode == null || returnTypeNode.isNull() ? "" : textSlice(returnTypeNode, src);
+    }
+
+    /**
+     * @deprecated Use {@link #formatReturnType(TSNode, String)} instead for AST-aware formatting.
+     * This method is kept for backward compatibility for subclasses that might still override it.
+     */
+    @Deprecated
     protected String formatReturnType(String returnTypeText) { return returnTypeText == null ? "" : returnTypeText; }
+
     protected String getClassDeclarationKeyword(TSNode classNode, String src) { return ""; }
     protected String formatHeritage(String signatureText) { return signatureText; }
 
@@ -897,8 +940,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             asyncPrefix = "async ";
         }
         
-        String paramsText = textSlice(paramsNode, src);
-        String returnTypeText = (returnTypeNode != null && !returnTypeNode.isNull()) ? textSlice(returnTypeNode, src) : "";
+        String paramsText = formatParameterList(paramsNode, src);
+        String returnTypeText = formatReturnType(returnTypeNode, src);
         
         String functionLine = assembleFunctionSignature(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
         if (functionLine != null && !functionLine.isBlank()) {
