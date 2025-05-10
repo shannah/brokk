@@ -773,11 +773,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 if (bodyNode != null && !bodyNode.isNull()) {
                     classSignatureText = textSlice(effectiveDefinitionNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
                 } else {
-                    classSignatureText = textSlice(effectiveDefinitionNode, src);
+                    // If bodyNode is not present, take the text up to the end of the effectiveDefinitionNode
+                    classSignatureText = textSlice(effectiveDefinitionNode.getStartByte(), effectiveDefinitionNode.getEndByte(), src).stripTrailing();
+                    // Then, perform standard cleanup of trailing braces or semicolons
                     if (classSignatureText.endsWith("{")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                     else if (classSignatureText.endsWith(";")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                 }
-                String headerLine = renderClassHeader(effectiveDefinitionNode, src, exportPrefix, classSignatureText, "");
+                String headerLine = assembleClassSignature(effectiveDefinitionNode, src, exportPrefix, classSignatureText, "");
                 if (headerLine != null && !headerLine.isBlank()) signatureLines.add(headerLine);
                 break;
             }
@@ -807,6 +809,20 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     // renderClassFooter is removed, replaced by getLanguageSpecificCloser
     // buildClassMemberSkeletons is removed from this direct path; children are handled by recursive reconstruction.
 
+    /* ---------- Granular Signature Rendering Callbacks (Formatting) ---------- */
+    protected String getFunctionDeclarationKeyword(TSNode funcNode, String src) { return ""; }
+    protected String formatParameterList(String paramsText) { return paramsText; }
+    protected String formatReturnType(String returnTypeText) { return returnTypeText == null ? "" : returnTypeText; }
+    protected String getClassDeclarationKeyword(TSNode classNode, String src) { return ""; }
+    protected String formatHeritage(String signatureText) { return signatureText; }
+
+    /* ---------- Granular Signature Rendering Callbacks (Assembly) ---------- */
+    protected String assembleFunctionSignature(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
+        return renderFunctionDeclaration(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
+    }
+    protected String assembleClassSignature(TSNode classNode, String src, String exportPrefix, String classSignatureText, String baseIndent) {
+        return renderClassHeader(classNode, src, exportPrefix, classSignatureText, baseIndent);
+    }
 
     /**
      * Determines a visibility or export prefix (e.g., "export ", "public ") for a given node.
@@ -884,7 +900,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         String paramsText = textSlice(paramsNode, src);
         String returnTypeText = (returnTypeNode != null && !returnTypeNode.isNull()) ? textSlice(returnTypeNode, src) : "";
         
-        String functionLine = renderFunctionDeclaration(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
+        String functionLine = assembleFunctionSignature(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
         if (functionLine != null && !functionLine.isBlank()) {
             lines.add(functionLine);
         }
