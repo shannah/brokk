@@ -14,6 +14,24 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(CSharpAnalyzer.class);
 
     private static final TSLanguage CS_LANGUAGE = new TreeSitterCSharp();
+    private static final LanguageSyntaxProfile CS_SYNTAX_PROFILE = new LanguageSyntaxProfile(
+            Set.of("class_declaration", "interface_declaration", "struct_declaration", "record_declaration", "record_struct_declaration"),
+            Set.of("method_declaration", "constructor_declaration", "local_function_statement"),
+            Set.of("field_declaration", "property_declaration", "event_field_declaration"),
+            Set.of("attribute_list"),
+            "name",         // identifierFieldName
+            "body",         // bodyFieldName
+            "parameters",   // parametersFieldName
+            "type",         // returnTypeFieldName (used by method_declaration for its return type node)
+            java.util.Map.of( // captureConfiguration
+                "class.definition", SkeletonType.CLASS_LIKE,
+                "function.definition", SkeletonType.FUNCTION_LIKE,
+                "constructor.definition", SkeletonType.FUNCTION_LIKE,
+                "field.definition", SkeletonType.FIELD_LIKE
+            ),
+            "" // asyncKeywordNodeType (C# async is a modifier, handled by textSlice not as a distinct first child type)
+    );
+
 
     public CSharpAnalyzer(IProject project, Set<String> excludedFiles) {
         super(project, excludedFiles);
@@ -98,16 +116,6 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
         return placeholder;
     }
 
-    @Override
-    protected SkeletonType getSkeletonTypeForCapture(String captureName) {
-        return switch (captureName) {
-            case "class.definition" -> SkeletonType.CLASS_LIKE; // Covers class, interface, struct
-            case "function.definition", "constructor.definition" -> SkeletonType.FUNCTION_LIKE;
-            case "field.definition" -> SkeletonType.FIELD_LIKE; // Covers fields and properties
-            default -> SkeletonType.UNSUPPORTED;
-        };
-    }
-
     // getTopLevelBlockerNodeTypes is removed as the base method in TreeSitterAnalyzer is removed.
 
     @Override
@@ -171,15 +179,6 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected LanguageSyntaxProfile getLanguageSyntaxProfile() {
-        return new LanguageSyntaxProfile(
-                Set.of("class_declaration", "interface_declaration", "struct_declaration", "record_declaration", "record_struct_declaration"),
-                Set.of("method_declaration", "constructor_declaration", "local_function_statement"), // Added local_function_statement
-                Set.of("field_declaration", "property_declaration", "event_field_declaration"), // Added event_field_declaration
-                Set.of("attribute_list"),
-                "name", // identifierFieldName
-                "body", // bodyFieldName
-                "parameters", // parametersFieldName
-                "type"  // returnTypeFieldName (used by method_declaration for its return type node)
-        );
+        return CS_SYNTAX_PROFILE;
     }
 }

@@ -46,7 +46,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         String identifierFieldName,
         String bodyFieldName,
         String parametersFieldName,
-        String returnTypeFieldName
+        String returnTypeFieldName,
+        Map<String, SkeletonType> captureConfiguration,
+        String asyncKeywordNodeType
     ) {
         public LanguageSyntaxProfile {
             Objects.requireNonNull(classLikeNodeTypes);
@@ -56,7 +58,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             Objects.requireNonNull(identifierFieldName);
             Objects.requireNonNull(bodyFieldName);
             Objects.requireNonNull(parametersFieldName);
-            Objects.requireNonNull(returnTypeFieldName); // Can be empty string if not applicable
+            Objects.requireNonNull(returnTypeFieldName);    // Can be empty string if not applicable
+            Objects.requireNonNull(captureConfiguration);
+            Objects.requireNonNull(asyncKeywordNodeType); // Can be empty string if not applicable
         }
     }
 
@@ -414,7 +418,10 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
      * @param captureName The name of the capture from the Tree-sitter query.
      * @return The {@link SkeletonType} indicating how to process this capture for skeleton generation.
      */
-    protected abstract SkeletonType getSkeletonTypeForCapture(String captureName);
+    protected SkeletonType getSkeletonTypeForCapture(String captureName) {
+        var profile = getLanguageSyntaxProfile();
+        return profile.captureConfiguration().getOrDefault(captureName, SkeletonType.UNSUPPORTED);
+    }
 
     /**
      * Translate a capture produced by the query into a {@link CodeUnit}.
@@ -868,8 +875,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         String exportPrefix = getVisibilityPrefix(funcNode, src);
         String asyncPrefix = "";
-        TSNode firstChildOfFunc = funcNode.getChild(0); // Check for 'async' keyword
-        if (firstChildOfFunc != null && !firstChildOfFunc.isNull() && "async".equals(firstChildOfFunc.getType())) {
+        TSNode firstChildOfFunc = funcNode.getChild(0); 
+        String asyncKWType = profile.asyncKeywordNodeType();
+        if (!asyncKWType.isEmpty() && firstChildOfFunc != null && !firstChildOfFunc.isNull() && asyncKWType.equals(firstChildOfFunc.getType())) {
             asyncPrefix = "async ";
         }
         

@@ -13,6 +13,22 @@ import java.util.Set;
 public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
     private static final TSLanguage PY_LANGUAGE = new TreeSitterPython();
+    private static final LanguageSyntaxProfile PY_SYNTAX_PROFILE = new LanguageSyntaxProfile(
+            Set.of("class_definition"),
+            Set.of("function_definition"),
+            Set.of("assignment", "typed_parameter"),
+            Set.of("decorator"),
+            "name",        // identifierFieldName
+            "body",        // bodyFieldName
+            "parameters",  // parametersFieldName
+            "return_type", // returnTypeFieldName
+            java.util.Map.of( // captureConfiguration
+                "class.definition", SkeletonType.CLASS_LIKE,
+                "function.definition", SkeletonType.FUNCTION_LIKE,
+                "field.definition", SkeletonType.FIELD_LIKE
+            ),
+            "async" // asyncKeywordNodeType
+    );
 
     public PythonAnalyzer(IProject project, Set<String> excludedFiles) {
         super(project, excludedFiles);
@@ -97,17 +113,6 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected SkeletonType getSkeletonTypeForCapture(String captureName) {
-        return switch (captureName) {
-            case "class.definition" -> SkeletonType.CLASS_LIKE;
-            case "function.definition" -> SkeletonType.FUNCTION_LIKE;
-            case "field.definition" -> SkeletonType.FIELD_LIKE; // For class attributes
-            // field.declaration (for self.x=...) is not a primary definition, so won't hit this from main loop
-            default -> SkeletonType.UNSUPPORTED;
-        };
-    }
-
-    @Override
     protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
         String pyReturnTypeSuffix = (returnTypeText != null && !returnTypeText.isEmpty()) ? " -> " + returnTypeText : "";
         // The 'indent' parameter is now "" when called from buildSignatureString,
@@ -185,15 +190,6 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected LanguageSyntaxProfile getLanguageSyntaxProfile() {
-        return new LanguageSyntaxProfile(
-                Set.of("class_definition"),
-                Set.of("function_definition"),
-                Set.of("assignment", "typed_parameter"), // 'assignment' for module/class level, 'typed_parameter' if self.x for instance vars
-                Set.of("decorator"),
-                "name",        // identifierFieldName (for functions, classes. Fields are handled by query)
-                "body",        // bodyFieldName
-                "parameters",  // parametersFieldName
-                "return_type"  // returnTypeFieldName
-        );
+        return PY_SYNTAX_PROFILE;
     }
 }

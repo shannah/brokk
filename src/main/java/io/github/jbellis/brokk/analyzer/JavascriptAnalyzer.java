@@ -12,6 +12,22 @@ import java.util.Set;
 
 public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     private static final TSLanguage JS_LANGUAGE = new TreeSitterJavascript();
+    private static final LanguageSyntaxProfile JS_SYNTAX_PROFILE = new LanguageSyntaxProfile(
+            Set.of("class_declaration", "class_expression", "class"),
+            Set.of("function_declaration", "arrow_function", "method_definition", "function_expression"),
+            Set.of("variable_declarator"),
+            Set.of(), // JS standard decorators not captured as simple preceding nodes by current query.
+            "name",       // identifierFieldName
+            "body",       // bodyFieldName
+            "parameters", // parametersFieldName
+            "",           // returnTypeFieldName (JS doesn't have a standard named child for return type)
+            java.util.Map.of( // captureConfiguration
+                "class.definition", SkeletonType.CLASS_LIKE,
+                "function.definition", SkeletonType.FUNCTION_LIKE,
+                "field.definition", SkeletonType.FIELD_LIKE
+            ),
+            "async" // asyncKeywordNodeType
+    );
 
     public JavascriptAnalyzer(IProject project, Set<String> excludedFiles) { super(project, excludedFiles); }
     public JavascriptAnalyzer(IProject project) { this(project, Collections.emptySet()); }
@@ -68,12 +84,11 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     protected SkeletonType getSkeletonTypeForCapture(String captureName) {
         // The primaryCaptureName from the query is expected to be "class.definition"
         // or "function.definition" for relevant skeleton-producing captures.
-        return switch (captureName) {
-            case "class.definition" -> SkeletonType.CLASS_LIKE;
-            case "function.definition" -> SkeletonType.FUNCTION_LIKE;
-            case "field.definition" -> SkeletonType.FIELD_LIKE;
-            default -> SkeletonType.UNSUPPORTED;
-        };
+        // The primaryCaptureName from the query is expected to be "class.definition"
+        // or "function.definition" for relevant skeleton-producing captures.
+        // This method is now implemented in the base class using captureConfiguration from LanguageSyntaxProfile.
+        // This override can be removed.
+        return super.getSkeletonTypeForCapture(captureName);
     }
 
     @Override
@@ -196,15 +211,6 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected LanguageSyntaxProfile getLanguageSyntaxProfile() {
-        return new LanguageSyntaxProfile(
-                Set.of("class_declaration", "class_expression", "class"), // "class" for older/generic tree-sitter grammars
-                Set.of("function_declaration", "arrow_function", "method_definition", "function_expression"),
-                Set.of("variable_declarator"), // Assuming definition node for field is variable_declarator
-                Set.of(), // JS standard decorators are not directly captured as simple preceding nodes by current query.
-                "name",       // identifierFieldName
-                "body",       // bodyFieldName (applies to function_declaration, method_definition, class_declaration)
-                "parameters", // parametersFieldName
-                ""            // returnTypeFieldName (JS doesn't have a standard named child for return type like C# or Python)
-        );
+        return JS_SYNTAX_PROFILE;
     }
 }
