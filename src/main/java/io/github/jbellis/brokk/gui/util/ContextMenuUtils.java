@@ -48,37 +48,29 @@ public final class ContextMenuUtils {
         Component renderer = table.prepareRenderer(
             table.getCellRenderer(row, 0), row, 0);
         
-        // Extract needed data from renderer via reflection
+        // Extract needed data from renderer using pattern matching
         List<FileReferenceData> visibleFiles;
         List<FileReferenceData> hiddenFiles = List.of();
         boolean hasOverflow = false;
         
-        try {
-            var getVisibleFilesMethod = renderer.getClass().getMethod("getVisibleFiles");
-            @SuppressWarnings("unchecked")
-            var visibleFilesResult = (List<FileReferenceData>) getVisibleFilesMethod.invoke(renderer);
-            visibleFiles = visibleFilesResult;
-            
-            var hasOverflowMethod = renderer.getClass().getMethod("hasOverflow");
-            hasOverflow = (Boolean) hasOverflowMethod.invoke(renderer);
-            
+        if (renderer instanceof TableUtils.FileReferenceList.AdaptiveFileReferenceList afl) {
+            // Direct method calls on the casted object
+            visibleFiles = afl.getVisibleFiles();
+            hasOverflow = afl.hasOverflow();
             if (hasOverflow) {
-                var getHiddenFilesMethod = renderer.getClass().getMethod("getHiddenFiles");
-                @SuppressWarnings("unchecked")
-                var hiddenFilesResult = (List<FileReferenceData>) getHiddenFilesMethod.invoke(renderer);
-                hiddenFiles = hiddenFilesResult;
+                hiddenFiles = afl.getHiddenFiles();
             }
-        } catch (Exception ex) {
-            // Fallback if reflection fails - use all files as visible
+        } else {
+            // Fallback if not the expected renderer type
             visibleFiles = fileRefs;
             // Log the issue but continue (avoid breaking the UI)
-            System.err.println("Error accessing renderer methods: " + ex.getMessage());
+            System.err.println("Unexpected renderer type: " + renderer.getClass().getName());
         }
         
         // Check what kind of mouse event we're handling
         if (e.isPopupTrigger()) {
             // Right-click (context menu)
-            var targetRef = findClickedReference(p, row, table, visibleFiles);
+            var targetRef = TableUtils.findClickedReference(p, row, table, visibleFiles);
             
             // Right-click on overflow badge?
             if (targetRef == null && hasOverflow) {
@@ -98,7 +90,7 @@ public final class ContextMenuUtils {
             );
         } else if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
             // Left-click
-            var targetRef = findClickedReference(p, row, table, visibleFiles);
+            var targetRef = TableUtils.findClickedReference(p, row, table, visibleFiles);
             
             // If no visible badge was clicked AND we have overflow
             if (targetRef == null && hasOverflow) {
@@ -108,51 +100,6 @@ public final class ContextMenuUtils {
         }
     }
     
-    /**
-     * Resolves which FileReferenceData badge is under the supplied mouse location.
-     * 
-     * @param pointInTableCoords The point in table coordinates
-     * @param row The row index
-     * @param table The table containing the badges
-     * @param visibleReferences The list of visible file references
-     * @return The FileReferenceData under the point, or null if none
-     */
-    private static FileReferenceData findClickedReference(Point pointInTableCoords,
-                                                   int row,
-                                                   JTable table,
-                                                   List<FileReferenceData> visibleReferences)
-    {
-        // Convert to cell-local coordinates
-        Rectangle cellRect = table.getCellRect(row, 0, false);
-        int xInCell = pointInTableCoords.x - cellRect.x;
-        int yInCell = pointInTableCoords.y - cellRect.y;
-        if (xInCell < 0 || yInCell < 0) return null;
-
-        // Badge layout parameters – keep in sync with FileReferenceList
-        final int hgap = 4;     // FlowLayout hgap in FileReferenceList
-
-        // Font used inside the badges (85 % of table font size) - must match FileReferenceList.createBadgeLabel
-        var baseFont = table.getFont();
-        var badgeFont = baseFont.deriveFont(Font.PLAIN, baseFont.getSize() * 0.85f);
-        var fm = table.getFontMetrics(badgeFont);
-
-        int currentX = 0;
-        // Calculate insets based on BORDER_THICKNESS and text padding (matching createBadgeLabel)
-        int borderStrokeInset = (int) Math.ceil(TableUtils.FileReferenceList.BORDER_THICKNESS);
-        int textPaddingHorizontal = 6; // As defined in createBadgeLabel's EmptyBorder logic
-        int totalInsetsPerSide = borderStrokeInset + textPaddingHorizontal;
-
-        for (var ref : visibleReferences) {
-            int textWidth = fm.stringWidth(ref.getFileName());
-            // Label width is text width + total left inset + total right inset
-            int labelWidth = textWidth + (2 * totalInsetsPerSide);
-            if (xInCell >= currentX && xInCell <= currentX + labelWidth) {
-                return ref;
-            }
-            currentX += labelWidth + hgap;
-        }
-        return null;
-    }
    
     // Private constructor to prevent instantiation
     private ContextMenuUtils() {
@@ -181,28 +128,9 @@ public final class ContextMenuUtils {
      * @param onRefreshSuggestions Runnable to call when "Refresh Suggestions" is selected
      */
     public static void showFileRefMenu(Component owner, int x, int y, Object fileRefData, Chrome chrome, Runnable onRefreshSuggestions) {
-        // Convert to our FileReferenceData if needed
-        TableUtils.FileReferenceList.FileReferenceData targetRef;
-        if (fileRefData instanceof TableUtils.FileReferenceList.FileReferenceData) {
-            targetRef = (TableUtils.FileReferenceList.FileReferenceData) fileRefData;
-        } else {
-            // Assume it's the internal TableUtils.FileReferenceList.FileReferenceData
-            // and extract the fields using reflection or conversion methods
-            try {
-                var method = fileRefData.getClass().getMethod("getFileName");
-                String fileName = (String) method.invoke(fileRefData);
-                
-                method = fileRefData.getClass().getMethod("getFullPath");
-                String fullPath = (String) method.invoke(fileRefData);
-                
-                method = fileRefData.getClass().getMethod("getRepoFile");
-                ProjectFile projectFile = (ProjectFile) method.invoke(fileRefData);
-                
-                targetRef = new TableUtils.FileReferenceList.FileReferenceData(fileName, fullPath, projectFile);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to convert file reference data", e);
-            }
-        }
+        // Convert to our FileReferenceData - we know it's always this type from all callers
+        TableUtils.FileReferenceList.FileReferenceData targetRef = 
+            (TableUtils.FileReferenceList.FileReferenceData) fileRefData;
         
         var cm = chrome.getContextManager();
         JPopupMenu menu = new JPopupMenu();

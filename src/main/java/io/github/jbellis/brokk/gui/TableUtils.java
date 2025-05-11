@@ -118,7 +118,6 @@ public final class TableUtils {
         fullList.setOpaque(false); // For visual continuity
 
         // Add listeners directly to each badge component
-        final Chrome finalChrome = chrome;
         for (Component c : fullList.getComponents()) {
             if (c instanceof JLabel) {
                 c.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -148,17 +147,17 @@ public final class TableUtils {
 
                                 // Calculate the position in screen coordinates
                                 Point screenPoint = e.getLocationOnScreen();
-                                Point framePoint = finalChrome.getFrame().getLocationOnScreen();
+                                Point framePoint = chrome.getFrame().getLocationOnScreen();
                                 int xInFrame = screenPoint.x - framePoint.x;
                                 int yInFrame = screenPoint.y - framePoint.y;
 
                                 // Show menu anchored to the frame instead of the badge
                                 ContextMenuUtils.showFileRefMenu(
-                                        finalChrome.getFrame(),
+                                        chrome.getFrame(),
                                         xInFrame,
                                         yInFrame,
                                         files.get(index),
-                                        finalChrome,
+                                        chrome,
                                         () -> {
                                         }  // No refresh needed for popup
                                 );
@@ -676,5 +675,51 @@ public final class TableUtils {
                 return fullPath.hashCode();
             }
         }
+    }
+    
+    /**
+     * Resolves which FileReferenceData badge is under the supplied mouse location.
+     * 
+     * @param pointInTableCoords The point in table coordinates
+     * @param row The row index
+     * @param table The table containing the badges
+     * @param visibleReferences The list of visible file references
+     * @return The FileReferenceData under the point, or null if none
+     */
+    public static TableUtils.FileReferenceList.FileReferenceData findClickedReference(Point pointInTableCoords,
+                                                  int row,
+                                                  JTable table,
+                                                  List<TableUtils.FileReferenceList.FileReferenceData> visibleReferences)
+    {
+        // Convert to cell-local coordinates
+        Rectangle cellRect = table.getCellRect(row, 0, false);
+        int xInCell = pointInTableCoords.x - cellRect.x;
+        int yInCell = pointInTableCoords.y - cellRect.y;
+        if (xInCell < 0 || yInCell < 0) return null;
+
+        // Badge layout parameters – keep in sync with FileReferenceList
+        final int hgap = 4;     // FlowLayout hgap in FileReferenceList
+
+        // Font used inside the badges (85 % of table font size) - must match FileReferenceList.createBadgeLabel
+        var baseFont = table.getFont();
+        var badgeFont = baseFont.deriveFont(Font.PLAIN, baseFont.getSize() * 0.85f);
+        var fm = table.getFontMetrics(badgeFont);
+
+        int currentX = 0;
+        // Calculate insets based on BORDER_THICKNESS and text padding (matching createBadgeLabel)
+        int borderStrokeInset = (int) Math.ceil(FileReferenceList.BORDER_THICKNESS);
+        int textPaddingHorizontal = 6; // As defined in createBadgeLabel's EmptyBorder logic
+        int totalInsetsPerSide = borderStrokeInset + textPaddingHorizontal;
+
+        for (var ref : visibleReferences) {
+            int textWidth = fm.stringWidth(ref.getFileName());
+            // Label width is text width + total left inset + total right inset
+            int labelWidth = textWidth + (2 * totalInsetsPerSide);
+            if (xInCell >= currentX && xInCell <= currentX + labelWidth) {
+                return ref;
+            }
+            currentX += labelWidth + hgap;
+        }
+        return null;
     }
 }
