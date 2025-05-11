@@ -438,59 +438,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // ----- context-menu support -----------------------------------------------------------
         referenceFileTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void mousePressed(java.awt.event.MouseEvent e) {
-                handlePopup(e);
+            public void mousePressed(java.awt.event.MouseEvent e)  { 
+                ContextMenuUtils.handleFileReferenceClick(e,
+                                                         referenceFileTable,
+                                                         chrome,
+                                                         () -> triggerContextSuggestion(null)); 
             }
-
+            
             @Override
-            public void mouseReleased(java.awt.event.MouseEvent e) {
-                handlePopup(e);
-            }
-
-            private void handlePopup(java.awt.event.MouseEvent e) {
-                Point p = e.getPoint();
-                int row = referenceFileTable.rowAtPoint(p);
-                if (row < 0) return;
-
-                // Always select the row for visual feedback
-                referenceFileTable.requestFocusInWindow();
-                referenceFileTable.setRowSelectionInterval(row, row);
-                
-                @SuppressWarnings("unchecked")
-                var fileRefs = (List<FileReferenceData>)
-                        referenceFileTable.getValueAt(row, 0);
-
-                if (fileRefs == null || fileRefs.isEmpty()) return;
-                
-                // Get the renderer to access our stored lists of visible/hidden files
-                var renderer = (TableUtils.FileReferenceList.AdaptiveFileReferenceList)
-                    referenceFileTable.prepareRenderer(
-                        referenceFileTable.getCellRenderer(row, 0), row, 0);
-                
-                // Check what kind of mouse event we're handling
-                if (e.isPopupTrigger()) {
-                    // Right-click (context menu)
-                    var targetRef = findClickedReference(p, row, renderer.getVisibleFiles());
-                    // Default to first file if click wasn't on a specific badge
-                    if (targetRef == null) targetRef = fileRefs.get(0);
-                    
-                    // Use the utility to show the context menu
-                    ContextMenuUtils.showFileRefMenu(
-                        referenceFileTable, 
-                        targetRef, 
-                        chrome, 
-                        () -> triggerContextSuggestion(null)
-                    );
-                } else if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
-                    // Left-click
-                    var targetRef = findClickedReference(p, row, renderer.getVisibleFiles());
-                    
-                    // If no visible badge was clicked AND we have overflow
-                    if (targetRef == null && renderer.hasOverflow()) {
-                        // Show the overflow popup with only the hidden files
-                        TableUtils.showOverflowPopup(referenceFileTable, renderer.getHiddenFiles());
-                    }
-                }
+            public void mouseReleased(java.awt.event.MouseEvent e) { 
+                mousePressed(e); 
             }
         });
 
@@ -540,45 +497,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         centerPanel.add(suggestionAreaPanel, 1);
     }
 
-    /**
-     * Resolves which {@link FileReferenceData} badge is under the supplied mouse
-     * location.  Logic is identical to ContextPanel#findClickedReference.
-     */
-    private FileReferenceData findClickedReference(Point pointInTableCoords,
-                                                   int row,
-                                                   List<FileReferenceData> visibleReferences)
-    {
-        // Convert to cell-local coordinates
-        Rectangle cellRect = referenceFileTable.getCellRect(row, 0, false);
-        int xInCell = pointInTableCoords.x - cellRect.x;
-        int yInCell = pointInTableCoords.y - cellRect.y;
-        if (xInCell < 0 || yInCell < 0) return null;
-
-        // Badge layout parameters – keep in sync with FileReferenceList
-        final int hgap = 4;     // FlowLayout hgap in FileReferenceList
-
-        // Font used inside the badges (85 % of table font size) - must match FileReferenceList.createBadgeLabel
-        var baseFont = referenceFileTable.getFont();
-        var badgeFont = baseFont.deriveFont(Font.PLAIN, baseFont.getSize() * 0.85f);
-        var fm = referenceFileTable.getFontMetrics(badgeFont);
-
-        int currentX = 0;
-        // Calculate insets based on BORDER_THICKNESS and text padding (matching createBadgeLabel)
-        int borderStrokeInset = (int) Math.ceil(TableUtils.FileReferenceList.BORDER_THICKNESS);
-        int textPaddingHorizontal = 6; // As defined in createBadgeLabel's EmptyBorder logic
-        int totalInsetsPerSide = borderStrokeInset + textPaddingHorizontal;
-
-        for (var ref : visibleReferences) {
-            int textWidth = fm.stringWidth(ref.getFileName());
-            // Label width is text width + total left inset + total right inset
-            int labelWidth = textWidth + (2 * totalInsetsPerSide);
-            if (xInCell >= currentX && xInCell <= currentX + labelWidth) {
-                return ref;
-            }
-            currentX += labelWidth + hgap;
-        }
-        return null;
-    }
 
     private JPanel buildBottomPanel() {
         JPanel bottomPanel = new JPanel();

@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
+import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -23,7 +24,7 @@ public final class TableUtils {
      */
     /**
      * Shows a popup displaying all file references when there are more than can fit in the table cell.
-     * 
+     *
      * @param anchor The component that anchors the popup (usually the table or cell).
      * @param files The complete list of file references to display.
      */
@@ -41,36 +42,36 @@ public final class TableUtils {
                     // Get the constrained width if in a viewport
                     int targetWidth = target.getWidth();
                     if (target.getParent() instanceof JViewport) {
-                        targetWidth = ((JViewport)target.getParent()).getExtentSize().width;
+                        targetWidth = ((JViewport) target.getParent()).getExtentSize().width;
                     }
-                    
+
                     // If we have zero width, use the superclass calculation
                     if (targetWidth <= 0) {
                         return super.preferredLayoutSize(target);
                     }
-                    
+
                     // Calculate the height given the constrained width
                     int hgap = getHgap();
                     int vgap = getVgap();
                     int maxWidth = targetWidth - (target.getInsets().left + target.getInsets().right);
-                    
+
                     // Calculate how many rows we need
                     int numRows = 1;
                     int x = 0;
-                    
+
                     for (int i = 0; i < target.getComponentCount(); i++) {
                         Component c = target.getComponent(i);
                         if (!c.isVisible()) continue;
-                        
+
                         Dimension d = c.getPreferredSize();
                         if (x + d.width > maxWidth && x > 0) {
                             numRows++;
                             x = 0;
                         }
-                        
+
                         x += d.width + hgap;
                     }
-                    
+
                     // Calculate total height for all rows
                     int height = 0;
                     if (numRows > 0) {
@@ -79,43 +80,95 @@ public final class TableUtils {
                             height = c.getPreferredSize().height * numRows + vgap * (numRows - 1);
                         }
                     }
-                    
+
                     return new Dimension(targetWidth, height + target.getInsets().top + target.getInsets().bottom);
                 }
             });
         }
-        
+
         @Override
         public boolean getScrollableTracksViewportWidth() {
             return true; // Force component to match viewport width
         }
-        
+
         @Override
         public boolean getScrollableTracksViewportHeight() {
             return false; // Let vertical scrolling work normally
         }
-        
+
         @Override
         public Dimension getPreferredScrollableViewportSize() {
             return getPreferredSize();
         }
-        
+
         @Override
         public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
             return 10;
         }
-        
+
         @Override
         public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
             return orientation == SwingConstants.VERTICAL ? visibleRect.height : visibleRect.width;
         }
     }
 
-    public static void showOverflowPopup(Component anchor, List<FileReferenceList.FileReferenceData> files) {
+    public static void showOverflowPopup(Chrome chrome, Component anchor, List<FileReferenceList.FileReferenceData> files) {
         // Create a wrapping FileReferenceList with all files
         var fullList = new WrappingFileReferenceList(files);
         fullList.setOpaque(false); // For visual continuity
-        
+
+        // Add listeners directly to each badge component
+        final Chrome finalChrome = chrome;
+        for (Component c : fullList.getComponents()) {
+            if (c instanceof JLabel) {
+                c.addMouseListener(new java.awt.event.MouseAdapter() {
+                    @Override
+                    public void mousePressed(java.awt.event.MouseEvent e) {
+                        maybeShowPopupForBadge(e);
+                    }
+
+                    @Override
+                    public void mouseReleased(java.awt.event.MouseEvent e) {
+                        maybeShowPopupForBadge(e);
+                    }
+
+                    private void maybeShowPopupForBadge(java.awt.event.MouseEvent e) {
+                        boolean rightClick = SwingUtilities.isRightMouseButton(e);
+                        boolean popupKey = e.isPopupTrigger();
+
+                        if (rightClick || popupKey) {
+                            // Find which file this badge represents
+                            int index = fullList.getComponentZOrder(c);
+                            if (index >= 0 && index < files.size()) {
+                                // Find and close the outer popup first
+                                JPopupMenu outerPopup = (JPopupMenu) SwingUtilities.getAncestorOfClass(JPopupMenu.class, c);
+                                if (outerPopup != null) {
+                                    outerPopup.setVisible(false);
+                                }
+
+                                // Calculate the position in screen coordinates
+                                Point screenPoint = e.getLocationOnScreen();
+                                Point framePoint = finalChrome.getFrame().getLocationOnScreen();
+                                int xInFrame = screenPoint.x - framePoint.x;
+                                int yInFrame = screenPoint.y - framePoint.y;
+
+                                // Show menu anchored to the frame instead of the badge
+                                ContextMenuUtils.showFileRefMenu(
+                                        finalChrome.getFrame(),
+                                        xInFrame,
+                                        yInFrame,
+                                        files.get(index),
+                                        finalChrome,
+                                        () -> {
+                                        }  // No refresh needed for popup
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
         // Calculate the proper row height using the first badge as reference
         int rowHeight = 0;
         if (!files.isEmpty()) {
@@ -126,7 +179,7 @@ public final class TableUtils {
             // Fallback to a reasonable default if no files
             rowHeight = 25;
         }
-        
+
         // Find the exact column width if anchor is in a table
         int colWidth;
         if (anchor instanceof JTable) {
@@ -142,25 +195,25 @@ public final class TableUtils {
             // Fallback if not in a table
             colWidth = Math.min(400, anchor.getParent().getWidth());
         }
-        
+
         // Set visible rows with a maximum
         int visibleRows = Math.min(4, Math.max(1, files.size())); // At least 1 row, at most 4
         // Add explicit padding for bottom border to prevent clipping
-        int borderPadding = (int)Math.ceil(FileReferenceList.BORDER_THICKNESS * 2); // Account for top and bottom border
+        int borderPadding = (int) Math.ceil(FileReferenceList.BORDER_THICKNESS * 2); // Account for top and bottom border
         int preferredHeight = rowHeight * visibleRows + 6 + borderPadding;
-        
+
         // Create a scrollable container with explicit scrollbar policies
         var scroll = new JScrollPane(fullList);
         scroll.setBorder(null);
         scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         scroll.setPreferredSize(new Dimension(colWidth, preferredHeight));
-        
+
         // Create and configure the popup
         var popup = new JPopupMenu();
         popup.setLayout(new BorderLayout());
         popup.add(scroll);
-        
+
         // Force layout to calculate proper wrapping AFTER being added to the container
         SwingUtilities.invokeLater(() -> {
             fullList.invalidate();
@@ -168,12 +221,12 @@ public final class TableUtils {
             fullList.doLayout();
             scroll.revalidate();
         });
-        
+
         // Apply theme using existing theme colors with fallbacks
         boolean isDarkTheme = UIManager.getBoolean("laf.dark");
         Color bgColor;
         Color fgColor;
-        
+
         try {
             // Use panel or table colors as alternatives, since popup colors don't exist
             bgColor = ThemeColors.getColor(isDarkTheme, "table_background");
@@ -183,18 +236,18 @@ public final class TableUtils {
             bgColor = UIManager.getColor("Panel.background");
             fgColor = UIManager.getColor("Label.foreground");
         }
-        
+
         popup.setBackground(bgColor);
         fullList.setBackground(bgColor);
         scroll.setBackground(bgColor);
         popup.setForeground(fgColor);
         fullList.setForeground(fgColor);
-        
+
         // Show popup below the anchor component
         popup.pack(); // Ensure proper sizing
         popup.show(anchor, 0, anchor.getHeight());
     }
-    
+
     public static int measuredBadgeRowHeight(JTable table) {
         var sampleData = new FileReferenceList.FileReferenceData("sample.txt", "/sample.txt", null);
         var renderer = new FileReferencesTableCellRenderer();
@@ -248,10 +301,10 @@ public final class TableUtils {
 
             // Get the available width from the column
             int colWidth = table.getColumnModel().getColumn(column).getWidth();
-            
+
             // Use the AdaptiveFileReferenceList instead of regular FileReferenceList
-            FileReferenceList.AdaptiveFileReferenceList component = 
-                new FileReferenceList.AdaptiveFileReferenceList(fileRefs, colWidth, 4);
+            FileReferenceList.AdaptiveFileReferenceList component =
+                    new FileReferenceList.AdaptiveFileReferenceList(fileRefs, colWidth, 4);
 
             // Set colors based on selection
             if (isSelected) {
@@ -269,7 +322,7 @@ public final class TableUtils {
 
             // Set border to match the editor's border for consistency when transitioning
             component.setBorder(BorderFactory.createEmptyBorder(1, 2, 1, 2));
-            
+
             // Update row height if necessary to fit the component, but only if there are file references
             // This preserves reasonable row height for other columns when no badges are present
             int prefHeight = component.getPreferredSize().height;
@@ -300,7 +353,7 @@ public final class TableUtils {
     /**
      * Component to display and interact with a list of file references.
      */
-    static class FileReferenceList extends JPanel {
+    public static class FileReferenceList extends JPanel {
         private final List<FileReferenceData> fileReferences = new ArrayList<>();
         private boolean selected = false;
 
@@ -316,57 +369,55 @@ public final class TableUtils {
             this();
             setFileReferences(fileReferences);
         }
-        
+
         /**
          * Adaptive subclass that shows only file references that fit within an available width,
          * with an optional overflow indicator.
          */
-        static class AdaptiveFileReferenceList extends FileReferenceList {
-            private final List<FileReferenceData> allFiles;
+        public static class AdaptiveFileReferenceList extends FileReferenceList {
             private final int availableWidth;
             private final int hgap;
-            
+
             // Fields to track visible vs. hidden files
             private List<FileReferenceData> visibleFiles = List.of();
             private List<FileReferenceData> hiddenFiles = List.of();
             private boolean hasOverflow = false;
-            
+
             /**
              * Creates a new AdaptiveFileReferenceList with the given files and width constraints.
-             * 
-             * @param files The complete list of file references
+             *
+             * @param files          The complete list of file references
              * @param availableWidth The maximum available width in pixels
-             * @param hgap The horizontal gap between badges
+             * @param hgap           The horizontal gap between badges
              */
             public AdaptiveFileReferenceList(List<FileReferenceData> files, int availableWidth, int hgap) {
                 super();
-                this.allFiles = new ArrayList<>(files);
                 this.availableWidth = availableWidth;
                 this.hgap = hgap;
                 setFileReferences(files);
             }
-            
+
             /**
              * Returns the list of files that are currently visible as individual badges.
              */
             public List<FileReferenceData> getVisibleFiles() {
                 return visibleFiles;
             }
-            
+
             /**
              * Returns the list of files that are hidden and represented by the overflow badge.
              */
             public List<FileReferenceData> getHiddenFiles() {
                 return hiddenFiles;
             }
-            
+
             /**
              * Returns whether this list has an overflow badge.
              */
             public boolean hasOverflow() {
                 return hasOverflow;
             }
-            
+
             @Override
             public void setFileReferences(List<FileReferenceData> fileReferences) {
                 if (fileReferences == null || fileReferences.isEmpty()) {
@@ -381,17 +432,17 @@ public final class TableUtils {
                 var font = getFont().deriveFont(getFont().getSize() * 0.85f);
                 var fm = getFontMetrics(font);
                 int borderInsets = (int) Math.ceil(BORDER_THICKNESS) + 6; // Must match createBadgeLabel
-                
+
                 int currentX = 0;
                 var visibleFilesList = new ArrayList<FileReferenceData>();
-                
+
                 // 1. Provisional pass - fill with real badges
                 for (var ref : fileReferences) {
                     int badgeWidth = fm.stringWidth(ref.getFileName()) + borderInsets * 2;
                     if (!visibleFilesList.isEmpty()) {
                         currentX += hgap; // Add gap between badges
                     }
-                    
+
                     if (currentX + badgeWidth <= availableWidth) {
                         visibleFilesList.add(ref);
                         currentX += badgeWidth;
@@ -399,24 +450,24 @@ public final class TableUtils {
                         break;
                     }
                 }
-                
+
                 int remaining = fileReferences.size() - visibleFilesList.size();
-                
+
                 // Store the results in our fields
                 this.visibleFiles = List.copyOf(visibleFilesList);
-                this.hiddenFiles = remaining > 0 
-                    ? List.copyOf(fileReferences.subList(visibleFilesList.size(), fileReferences.size()))
-                    : List.of();
+                this.hiddenFiles = remaining > 0
+                                   ? List.copyOf(fileReferences.subList(visibleFilesList.size(), fileReferences.size()))
+                                   : List.of();
                 this.hasOverflow = !hiddenFiles.isEmpty();
-                
+
                 if (hasOverflow) {
                     // 2. Compute overflow badge width
                     String overflowText = "+ " + hiddenFiles.size() + " more";
                     int overflowWidth = fm.stringWidth(overflowText) + borderInsets * 2;
-                    
+
                     // Add gap in front of overflow badge if there are visible files
                     int need = (visibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
-                    
+
                     // 3. Make space by removing trailing real badges if required
                     var mutableVisibleFiles = new ArrayList<>(visibleFiles);
                     while (!mutableVisibleFiles.isEmpty() && currentX + need > availableWidth) {
@@ -429,7 +480,7 @@ public final class TableUtils {
                         overflowWidth = fm.stringWidth(overflowText) + borderInsets * 2;
                         need = (mutableVisibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
                     }
-                    
+
                     // Update our fields with the adjusted visible/hidden lists
                     if (mutableVisibleFiles.size() != visibleFiles.size()) {
                         this.visibleFiles = List.copyOf(mutableVisibleFiles);
@@ -438,11 +489,11 @@ public final class TableUtils {
 
                     // Display visible files first
                     super.setFileReferences(mutableVisibleFiles);
-                    
+
                     // Create overflow badge with updated text
                     JLabel overflow = this.createBadgeLabel(overflowText);
                     overflow.setToolTipText("Show all " + fileReferences.size() + " files");
-                    
+
                     // Always add overflow badge - even if no space, it will wrap to next line
                     add(overflow);
                 } else {
@@ -450,7 +501,7 @@ public final class TableUtils {
                     super.setFileReferences(fileReferences);
                 }
             }
-            
+
         }
 
 
@@ -497,14 +548,14 @@ public final class TableUtils {
             boolean isDarkTheme = UIManager.getBoolean("laf.dark");
             Color badgeForeground = ThemeColors.getColor(isDarkTheme, "badge_foreground");
             Color selectedBadgeForeground = ThemeColors.getColor(isDarkTheme, "selected_badge_foreground");
-            
+
             // Update colors of all children without rebuilding the component hierarchy
             for (Component c : getComponents()) {
                 if (c instanceof JLabel) {
                     c.setForeground(selected ? selectedBadgeForeground : badgeForeground);
                 }
             }
-            
+
             // Repaint but don't remove/recreate components
             repaint();
         }
