@@ -487,8 +487,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     
                     // If no visible badge was clicked AND we have overflow
                     if (targetRef == null && renderer.hasOverflow()) {
-                        // Show the overflow popup with all files
-                        TableUtils.showOverflowPopup(referenceFileTable, fileRefs);
+                        // Show the overflow popup with only the hidden files
+                        TableUtils.showOverflowPopup(referenceFileTable, renderer.getHiddenFiles());
                     }
                 }
             }
