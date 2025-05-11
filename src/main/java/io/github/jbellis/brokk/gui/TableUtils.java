@@ -112,7 +112,7 @@ public final class TableUtils {
         }
     }
 
-    public static void showOverflowPopup(Chrome chrome, Component anchor, List<FileReferenceList.FileReferenceData> files) {
+    public static void showOverflowPopup(Chrome chrome, JTable table, int row, int col, List<FileReferenceList.FileReferenceData> files) {
         // Create a wrapping FileReferenceList with all files
         var fullList = new WrappingFileReferenceList(files);
         fullList.setOpaque(false); // For visual continuity
@@ -179,21 +179,8 @@ public final class TableUtils {
             rowHeight = 25;
         }
 
-        // Find the exact column width if anchor is in a table
-        int colWidth;
-        if (anchor instanceof JTable) {
-            JTable table = (JTable) anchor;
-            int col = table.getSelectedColumn();
-            colWidth = table.getColumnModel().getColumn(col > -1 ? col : 0).getWidth();
-        } else if (anchor.getParent() instanceof JTable) {
-            JTable table = (JTable) anchor.getParent();
-            Point p = anchor.getLocation();
-            int col = table.columnAtPoint(p);
-            colWidth = table.getColumnModel().getColumn(col > -1 ? col : 0).getWidth();
-        } else {
-            // Fallback if not in a table
-            colWidth = Math.min(400, anchor.getParent().getWidth());
-        }
+        // Find the exact column width using the table and column index
+        int colWidth = table.getColumnModel().getColumn(col).getWidth();
 
         // Set visible rows with a maximum
         int visibleRows = Math.min(4, Math.max(1, files.size())); // At least 1 row, at most 4
@@ -242,9 +229,10 @@ public final class TableUtils {
         popup.setForeground(fgColor);
         fullList.setForeground(fgColor);
 
-        // Show popup below the anchor component
+        // Show popup below the specific cell
+        var cellRect = table.getCellRect(row, col, true);
         popup.pack(); // Ensure proper sizing
-        popup.show(anchor, 0, anchor.getHeight());
+        popup.show(table, cellRect.x, cellRect.y + cellRect.height);
     }
 
     public static int measuredBadgeRowHeight(JTable table) {
@@ -682,17 +670,19 @@ public final class TableUtils {
      * 
      * @param pointInTableCoords The point in table coordinates
      * @param row The row index
+     * @param column The column index containing the file references
      * @param table The table containing the badges
      * @param visibleReferences The list of visible file references
      * @return The FileReferenceData under the point, or null if none
      */
     public static TableUtils.FileReferenceList.FileReferenceData findClickedReference(Point pointInTableCoords,
                                                   int row,
+                                                  int column,
                                                   JTable table,
                                                   List<TableUtils.FileReferenceList.FileReferenceData> visibleReferences)
     {
         // Convert to cell-local coordinates
-        Rectangle cellRect = table.getCellRect(row, 0, false);
+        Rectangle cellRect = table.getCellRect(row, column, false);
         int xInCell = pointInTableCoords.x - cellRect.x;
         int yInCell = pointInTableCoords.y - cellRect.y;
         if (xInCell < 0 || yInCell < 0) return null;

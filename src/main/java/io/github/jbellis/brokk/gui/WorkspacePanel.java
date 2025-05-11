@@ -14,6 +14,7 @@ import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
+import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 import io.github.jbellis.brokk.prompts.CopyExternalPrompts;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.HtmlToMarkdown;
@@ -156,6 +157,32 @@ public class WorkspacePanel extends JPanel {
         contextTable.getColumnModel().getColumn(1).setPreferredWidth(230);
         contextTable.getColumnModel().getColumn(2).setPreferredWidth(250);
 
+        // Add mouse listener to handle file reference badge clicks
+        contextTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeHandleFileRefClick(e);
+            }
+            
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeHandleFileRefClick(e);
+            }
+            
+            private void maybeHandleFileRefClick(MouseEvent e) {
+                int col = contextTable.columnAtPoint(e.getPoint());
+                if (col == FILES_REFERENCED_COLUMN) {
+                    ContextMenuUtils.handleFileReferenceClick(
+                            e,
+                            contextTable,
+                            chrome,
+                            () -> {}, // Workspace doesn't need to refresh suggestions
+                            FILES_REFERENCED_COLUMN
+                    );
+                }
+            }
+        });
+        
         // Add mouse motion for tooltips
         contextTable.addMouseMotionListener(new MouseAdapter() {
             @Override
@@ -231,6 +258,7 @@ public class WorkspacePanel extends JPanel {
             }
 
             private void handlePopup(MouseEvent e) {
+                if (e.isConsumed()) return; // Respect if event was already handled
                 if (e.isPopupTrigger()) {
                     int row = contextTable.rowAtPoint(e.getPoint());
                     int col = contextTable.columnAtPoint(e.getPoint());
@@ -283,27 +311,8 @@ public class WorkspacePanel extends JPanel {
                             compressHistoryItem.setEnabled(uncompressedExists);
                         }
 
-                        // If the user right-clicked on the references column, show reference options
-                        var fileActionsAdded = false;
-                        TableUtils.FileReferenceList.FileReferenceData targetRef = null; // Declare outside the block
-                        if (col == FILES_REFERENCED_COLUMN) {
-                            @SuppressWarnings("unchecked") List<TableUtils.FileReferenceList.FileReferenceData> references = (List<TableUtils.FileReferenceList.FileReferenceData>) contextTable.getValueAt(row, col);
-                            if (references != null && !references.isEmpty()) {
-                                // Assign to the outer variable
-                                targetRef = findClickedReference(e.getPoint(), row, col, references);
-                                if (targetRef != null) {
-                                    // If clicking on a specific file reference, show specific file options
-                                    contextMenu.addSeparator();
-                                    contextMenu.add(buildAddMenuItem(targetRef));
-                                    contextMenu.add(buildReadMenuItem(targetRef));
-                                    contextMenu.add(buildSummarizeMenuItem(targetRef));
-                                }
-                                fileActionsAdded = true;
-                            }
-                        }
-
-                        // If clicking in the row but not on a specific reference badge
-                        if (!fileActionsAdded) {
+                        // Row popup options
+                        {
                             contextMenu.addSeparator();
                             var selectedFragments = getSelectedFragments(); // Get selected fragments once
 
@@ -693,48 +702,6 @@ public class WorkspacePanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             populateContextTable(contextManager.selectedContext());
         });
-    }
-
-    /**
-     * Determine which file reference was clicked based on mouse coordinates.
-     * We replicate the FlowLayout calculations to find the badge at xInCell.
-     */
-    private TableUtils.FileReferenceList.FileReferenceData findClickedReference(Point pointInTableCoords,
-                                                                                int row, int col,
-                                                                                List<TableUtils.FileReferenceList.FileReferenceData> references) {
-        // Get cell rectangle so we can convert to cell-local coordinates
-        Rectangle cellRect = contextTable.getCellRect(row, col, false);
-        int xInCell = pointInTableCoords.x - cellRect.x;
-        int yInCell = pointInTableCoords.y - cellRect.y;
-        if (xInCell < 0 || yInCell < 0) {
-            return null;
-        }
-
-        // We used a smaller font in FileReferenceList: about 0.85 of table's font size
-        var baseFont = contextTable.getFont();
-        float scaledSize = baseFont.getSize() * 0.85f;
-        Font badgeFont = baseFont.deriveFont(Font.PLAIN, scaledSize);
-        FontMetrics fm = contextTable.getFontMetrics(badgeFont);
-
-        // FlowLayout left gap was 4, label has ~12px horizontal padding
-        final int hgap = 4;
-        final int horizontalPadding = 12; // total left+right
-        // We drew a 1.5f stroke around the badge, but a small offset is enough
-        final int borderThickness = 3; // extra width for border + rounding
-        int currentX = 0;
-
-        for (TableUtils.FileReferenceList.FileReferenceData ref : references) {
-            String text = ref.getFileName();
-            int textWidth = fm.stringWidth(text);
-            // label’s total width = text + internal padding + border
-            int labelWidth = textWidth + horizontalPadding + borderThickness;
-            // Check if user clicked in [currentX .. currentX + labelWidth]
-            if (xInCell >= currentX && xInCell <= currentX + labelWidth) {
-                return ref;
-            }
-            currentX += (labelWidth + hgap);
-        }
-        return null;
     }
 
     /**

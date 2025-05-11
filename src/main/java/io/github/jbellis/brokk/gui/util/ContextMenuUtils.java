@@ -28,6 +28,20 @@ public final class ContextMenuUtils {
      * @param onRefreshSuggestions Runnable to call when "Refresh Suggestions" is selected
      */
     public static void handleFileReferenceClick(MouseEvent e, JTable table, Chrome chrome, Runnable onRefreshSuggestions) {
+        handleFileReferenceClick(e, table, chrome, onRefreshSuggestions, 0);
+    }
+
+    /**
+     * Handles mouse clicks on file reference badges in a table with a specified column index.
+     * Shows the appropriate context menu or overflow popup based on the click location and type.
+     *
+     * @param e The mouse event
+     * @param table The table containing file reference badges
+     * @param chrome The Chrome instance for UI integration
+     * @param onRefreshSuggestions Runnable to call when "Refresh Suggestions" is selected
+     * @param columnIndex The column index containing the file references
+     */
+    public static void handleFileReferenceClick(MouseEvent e, JTable table, Chrome chrome, Runnable onRefreshSuggestions, int columnIndex) {
         assert SwingUtilities.isEventDispatchThread();
         
         Point p = e.getPoint();
@@ -40,13 +54,13 @@ public final class ContextMenuUtils {
         
         @SuppressWarnings("unchecked")
         var fileRefs = (List<FileReferenceData>)
-                table.getValueAt(row, 0);
+                table.getValueAt(row, columnIndex);
 
         if (fileRefs == null || fileRefs.isEmpty()) return;
         
         // Get the renderer and extract visible/hidden files using reflection
         Component renderer = table.prepareRenderer(
-            table.getCellRenderer(row, 0), row, 0);
+            table.getCellRenderer(row, columnIndex), row, columnIndex);
         
         // Extract needed data from renderer using pattern matching
         List<FileReferenceData> visibleFiles;
@@ -70,32 +84,37 @@ public final class ContextMenuUtils {
         // Check what kind of mouse event we're handling
         if (e.isPopupTrigger()) {
             // Right-click (context menu)
-            var targetRef = TableUtils.findClickedReference(p, row, table, visibleFiles);
+            var targetRef = TableUtils.findClickedReference(p, row, columnIndex, table, visibleFiles);
             
             // Right-click on overflow badge?
             if (targetRef == null && hasOverflow) {
-                TableUtils.showOverflowPopup(chrome, table, hiddenFiles);
+                TableUtils.showOverflowPopup(chrome, table, row, columnIndex, hiddenFiles);
+                e.consume(); // Prevent further listeners from acting on this event
                 return;
             }
             
             // Default to first file if click wasn't on a specific badge
             if (targetRef == null) targetRef = fileRefs.get(0);
             
-            // Show the context menu
+            // Show the context menu near the mouse click location
             showFileRefMenu(
-                table, 
-                targetRef, 
-                chrome, 
+                table,
+                e.getX(),
+                e.getY(),
+                targetRef,
+                chrome,
                 onRefreshSuggestions
             );
+            e.consume(); // Prevent further listeners from acting on this event
         } else if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
             // Left-click
-            var targetRef = TableUtils.findClickedReference(p, row, table, visibleFiles);
+            var targetRef = TableUtils.findClickedReference(p, row, columnIndex, table, visibleFiles);
             
             // If no visible badge was clicked AND we have overflow
             if (targetRef == null && hasOverflow) {
                 // Show the overflow popup with only the hidden files
-                TableUtils.showOverflowPopup(chrome, table, hiddenFiles);
+                TableUtils.showOverflowPopup(chrome, table, row, columnIndex, hiddenFiles);
+                e.consume(); // Prevent further listeners from acting on this event
             }
         }
     }
