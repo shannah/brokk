@@ -448,31 +448,49 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
 
             private void handlePopup(java.awt.event.MouseEvent e) {
-                if (!e.isPopupTrigger()) return;
-                int row = referenceFileTable.rowAtPoint(e.getPoint());
+                Point p = e.getPoint();
+                int row = referenceFileTable.rowAtPoint(p);
                 if (row < 0) return;
 
-                referenceFileTable.requestFocusInWindow(); // Request focus on right-click
+                // Always select the row for visual feedback
+                referenceFileTable.requestFocusInWindow();
                 referenceFileTable.setRowSelectionInterval(row, row);
+                
                 @SuppressWarnings("unchecked")
                 var fileRefs = (List<FileReferenceData>)
                         referenceFileTable.getValueAt(row, 0);
 
                 if (fileRefs == null || fileRefs.isEmpty()) return;
-
-                // --- NEW: determine which badge the mouse is over -----------------------------
-                var targetRef = findClickedReference(e.getPoint(), row, fileRefs) == null
-                                ? fileRefs.get(0)
-                                : findClickedReference(e.getPoint(), row, fileRefs);
-                assert targetRef != null;
                 
-                // Use the utility to show the context menu
-                ContextMenuUtils.showFileRefMenu(
-                    referenceFileTable, 
-                    targetRef, 
-                    chrome, 
-                    () -> triggerContextSuggestion(null)
-                );
+                // Get the renderer to access our stored lists of visible/hidden files
+                var renderer = (TableUtils.FileReferenceList.AdaptiveFileReferenceList)
+                    referenceFileTable.prepareRenderer(
+                        referenceFileTable.getCellRenderer(row, 0), row, 0);
+                
+                // Check what kind of mouse event we're handling
+                if (e.isPopupTrigger()) {
+                    // Right-click (context menu)
+                    var targetRef = findClickedReference(p, row, renderer.getVisibleFiles());
+                    // Default to first file if click wasn't on a specific badge
+                    if (targetRef == null) targetRef = fileRefs.get(0);
+                    
+                    // Use the utility to show the context menu
+                    ContextMenuUtils.showFileRefMenu(
+                        referenceFileTable, 
+                        targetRef, 
+                        chrome, 
+                        () -> triggerContextSuggestion(null)
+                    );
+                } else if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
+                    // Left-click
+                    var targetRef = findClickedReference(p, row, renderer.getVisibleFiles());
+                    
+                    // If no visible badge was clicked AND we have overflow
+                    if (targetRef == null && renderer.hasOverflow()) {
+                        // Show the overflow popup with all files
+                        TableUtils.showOverflowPopup(referenceFileTable, fileRefs);
+                    }
+                }
             }
         });
 
@@ -528,7 +546,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private FileReferenceData findClickedReference(Point pointInTableCoords,
                                                    int row,
-                                                   List<FileReferenceData> references)
+                                                   List<FileReferenceData> visibleReferences)
     {
         // Convert to cell-local coordinates
         Rectangle cellRect = referenceFileTable.getCellRect(row, 0, false);
@@ -550,7 +568,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         int textPaddingHorizontal = 6; // As defined in createBadgeLabel's EmptyBorder logic
         int totalInsetsPerSide = borderStrokeInset + textPaddingHorizontal;
 
-        for (var ref : references) {
+        for (var ref : visibleReferences) {
             int textWidth = fm.stringWidth(ref.getFileName());
             // Label width is text width + total left inset + total right inset
             int labelWidth = textWidth + (2 * totalInsetsPerSide);

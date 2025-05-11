@@ -21,6 +21,53 @@ public final class TableUtils {
      * @param table The JTable for which to calculate the row height.
      * @return The preferred row height based on measurement.
      */
+    /**
+     * Shows a popup displaying all file references when there are more than can fit in the table cell.
+     * 
+     * @param anchor The component that anchors the popup (usually the table or cell).
+     * @param files The complete list of file references to display.
+     */
+    public static void showOverflowPopup(Component anchor, List<FileReferenceList.FileReferenceData> files) {
+        // Create a regular FileReferenceList with all files (no trimming)
+        var fullList = new FileReferenceList(files);
+        fullList.setOpaque(false); // For visual continuity
+        
+        // Create a scrollable container
+        var scroll = new JScrollPane(fullList);
+        scroll.setBorder(null);
+        scroll.setPreferredSize(new Dimension(
+                Math.min(400, anchor.getParent().getWidth()), 200)); // Cap height
+        
+        // Create and configure the popup
+        var popup = new JPopupMenu();
+        popup.setLayout(new BorderLayout());
+        popup.add(scroll);
+        
+        // Apply theme using existing theme colors with fallbacks
+    boolean isDarkTheme = UIManager.getBoolean("laf.dark");
+    Color bgColor;
+    Color fgColor;
+    
+    try {
+        // Use panel or table colors as alternatives, since popup colors don't exist
+        bgColor = ThemeColors.getColor(isDarkTheme, "table_background");
+        fgColor = ThemeColors.getColor(isDarkTheme, "badge_foreground");
+    } catch (IllegalArgumentException e) {
+        // Fallback to standard UI colors if theme colors aren't found
+        bgColor = UIManager.getColor("Panel.background");
+        fgColor = UIManager.getColor("Label.foreground");
+    }
+    
+    popup.setBackground(bgColor);
+    fullList.setBackground(bgColor);
+    scroll.setBackground(bgColor);
+    popup.setForeground(fgColor);
+    fullList.setForeground(fgColor);
+        
+        // Show popup below the anchor component
+        popup.show(anchor, 0, anchor.getHeight());
+    }
+    
     public static int measuredBadgeRowHeight(JTable table) {
         var sampleData = new FileReferenceList.FileReferenceData("sample.txt", "/sample.txt", null);
         var renderer = new FileReferencesTableCellRenderer();
@@ -152,6 +199,11 @@ public final class TableUtils {
             private final int availableWidth;
             private final int hgap;
             
+            // Fields to track visible vs. hidden files
+            private List<FileReferenceData> visibleFiles = List.of();
+            private List<FileReferenceData> hiddenFiles = List.of();
+            private boolean hasOverflow = false;
+            
             /**
              * Creates a new AdaptiveFileReferenceList with the given files and width constraints.
              * 
@@ -167,9 +219,33 @@ public final class TableUtils {
                 setFileReferences(files);
             }
             
+            /**
+             * Returns the list of files that are currently visible as individual badges.
+             */
+            public List<FileReferenceData> getVisibleFiles() {
+                return visibleFiles;
+            }
+            
+            /**
+             * Returns the list of files that are hidden and represented by the overflow badge.
+             */
+            public List<FileReferenceData> getHiddenFiles() {
+                return hiddenFiles;
+            }
+            
+            /**
+             * Returns whether this list has an overflow badge.
+             */
+            public boolean hasOverflow() {
+                return hasOverflow;
+            }
+            
             @Override
             public void setFileReferences(List<FileReferenceData> fileReferences) {
                 if (fileReferences == null || fileReferences.isEmpty()) {
+                    this.visibleFiles = List.of();
+                    this.hiddenFiles = List.of();
+                    this.hasOverflow = false;
                     super.setFileReferences(fileReferences);
                     return;
                 }
@@ -180,51 +256,64 @@ public final class TableUtils {
                 int borderInsets = (int) Math.ceil(BORDER_THICKNESS) + 6; // Must match createBadgeLabel
                 
                 int currentX = 0;
-                var visibleFiles = new ArrayList<FileReferenceData>();
+                var visibleFilesList = new ArrayList<FileReferenceData>();
                 
                 // 1. Provisional pass - fill with real badges
                 for (var ref : fileReferences) {
                     int badgeWidth = fm.stringWidth(ref.getFileName()) + borderInsets * 2;
-                    if (!visibleFiles.isEmpty()) {
+                    if (!visibleFilesList.isEmpty()) {
                         currentX += hgap; // Add gap between badges
                     }
                     
                     if (currentX + badgeWidth <= availableWidth) {
-                        visibleFiles.add(ref);
+                        visibleFilesList.add(ref);
                         currentX += badgeWidth;
                     } else {
                         break;
                     }
                 }
                 
-                int remaining = fileReferences.size() - visibleFiles.size();
-                if (remaining > 0) {
+                int remaining = fileReferences.size() - visibleFilesList.size();
+                
+                // Store the results in our fields
+                this.visibleFiles = List.copyOf(visibleFilesList);
+                this.hiddenFiles = remaining > 0 
+                    ? List.copyOf(fileReferences.subList(visibleFilesList.size(), fileReferences.size()))
+                    : List.of();
+                this.hasOverflow = !hiddenFiles.isEmpty();
+                
+                if (hasOverflow) {
                     // 2. Compute overflow badge width
-                    String overflowText = "+ " + remaining + " more";
+                    String overflowText = "+ " + hiddenFiles.size() + " more";
                     int overflowWidth = fm.stringWidth(overflowText) + borderInsets * 2;
                     
                     // Add gap in front of overflow badge if there are visible files
                     int need = (visibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
                     
                     // 3. Make space by removing trailing real badges if required
-                    while (!visibleFiles.isEmpty() && currentX + need > availableWidth) {
-                        var last = visibleFiles.remove(visibleFiles.size() - 1);
+                    var mutableVisibleFiles = new ArrayList<>(visibleFiles);
+                    while (!mutableVisibleFiles.isEmpty() && currentX + need > availableWidth) {
+                        var last = mutableVisibleFiles.remove(mutableVisibleFiles.size() - 1);
                         int lastWidth = fm.stringWidth(last.getFileName()) + borderInsets * 2;
                         currentX -= lastWidth;
-                        if (!visibleFiles.isEmpty()) currentX -= hgap;
+                        if (!mutableVisibleFiles.isEmpty()) currentX -= hgap;
                         remaining++;
                         overflowText = "+ " + remaining + " more";
                         overflowWidth = fm.stringWidth(overflowText) + borderInsets * 2;
-                        need = (visibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
+                        need = (mutableVisibleFiles.isEmpty() ? 0 : hgap) + overflowWidth;
+                    }
+                    
+                    // Update our fields with the adjusted visible/hidden lists
+                    if (mutableVisibleFiles.size() != visibleFiles.size()) {
+                        this.visibleFiles = List.copyOf(mutableVisibleFiles);
+                        this.hiddenFiles = List.copyOf(fileReferences.subList(mutableVisibleFiles.size(), fileReferences.size()));
                     }
 
                     // Display visible files first
-                    super.setFileReferences(visibleFiles);
+                    super.setFileReferences(mutableVisibleFiles);
                     
                     // Create overflow badge with updated text
                     JLabel overflow = this.createBadgeLabel(overflowText);
-                    overflow.putClientProperty("allFiles", fileReferences);
-                    overflow.putClientProperty("hgap", hgap);
                     overflow.setToolTipText("Show all " + fileReferences.size() + " files");
                     
                     // Always add overflow badge - even if no space, it will wrap to next line
@@ -234,6 +323,7 @@ public final class TableUtils {
                     super.setFileReferences(fileReferences);
                 }
             }
+            
         }
 
 
@@ -276,15 +366,19 @@ public final class TableUtils {
 
             this.selected = selected;
 
-            // Just update the badges directly - we're already on the EDT when this is called
-            removeAll();
-            for (FileReferenceData file : this.fileReferences) {
-                JLabel fileLabel = createBadgeLabel(file.getFileName());
-                fileLabel.setOpaque(false);
-                fileLabel.setToolTipText(file.getFullPath());
-                add(fileLabel);
+            // Get theme-appropriate colors
+            boolean isDarkTheme = UIManager.getBoolean("laf.dark");
+            Color badgeForeground = ThemeColors.getColor(isDarkTheme, "badge_foreground");
+            Color selectedBadgeForeground = ThemeColors.getColor(isDarkTheme, "selected_badge_foreground");
+            
+            // Update colors of all children without rebuilding the component hierarchy
+            for (Component c : getComponents()) {
+                if (c instanceof JLabel) {
+                    c.setForeground(selected ? selectedBadgeForeground : badgeForeground);
+                }
             }
-            revalidate();
+            
+            // Repaint but don't remove/recreate components
             repaint();
         }
 
