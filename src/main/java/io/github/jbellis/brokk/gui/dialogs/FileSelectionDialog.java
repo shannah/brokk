@@ -341,6 +341,7 @@ public class FileSelectionDialog extends JDialog {
                                                       all,
                                                       f -> f.getFileName().toString(),
                                                       Path::toString,
+                                                      p -> project.getRepo().getTrackedFiles().contains(new ProjectFile(project.getRoot(), project.getRoot().relativize(p))) ? 0 : 1,
                                                       this::createExternalCompletion);
 
             AutoCompleteUtil.sizePopupWindows(autoCompletion, tc, comps);

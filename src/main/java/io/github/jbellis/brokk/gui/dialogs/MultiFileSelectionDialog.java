@@ -676,6 +676,7 @@ public class MultiFileSelectionDialog extends JDialog {
                         projectFiles,
                         ProjectFile::getFileName,
                         ProjectFile::toString,
+                        pf -> contextManager.getRepo().getTrackedFiles().contains(pf) ? 0 : 1,
                         this::createRepoCompletion);
 
                 // Call sizePopupWindows only when we have ShorthandCompletions
@@ -836,6 +837,7 @@ public class MultiFileSelectionDialog extends JDialog {
                                                         availableCompletions,
                                                         CodeUnit::identifier,
                                                         CodeUnit::fqName,
+                                                        cu -> 0, // No-op tiebreaker for symbols
                                                         this::createClassCompletion);
 
             AutoCompleteUtil.sizePopupWindows(classAutoCompletion, comp, matches);

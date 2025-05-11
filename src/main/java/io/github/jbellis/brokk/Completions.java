@@ -105,13 +105,14 @@ public class Completions {
         return new ProjectFile(root, root.relativize(p));
     }
 
-    private record Scored<T>(T source, int score, boolean isShort) {
+    private record Scored<T>(T source, int score, int tiebreakScore, boolean isShort) {
     }
 
     public static <T> List<ShorthandCompletion> scoreShortAndLong(String pattern,
                                                                   Collection<T> candidates,
                                                                   Function<T, String> extractShort,
                                                                   Function<T, String> extractLong,
+                                                                  Function<T, Integer> tiebreaker,
                                                                   Function<T, ShorthandCompletion> toCompletion)
     {
         var matcher = new FuzzyMatcher(pattern);
@@ -121,11 +122,13 @@ public class Completions {
                     int longScore = matcher.score(extractLong.apply(c));
                     int minScore = Math.min(shortScore, longScore);
                     boolean isShort = shortScore <= longScore; // Prefer short match if scores are equal
-                    return new Scored<>(c, minScore, isShort);
+                    int tiebreak = tiebreaker.apply(c);
+                    return new Scored<>(c, minScore, tiebreak, isShort);
                 })
                 .filter(sc -> sc.score() != Integer.MAX_VALUE)
                 .sorted(Comparator.<Scored<T>>comparingInt(Scored::score)
-                                .thenComparing(sc -> extractShort.apply(sc.source)))
+                                .thenComparing(sc -> extractShort.apply(sc.source))
+                                .thenComparingInt(Scored::tiebreakScore))
                 .toList();
 
         // Find the highest score among the "short" matches
