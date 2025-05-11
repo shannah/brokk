@@ -27,44 +27,171 @@ public final class TableUtils {
      * @param anchor The component that anchors the popup (usually the table or cell).
      * @param files The complete list of file references to display.
      */
+    /**
+     * A subclass of FileReferenceList that implements Scrollable to ensure badges wrap
+     * to match the viewport width.
+     */
+    private static class WrappingFileReferenceList extends FileReferenceList implements Scrollable {
+        public WrappingFileReferenceList(List<FileReferenceData> files) {
+            super(files);
+            // Make the flow layout respect width constraints
+            setLayout(new FlowLayout(FlowLayout.LEFT, 4, 2) {
+                @Override
+                public Dimension preferredLayoutSize(Container target) {
+                    // Get the constrained width if in a viewport
+                    int targetWidth = target.getWidth();
+                    if (target.getParent() instanceof JViewport) {
+                        targetWidth = ((JViewport)target.getParent()).getExtentSize().width;
+                    }
+                    
+                    // If we have zero width, use the superclass calculation
+                    if (targetWidth <= 0) {
+                        return super.preferredLayoutSize(target);
+                    }
+                    
+                    // Calculate the height given the constrained width
+                    int hgap = getHgap();
+                    int vgap = getVgap();
+                    int maxWidth = targetWidth - (target.getInsets().left + target.getInsets().right);
+                    
+                    // Calculate how many rows we need
+                    int numRows = 1;
+                    int x = 0;
+                    
+                    for (int i = 0; i < target.getComponentCount(); i++) {
+                        Component c = target.getComponent(i);
+                        if (!c.isVisible()) continue;
+                        
+                        Dimension d = c.getPreferredSize();
+                        if (x + d.width > maxWidth && x > 0) {
+                            numRows++;
+                            x = 0;
+                        }
+                        
+                        x += d.width + hgap;
+                    }
+                    
+                    // Calculate total height for all rows
+                    int height = 0;
+                    if (numRows > 0) {
+                        Component c = target.getComponent(0);
+                        if (c.isVisible()) {
+                            height = c.getPreferredSize().height * numRows + vgap * (numRows - 1);
+                        }
+                    }
+                    
+                    return new Dimension(targetWidth, height + target.getInsets().top + target.getInsets().bottom);
+                }
+            });
+        }
+        
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true; // Force component to match viewport width
+        }
+        
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false; // Let vertical scrolling work normally
+        }
+        
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+        
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 10;
+        }
+        
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return orientation == SwingConstants.VERTICAL ? visibleRect.height : visibleRect.width;
+        }
+    }
+
     public static void showOverflowPopup(Component anchor, List<FileReferenceList.FileReferenceData> files) {
-        // Create a regular FileReferenceList with all files (no trimming)
-        var fullList = new FileReferenceList(files);
+        // Create a wrapping FileReferenceList with all files
+        var fullList = new WrappingFileReferenceList(files);
         fullList.setOpaque(false); // For visual continuity
         
-        // Create a scrollable container
+        // Calculate the proper row height using the first badge as reference
+        int rowHeight = 0;
+        if (!files.isEmpty()) {
+            // Create a temporary badge label to measure its height
+            JLabel sampleLabel = fullList.createBadgeLabel(files.get(0).getFileName());
+            rowHeight = sampleLabel.getPreferredSize().height + 4; // Add a small padding
+        } else {
+            // Fallback to a reasonable default if no files
+            rowHeight = 25;
+        }
+        
+        // Find the exact column width if anchor is in a table
+        int colWidth;
+        if (anchor instanceof JTable) {
+            JTable table = (JTable) anchor;
+            int col = table.getSelectedColumn();
+            colWidth = table.getColumnModel().getColumn(col > -1 ? col : 0).getWidth();
+        } else if (anchor.getParent() instanceof JTable) {
+            JTable table = (JTable) anchor.getParent();
+            Point p = anchor.getLocation();
+            int col = table.columnAtPoint(p);
+            colWidth = table.getColumnModel().getColumn(col > -1 ? col : 0).getWidth();
+        } else {
+            // Fallback if not in a table
+            colWidth = Math.min(400, anchor.getParent().getWidth());
+        }
+        
+        // Set visible rows with a maximum
+        int visibleRows = Math.min(4, Math.max(1, files.size())); // At least 1 row, at most 4
+        // Add explicit padding for bottom border to prevent clipping
+        int borderPadding = (int)Math.ceil(FileReferenceList.BORDER_THICKNESS * 2); // Account for top and bottom border
+        int preferredHeight = rowHeight * visibleRows + 6 + borderPadding;
+        
+        // Create a scrollable container with explicit scrollbar policies
         var scroll = new JScrollPane(fullList);
         scroll.setBorder(null);
-        scroll.setPreferredSize(new Dimension(
-                Math.min(400, anchor.getParent().getWidth()), 200)); // Cap height
+        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scroll.setPreferredSize(new Dimension(colWidth, preferredHeight));
         
         // Create and configure the popup
         var popup = new JPopupMenu();
         popup.setLayout(new BorderLayout());
         popup.add(scroll);
         
+        // Force layout to calculate proper wrapping AFTER being added to the container
+        SwingUtilities.invokeLater(() -> {
+            fullList.invalidate();
+            fullList.revalidate();
+            fullList.doLayout();
+            scroll.revalidate();
+        });
+        
         // Apply theme using existing theme colors with fallbacks
-    boolean isDarkTheme = UIManager.getBoolean("laf.dark");
-    Color bgColor;
-    Color fgColor;
-    
-    try {
-        // Use panel or table colors as alternatives, since popup colors don't exist
-        bgColor = ThemeColors.getColor(isDarkTheme, "table_background");
-        fgColor = ThemeColors.getColor(isDarkTheme, "badge_foreground");
-    } catch (IllegalArgumentException e) {
-        // Fallback to standard UI colors if theme colors aren't found
-        bgColor = UIManager.getColor("Panel.background");
-        fgColor = UIManager.getColor("Label.foreground");
-    }
-    
-    popup.setBackground(bgColor);
-    fullList.setBackground(bgColor);
-    scroll.setBackground(bgColor);
-    popup.setForeground(fgColor);
-    fullList.setForeground(fgColor);
+        boolean isDarkTheme = UIManager.getBoolean("laf.dark");
+        Color bgColor;
+        Color fgColor;
+        
+        try {
+            // Use panel or table colors as alternatives, since popup colors don't exist
+            bgColor = ThemeColors.getColor(isDarkTheme, "table_background");
+            fgColor = ThemeColors.getColor(isDarkTheme, "badge_foreground");
+        } catch (IllegalArgumentException e) {
+            // Fallback to standard UI colors if theme colors aren't found
+            bgColor = UIManager.getColor("Panel.background");
+            fgColor = UIManager.getColor("Label.foreground");
+        }
+        
+        popup.setBackground(bgColor);
+        fullList.setBackground(bgColor);
+        scroll.setBackground(bgColor);
+        popup.setForeground(fgColor);
+        fullList.setForeground(fgColor);
         
         // Show popup below the anchor component
+        popup.pack(); // Ensure proper sizing
         popup.show(anchor, 0, anchor.getHeight());
     }
     
