@@ -44,7 +44,7 @@ public class WorkspaceTools {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
 
-    @Tool("Edit project files to the Workspace. Use this when you intend to make changes to these files, or if you need to read the full source. Only call when you have identified specific filenames.")
+    @Tool("Edit project files to the Workspace. Use this when Code Agent will need to make changes to these files, or if you need to read the full source. Only call when you have identified specific filenames. DO NOT call this to create new files -- Code Agent can do that without extra steps.")
     public String addFilesToWorkspace(
             @P("List of file paths relative to the project root (e.g., 'src/main/java/com/example/MyClass.java'). Must not be empty.")
             List<String> relativePaths
@@ -63,7 +63,7 @@ public class WorkspaceTools {
             }
             var file = contextManager.toFile(path);
             if (!file.exists()) {
-                errors.add("File at `%s` does not exist".formatted(path));
+                errors.add("File at `%s` does not exist (remember, don't use this method to create new files)".formatted(path));
                 continue;
             }
             projectFiles.add(file);
@@ -71,9 +71,12 @@ public class WorkspaceTools {
 
         contextManager.editFiles(projectFiles);
         String fileNames = projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
-        var result = "Added %s to the workspace".formatted(fileNames);
+        String result = "";
+        if (!fileNames.isEmpty()) {
+            result += "Added %s to the workspace. ".formatted(fileNames);
+        }
         if (!errors.isEmpty()) {
-            result += ". Other files were not added; errors were [%s]".formatted(String.join(", ", errors));
+            result += "Errors were [%s]".formatted(String.join(", ", errors));
         }
         return result;
     }
