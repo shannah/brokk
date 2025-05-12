@@ -20,6 +20,7 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.nio.file.Path;
 import java.util.*;
+import java.lang.reflect.InvocationTargetException; // Needed for invokeAndWait
 import java.util.List;
 
 /**
@@ -121,6 +122,7 @@ public class GitLogTab extends JPanel {
                 return c;
             }
         };
+        branchTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Ensure only one branch can be selected
         branchTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
         branchTable.setRowHeight(18);
         branchTable.getColumnModel().getColumn(0).setMaxWidth(20);
@@ -885,18 +887,32 @@ public class GitLogTab extends JPanel {
     }
 
     /**
-     * Update the branch list (local + remote) and select the current branch.
+     * Update the branch list (local + remote), attempting to preserve the selection.
+     * If the previously selected branch no longer exists, it selects the current git branch.
      */
     public void update() {
+        // Use invokeAndWait with a Runnable and an external holder for the result
+        String previouslySelectedBranch = SwingUtil.runOnEdt(() -> {
+            int selectedRow = branchTable.getSelectedRow();
+            if (selectedRow != -1) {
+                // Ensure the row index is still valid before accessing model
+                if (selectedRow < branchTableModel.getRowCount()) {
+                    return (String) branchTableModel.getValueAt(selectedRow, 1);
+                }
+            }
+            return null;
+        }, null);
+
         contextManager.submitBackgroundTask("Fetching git branches", () -> {
             try {
-                String currentBranch = getRepo().getCurrentBranch(); // Get current branch early
+                String currentGitBranch = getRepo().getCurrentBranch(); // Get current branch from Git
                 List<String> localBranches = getRepo().listLocalBranches();
                 List<String> remoteBranches = getRepo().listRemoteBranches();
 
                 // Prepare data rows off the EDT
                 List<Object[]> localBranchRows = new ArrayList<>();
-                int currentBranchIndex = -1;
+                int targetSelectionIndex = -1; // Index to select after update
+                String targetBranchToSelect = previouslySelectedBranch; // Prioritize previous selection
 
                 // Add virtual "stashes" entry first if stashes exist
                 boolean hasStashes = false;
@@ -905,6 +921,9 @@ public class GitLogTab extends JPanel {
                     hasStashes = !getRepo().listStashes().isEmpty();
                     if (hasStashes) {
                         localBranchRows.add(new Object[]{"", "stashes"});
+                        if ("stashes".equals(targetBranchToSelect)) {
+                            targetSelectionIndex = 0; // If 'stashes' was selected, mark its index
+                        }
                     }
                 } catch (GitAPIException e) {
                     logger.warn("Could not check for stashes existence", e);
@@ -912,26 +931,34 @@ public class GitLogTab extends JPanel {
 
                 // Process actual local branches
                 for (String branch : localBranches) {
-                    String checkmark = branch.equals(currentBranch) ? "✓" : "";
+                    String checkmark = branch.equals(currentGitBranch) ? "✓" : "";
                     localBranchRows.add(new Object[]{checkmark, branch});
-                    if (branch.equals(currentBranch)) {
-                        // Set index based on current size of localBranchRows list
-                        currentBranchIndex = localBranchRows.size() - 1;
+                    // If this branch was the target (previously selected) and we haven't found it yet
+                    if (branch.equals(targetBranchToSelect) && targetSelectionIndex == -1) {
+                        targetSelectionIndex = localBranchRows.size() - 1;
                     }
                 }
 
-                // If 'stashes' was added and is the current selection (though unlikely via getCurrentBranch)
-                if (hasStashes && "stashes".equals(currentBranch)) {
-                    // This check might be less relevant now, as selection relies on user clicking
-                    // But if somehow GitRepo returns "stashes", this selects it.
-                     currentBranchIndex = 0; // Stashes entry is at index 0 if present
+                // If the previously selected branch wasn't found (or nothing was selected),
+                // fall back to the current Git branch.
+                if (targetSelectionIndex == -1) {
+                    targetBranchToSelect = currentGitBranch; // Update target
+                    // Find the index of the current Git branch
+                    for (int i = 0; i < localBranchRows.size(); i++) {
+                        // Compare with the branch name in column 1
+                        if (localBranchRows.get(i)[1].equals(targetBranchToSelect)) {
+                            targetSelectionIndex = i;
+                            break;
+                        }
+                    }
                 }
 
                 List<Object[]> remoteBranchRows = remoteBranches.stream()
                         .map(branch -> new Object[]{branch})
                         .toList();
 
-                final int finalCurrentBranchIndex = currentBranchIndex;
+                final int finalTargetSelectionIndex = targetSelectionIndex;
+                final String finalSelectedBranchName = targetBranchToSelect; // The branch name we actually selected/targeted
 
                 SwingUtilities.invokeLater(() -> {
                     branchTableModel.setRowCount(0);
@@ -944,13 +971,20 @@ public class GitLogTab extends JPanel {
                         remoteBranchTableModel.addRow(rowData);
                     }
 
-                    if (finalCurrentBranchIndex >= 0) {
-                        branchTable.setRowSelectionInterval(finalCurrentBranchIndex, finalCurrentBranchIndex);
-                        // Ensure active branch is visible by scrolling to it
-                        branchTable.scrollRectToVisible(branchTable.getCellRect(finalCurrentBranchIndex, 0, true));
-                        updateCommitsForBranch(currentBranch);
+                    if (finalTargetSelectionIndex >= 0 && finalSelectedBranchName != null) {
+                        branchTable.setRowSelectionInterval(finalTargetSelectionIndex, finalTargetSelectionIndex);
+                        // Ensure selected branch is visible by scrolling to it
+                        branchTable.scrollRectToVisible(branchTable.getCellRect(finalTargetSelectionIndex, 0, true));
+                        updateCommitsForBranch(finalSelectedBranchName); // Load commits for the branch we ended up selecting
                     } else {
-                        logger.error("Current branch {} disappeared from branch list", currentBranch);
+                        // This case might happen if the repo becomes empty or only has remote branches initially
+                        logger.warn("Could not select any local branch (target: {}, current git: {}). Clearing commits.",
+                                    previouslySelectedBranch, currentGitBranch);
+                        commitsTableModel.setRowCount(0);
+                        changesRootNode.removeAllChildren();
+                        changesTreeModel.reload();
+                        pullButton.setEnabled(false);
+                        pushButton.setEnabled(false);
                     }
                 });
             } catch (Exception e) {
