@@ -598,7 +598,7 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 0.0;
         otherPanel.add(new JLabel("Code Intelligence Refresh:"), gbc);
         cpgRefreshComboBox = new JComboBox<>(new Project.CpgRefresh[]{Project.CpgRefresh.AUTO, Project.CpgRefresh.ON_RESTART});
-        var currentRefresh = project.getCpgRefresh();
+        var currentRefresh = project.getAnalyzerRefresh();
         cpgRefreshComboBox.setSelectedItem(currentRefresh == Project.CpgRefresh.UNSET ? Project.CpgRefresh.AUTO : currentRefresh);
         gbc.gridx = 1;
         gbc.gridy = row++; // Increment row after adding combo box
@@ -1150,7 +1150,7 @@ public class SettingsDialog extends JDialog {
 
             // Apply CPG Refresh Setting
             var selectedRefresh = (Project.CpgRefresh) cpgRefreshComboBox.getSelectedItem();
-            if (selectedRefresh != project.getCpgRefresh()) {
+            if (selectedRefresh != project.getAnalyzerRefresh()) {
                 project.setAnalyzerRefresh(selectedRefresh);
             }
 

@@ -138,7 +138,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         boolean needsAnalyzerRefresh = batch.stream()
                 .anyMatch(event -> trackedPaths.contains(event.path));
 
-        if (needsAnalyzerRefresh) {
+        if (needsAnalyzerRefresh && project.getAnalyzerRefresh() == CpgRefresh.AUTO) {
             logger.debug("Rebuilding analyzer due to changes in tracked files: {}",
                          batch.stream()
                                  .filter(e -> trackedPaths.contains(e.path))
@@ -170,7 +170,7 @@ public class AnalyzerWrapper implements AutoCloseable {
 
         // FIXME
         Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
-        if (project.getCpgRefresh() == CpgRefresh.UNSET) {
+        if (project.getAnalyzerRefresh() == CpgRefresh.UNSET) {
             logger.debug("First startup: timing Analyzer creation");
             long start = System.currentTimeMillis();
             var analyzer = createAndSaveAnalyzer();
@@ -206,8 +206,9 @@ public class AnalyzerWrapper implements AutoCloseable {
                 """.stripIndent().formatted(analyzer.getAllDeclarations().size(), duration, language.getExtensions(), Language.NONE);
                 listener.afterFirstBuild(msg);
                 logger.info(msg);
-                startWatcher();
             }
+
+            startWatcher(); // includes git repo watching, so start it even if we're on MANUAL analyzer refresh
             return analyzer;
         }
 
@@ -215,7 +216,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         if (analyzer == null) {
             analyzer = createAndSaveAnalyzer();
         }
-        if (project.getCpgRefresh() == CpgRefresh.AUTO) {
+        if (project.getAnalyzerRefresh() == CpgRefresh.AUTO) {
             startWatcher();
         }
         return analyzer;
@@ -254,7 +255,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         }
 
         // In MANUAL mode, always use cached data if it exists
-        if (project.getCpgRefresh() == CpgRefresh.MANUAL) {
+        if (project.getAnalyzerRefresh() == CpgRefresh.MANUAL) {
             logger.debug("MANUAL refresh mode - using cached analyzer");
             try {
                 return new JavaAnalyzer(root, analyzerPath);

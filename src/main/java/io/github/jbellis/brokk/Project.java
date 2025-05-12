@@ -649,7 +649,7 @@ public class Project implements IProject, AutoCloseable {
         return false;
     }
 
-    public CpgRefresh getCpgRefresh() {
+    public CpgRefresh getAnalyzerRefresh() {
         String value = projectProps.getProperty("code_intelligence_refresh");
         if (value == null) {
             return CpgRefresh.UNSET;
