@@ -15,7 +15,7 @@ public interface IAnalyzer {
     }
 
     // CPG methods
-    default List<CodeUnit> getUses(String symbol) {
+    default List<CodeUnit> getUses(String fqName) {
         throw new UnsupportedOperationException();
     }
 
