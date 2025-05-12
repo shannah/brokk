@@ -38,10 +38,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Collections;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
 
 /**
  * Displays text (typically code) using an {@link org.fife.ui.rsyntaxtextarea.RSyntaxTextArea}
@@ -71,6 +74,8 @@ public class PreviewTextPanel extends JPanel {
     private final String initialContent; // Store initial content for comparison on close
     private final ContextFragment fragment;
     private List<ChatMessage> quickEditMessages = new ArrayList<>();
+    private Future<Set<CodeUnit>> fileDeclarations;
+    private final List<JComponent> dynamicMenuItems = new ArrayList<>(); // For usage capture items
 
     public PreviewTextPanel(ContextManager contextManager,
                             ProjectFile file,
@@ -187,13 +192,14 @@ public class PreviewTextPanel extends JPanel {
         scrollPane.setFoldIndicatorEnabled(true);
 
         // Apply the current theme to the text area
-        if (guiTheme != null) {
-            guiTheme.applyCurrentThemeToComponent(textArea);
-        }
+        guiTheme.applyCurrentThemeToComponent(textArea);
 
         // Add top panel (search + edit) + text area to this panel
         add(topPanel, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
+
+        // Request focus for the text area after the panel is initialized and visible
+        SwingUtilities.invokeLater(() -> textArea.requestFocusInWindow());
 
         // === Hook up the search as you type ===
         searchField.getDocument().addDocumentListener(new DocumentListener() {
@@ -268,6 +274,14 @@ public class PreviewTextPanel extends JPanel {
         registerEscapeKey();
         // Register Ctrl/Cmd+S to save
         registerSaveKey();
+
+        // Fetch declarations in the background if it's a project file
+        if (file != null) {
+            fileDeclarations = contextManager.submitBackgroundTask("Fetch Declarations", () -> {
+                IAnalyzer analyzer = contextManager.getAnalyzerUninterrupted();
+                return analyzer.isEmpty() ? Collections.emptySet() : analyzer.getDeclarationsInFile(file);
+            });
+        }
     }
 
     /**
@@ -321,28 +335,109 @@ public class PreviewTextPanel extends JPanel {
                     PreviewTextPanel.this.showQuickEditDialog(getSelectedText());
                 }
             };
-            quickEditAction.setEnabled(false);
+            quickEditAction.setEnabled(false); // Initially disabled
             menu.add(quickEditAction);
 
-            // Quick Edit only enabled if user selected some text AND file != null
+            // Listener to enable/disable actions and add dynamic "Capture usages" items
             menu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
                 @Override
                 public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
-                    quickEditAction.setEnabled(getSelectedText() != null && file != null);
+                    boolean textSelected = getSelectedText() != null;
+
+                    // Enable Quick Edit only if text is selected and it's a project file
+                    quickEditAction.setEnabled(textSelected && file != null);
+
+                    // Clear previous dynamic items
+                    dynamicMenuItems.forEach(menu::remove);
+                    dynamicMenuItems.clear();
+
+                    populateDynamicMenuItems();
+                    // Add separator and usage menu items if any were found
+                    if (!dynamicMenuItems.isEmpty()) {
+                        dynamicMenuItems.addFirst(new JPopupMenu.Separator());
+                        dynamicMenuItems.forEach(menu::add); // Now add them to the menu
+                    }
+                }
+
+                private void populateDynamicMenuItems() {
+                    System.out.println();
+                    // Add "Capture usages" items if it's a project file and declarations are available
+                    if (file == null) {
+                        return;
+                    }
+
+                    if (!fileDeclarations.isDone()) {
+                        var item = new JMenuItem("Waiting for Code Intelligence...");
+                        item.setEnabled(false);
+                        dynamicMenuItems.add(item);
+                        return;
+                    }
+
+                    int offset = -1;
+                    Point mousePos = getMousePosition(); // Position relative to this text area
+
+                    if (mousePos != null) {
+                        offset = viewToModel2D(mousePos); // Get document offset from mouse coordinates
+                    } else {
+                        // Fallback to caret position if mouse position is not available (e.g., keyboard invocation)
+                        offset = getCaretPosition();
+                    }
+
+                    if (offset < 0) {
+                        logger.warn("Could not determine valid document offset from mouse position {} or caret", mousePos);
+                        return;
+                    }
+
+                    Set<CodeUnit> codeUnits;
+                    try {
+                        codeUnits = fileDeclarations.get();
+                    } catch (InterruptedException | ExecutionException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                    try {
+                        int lineNum = getLineOfOffset(offset);
+                        int lastLine = getLineCount() - 1;
+                        int lineStartOffset = getLineStartOffset(lineNum > 0 ? lineNum - 1 : lineNum);
+                        int lineEndOffset = getLineEndOffset(lineNum < lastLine ? lineNum + 1 : lineNum);
+                        String lineText = getText(lineStartOffset, lineEndOffset - lineStartOffset);
+
+                        if (lineText != null && !lineText.trim().isEmpty()) {
+                            for (CodeUnit unit : codeUnits) {
+                                String identifier = unit.identifier();
+                                var p = Pattern.compile("\\b" + Pattern.quote(identifier) + "\\b");
+                                if (p.matcher(lineText).find()) {
+                                    JMenuItem item = new JMenuItem("Capture usages of " + identifier);
+                                    // Use a local variable for the action listener lambda
+                                    item.addActionListener(action -> {
+                                        contextManager.submitBackgroundTask("Capture Usages", () -> contextManager.usageForIdentifier(unit.fqName()));
+                                    });
+                                    dynamicMenuItems.add(item); // Track for removal
+                                }
+                            }
+                        }
+                    } catch (javax.swing.text.BadLocationException ex) {
+                        logger.warn("Error getting line text for usage capture menu items based on offset {}", offset, ex);
+                    }
                 }
 
                 @Override
                 public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
+                    // Clear dynamic items when the menu closes
+                    dynamicMenuItems.forEach(menu::remove);
+                    dynamicMenuItems.clear();
                 }
 
                 @Override
                 public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
+                    // Clear dynamic items if the menu is canceled
+                    dynamicMenuItems.forEach(menu::remove);
+                    dynamicMenuItems.clear();
                 }
             });
 
             return menu;
         }
-    }
+    } // End of PreviewTextArea inner class
 
     /**
      * Shows a quick edit dialog with the selected text.
@@ -581,7 +676,7 @@ public class PreviewTextPanel extends JPanel {
 
         // Create our IConsoleIO for quick results that appends to the systemArea.
         class QuickResultsIo implements IConsoleIO {
-            AtomicBoolean hasError = new AtomicBoolean();
+            final AtomicBoolean hasError = new AtomicBoolean();
 
             private void appendSystemMessage(String text) {
                 if (!systemArea.getText().isEmpty() && !systemArea.getText().endsWith("\n")) {
