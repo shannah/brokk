@@ -86,8 +86,8 @@ public class GuiTheme {
      * @param themeName "dark" or "light"
      */
     public void applyRSyntaxThemeAsync(String themeName) {
-        // loading the theme is relatively slow, so move it off of the EDT
-        CompletableFuture.runAsync(() -> {
+        // Ensure all operations including theme loading are done on the EDT to avoid thread violations
+        SwingUtilities.invokeLater(() -> {
             String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/"
                     + (themeName.equals(THEME_DARK) ? "dark.xml" : "default.xml");
             Theme theme;
@@ -99,13 +99,11 @@ public class GuiTheme {
             }
 
             // Apply to all RSyntaxTextArea components in open windows
-            SwingUtil.runOnEdt(() -> {
-                for (Window window : Window.getWindows()) {
-                    if (window instanceof JFrame) {
-                        applyThemeToFrame((JFrame) window, theme);
-                    }
+            for (Window window : Window.getWindows()) {
+                if (window instanceof JFrame) {
+                    applyThemeToFrame((JFrame) window, theme);
                 }
-            });
+            }
         });
     }
     
@@ -168,15 +166,17 @@ public class GuiTheme {
      * @param textArea The text area to apply theme to
      */
     public void applyCurrentThemeToComponent(RSyntaxTextArea textArea) {
-        try {
-            String currentTheme = Project.getTheme();
-            String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/" +
-                                  (currentTheme.equals(THEME_DARK) ? "dark.xml" : "default.xml");
+        SwingUtilities.invokeLater(() -> {
+            try {
+                String currentTheme = Project.getTheme();
+                String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/" +
+                                      (currentTheme.equals(THEME_DARK) ? "dark.xml" : "default.xml");
 
-            Theme.load(getClass().getResourceAsStream(themeResource))
-                .apply(textArea);
-        } catch (Exception e) {
-            logger.warn("Could not apply theme to RSyntaxTextArea component", e);
-        }
+                Theme.load(getClass().getResourceAsStream(themeResource))
+                    .apply(textArea);
+            } catch (Exception e) {
+                logger.warn("Could not apply theme to RSyntaxTextArea component", e);
+            }
+        });
     }
 }
