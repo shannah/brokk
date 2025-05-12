@@ -1019,14 +1019,29 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
   override def getDeclarationsInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-    cpg.typeDecl.l
-      .filter(td => toFile(td).contains(file))
-      .flatMap { td => // Use flatMap here
-        cuClass(td.fullName, file) // Use cuClass
+    val declarations = mutable.Set[CodeUnit]()
+
+    val typeDeclsInFile = cpg.typeDecl.filter(td => toFile(td).contains(file)).l
+
+    typeDeclsInFile.foreach { td =>
+      // Add class declaration
+      cuClass(td.fullName, file).foreach(declarations.add)
+
+      // Add method declarations
+      td.method.foreach { m =>
+        val resolvedName = resolveMethodName(chopColon(m.fullName))
+        cuFunction(resolvedName, file).foreach(declarations.add)
       }
-      .toSet
-      .asJava
+
+      // Add field declarations, excluding compiler-generated outer class references
+      td.member.filterNot(_.name == "outerClass").foreach { f =>
+        cuField(td.name + "." + f.name, file).foreach(declarations.add)
+      }
+    }
+
+    declarations.toSet.asJava
   }
+
 
   /**
    * Write the underlying CPG to the specified path.

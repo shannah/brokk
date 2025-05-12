@@ -265,24 +265,43 @@ class AnalyzerTest {
   }
 
   @Test
-  def getClassesInFileTest(): Unit = {
+  def getDeclarationsInFileTest(): Unit = {
     val analyzer = getAnalyzer
     val file = analyzer.toFile("D.java").get
-    val classes = analyzer.getDeclarationsInFile(file)
+    val declarations = analyzer.getDeclarationsInFile(file)
     val expected = Set(
+      // Classes
       CodeUnit.cls(file, "", "D"),
       CodeUnit.cls(file, "", "D$DSub"),
-      CodeUnit.cls(file, "", "D$DSubStatic")
+      CodeUnit.cls(file, "", "D$DSubStatic"),
+      // Methods
+      CodeUnit.fn(file, "", "D.methodD1"),
+      CodeUnit.fn(file, "", "D.methodD2"),
+      CodeUnit.fn(file, "", "D.<init>"),
+      CodeUnit.fn(file, "", "D$DSubStatic.<init>"),
+      CodeUnit.fn(file, "", "D$DSub.<init>"),
+      // Fields
+      CodeUnit.field(file, "", "D.field1"),
+      CodeUnit.field(file, "", "D.field2")
     )
-    assertEquals(expected, asScala(classes).toSet)
+    assertEquals(expected, asScala(declarations).toSet)
   }
 
   @Test
-  def classesInPackagedFileTest(): Unit = {
+  def declarationsInPackagedFileTest(): Unit = {
     val analyzer = getAnalyzer
     val file = analyzer.toFile("Packaged.java").get
-    val classes = analyzer.getDeclarationsInFile(file)
-    assertEquals(Set(CodeUnit.cls(file, "io.github.jbellis.brokk", "Foo")), asScala(classes).toSet)
+    val declarations = analyzer.getDeclarationsInFile(file)
+    val expected = Set(
+      // Class
+      CodeUnit.cls(file, "io.github.jbellis.brokk", "Foo"),
+      // Method
+      CodeUnit.fn(file, "io.github.jbellis.brokk", "Foo.bar"),
+      // Constructor
+      CodeUnit.fn(file, "io.github.jbellis.brokk", "Foo.<init>")
+      // No fields in Packaged.java
+    )
+    assertEquals(expected, asScala(declarations).toSet)
   }
 
   @Test
