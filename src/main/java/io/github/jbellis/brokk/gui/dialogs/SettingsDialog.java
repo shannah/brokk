@@ -21,6 +21,8 @@ import java.awt.event.WindowEvent;
 import java.util.HashSet;
 
 public class SettingsDialog extends JDialog {
+    public static final String MODELS_TAB = "Models";
+
     private static final Logger logger = LogManager.getLogger(SettingsDialog.class);
 
     private final Chrome chrome;
@@ -156,7 +158,7 @@ public class SettingsDialog extends JDialog {
         // Models Tab
         var project = chrome.getProject(); // Models settings depend on project context
         var modelsPanel = createModelsPanel(project);
-        globalSubTabbedPane.addTab("Models", null, modelsPanel, "Model selection and configuration");
+        globalSubTabbedPane.addTab(MODELS_TAB, null, modelsPanel, "Model selection and configuration");
 
         // Enable/disable components within the Models panel based on project state
         // The Models tab itself (within globalSubTabbedPane) remains enabled.
@@ -1265,7 +1267,7 @@ public class SettingsDialog extends JDialog {
             // Determine if target is a Global sub-tab
             boolean isGlobalSubTab = "Service".equals(targetTabName) ||
                                      "Appearance".equals(targetTabName) ||
-                                     "Models".equals(targetTabName);
+                                     MODELS_TAB.equals(targetTabName);
 
             // Determine if target is a Project sub-tab
             boolean isProjectSubTab = "General".equals(targetTabName) ||

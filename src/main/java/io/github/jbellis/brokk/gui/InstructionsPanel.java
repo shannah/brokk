@@ -181,7 +181,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         configureModelsButton = new JButton("Configure Models...");
         configureModelsButton.setToolTipText("Open settings to configure AI models");
-        configureModelsButton.addActionListener(e -> SettingsDialog.showSettingsDialog(chrome, "Models"));
+        configureModelsButton.addActionListener(e -> SettingsDialog.showSettingsDialog(chrome, SettingsDialog.MODELS_TAB));
 
         // Renamed button and updated action listener
         deepScanButton = new JButton("Deep Scan");
@@ -663,7 +663,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         );
 
         if (choice == JOptionPane.YES_OPTION) { // Open Settings
-            SwingUtilities.invokeLater(() -> SettingsDialog.showSettingsDialog(chrome, "Models"));
+            SwingUtilities.invokeLater(() -> SettingsDialog.showSettingsDialog(chrome, SettingsDialog.MODELS_TAB));
         }
         // In either case (Settings opened or Cancel pressed), the original action is aborted by returning from the caller.
     }
