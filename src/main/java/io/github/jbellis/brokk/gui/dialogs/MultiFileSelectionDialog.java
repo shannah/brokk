@@ -401,41 +401,90 @@ public class MultiFileSelectionDialog extends JDialog {
         String componentName = selectedComponent.getName();
 
         if ("FilesPanel".equals(componentName) && fileInput != null) {
-            // --- Parse Files Tab ---
+            // --- Parse Files Tab --- (Synchronous)
             String typedFiles = fileInput.getText().trim();
             if (!typedFiles.isEmpty()) {
                 filesResult = parseAndResolveFiles(typedFiles);
             }
-        } else if ("ClassesPanel".equals(componentName) && classInput != null) {
-            // --- Parse Classes Tab ---
-            String typedClasses = classInput.getText().trim();
+            // Create the result record for files
+            selectionResult = new Selection((filesResult != null && !filesResult.isEmpty()) ? List.copyOf(filesResult) : null, null);
+            confirmed = !selectionResult.isEmpty();
+            if (!confirmed) {
+                selectionResult = null; // Ensure null result if nothing was selected/resolved
+            }
+            dispose(); // Dispose immediately after synchronous file handling
+            return;
+
+        }
+
+        if ("ClassesPanel".equals(componentName) && classInput != null) {
+            // --- Parse Classes Tab --- (Asynchronous)
+            final String typedClasses = classInput.getText().trim();
             if (!typedClasses.isEmpty()) {
-                classesResult = parseAndResolveClasses(typedClasses);
-            }
-        } else {
-            logger.warn("Unknown or unexpected tab selected: {}", componentName);
-            // Default to trying files tab if available, otherwise classes
-            if (modes.contains(SelectionMode.FILES) && fileInput != null) {
-                String typedFiles = fileInput.getText().trim();
-                if (!typedFiles.isEmpty()) filesResult = parseAndResolveFiles(typedFiles);
-            } else if (modes.contains(SelectionMode.CLASSES) && classInput != null) {
-                String typedClasses = classInput.getText().trim();
-                if (!typedClasses.isEmpty()) classesResult = parseAndResolveClasses(typedClasses);
+                // Disable UI, indicate loading
+                okButton.setEnabled(false);
+                cancelButton.setEnabled(false);
+                setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+
+                // Submit to background executor
+                backgroundExecutor.submit(() -> {
+                    List<CodeUnit> resolvedClasses = null;
+                    Exception backgroundException = null;
+                    try {
+                        // This runs on the background thread
+                        resolvedClasses = parseAndResolveClasses(typedClasses);
+                    } catch (Exception e) {
+                        logger.error("Error resolving classes in background", e);
+                        backgroundException = e; // Store exception to handle on EDT
+                    }
+
+                    // Switch back to EDT to update UI and close dialog
+                    final List<CodeUnit> finalResolvedClasses = resolvedClasses;
+                    final Exception finalBackgroundException = backgroundException;
+
+                    SwingUtilities.invokeLater(() -> {
+                        // This runs on the EDT
+                        okButton.setEnabled(true);
+                        cancelButton.setEnabled(true);
+                        setCursor(Cursor.getDefaultCursor());
+
+                        if (finalBackgroundException != null) {
+                            JOptionPane.showMessageDialog(MultiFileSelectionDialog.this,
+                                                          "Error resolving classes: " + finalBackgroundException.getMessage(),
+                                                          "Resolution Error",
+                                                          JOptionPane.ERROR_MESSAGE);
+                            selectionResult = null; // Ensure no result on error
+                            confirmed = false;
+                        } else {
+                            List<CodeUnit> finalClassesResult = (finalResolvedClasses != null && !finalResolvedClasses.isEmpty()) ? List.copyOf(finalResolvedClasses) : null;
+                            selectionResult = new Selection(null, finalClassesResult);
+                            confirmed = !selectionResult.isEmpty();
+                            if (!confirmed) {
+                                selectionResult = null;
+                            }
+                        }
+                        dispose(); // Dispose dialog after background processing & EDT update
+                    });
+                    return null; // Return type for Callable, can be Runnable too
+                });
+                // IMPORTANT: doOk returns here for async class parsing, dialog stays open
+                return;
+            } else {
+                // Empty class input: Create empty selection and close immediately
+                selectionResult = new Selection(null, null);
+                confirmed = false;
+                dispose();
+                return;
             }
         }
 
-        // Create the result record
-        selectionResult = new Selection((filesResult != null && !filesResult.isEmpty()) ? List.copyOf(filesResult) : null, (classesResult != null && !classesResult.isEmpty()) ? List.copyOf(classesResult) : null);
-
-        // Only confirm if we actually got some selection
-        confirmed = !selectionResult.isEmpty();
-
-        if (!confirmed) {
-            selectionResult = null; // Ensure null result if nothing was selected/resolved
-        }
-
+        logger.warn("Unknown or unexpected tab selected, or input component missing: {}", componentName);
+        // Default to closing without selection if the active tab isn't handled
+        selectionResult = null;
+        confirmed = false;
         dispose();
     }
+
 
     /**
      * Parses space-separated filenames (handling quotes) and resolves them to BrokkFile objects.
@@ -770,7 +819,9 @@ public class MultiFileSelectionDialog extends JDialog {
             return pathCompletions;
         }
 
-        /** Quotes a path string if it contains spaces. */
+        /**
+         * Quotes a path string if it contains spaces.
+         */
         private String quotePathIfNecessary(String path) {
             return path.contains(" ") ? "\"" + path + "\"" : path;
         }
