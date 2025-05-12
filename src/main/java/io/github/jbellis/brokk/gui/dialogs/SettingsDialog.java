@@ -554,9 +554,9 @@ public class SettingsDialog extends JDialog {
         // Add button action
         addButton.addActionListener(e -> {
             String newDir = JOptionPane.showInputDialog(SettingsDialog.this,
-                                                          "Enter directory to exclude (e.g., target/, build/):",
-                                                          "Add Excluded Directory",
-                                                          JOptionPane.PLAIN_MESSAGE);
+                                                        "Enter directory to exclude (e.g., target/, build/):",
+                                                        "Add Excluded Directory",
+                                                        JOptionPane.PLAIN_MESSAGE);
             if (newDir != null && !newDir.trim().isEmpty()) {
                 String trimmedNewDir = newDir.trim();
                 // Add and then re-sort the model
@@ -1135,11 +1135,11 @@ public class SettingsDialog extends JDialog {
 
             // Create a new BuildDetails record with updated fields
             var newDetails = new BuildAgent.BuildDetails(currentDetails.buildFiles(),
-                                                        currentDetails.dependencies(),
-                                                        newBuildLint,
-                                                        newTestAll,
-                                                        newInstructions,
-                                                        newExcludedDirs);
+                                                         currentDetails.dependencies(),
+                                                         newBuildLint,
+                                                         newTestAll,
+                                                         newInstructions,
+                                                         newExcludedDirs);
             logger.trace("Applying Build Details: {}", newDetails);
 
             // Only save if details have actually changed
@@ -1174,12 +1174,12 @@ public class SettingsDialog extends JDialog {
             // The setter handles checking for changes and null/blank/default values
             project.setCommitMessageFormat(newCommitFormat);
             if (!newCommitFormat.trim().equals(currentCommitFormat)
-                && !newCommitFormat.trim().equals(Project.DEFAULT_COMMIT_MESSAGE_FORMAT)
-                && !newCommitFormat.isBlank())
+                    && !newCommitFormat.trim().equals(Project.DEFAULT_COMMIT_MESSAGE_FORMAT)
+                    && !newCommitFormat.isBlank())
             {
                 logger.debug("Applied Commit Message Format changes.");
             } else if (!newCommitFormat.trim().equals(currentCommitFormat)
-                       && (newCommitFormat.isBlank() || newCommitFormat.trim().equals(Project.DEFAULT_COMMIT_MESSAGE_FORMAT)))
+                    && (newCommitFormat.isBlank() || newCommitFormat.trim().equals(Project.DEFAULT_COMMIT_MESSAGE_FORMAT)))
             {
                 logger.debug("Reset Commit Message Format to default.");
             }
@@ -1244,13 +1244,10 @@ public class SettingsDialog extends JDialog {
             Project.ReasoningLevel selectedReasoning = (Project.ReasoningLevel) reasoningCombo.getSelectedItem();
             // Only save if the combo box is enabled (i.e., model supports reasoning)
             // and the selected value is different from the current setting.
-            if (selectedReasoning != null && selectedReasoning != currentReasoningGetter.get()) {
-                 // Always save the selected reasoning level if it differs,
-                 // regardless of whether the combo was enabled. If disabled,
-                 // updateReasoningComboBox forces it to OFF, so we save OFF.
-                 // If enabled, we save the user's explicit choice (which could be OFF).
+            if (selectedReasoning != null && reasoningCombo.isEnabled() && selectedReasoning != currentReasoningGetter.get()) {
                 reasoningSetter.accept(selectedReasoning);
             }
+            // If the combo is disabled, we don't save anything, implicitly leaving it as DEFAULT.
         }
     }
 
@@ -1260,76 +1257,18 @@ public class SettingsDialog extends JDialog {
     private void updateReasoningComboBox(JComboBox<String> modelComboBox, JComboBox<Project.ReasoningLevel> reasoningComboBox, Models models) {
         if (modelComboBox == null || reasoningComboBox == null) return; // Not initialized yet
 
-        if (modelComboBox == null || reasoningComboBox == null) return; // Should not happen if called correctly
-
         String selectedModelName = (String) modelComboBox.getSelectedItem();
-        // Reasoning is considered "supported" if the model allows it, enabling the dropdown.
-        // "Off" is now a valid explicit choice *if* the model supports reasoning settings.
-        boolean supportsReasoningSetting = selectedModelName != null && models.supportsReasoningEffort(selectedModelName);
+        boolean supportsReasoning = selectedModelName != null && models.supportsReasoningEffort(selectedModelName);
 
-        reasoningComboBox.setEnabled(supportsReasoningSetting);
-        reasoningComboBox.setToolTipText(supportsReasoningSetting ? "Select reasoning effort (Off disables it)" : "Reasoning effort not supported by this model");
+        reasoningComboBox.setEnabled(supportsReasoning);
+        reasoningComboBox.setToolTipText(supportsReasoning ? "Select reasoning effort" : "Reasoning effort not supported by this model");
 
-        // Temporarily remove listener to prevent firing events during setup
-        var listeners = reasoningComboBox.getActionListeners();
-        for (var l : listeners) reasoningComboBox.removeActionListener(l);
-
-        if (supportsReasoningSetting) {
-            // If model *does* support reasoning settings, enable, use default renderer,
-            // and restore the actual current setting.
-            reasoningComboBox.setRenderer(new DefaultListCellRenderer()); // Restore default renderer
-
-            // Find the correct getter based on which combo box this is
-            Project.ReasoningLevel currentLevel = Project.ReasoningLevel.DEFAULT; // Default fallback
-            var project = chrome.getProject();
-            if (project != null) {
-                if (reasoningComboBox == architectReasoningComboBox) currentLevel = project.getArchitectReasoningLevel();
-                else if (reasoningComboBox == codeReasoningComboBox) currentLevel = project.getCodeReasoningLevel();
-                else if (reasoningComboBox == askReasoningComboBox) currentLevel = project.getAskReasoningLevel();
-                else if (reasoningComboBox == editReasoningComboBox) currentLevel = project.getEditReasoningLevel();
-                else if (reasoningComboBox == searchReasoningComboBox) currentLevel = project.getSearchReasoningLevel();
-            }
-             // Ensure the selected item is valid before setting
-            boolean isValidSelection = false;
-            for (int i = 0; i < reasoningComboBox.getItemCount(); i++) {
-                if (reasoningComboBox.getItemAt(i) == currentLevel) {
-                    isValidSelection = true;
-                    break;
-                }
-            }
-            if (isValidSelection) {
-                reasoningComboBox.setSelectedItem(currentLevel);
-            } else {
-                 logger.warn("Current reasoning level {} not found in combo box, defaulting to OFF.", currentLevel);
-                 reasoningComboBox.setSelectedItem(Project.ReasoningLevel.OFF); // Fallback if current setting is somehow invalid
-            }
-        } else {
-            // If model doesn't support reasoning settings, disable, select OFF visually,
-            // and ensure the underlying selection is something sensible (like OFF or DEFAULT). Let's use OFF.
-            reasoningComboBox.setSelectedItem(Project.ReasoningLevel.OFF);
-            // Custom renderer to display "Off" when disabled
+        if (!supportsReasoning) {
+            // Set underlying item to DEFAULT, but render as "Off" when disabled
+            reasoningComboBox.setSelectedItem(Project.ReasoningLevel.DEFAULT);
             reasoningComboBox.setRenderer(new DefaultListCellRenderer() {
                 @Override
                 public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                    // Special rendering for the display box itself when disabled
-                    if (index == -1 && !reasoningComboBox.isEnabled()) {
-                        super.getListCellRendererComponent(list, "Off", index, isSelected, cellHasFocus);
-                        setForeground(UIManager.getColor("ComboBox.disabledForeground"));
-                        return this;
-                    }
-                    // Standard rendering for items in the dropdown list or when enabled
-                    return super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                }
-            });
-
-        }
-        // Restore listeners
-        for (var l : listeners) reasoningComboBox.addActionListener(l);
-    }
-
-    /**
-     * Displays a standalone, modal dialog forcing the user to choose a data retention policy.
-     * This should be called when a project is opened and has no policy set.
                     JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                     // For the selected item display in a disabled box (index == -1), show "Off"
                     // Otherwise, show normal enum values for the dropdown list itself.
@@ -1423,13 +1362,13 @@ public class SettingsDialog extends JDialog {
 
             // Determine if target is a Global sub-tab
             boolean isGlobalSubTab = "Service".equals(targetTabName) ||
-                                     "Appearance".equals(targetTabName) ||
-                                     MODELS_TAB.equals(targetTabName);
+                    "Appearance".equals(targetTabName) ||
+                    MODELS_TAB.equals(targetTabName);
 
             // Determine if target is a Project sub-tab
             boolean isProjectSubTab = "General".equals(targetTabName) ||
-                                      "Build".equals(targetTabName) ||
-                                      "Data Retention".equals(targetTabName);
+                    "Build".equals(targetTabName) ||
+                    "Data Retention".equals(targetTabName);
 
 
             if (isGlobalSubTab) {
@@ -1452,7 +1391,7 @@ public class SettingsDialog extends JDialog {
                                 }
                             }
                         } else {
-                             logger.warn("Top-level 'Global' tab is unexpectedly disabled.");
+                            logger.warn("Top-level 'Global' tab is unexpectedly disabled.");
                         }
                         break;
                     }
@@ -1506,7 +1445,7 @@ public class SettingsDialog extends JDialog {
             }
 
             if (!tabSelected) {
-                 logger.warn("Could not find or select target settings tab: {}", targetTabName);
+                logger.warn("Could not find or select target settings tab: {}", targetTabName);
             }
         }
         dialog.setVisible(true); // show the modal dialog
@@ -1646,44 +1585,32 @@ public class SettingsDialog extends JDialog {
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
                                                        int row, int column) {
-            // Ensure value is treated as ReasoningLevel for rendering
-            Object displayValue = value;
-            String toolTip = null;
-            boolean cellEnabled = true;
+            JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
             // Get the model name from the 'Model Name' column (index 1) in the current row
             String modelName = (String) table.getModel().getValueAt(row, 1);
-            boolean supportsReasoningSetting = modelName != null && models.supportsReasoningEffort(modelName);
 
-            if (!supportsReasoningSetting) {
-                displayValue = "Off"; // Display "Off"
-                cellEnabled = false; // Visually indicate disabled state
-                toolTip = "Reasoning effort not supported by " + modelName;
+            if (modelName != null && !models.supportsReasoningEffort(modelName)) {
+                label.setText("Off");
+                label.setEnabled(false); // Visually indicate disabled state
+                label.setToolTipText("Reasoning effort not supported by " + modelName);
             } else if (value instanceof Project.ReasoningLevel level) {
-                // If reasoning is supported, display the actual level's toString()
-                 displayValue = level.toString();
-                 cellEnabled = true;
-                 toolTip = "Select reasoning effort (Off disables it)";
+                label.setText(level.toString());
+                label.setEnabled(true);
+                label.setToolTipText("Select reasoning effort");
             } else {
-                 // Handle null or unexpected types, display as empty, keep enabled
-                 displayValue = "";
-                 cellEnabled = true;
+                label.setText(value == null ? "" : value.toString()); // Handle null or unexpected types
+                label.setEnabled(true); // Default to enabled if model support is unknown or value is wrong type
+                label.setToolTipText(null);
             }
 
-            // Use the superclass method to get the standard label component
-            JLabel label = (JLabel) super.getTableCellRendererComponent(table, displayValue, isSelected, hasFocus, row, column);
-
-            // Apply enabled state and tooltip
-            label.setEnabled(cellEnabled);
-            label.setToolTipText(toolTip);
-
-            // Explicitly set foreground color based on enabled state and selection
-            if (isSelected) {
-                label.setForeground(cellEnabled ? table.getSelectionForeground() : UIManager.getColor("Label.disabledForeground"));
-                // Background is handled by super method based on isSelected
+            // Ensure background/foreground colors are correct for selection/non-selection
+            if (!isSelected) {
+                label.setBackground(table.getBackground());
+                label.setForeground(label.isEnabled() ? table.getForeground() : UIManager.getColor("Label.disabledForeground"));
             } else {
-                label.setForeground(cellEnabled ? table.getForeground() : UIManager.getColor("Label.disabledForeground"));
-                // Background is handled by super method based on isSelected
+                label.setBackground(table.getSelectionBackground());
+                label.setForeground(label.isEnabled() ? table.getSelectionForeground() : UIManager.getColor("Label.disabledForeground"));
             }
 
 
@@ -1713,53 +1640,40 @@ public class SettingsDialog extends JDialog {
         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
             // Get the model name from the 'Model Name' column (index 1)
             String modelName = (String) table.getModel().getValueAt(row, 1);
-            boolean supportsReasoningSetting = modelName != null && models.supportsReasoningEffort(modelName);
+            boolean supportsReasoning = modelName != null && models.supportsReasoningEffort(modelName);
 
-            // Get the standard editor component (our JComboBox)
+            // Enable/disable the editor component (the ComboBox)
             Component editorComponent = super.getTableCellEditorComponent(table, value, isSelected, row, column);
+            editorComponent.setEnabled(supportsReasoning);
+            comboBox.setEnabled(supportsReasoning); // Explicitly enable/disable the combo
 
-            // Enable/disable the editor based on model support
-            editorComponent.setEnabled(supportsReasoningSetting);
-            comboBox.setEnabled(supportsReasoningSetting); // Explicitly enable/disable the combo itself
-
-            if (!supportsReasoningSetting) {
-                 // If not supported, force selection to OFF and display "Off"
-                 comboBox.setSelectedItem(Project.ReasoningLevel.OFF);
-                 comboBox.setToolTipText("Reasoning effort not supported by " + modelName);
-                 // Custom renderer to show "Off" correctly in the disabled editor box
-                 comboBox.setRenderer(new DefaultListCellRenderer() {
+            if (!supportsReasoning) {
+                // If not supported, ensure the displayed value is DEFAULT (rendered as "Off")
+                comboBox.setSelectedItem(Project.ReasoningLevel.DEFAULT);
+                comboBox.setToolTipText("Reasoning effort not supported by " + modelName);
+                // Use the same renderer logic as the cell renderer for consistency
+                comboBox.setRenderer(new DefaultListCellRenderer() {
                     @Override
                     public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                         JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                         // When displaying the selected item in the editor box itself (index == -1) and it's disabled
-                         if (index == -1) {
-                             label.setText("Off"); // Always show "Off" when the editor is disabled
-                             label.setForeground(UIManager.getColor("ComboBox.disabledForeground"));
-                         } else if (value instanceof Project.ReasoningLevel level) {
-                             // For items in the dropdown list, show their normal representation
-                              label.setText(level.toString());
+                        if (index == -1) { // Display value in the editor box when disabled
+                            label.setText("Off");
+                            label.setForeground(UIManager.getColor("ComboBox.disabledForeground"));
+                        } else if (value instanceof Project.ReasoningLevel level) {
+                            label.setText(level.toString());
                         } else {
                             label.setText(value == null ? "" : value.toString());
                         }
-                        // Ensure standard foreground for list items if needed (usually handled by L&F)
-                        // label.setForeground(list.getForeground()); // Generally not needed
                         return label;
                     }
-                 });
+                });
 
             } else {
-                // If supported, enable, set tooltip, use default renderer, and set current value
-                comboBox.setToolTipText("Select reasoning effort (Off disables it)");
-                comboBox.setRenderer(new DefaultListCellRenderer()); // Restore default renderer
-                 // Set the actual value from the model to ensure correct initial selection
-                 if (value instanceof Project.ReasoningLevel level) {
-                    comboBox.setSelectedItem(level);
-                 } else {
-                    // Log unexpected type and fallback?
-                    logger.warn("Unexpected value type for ReasoningCellEditor: {}. Falling back to DEFAULT.",
-                                 value == null ? "null" : value.getClass().getName());
-                    comboBox.setSelectedItem(Project.ReasoningLevel.DEFAULT); // Fallback if value is weird
-                 }
+                comboBox.setToolTipText("Select reasoning effort");
+                // Restore default renderer when enabled
+                comboBox.setRenderer(new DefaultListCellRenderer());
+                // Set the actual value from the model
+                comboBox.setSelectedItem(value);
             }
 
             return editorComponent;
@@ -1772,21 +1686,18 @@ public class SettingsDialog extends JDialog {
                 int editingRow = table.getEditingRow();
                 if (editingRow != -1) {
                     String modelName = (String) table.getModel().getValueAt(editingRow, 1);
-                    // Editing is allowed only if the model supports reasoning settings
-                    boolean supportsReasoningSetting = modelName != null && models.supportsReasoningEffort(modelName);
-                    return supportsReasoningSetting;
+                    return modelName != null && models.supportsReasoningEffort(modelName);
                 }
             }
             // Default behavior if table/row info isn't available (shouldn't happen in normal use)
             return super.isCellEditable(anEvent);
         }
 
-         @Override
-         public Object getCellEditorValue() {
-             // If the editor was disabled, the value should be OFF.
-             // Otherwise, return the actually selected item from the combo box.
-             return comboBox.isEnabled() ? super.getCellEditorValue() : Project.ReasoningLevel.OFF;
-         }
+        @Override
+        public Object getCellEditorValue() {
+            // If the editor was disabled, return DEFAULT, otherwise return the selected item.
+            return comboBox.isEnabled() ? super.getCellEditorValue() : Project.ReasoningLevel.DEFAULT;
+        }
     }
 
 

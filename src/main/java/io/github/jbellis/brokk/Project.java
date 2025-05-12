@@ -1178,7 +1178,7 @@ public class Project implements IProject, AutoCloseable {
      * Enum defining the reasoning effort levels for models.
      */
     public enum ReasoningLevel {
-        OFF, DEFAULT, LOW, MEDIUM, HIGH;
+        DEFAULT, LOW, MEDIUM, HIGH;
 
         @Override
         public String toString() {
@@ -1270,7 +1270,7 @@ public class Project implements IProject, AutoCloseable {
             new Models.FavoriteModel("o3", Models.O3, ReasoningLevel.DEFAULT),
             new Models.FavoriteModel("Gemini Pro 2.5", Models.GEMINI_2_5_PRO, ReasoningLevel.DEFAULT),
             new Models.FavoriteModel("Sonnet 3.7", "claude-3.7-sonnet", ReasoningLevel.DEFAULT),
-            new Models.FavoriteModel("Flash 2.5", "gemini-2.5-flash", ReasoningLevel.OFF)
+            new Models.FavoriteModel("Flash 2.0", "gemini-2.0-flash", ReasoningLevel.DEFAULT)
     );
 
     /**
