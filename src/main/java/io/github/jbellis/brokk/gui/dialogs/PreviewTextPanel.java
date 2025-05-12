@@ -57,15 +57,18 @@ public class PreviewTextPanel extends JPanel {
     private final JButton previousButton;
     private JButton editButton;
     private JButton captureButton;
-    // Save button reference needed for enabling/disabling and triggering save action
     private JButton saveButton;
     private final ContextManager contextManager;
 
     // Theme manager reference
     private GuiTheme themeManager;
 
+    // State for history tracking on close
+    private String contentBeforeFirstSave = null;
+
     // Nullable
     private final ProjectFile file;
+    private final String initialContent; // Store initial content for comparison on close
     private final ContextFragment fragment;
     private List<ChatMessage> quickEditMessages = new ArrayList<>();
 
@@ -83,6 +86,7 @@ public class PreviewTextPanel extends JPanel {
         this.contextManager = contextManager;
         this.themeManager = guiTheme;
         this.file = file;
+        this.initialContent = content; // Store initial content
         this.fragment = fragment;
 
         // === Top search/action bar ===
@@ -810,9 +814,10 @@ public class PreviewTextPanel extends JPanel {
      */
     public boolean confirmClose() {
         if (saveButton == null || !saveButton.isEnabled()) {
-            return true; // No unsaved changes, okay to close
+            return true; // No unsaved changes or not a savable file, okay to close
         }
 
+        // Prompt the user
         int choice = JOptionPane.showConfirmDialog(
                 SwingUtilities.getWindowAncestor(this),
                 "You have unsaved changes. Do you want to save them before closing?",
@@ -820,13 +825,16 @@ public class PreviewTextPanel extends JPanel {
                 JOptionPane.YES_NO_CANCEL_OPTION,
                 JOptionPane.WARNING_MESSAGE);
 
-        if (choice == JOptionPane.YES_OPTION) {
-            performSave(saveButton); // Save the changes
-            return true; // Close the window
-        } else if (choice == JOptionPane.NO_OPTION) {
-            return true; // Close without saving
-        } else {
-            return false; // Cancel closing (JOptionPane.CANCEL_OPTION or closed dialog)
+        switch (choice) {
+            case JOptionPane.YES_OPTION:
+                performSave(saveButton); // Save the changes
+                return true; // Allow closing
+            case JOptionPane.NO_OPTION:
+                return true; // Allow closing, discard changes
+            case JOptionPane.CANCEL_OPTION:
+            case JOptionPane.CLOSED_OPTION:
+            default:
+                return false; // Prevent closing
         }
     }
 
@@ -920,42 +928,67 @@ public class PreviewTextPanel extends JPanel {
             logger.warn("Attempted to save but no ProjectFile is associated with this panel.");
             return;
         }
+        String newContent = textArea.getText();
         try {
-            // Read the content *from disk* before saving to capture the original state for history
-            String contentBeforeSave = file.exists() ? file.read() : "";
+            // Capture the state before the *first* save for the history entry
+            if (contentBeforeFirstSave == null) {
+                contentBeforeFirstSave = file.exists() ? file.read() : "";
+            }
+
             // Write the new content to the file
-            String newContent = textArea.getText();
             file.write(newContent);
-            buttonToDisable.setEnabled(false); // Disable after saving
+            buttonToDisable.setEnabled(false); // Disable after successful save
+            quickEditMessages.clear(); // Clear any quick edit messages after save
             logger.debug("File saved: " + file);
-
-            // Generate a unified diff
-            List<String> originalLines = contentBeforeSave.lines().collect(Collectors.toList());
-            List<String> newLines = newContent.lines().collect(Collectors.toList());
-            Patch<String> patch = DiffUtils.diff(originalLines, newLines);
-            List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(file.toString(),
-                                                                            file.toString(),
-                                                                            originalLines,
-                                                                            patch,
-                                                                            3);
-            String diffOutput = String.join("\n", unifiedDiff);
-
-            // Add a history entry on Save
-            var saveResult = new SessionResult(
-                    diffOutput,                      // Action description -- will be summarized by LLM
-                    quickEditMessages,               // Use collected messages
-                    Map.of(file, contentBeforeSave), // Content before this save
-                    new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS)
-            );
-            contextManager.addToHistory(saveResult, false); // Add to history, don't compress
-            quickEditMessages.clear(); // Clear messages after successful save and history add
         } catch (IOException ex) {
             logger.error("Error saving file {}", file, ex);
-            // Optionally show an error message to the user
+            // Re-enable button on error? Maybe not, state might be inconsistent.
+            // Show error message
             JOptionPane.showMessageDialog(this,
                                           "Error saving file: " + ex.getMessage(),
                                           "Save Error",
                                           JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Should be called by the containing window just before disposal.
+     * Creates a single history entry if a save occurred and the content changed
+     * from the state before the first save.
+     */
+    public void finalizeHistoryEntry() {
+        // Only create history if a save actually happened and we have a file context
+        if (file == null || contentBeforeFirstSave == null) {
+            return;
+        }
+
+        String finalContent = textArea.getText();
+
+        // Only add history if the final content is different from the state before the first save
+        if (!finalContent.equals(contentBeforeFirstSave)) {
+            try {
+                // Generate a unified diff from the state *before the first save* to the final state
+                List<String> originalLines = contentBeforeFirstSave.lines().collect(Collectors.toList());
+                List<String> newLines = finalContent.lines().collect(Collectors.toList());
+                Patch<String> patch = DiffUtils.diff(originalLines, newLines);
+                List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(file.toString(),
+                                                                                file.toString(),
+                                                                                originalLines,
+                                                                                patch,
+
+                                                                                3);
+                // Create the SessionResult representing the net change
+                String actionDescription = "Edited " + file;
+                quickEditMessages.add(Messages.customSystem("# Diff of changes\n\n```%s```".formatted(unifiedDiff)));
+                var saveResult = new SessionResult(actionDescription,
+                                                   quickEditMessages,
+                                                   Map.of(file, contentBeforeFirstSave),
+                                                   new SessionResult.StopDetails(SessionResult.StopReason.SUCCESS));
+                contextManager.addToHistory(saveResult, false); // Add the single entry
+                logger.debug("Added history entry for changes in: {}", file);
+            } catch (Exception e) {
+                logger.error("Failed to generate diff or add history entry for {}", file, e);
+            }
         }
     }
 

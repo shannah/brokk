@@ -26,6 +26,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
+
+
 public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.ContextListener {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
 
@@ -609,19 +611,20 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             public void windowClosing(WindowEvent e) {
                 // Check if the content is a PreviewTextPanel and if it has unsaved changes
                 if (contentComponent instanceof PreviewTextPanel ptp) {
-                    if (!ptp.confirmClose()) {
+                    if (ptp.confirmClose()) {
+                        // If confirmClose returns true (Save/Don't Save), finalize history and allow disposal.
+                        ptp.finalizeHistoryEntry(); // Create history entry if needed
+                        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                        // Note: The window listener only *vetoes* the close. If it doesn't veto,
+                        // the default close operation takes over. We don't need to call dispose() here.
+                    } else {
                         // If confirmClose returns false (user cancelled), do nothing.
                         // We must explicitly set the default close operation here because
                         // the user might click 'X' multiple times.
                         previewFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-                    } else {
-                        // If confirmClose returns true (Save/Don't Save), allow disposal.
-                        previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-                        // Note: The window listener only *vetoes* the close. If it doesn't veto,
-                        // the default close operation takes over. We don't need to call dispose() here.
-                    }
+                     }
                 } else {
-                    // If not a PreviewTextPanel, just allow the default dispose operation
+                     // If not a PreviewTextPanel, just allow the default dispose operation
                     previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
                 }
             }

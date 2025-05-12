@@ -1632,8 +1632,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public TaskEntry addToHistory(SessionResult result, boolean compress) {
         assert result != null;
-        if (result.output().messages().isEmpty()) {
-            logger.debug("Skipping adding empty session result to history.");
+        if (result.output().messages().isEmpty() && result.originalContents().isEmpty()) {
+            logger.warn("Skipping adding empty session result to history");
             return null;
         }
 
