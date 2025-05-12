@@ -41,6 +41,10 @@ public interface IGitRepo {
         throw new UnsupportedOperationException();
     }
 
+    default List<ProjectFile> listFilesChangedBetweenCommits(String newCommitId, String oldCommitId) throws GitAPIException {
+        throw new UnsupportedOperationException();
+    }
+
     default void add(List<ProjectFile> files) throws GitAPIException {
         throw new UnsupportedOperationException();
     }

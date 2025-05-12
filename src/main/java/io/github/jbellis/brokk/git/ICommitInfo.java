@@ -5,6 +5,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 public interface ICommitInfo {
     List<ProjectFile> changedFiles() throws GitAPIException;
@@ -16,6 +17,12 @@ public interface ICommitInfo {
     String author();
 
     Date date();
+
+    /**
+     * Returns the stash index if this commit represents a stash entry.
+     * @return An Optional containing the stash index (e.g., 0 for stash@{0}), or empty if not a stash.
+     */
+    Optional<Integer> stashIndex();
 
     class CommitInfoStub implements ICommitInfo {
         private final String message;
@@ -47,6 +54,11 @@ public interface ICommitInfo {
         @Override
         public Date date() {
             return null;
+        }
+
+        @Override
+        public Optional<Integer> stashIndex() {
+            return Optional.empty();
         }
     }
 }

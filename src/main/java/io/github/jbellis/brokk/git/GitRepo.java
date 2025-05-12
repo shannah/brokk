@@ -8,10 +8,12 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.DiffFormatter;
+// StashInfo removed
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
@@ -595,25 +597,14 @@ public class GitRepo implements Closeable, IGitRepo {
             String message = revCommit.getShortMessage();
             String author = revCommit.getAuthorIdent().getName();
             // Use committer date as it's often more relevant for chronological sorting of commits
-            // and matches the typical date shown in `git log`.
-            Date date = revCommit.getCommitterIdent().getWhen();
-            return Optional.of(new CommitInfo(this, commitId, message, author, date));
+            // Use factory method
+            return Optional.of(this.fromRevCommit(revCommit));
         } catch (IOException e) {
             throw new GitWrappedIOException(e);
         }
     }
 
-    /**
-     * Represent each stash as a single logical commit, mirroring
-     * `git stash list`.  We intentionally ignore the internal
-     * index/untracked helper commits so the log stays concise.
-     */
-    public List<CommitInfo> getStashesAsCommits() throws GitAPIException
-    {
-        return listStashes().stream().map(s -> {
-            return new CommitInfo(this, s.id(), s.message(), s.author(), s.date());
-        }).toList();
-    }
+    // getStashesAsCommits removed, functionality moved to listStashes
 
     /**
      * A record to hold a modified file and its status.
@@ -637,11 +628,8 @@ public class GitRepo implements Closeable, IGitRepo {
         }
 
         for (var commit : logCommand.call()) {
-            var id = commit.getName();
-            var message = commit.getShortMessage();
-            var author = commit.getAuthorIdent().getName();
-            var date = commit.getAuthorIdent().getWhen();
-            commits.add(new CommitInfo(this, id, message, author, date));
+            // Use factory method
+            commits.add(this.fromRevCommit(commit));
         }
         return commits;
     }
@@ -1003,34 +991,20 @@ public class GitRepo implements Closeable, IGitRepo {
         refresh();
     }
 
-    /**
-     * A record to hold stash details
-     */
-    public record StashInfo(String id, String message, String author, Date date, int index) {
-    }
+    // StashInfo record removed
 
     /**
-     * Lists all stashes in the repository
+     * Lists all stashes in the repository as CommitInfo objects.
      */
-    public List<StashInfo> listStashes() throws GitAPIException {
-        var stashes = new ArrayList<StashInfo>();
+    public List<CommitInfo> listStashes() throws GitAPIException {
+        var stashes = new ArrayList<CommitInfo>();
         var collection = git.stashList().call();
         int index = 0;
 
-        for (var stash : collection) {
-            var id = stash.getName();
-            var message = stash.getShortMessage();
-            if (message.startsWith("WIP on ")) {
-                message = message.substring(7);
-            } else if (message.startsWith("On ")) {
-                var colonPos = message.indexOf(':', 3);
-                if (colonPos > 3) {
-                    message = message.substring(colonPos + 2);
-                }
-            }
-            var author = stash.getAuthorIdent().getName();
-            var date = stash.getAuthorIdent().getWhen();
-            stashes.add(new StashInfo(id, message, author, date, index));
+        // Iterate through stashes, creating CommitInfo for each
+        for (var stashCommit : collection) {
+            // Use factory method for stash commits, passing the index
+            stashes.add(this.fromStashCommit(stashCommit, index));
             index++;
         }
         return stashes;
@@ -1066,12 +1040,8 @@ public class GitRepo implements Closeable, IGitRepo {
                 diffFormatter.setRepository(repository);
                 var diffs = diffFormatter.scan(headCommit.getTree(), indexCommit.getTree());
                 if (!diffs.isEmpty()) {
-                    additionalCommits.put("index", new CommitInfo(this,
-                                                                  indexCommit.getName(),
-                                                                  "Index (staged) changes in " + stashRef,
-                                                                  indexCommit.getAuthorIdent().getName(),
-                                                                  indexCommit.getAuthorIdent().getWhen()
-                    ));
+                    // Use factory method
+                    additionalCommits.put("index", this.fromRevCommit(indexCommit));
                 }
             }
 
@@ -1086,12 +1056,8 @@ public class GitRepo implements Closeable, IGitRepo {
                     hasFiles = treeWalk.next();
                 }
                 if (hasFiles) {
-                    additionalCommits.put("untracked", new CommitInfo(this,
-                                                                      untrackedCommit.getName(),
-                                                                      "Untracked files in " + stashRef,
-                                                                      untrackedCommit.getAuthorIdent().getName(),
-                                                                      untrackedCommit.getAuthorIdent().getWhen()
-                    ));
+                    // Use factory method
+                    additionalCommits.put("untracked", this.fromRevCommit(untrackedCommit));
                 }
             }
         } catch (IOException e) {
@@ -1149,11 +1115,8 @@ public class GitRepo implements Closeable, IGitRepo {
     public List<CommitInfo> getFileHistory(ProjectFile file) throws GitAPIException {
         var commits = new ArrayList<CommitInfo>();
         for (var commit : git.log().addPath(toGitPath(file.toString())).call()) {
-            var id = commit.getName();
-            var message = commit.getShortMessage();
-            var author = commit.getAuthorIdent().getName();
-            var date = commit.getAuthorIdent().getWhen();
-            commits.add(new CommitInfo(this, id, message, author, date));
+            // Use factory method
+            commits.add(this.fromRevCommit(commit));
         }
         return commits;
     }
@@ -1217,11 +1180,8 @@ public class GitRepo implements Closeable, IGitRepo {
             if (cMessage.contains(lowerQuery)
                     || cAuthorName.contains(lowerQuery)
                     || cAuthorEmail.contains(lowerQuery)) {
-                var id = commit.getName();
-                var message = commit.getShortMessage();
-                var author = commit.getAuthorIdent().getName();
-                var date = commit.getAuthorIdent().getWhen();
-                commits.add(new CommitInfo(this, id, message, author, date));
+                // Use factory method
+                commits.add(this.fromRevCommit(commit));
             }
         }
         return commits;
@@ -1256,5 +1216,29 @@ public class GitRepo implements Closeable, IGitRepo {
         public GitWrappedIOException(IOException e) {
             super(e.getMessage(), e);
         }
+    }
+
+    /**
+     * Factory method to create CommitInfo from a JGit RevCommit.
+     * Assumes this is NOT a stash commit.
+     */
+    public CommitInfo fromRevCommit(RevCommit commit) {
+        return new CommitInfo(this,
+                              commit.getName(),
+                              commit.getShortMessage(),
+                              commit.getAuthorIdent().getName(),
+                              commit.getCommitterIdent().getWhen());
+    }
+
+    /**
+     * Factory method to create CommitInfo for a stash entry from a JGit RevCommit.
+     */
+    public CommitInfo fromStashCommit(RevCommit commit, int index) {
+        return new CommitInfo(this,
+                              commit.getName(),
+                              commit.getShortMessage(),
+                              commit.getAuthorIdent().getName(),
+                              commit.getAuthorIdent().getWhen(),
+                              index);
     }
 }

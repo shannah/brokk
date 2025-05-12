@@ -163,14 +163,18 @@ public class GitLogTab extends JPanel {
 
         JPanel commitsPanel = new JPanel(new BorderLayout());
         commitsPanel.setBorder(BorderFactory.createTitledBorder("Commits"));
+        // Add hidden column 5 for ICommitInfo object
         commitsTableModel = new DefaultTableModel(
-                new Object[]{"Message", "Author", "Date", "ID", "Unpushed"}, 0
+                new Object[]{"Message", "Author", "Date", "ID", "Unpushed", "CommitObject"}, 0
         )
         {
             @Override
             public Class<?> getColumnClass(int columnIndex) {
-                if (columnIndex == 4) return Boolean.class;  // unpushed
-                return String.class;
+                return switch (columnIndex) {
+                    case 4 -> Boolean.class;          // unpushed
+                    case 5 -> ICommitInfo.class;      // CommitObject (hidden)
+                    default -> String.class;           // Message, Author, Date, ID
+                };
             }
 
             @Override
@@ -191,13 +195,13 @@ public class GitLogTab extends JPanel {
         };
         commitsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
-        // Hide id & unpushed columns
-        commitsTable.getColumnModel().getColumn(3).setMinWidth(0);
-        commitsTable.getColumnModel().getColumn(3).setMaxWidth(0);
-        commitsTable.getColumnModel().getColumn(3).setWidth(0);
-        commitsTable.getColumnModel().getColumn(4).setMinWidth(0);
-        commitsTable.getColumnModel().getColumn(4).setMaxWidth(0);
-        commitsTable.getColumnModel().getColumn(4).setWidth(0);
+        // Hide id, unpushed, and CommitObject columns (indices 3, 4, 5)
+        for (int i = 3; i <= 5; i++) {
+            var column = commitsTable.getColumnModel().getColumn(i);
+            column.setMinWidth(0);
+            column.setMaxWidth(0);
+            column.setWidth(0);
+        }
 
         // Highlight unpushed rows
         commitsTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
@@ -212,9 +216,21 @@ public class GitLogTab extends JPanel {
                         boolean isDark = chrome.themeManager != null && chrome.themeManager.isDarkTheme();
                         c.setBackground(Colors.getChanged(isDark));
                     } else {
-                        c.setBackground(table.getBackground());
+                        c.setBackground(table.getBackground()); // Reset background if not unpushed
                     }
+                } else {
+                    // Ensure selected rows also get the correct background if they are unpushed
+                    Boolean unpushed = (Boolean) table.getModel().getValueAt(row, 4);
+                    if (Boolean.TRUE.equals(unpushed)) {
+                         boolean isDark = chrome.themeManager != null && chrome.themeManager.isDarkTheme();
+                         c.setBackground(Colors.getChanged(isDark).darker()); // Slightly darker for selection maybe? Or use selection colors
+                    } else {
+                        c.setBackground(table.getSelectionBackground()); // Use default selection background
+                    }
+                    c.setForeground(table.getSelectionForeground()); // Use default selection foreground
                 }
+                // Set value after background is determined
+                setValue(value);
                 return c;
             }
         });
@@ -224,12 +240,13 @@ public class GitLogTab extends JPanel {
             if (!e.getValueIsAdjusting() && commitsTable.getSelectedRow() != -1) {
                 int[] selectedRows = commitsTable.getSelectedRows();
                 if (selectedRows.length >= 1) {
-                    // Extract commit IDs on the EDT to avoid race conditions
-                    List<String> commitIds = new ArrayList<>();
+                    // Extract commit info objects from hidden column 5
+                    List<ICommitInfo> selectedCommits = new ArrayList<>();
                     for (int row : selectedRows) {
-                        commitIds.add((String) commitsTableModel.getValueAt(row, 3));
+                        selectedCommits.add((ICommitInfo) commitsTableModel.getValueAt(row, 5));
                     }
-                    updateChangesForCommits(commitIds);
+                    // Pass the list of commit objects
+                    updateChangesForCommits(selectedCommits);
                 }
             }
         });
@@ -262,35 +279,53 @@ public class GitLogTab extends JPanel {
         commitsTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                handleCommitsPopup(e);
+                maybeShowPopup(e);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                handleCommitsPopup(e);
+                maybeShowPopup(e);
             }
 
-            private void handleCommitsPopup(MouseEvent e) {
+            // Renamed from handleCommitsPopup for clarity
+            private void maybeShowPopup(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     int row = commitsTable.rowAtPoint(e.getPoint());
                     if (row >= 0) {
+                        // Ensure the clicked row is selected for context menu actions
                         if (!commitsTable.isRowSelected(row)) {
                             commitsTable.setRowSelectionInterval(row, row);
+                        } else {
+                            // If multiple rows are selected and the click is within the selection,
+                            // don't change the selection. Otherwise, select only the clicked row.
+                            int[] selectedRows = commitsTable.getSelectedRows();
+                            boolean clickedRowInSelection = false;
+                            for (int selectedRow : selectedRows) {
+                                if (row == selectedRow) {
+                                    clickedRowInSelection = true;
+                                    break;
+                                }
+                            }
+                            if (!clickedRowInSelection) {
+                                commitsTable.setRowSelectionInterval(row, row);
+                            }
                         }
                     }
-                    updateCommitContextMenu();
-                    if (commitsContextMenu.isVisible()) {
-                        commitsContextMenu.setVisible(false);
-                    }
-                    SwingUtilities.invokeLater(() ->
-                                                       commitsContextMenu.show(commitsTable, e.getX(), e.getY())
-                    );
+                    updateCommitContextMenu(); // Update menu items based on new selection
+                    // Use invokeLater to ensure selection updates are processed before showing menu
+                    SwingUtilities.invokeLater(() -> {
+                        // Re-check row at point in case of drag/scroll during invokeLater delay
+                        int currentRow = commitsTable.rowAtPoint(e.getPoint());
+                        if (currentRow >= 0) { // Only show if still over a valid row
+                            commitsContextMenu.show(commitsTable, e.getX(), e.getY());
+                        }
+                    });
                 }
             }
 
             private void updateCommitContextMenu() {
-                int row = commitsTable.getSelectedRow();
-                if (row < 0) {
+                int[] selectedRows = commitsTable.getSelectedRows(); // Use all selected rows
+                if (selectedRows.length == 0) { // No rows selected
                     addToContextItem.setVisible(false);
                     softResetItem.setVisible(false);
                     revertCommitItem.setVisible(false);
@@ -299,21 +334,45 @@ public class GitLogTab extends JPanel {
                     dropStashCommitItem.setVisible(false);
                     return;
                 }
-                int branchRow = branchTable.getSelectedRow();
-                boolean isStashesBranch = branchRow >= 0
-                        && "stashes".equals(branchTableModel.getValueAt(branchRow, 1));
 
-                addToContextItem.setVisible(true);
-                int[] sel = commitsTable.getSelectedRows();
+                // Get commit info for the *first* selected row to determine context
+                ICommitInfo firstCommitInfo = (ICommitInfo) commitsTableModel.getValueAt(selectedRows[0], 5);
+                boolean isStash = firstCommitInfo.stashIndex().isPresent();
 
-                softResetItem.setVisible(!isStashesBranch);
-                softResetItem.setEnabled(sel.length == 1);
-                revertCommitItem.setVisible(!isStashesBranch);
+                addToContextItem.setVisible(true); // Always visible if any commit selected
 
-                popStashCommitItem.setVisible(isStashesBranch);
-                popStashCommitItem.setEnabled(isStashesBranch && row == 0);
-                applyStashCommitItem.setVisible(isStashesBranch);
-                dropStashCommitItem.setVisible(isStashesBranch);
+                softResetItem.setVisible(!isStash);
+                softResetItem.setEnabled(selectedRows.length == 1 && !isStash); // Only for single, non-stash selection
+                revertCommitItem.setVisible(!isStash);
+                revertCommitItem.setEnabled(selectedRows.length > 0 && !isStash); // Allow reverting multiple commits? Git revert doesn't directly do ranges. Enable if any non-stash selected.
+
+                // Stash actions only visible if *all* selected commits are stashes
+                boolean allSelectedAreStashes = true;
+                Optional<Integer> firstStashIndex = Optional.empty();
+                if (selectedRows.length > 0) {
+                     firstStashIndex = ((ICommitInfo) commitsTableModel.getValueAt(selectedRows[0], 5)).stashIndex();
+                     if (!firstStashIndex.isPresent()) {
+                         allSelectedAreStashes = false;
+                     } else {
+                         for (int i = 1; i < selectedRows.length; i++) {
+                             if (!((ICommitInfo) commitsTableModel.getValueAt(selectedRows[i], 5)).stashIndex().isPresent()) {
+                                 allSelectedAreStashes = false;
+                                 break;
+                             }
+                         }
+                     }
+                } else {
+                     allSelectedAreStashes = false; // No selection cannot be all stashes
+                }
+
+
+                popStashCommitItem.setVisible(allSelectedAreStashes);
+                 // Pop only makes sense for the latest stash (index 0) and only one selected
+                popStashCommitItem.setEnabled(allSelectedAreStashes && selectedRows.length == 1 && firstStashIndex.orElse(-1) == 0);
+                applyStashCommitItem.setVisible(allSelectedAreStashes);
+                applyStashCommitItem.setEnabled(allSelectedAreStashes && selectedRows.length == 1); // Only apply single stash
+                dropStashCommitItem.setVisible(allSelectedAreStashes);
+                dropStashCommitItem.setEnabled(allSelectedAreStashes && selectedRows.length == 1); // Only drop single stash
             }
         });
 
@@ -355,14 +414,17 @@ public class GitLogTab extends JPanel {
                 // Call the utility method for each contiguous group of rows.
                 // It's assumed that addCommitRangeToContext will derive the
                 // first and last commit of this specific group and add one fragment.
-                GitUiUtil.addCommitRangeToContext(contextManager, chrome, groupAsIntArray, commitsTableModel);
+                // Pass the table model and column index for CommitInfo object
+                GitUiUtil.addCommitRangeToContext(contextManager, chrome, groupAsIntArray, commitsTableModel, 5);
             }
         });
         softResetItem.addActionListener(e -> {
             int row = commitsTable.getSelectedRow();
             if (row != -1) {
-                String commitId = (String) commitsTableModel.getValueAt(row, 3);
-                String commitMessage = (String) commitsTableModel.getValueAt(row, 0);
+                // Get CommitInfo from the hidden column 5
+                ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(row, 5);
+                String commitId = commitInfo.id();
+                String commitMessage = commitInfo.message();
                 String firstLine = commitMessage.contains("\n")
                                    ? commitMessage.substring(0, commitMessage.indexOf('\n'))
                                    : commitMessage;
@@ -370,67 +432,54 @@ public class GitLogTab extends JPanel {
             }
         });
         revertCommitItem.addActionListener(e -> {
-            int row = commitsTable.getSelectedRow();
+            int row = commitsTable.getSelectedRow(); // TODO: Handle multiple selections for revert? Git revert takes single commits.
             if (row != -1) {
-                String commitId = (String) commitsTableModel.getValueAt(row, 3);
+                // Get CommitInfo from the hidden column 5
+                ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(row, 5);
+                String commitId = commitInfo.id();
                 revertCommit(commitId);
             }
         });
         popStashCommitItem.addActionListener(e -> {
             int row = commitsTable.getSelectedRow();
             if (row != -1) {
-                String message = (String) commitsTableModel.getValueAt(row, 0);
-                if (message.contains("stash@{")) {
-                    int start = message.indexOf("stash@{") + 7;
-                    int end = message.indexOf("}", start);
-                    if (end > start) {
-                        try {
-                            int stashIndex = Integer.parseInt(message.substring(start, end));
-                            popStash(stashIndex);
-                        } catch (NumberFormatException ex) {
-                            logger.warn("Could not parse stash index from: {}", message);
-                        }
-                    }
-                }
+                // Get CommitInfo from the hidden column 5
+                ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(row, 5);
+                // Get stash index directly from CommitInfo
+                commitInfo.stashIndex().ifPresent(this::popStash);
+                 // Optional: Log if stash index is not present (shouldn't happen if menu item enabled correctly)
+                 if (commitInfo.stashIndex().isEmpty()) {
+                      logger.warn("Pop Stash action triggered on a non-stash commit: {}", commitInfo.id());
+                 }
             }
         });
         applyStashCommitItem.addActionListener(e -> {
             int row = commitsTable.getSelectedRow();
             if (row != -1) {
-                String message = (String) commitsTableModel.getValueAt(row, 0);
-                if (message.contains("stash@{")) {
-                    int start = message.indexOf("stash@{") + 7;
-                    int end = message.indexOf("}", start);
-                    if (end > start) {
-                        try {
-                            int stashIndex = Integer.parseInt(message.substring(start, end));
-                            applyStash(stashIndex);
-                        } catch (NumberFormatException ex) {
-                            logger.warn("Could not parse stash index from: {}", message);
-                        }
-                    }
+                // Get CommitInfo from the hidden column 5
+                ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(row, 5);
+                // Get stash index directly from CommitInfo
+                commitInfo.stashIndex().ifPresent(this::applyStash);
+                if (commitInfo.stashIndex().isEmpty()) {
+                    logger.warn("Apply Stash action triggered on a non-stash commit: {}", commitInfo.id());
                 }
             }
         });
         dropStashCommitItem.addActionListener(e -> {
             int row = commitsTable.getSelectedRow();
             if (row != -1) {
-                String message = (String) commitsTableModel.getValueAt(row, 0);
-                if (message.contains("stash@{")) {
-                    int start = message.indexOf("stash@{") + 7;
-                    int end = message.indexOf("}", start);
-                    if (end > start) {
-                        try {
-                            int stashIndex = Integer.parseInt(message.substring(start, end));
-                            dropStash(stashIndex);
-                        } catch (NumberFormatException ex) {
-                            logger.warn("Could not parse stash index from: {}", message);
-                        }
-                    }
-                }
+                // Get CommitInfo from the hidden column 5
+                ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(row, 5);
+                // Get stash index directly from CommitInfo
+                commitInfo.stashIndex().ifPresent(this::dropStash);
+                 if (commitInfo.stashIndex().isEmpty()) {
+                     logger.warn("Drop Stash action triggered on a non-stash commit: {}", commitInfo.id());
+                 }
             }
         });
 
+        // The duplicated old mouse listener and action listener code has been removed.
+        // The correct, new listeners are already present earlier in the method.
         commitsPanel.add(new JScrollPane(commitsTable), BorderLayout.CENTER);
 
         // Buttons below commits table
@@ -530,7 +579,9 @@ public class GitLogTab extends JPanel {
                     if (path != null) {
                         int[] selRows = commitsTable.getSelectedRows();
                         if (selRows.length == 1 && isFileNode(path)) {
-                            String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+                            // Get CommitInfo from hidden column 5
+                            ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(selRows[0], 5);
+                            String commitId = commitInfo.id();
                             String filePath = getFilePathFromTreePath(path);
                             GitUiUtil.showFileHistoryDiff(contextManager, chrome, commitId, contextManager.toFile(filePath));
                         }
@@ -546,11 +597,11 @@ public class GitLogTab extends JPanel {
                 if (!selectedFilePaths.isEmpty()) {
                     int[] selRows = commitsTable.getSelectedRows();
                     if (selRows.length >= 1) {
-                        // Extract commit IDs
+                        // Extract commit IDs from CommitInfo objects
                         var sorted = selRows.clone();
                         java.util.Arrays.sort(sorted);
-                        String firstCommitId = (String) commitsTableModel.getValueAt(sorted[0], 3);
-                        String lastCommitId = (String) commitsTableModel.getValueAt(sorted[sorted.length - 1], 3);
+                        String firstCommitId = ((ICommitInfo) commitsTableModel.getValueAt(sorted[0], 5)).id();
+                        String lastCommitId = ((ICommitInfo) commitsTableModel.getValueAt(sorted[sorted.length - 1], 5)).id();
 
                         // Convert file paths to ProjectFile objects
                         List<ProjectFile> projectFiles = selectedFilePaths.stream()
@@ -569,7 +620,9 @@ public class GitLogTab extends JPanel {
                 String filePath = getFilePathFromTreePath(paths[0]);
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1) {
-                    String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+                    // Get CommitInfo from hidden column 5
+                    ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(selRows[0], 5);
+                    String commitId = commitInfo.id();
                     GitUiUtil.showDiffVsLocal(contextManager, chrome,
                                               commitId, filePath, /*useParent=*/ false);
                 }
@@ -581,7 +634,9 @@ public class GitLogTab extends JPanel {
                 String filePath = getFilePathFromTreePath(paths[0]);
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1) {
-                    String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+                    // Get CommitInfo from hidden column 5
+                    ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(selRows[0], 5);
+                    String commitId = commitInfo.id();
                     GitUiUtil.showDiffVsLocal(contextManager, chrome,
                                               commitId, filePath, /*useParent=*/ true);
                 }
@@ -592,7 +647,9 @@ public class GitLogTab extends JPanel {
             if (paths != null && paths.length == 1) {
                 int[] selRows = commitsTable.getSelectedRows();
                 if (selRows.length == 1 && isFileNode(paths[0])) {
-                    String commitId = (String) commitsTableModel.getValueAt(selRows[0], 3);
+                    // Get CommitInfo from hidden column 5
+                    ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(selRows[0], 5);
+                    String commitId = commitInfo.id();
                     String filePath = getFilePathFromTreePath(paths[0]);
                     GitUiUtil.showFileHistoryDiff(contextManager, chrome, commitId, contextManager.toFile(filePath));
                 }
@@ -833,35 +890,41 @@ public class GitLogTab extends JPanel {
     public void update() {
         contextManager.submitBackgroundTask("Fetching git branches", () -> {
             try {
-                String currentBranch = getRepo().getCurrentBranch();
+                String currentBranch = getRepo().getCurrentBranch(); // Get current branch early
                 List<String> localBranches = getRepo().listLocalBranches();
                 List<String> remoteBranches = getRepo().listRemoteBranches();
 
                 // Prepare data rows off the EDT
                 List<Object[]> localBranchRows = new ArrayList<>();
                 int currentBranchIndex = -1;
-                for (int i = 0; i < localBranches.size(); i++) {
-                    String branch = localBranches.get(i);
+
+                // Add virtual "stashes" entry first if stashes exist
+                boolean hasStashes = false;
+                try {
+                    // Just check if the list is non-empty, avoid fetching full info yet
+                    hasStashes = !getRepo().listStashes().isEmpty();
+                    if (hasStashes) {
+                        localBranchRows.add(new Object[]{"", "stashes"});
+                    }
+                } catch (GitAPIException e) {
+                    logger.warn("Could not check for stashes existence", e);
+                }
+
+                // Process actual local branches
+                for (String branch : localBranches) {
                     String checkmark = branch.equals(currentBranch) ? "✓" : "";
                     localBranchRows.add(new Object[]{checkmark, branch});
                     if (branch.equals(currentBranch)) {
-                        currentBranchIndex = i;
+                        // Set index based on current size of localBranchRows list
+                        currentBranchIndex = localBranchRows.size() - 1;
                     }
                 }
 
-                // Add virtual "stashes" branch if needed
-                boolean hasStashes = false;
-                try {
-                    List<GitRepo.StashInfo> stashes = getRepo().listStashes();
-                    hasStashes = !stashes.isEmpty();
-                    if (hasStashes) {
-                        localBranchRows.add(new Object[]{"", "stashes"});
-                        if ("stashes".equals(currentBranch)) {
-                            currentBranchIndex = localBranchRows.size() - 1;
-                        }
-                    }
-                } catch (GitAPIException e) {
-                    logger.warn("Could not check for stashes", e);
+                // If 'stashes' was added and is the current selection (though unlikely via getCurrentBranch)
+                if (hasStashes && "stashes".equals(currentBranch)) {
+                    // This check might be less relevant now, as selection relies on user clicking
+                    // But if somehow GitRepo returns "stashes", this selects it.
+                     currentBranchIndex = 0; // Stashes entry is at index 0 if present
                 }
 
                 List<Object[]> remoteBranchRows = remoteBranches.stream()
@@ -919,10 +982,11 @@ public class GitLogTab extends JPanel {
                 // Special handling for stashes virtual branch
                 if ("stashes".equals(branchName)) {
                     try {
-                        commits = getRepo().getStashesAsCommits();
+                        // Directly call listStashes which now returns List<CommitInfo>
+                        commits = getRepo().listStashes();
                     } catch (GitAPIException e) {
                         logger.error("Error fetching stashes", e);
-                        commits = List.of();
+                        commits = List.of(); // Ensure commits is initialized
                     }
                 } else {
                     // Normal branch handling
@@ -956,7 +1020,8 @@ public class GitLogTab extends JPanel {
                                 commit.author(),
                                 formattedDate,
                                 commit.id(),
-                                isUnpushed
+                                isUnpushed,
+                                commit // Add the CommitInfo object itself to the hidden column
                         });
                     }
                 }
@@ -992,9 +1057,9 @@ public class GitLogTab extends JPanel {
 
                     if (commitsTableModel.getRowCount() > 0) {
                         commitsTable.setRowSelectionInterval(0, 0);
-                        // Pass the commit ID of the first row
-                        String firstCommitId = (String) commitsTableModel.getValueAt(0, 3);
-                        updateChangesForCommits(List.of(firstCommitId));
+                        // Pass the CommitInfo object of the first row
+                        ICommitInfo firstCommitInfo = (ICommitInfo) commitsTableModel.getValueAt(0, 5);
+                        updateChangesForCommits(List.of(firstCommitInfo)); // Update to take List<ICommitInfo>
                     }
                 });
             } catch (Exception e) {
@@ -1013,10 +1078,10 @@ public class GitLogTab extends JPanel {
     }
 
     /**
-     * Fills the "Changes" tree with files from the selected commit IDs.
+     * Fills the "Changes" tree with files from the selected commit objects.
      */
-    private void updateChangesForCommits(List<String> commitIds) {
-        if (commitIds == null || commitIds.isEmpty()) {
+    private void updateChangesForCommits(List<ICommitInfo> commits) {
+        if (commits == null || commits.isEmpty()) {
             changesRootNode.removeAllChildren();
             changesTreeModel.reload();
             return;
@@ -1024,15 +1089,14 @@ public class GitLogTab extends JPanel {
 
         contextManager.submitBackgroundTask("Fetching changes for commits", () -> {
             try {
-                // Aggregate changed files from all selected commit IDs
+                // Aggregate changed files from all selected commit objects
                 var allChangedFiles = new HashSet<ProjectFile>();
-                for (String commitId : commitIds) {
-                    // A single commit's changes are typically compared against its parent(s).
-                    // listChangedFilesInCommitRange(A, A) lists files changed *in* commit A.
-                    var changedFiles = getRepo().listChangedFilesInCommitRange(commitId, commitId);
-                    allChangedFiles.addAll(changedFiles);
+                for (ICommitInfo commit : commits) {
+                    // Use the changedFiles() method from the interface
+                    allChangedFiles.addAll(commit.changedFiles());
                 }
 
+                // Update UI on EDT
                 SwingUtilities.invokeLater(() -> {
                     changesRootNode.removeAllChildren();
                     if (allChangedFiles.isEmpty()) {
@@ -1386,7 +1450,8 @@ public class GitLogTab extends JPanel {
                             commit.author(),
                             formattedDate, // use formatted date
                             commit.id(),
-                            false // Search results are never 'unpushed' in this context
+                            false, // Search results are never 'unpushed' in this context
+                            commit // Add CommitInfo object
                     });
                 }
 
@@ -1410,9 +1475,9 @@ public class GitLogTab extends JPanel {
                         TableUtils.fitColumnWidth(commitsTable, 1); // Author
                         TableUtils.fitColumnWidth(commitsTable, 2); // Date
                         commitsTable.setRowSelectionInterval(0, 0);
-                        // Pass the commit ID of the first row
-                        String firstCommitId = (String) commitsTableModel.getValueAt(0, 3);
-                        updateChangesForCommits(List.of(firstCommitId));
+                        // Pass the CommitInfo object of the first row
+                        ICommitInfo firstCommitInfo = (ICommitInfo) commitsTableModel.getValueAt(0, 5);
+                        updateChangesForCommits(List.of(firstCommitInfo)); // Update to take List<ICommitInfo>
                     }
                 });
             } catch (Exception e) {
@@ -1632,11 +1697,12 @@ public class GitLogTab extends JPanel {
      */
     public void selectCommitById(String commitId) {
         for (int i = 0; i < commitsTableModel.getRowCount(); i++) {
-            String currentId = (String) commitsTableModel.getValueAt(i, 3);
-            if (commitId.equals(currentId)) {
+            // Get CommitInfo from hidden column 5
+            ICommitInfo commitInfo = (ICommitInfo) commitsTableModel.getValueAt(i, 5);
+            if (commitId.equals(commitInfo.id())) {
                 commitsTable.setRowSelectionInterval(i, i);
                 commitsTable.scrollRectToVisible(commitsTable.getCellRect(i, 0, true));
-                updateChangesForCommits(List.of(commitId));
+                updateChangesForCommits(List.of(commitInfo)); // Update to take List<ICommitInfo>
                 return;
             }
         }

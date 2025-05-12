@@ -198,7 +198,8 @@ public final class GitUiUtil
             ContextManager contextManager,
             Chrome chrome,
             int[] selectedRows,
-            javax.swing.table.TableModel tableModel
+            javax.swing.table.TableModel tableModel,
+            int commitInfoColumnIndex // Add index for ICommitInfo
     ) {
         contextManager.submitContextTask("Adding commit range to context", () -> {
             try {
@@ -212,17 +213,26 @@ public final class GitUiUtil
                     chrome.systemOutput("Invalid commit selection");
                     return;
                 }
-                var firstCommitId = (String) tableModel.getValueAt(sorted[0], 3);
-                var lastCommitId  = (String) tableModel.getValueAt(sorted[sorted.length - 1], 3);
+                // Retrieve ICommitInfo objects using the provided index
+                var firstCommitInfo = (io.github.jbellis.brokk.git.ICommitInfo) tableModel.getValueAt(sorted[0], commitInfoColumnIndex);
+                var lastCommitInfo  = (io.github.jbellis.brokk.git.ICommitInfo) tableModel.getValueAt(sorted[sorted.length - 1], commitInfoColumnIndex);
+                var firstCommitId = firstCommitInfo.id();
+                var lastCommitId = lastCommitInfo.id();
 
                 var repo = contextManager.getProject().getRepo();
+                if (repo == null) {
+                    chrome.toolError("Git repository not available.");
+                    return;
+                }
+                // Fetch diff using the correct parent syntax for range
                 var diff = repo.showDiff(firstCommitId, lastCommitId + "^");
                 if (diff.isEmpty()) {
                     chrome.systemOutput("No changes found in the selected commit range");
                     return;
                 }
 
-                var changedFiles = repo.listChangedFilesInCommitRange(firstCommitId, lastCommitId);
+                // Use the correct method to list files between the two commits
+                var changedFiles = repo.listFilesChangedBetweenCommits(firstCommitId, lastCommitId);
                 var fileNames = changedFiles.stream()
                         .map(ProjectFile::getFileName)
                         .collect(Collectors.toList());
