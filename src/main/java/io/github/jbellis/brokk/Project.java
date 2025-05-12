@@ -1178,7 +1178,7 @@ public class Project implements IProject, AutoCloseable {
      * Enum defining the reasoning effort levels for models.
      */
     public enum ReasoningLevel {
-        DEFAULT, LOW, MEDIUM, HIGH;
+        OFF, DEFAULT, LOW, MEDIUM, HIGH;
 
         @Override
         public String toString() {
@@ -1269,7 +1269,8 @@ public class Project implements IProject, AutoCloseable {
     public static final List<Models.FavoriteModel> DEFAULT_FAVORITE_MODELS = List.of(
             new Models.FavoriteModel("o3", Models.O3, ReasoningLevel.DEFAULT),
             new Models.FavoriteModel("Gemini Pro 2.5", Models.GEMINI_2_5_PRO, ReasoningLevel.DEFAULT),
-            new Models.FavoriteModel("Flash 2.5", "gemini-2.5-flash", ReasoningLevel.DEFAULT)
+            new Models.FavoriteModel("Sonnet 3.7", "claude-3.7-sonnet", ReasoningLevel.DEFAULT),
+            new Models.FavoriteModel("Flash 2.5", "gemini-2.5-flash", ReasoningLevel.OFF)
     );
 
     /**
@@ -1289,7 +1290,7 @@ public class Project implements IProject, AutoCloseable {
                 var listType = typeFactory.constructCollectionType(List.class, Models.FavoriteModel.class);
                 // Explicit cast needed as readValue with JavaType returns Object
                 @SuppressWarnings("unchecked") // Cast is safe due to the type factory construction
-                List<Models.FavoriteModel> loadedList = (List<Models.FavoriteModel>) objectMapper.readValue(json, listType);
+                List<Models.FavoriteModel> loadedList = objectMapper.readValue(json, listType);
                 logger.debug("Loaded {} favorite models from global properties.", loadedList.size());
                 return loadedList;
             } catch (JsonProcessingException | ClassCastException e) { // Catch potential ClassCastException too

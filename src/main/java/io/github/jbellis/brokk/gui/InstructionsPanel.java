@@ -13,6 +13,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.ContextAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
+import io.github.jbellis.brokk.Models; // Import Models to access FavoriteModel
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.components.SplitButton;
@@ -38,6 +39,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
+import java.util.Comparator;
 
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import org.jetbrains.annotations.Nullable;
@@ -89,7 +93,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private CardLayout suggestionCardLayout;
     private final JButton deepScanButton;
     private final JPanel centerPanel;
-    private final Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
+    private final javax.swing.Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicBoolean forceSuggestions = new AtomicBoolean(false);
     // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
     private final ExecutorService suggestionWorker = Executors.newSingleThreadExecutor(r -> {
@@ -141,11 +145,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         codeButton.setToolTipText("Tell the LLM to write code using the current context (click ▼ for model options)");
         codeButton.addActionListener(e -> runCodeCommand()); // Main button action
         codeButton.setMenuSupplier(() -> createModelSelectionMenu(
-                models -> models.getAvailableModels(),
-                modelName -> {
-                    StreamingChatLanguageModel selectedModel = chrome.getContextManager().getModels().get(modelName, Project.ReasoningLevel.DEFAULT);
+                (modelName, reasoningLevel) -> {
+                    var models = chrome.getContextManager().getModels();
+                    StreamingChatLanguageModel selectedModel = models.get(modelName, reasoningLevel);
                     if (selectedModel != null) {
                         runCodeCommand(selectedModel);
+                    } else {
+                        chrome.toolErrorRaw("Selected model '" + modelName + "' is not available with reasoning level " + reasoningLevel);
                     }
                 }
         ));
@@ -155,11 +161,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         askButton.setToolTipText("Ask the LLM a question about the current context (click ▼ for model options)");
         askButton.addActionListener(e -> runAskCommand()); // Main button action
         askButton.setMenuSupplier(() -> createModelSelectionMenu(
-                models -> models.getAvailableModels(),
-                modelName -> {
-                    StreamingChatLanguageModel selectedModel = chrome.getContextManager().getModels().get(modelName, Project.ReasoningLevel.DEFAULT);
+                (modelName, reasoningLevel) -> {
+                    var models = chrome.getContextManager().getModels();
+                    StreamingChatLanguageModel selectedModel = models.get(modelName, reasoningLevel);
                     if (selectedModel != null) {
                         runAskCommand(selectedModel);
+                    } else {
+                        chrome.toolErrorRaw("Selected model '" + modelName + "' is not available with reasoning level " + reasoningLevel);
                     }
                 }
         ));
@@ -205,7 +213,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         initializeReferenceFileTable();
 
         // Initialize and configure the context suggestion timer
-        contextSuggestionTimer = new Timer(100, this::triggerContextSuggestion);
+        contextSuggestionTimer = new javax.swing.Timer(100, this::triggerContextSuggestion);
         contextSuggestionTimer.setRepeats(false);
         instructionsArea.getDocument().addDocumentListener(new DocumentListener() {
             private void checkAndHandleSuggestions() {
@@ -1560,9 +1568,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return (float) (dot / denominator);
     }
 
-    private JPopupMenu createModelSelectionMenu(
-            java.util.function.Function<Models, Map<String, String>> modelSource,
-            Consumer<String> onModelSelect) {
+    /**
+     * Creates a JPopupMenu displaying favorite models that are currently available.
+     * When a favorite model is selected, the provided consumer is called with the
+     * model name and its associated reasoning level from the favorite model configuration.
+     *
+     * @param onModelSelect The consumer to call when a favorite model is selected.
+     *                      Receives the model name and the reasoning level configured for that favorite.
+     * @return A JPopupMenu containing available favorite models or configuration options.
+     */
+    private JPopupMenu createModelSelectionMenu(BiConsumer<String, Project.ReasoningLevel> onModelSelect)
+    {
         var popupMenu = new JPopupMenu();
         if (this.contextManager == null) {
             var item = new JMenuItem("Models unavailable (ContextManager not ready)");
@@ -1575,25 +1591,32 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         var modelsInstance = this.contextManager.getModels();
-        Map<String, String> availableModelsMap = modelSource.apply(modelsInstance);
+        Map<String, String> availableModelsMap = modelsInstance.getAvailableModels(); // Get all available models
 
-        if (availableModelsMap.isEmpty() || (availableModelsMap.size() == 1 && availableModelsMap.containsKey(Models.UNAVAILABLE))) {
-            var item = new JMenuItem(Models.UNAVAILABLE);
-            item.setEnabled(false);
+        // Cast the result of loadFavoriteModels and ensure it's handled correctly
+        @SuppressWarnings("unchecked") // Suppress warning for the cast from Object/ANY
+        List<Models.FavoriteModel> favoriteModels = (List<Models.FavoriteModel>) Project.loadFavoriteModels();
+
+        // Filter favorite models to show only those that are currently available, and sort by alias
+        List<Models.FavoriteModel> favoriteModelsToShow = favoriteModels.stream()
+                .filter(fav -> availableModelsMap.containsKey(fav.modelName()))
+                .sorted(Comparator.comparing(Models.FavoriteModel::alias))
+                .toList();
+
+        if (favoriteModelsToShow.isEmpty()) {
+            var item = new JMenuItem("(No favorite models available)"); // Updated message
+            item.setEnabled(false); // Keep it disabled as it's just info
             popupMenu.add(item);
+            popupMenu.addSeparator();
+            var configureItem = new JMenuItem("Configure Favorites...");
+            configureItem.addActionListener(e -> SettingsDialog.showSettingsDialog(chrome, SettingsDialog.MODELS_TAB));
+            popupMenu.add(configureItem);
         } else {
-            // Sort model names for consistent menu order
-            availableModelsMap.keySet().stream().sorted().forEach(modelName -> {
-                // Skip the generic "UNAVAILABLE" entry if other, real models are present
-                if (modelName.equals(Models.UNAVAILABLE) && availableModelsMap.size() > 1) {
-                    return;
-                }
-                var item = new JMenuItem(modelName);
-                if (modelName.equals(Models.UNAVAILABLE)) {
-                    item.setEnabled(false);
-                } else {
-                    item.addActionListener(e -> onModelSelect.accept(modelName));
-                }
+            favoriteModelsToShow.forEach(fav -> {
+                var item = new JMenuItem(fav.alias());
+                 // Add a tooltip showing model name and reasoning level
+                item.setToolTipText("<html>Model: " + fav.modelName() + "<br>Reasoning: " + fav.reasoning().toString() + "</html>");
+                item.addActionListener(e -> onModelSelect.accept(fav.modelName(), fav.reasoning()));
                 popupMenu.add(item);
             });
         }

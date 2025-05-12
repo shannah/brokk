@@ -483,7 +483,7 @@ public final class Models {
         // Apply reasoning effort if not default and supported
         logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
         if (supportsReasoningEffort(modelName) && reasoningLevel != Project.ReasoningLevel.DEFAULT) {
-            params = params.reasoningEffort(reasoningLevel.name().toLowerCase());
+                params = params.reasoningEffort(reasoningLevel.name().toLowerCase());
         }
         builder.defaultRequestParameters(params.build());
 
