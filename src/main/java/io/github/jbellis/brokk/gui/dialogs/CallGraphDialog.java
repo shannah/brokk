@@ -50,8 +50,8 @@ public class CallGraphDialog extends JDialog {
         var mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // Create the symbol selection panel - limited to methods only and single selection
-        selectionPanel = new SymbolSelectionPanel(analyzer, Set.of(CodeUnitType.FUNCTION), 1);
+        // Create the symbol selection panel - limited to methods only
+        selectionPanel = new SymbolSelectionPanel(analyzer, Set.of(CodeUnitType.FUNCTION));
         selectionPanel.addSymbolSelectionListener(this::updateCallGraph);
 
         // Create the depth panel with spinner
@@ -181,14 +181,14 @@ public class CallGraphDialog extends JDialog {
      * When OK is pressed, get the method and depth values.
      */
     private void doOk() {
-        confirmed = true;
-        selectedMethod = null;
-
         String typed = selectionPanel.getSymbolText();
-        if (!typed.isEmpty()) {
+        if (typed.isEmpty()) {
+            selectedMethod = null;
+        } else {
             selectedMethod = typed;
         }
 
+        confirmed = true;
         depth = (Integer) depthSpinner.getValue();
         dispose();
     }
