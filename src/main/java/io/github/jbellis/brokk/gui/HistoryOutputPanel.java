@@ -313,11 +313,11 @@ public class HistoryOutputPanel extends JPanel {
         undoToHereItem.addActionListener(event -> undoHistoryUntil(context));
         popup.add(undoToHereItem);
 
-        JMenuItem resetToHereItem = new JMenuItem("Reset Context to Here");
+        JMenuItem resetToHereItem = new JMenuItem("Copy Workspace");
         resetToHereItem.addActionListener(event -> resetContextTo(context));
         popup.add(resetToHereItem);
 
-        JMenuItem resetToHereIncludingHistoryItem = new JMenuItem("Reset Context to Here (including History)");
+        JMenuItem resetToHereIncludingHistoryItem = new JMenuItem("Copy Workspace with History");
         resetToHereIncludingHistoryItem.addActionListener(event -> resetContextToIncludingHistory(context));
         popup.add(resetToHereIncludingHistoryItem);
 
