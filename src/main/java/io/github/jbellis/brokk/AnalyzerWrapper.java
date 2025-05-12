@@ -333,7 +333,10 @@ public class AnalyzerWrapper implements AutoCloseable {
      */
     public IAnalyzer get() throws InterruptedException {
         if (SwingUtilities.isEventDispatchThread()) {
-            throw new UnsupportedOperationException("Never call blocking get() from EDT");
+            logger.error("Never call blocking get() from EDT", new UnsupportedOperationException());
+            if (Boolean.getBoolean("brokk.devmode")) {
+                throw new UnsupportedOperationException("Never call blocking get() from EDT");
+            }
         }
 
         // If we already have an analyzer, just return it.
