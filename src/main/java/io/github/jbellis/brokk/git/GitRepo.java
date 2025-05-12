@@ -12,10 +12,13 @@ import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.treewalk.filter.PathFilter;
 import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
@@ -100,9 +103,9 @@ public class GitRepo implements Closeable, IGitRepo {
     public synchronized void remove(ProjectFile file) throws GitAPIException {
         logger.debug("Removing file from Git index (git rm --cached): {}", file);
         git.rm()
-           .addFilepattern(toGitPath(file.toString()))
-           .setCached(true) // Remove from index only -- EditBlock removes from disk
-           .call();
+                .addFilepattern(toGitPath(file.toString()))
+                .setCached(true) // Remove from index only -- EditBlock removes from disk
+                .call();
         refresh(); // Refresh repository state, including tracked files cache
     }
 
@@ -268,8 +271,7 @@ public class GitRepo implements Closeable, IGitRepo {
                 determinedStatus = "deleted";
             } else if (statusResult.getModified().contains(path)
                     || statusResult.getChanged().contains(path)
-                    || statusResult.getRemoved().contains(path))
-            {
+                    || statusResult.getRemoved().contains(path)) {
                 // If removed from index but present in WT, it's a modification for "commit -a"
                 determinedStatus = "modified";
             } else {
@@ -285,6 +287,7 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /**
      * Commit a specific list of RepoFiles.
+     *
      * @return The commit ID of the new commit
      */
     public String commitFiles(List<ProjectFile> files, String message) throws GitAPIException {
@@ -574,14 +577,49 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * A record to hold commit details
+     * Retrieves basic information (message, author, date) for a single commit from the local repository.
+     *
+     * @param commitId The SHA of the commit.
+     * @return An Optional containing the CommitInfo if the commit is found, otherwise an empty Optional.
+     * @throws GitAPIException if there's an error accessing Git data.
      */
-    public record CommitInfo(String id, String message, String author, Date date) {}
+    public Optional<CommitInfo> getLocalCommitInfo(String commitId) throws GitAPIException {
+        var objectId = resolve(commitId);
+        if (objectId == null) {
+            logger.warn("getLocalCommitInfo: Could not resolve commitId '{}'", commitId);
+            return Optional.empty();
+        }
+
+        try (var revWalk = new RevWalk(repository)) {
+            var revCommit = revWalk.parseCommit(objectId);
+            String message = revCommit.getShortMessage();
+            String author = revCommit.getAuthorIdent().getName();
+            // Use committer date as it's often more relevant for chronological sorting of commits
+            // and matches the typical date shown in `git log`.
+            Date date = revCommit.getCommitterIdent().getWhen();
+            return Optional.of(new CommitInfo(this, commitId, message, author, date));
+        } catch (IOException e) {
+            throw new GitWrappedIOException(e);
+        }
+    }
+
+    /**
+     * Represent each stash as a single logical commit, mirroring
+     * `git stash list`.  We intentionally ignore the internal
+     * index/untracked helper commits so the log stays concise.
+     */
+    public List<CommitInfo> getStashesAsCommits() throws GitAPIException
+    {
+        return listStashes().stream().map(s -> {
+            return new CommitInfo(this, s.id(), s.message(), s.author(), s.date());
+        }).toList();
+    }
 
     /**
      * A record to hold a modified file and its status.
      */
-    public record ModifiedFile(ProjectFile file, String status) {}
+    public record ModifiedFile(ProjectFile file, String status) {
+    }
 
     /**
      * List commits with detailed information for a specific branch
@@ -603,35 +641,126 @@ public class GitRepo implements Closeable, IGitRepo {
             var message = commit.getShortMessage();
             var author = commit.getAuthorIdent().getName();
             var date = commit.getAuthorIdent().getWhen();
-            commits.add(new CommitInfo(id, message, author, date));
+            commits.add(new CommitInfo(this, id, message, author, date));
         }
         return commits;
     }
 
+    private List<ProjectFile> extractFilesFromDiffEntries(List<DiffEntry> diffs) {
+        var fileSet = new HashSet<String>();
+        for (var diff : diffs) {
+            if (diff.getChangeType() == DiffEntry.ChangeType.DELETE) {
+                fileSet.add(diff.getOldPath());
+            } else if (diff.getChangeType() == DiffEntry.ChangeType.ADD || diff.getChangeType() == DiffEntry.ChangeType.COPY) {
+                fileSet.add(diff.getNewPath());
+            } else { // MODIFY, RENAME
+                fileSet.add(diff.getNewPath()); // new path is usually the one of interest
+                if (diff.getOldPath() != null && !diff.getOldPath().equals(diff.getNewPath())) {
+                    fileSet.add(diff.getOldPath()); // For renames, include old path too
+                }
+            }
+        }
+        return fileSet.stream()
+                .filter(path -> !"/dev/null".equals(path))
+                .map(path -> new ProjectFile(root, path))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Lists files changed in a specific commit compared to its primary parent.
+     * For an initial commit, lists all files in that commit.
+     */
+    public List<ProjectFile> listFilesChangedInCommit(String commitId) throws GitAPIException {
+        var commitObjectId = resolve(commitId);
+        if (commitObjectId == null) {
+            logger.warn("listFilesChangedInCommit: Could not resolve commitId '{}'", commitId);
+            return List.of();
+        }
+
+        try (var revWalk = new RevWalk(repository)) {
+            var commit = revWalk.parseCommit(commitObjectId);
+            var newTree = commit.getTree();
+            RevTree oldTree = null;
+
+            if (commit.getParentCount() > 0) {
+                var parentCommit = revWalk.parseCommit(commit.getParent(0).getId());
+                oldTree = parentCommit.getTree();
+            }
+
+            try (var diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) { // Output stream is not used for listing files
+                diffFormatter.setRepository(repository);
+                List<DiffEntry> diffs;
+                if (oldTree == null) { // Initial commit
+                    // EmptyTreeIterator is not AutoCloseable
+                    var emptyTreeIterator = new EmptyTreeIterator();
+                    diffs = diffFormatter.scan(emptyTreeIterator, new CanonicalTreeParser(null, repository.newObjectReader(), newTree));
+                } else {
+                    diffs = diffFormatter.scan(oldTree, newTree);
+                }
+                return extractFilesFromDiffEntries(diffs);
+            }
+        } catch (IOException e) {
+            throw new GitWrappedIOException(e);
+        }
+    }
+
+    /**
+     * Lists files changed between two commit SHAs (from oldCommitId to newCommitId).
+     */
+    public List<ProjectFile> listFilesChangedBetweenCommits(String newCommitId, String oldCommitId) throws GitAPIException {
+        var newObjectId = resolve(newCommitId);
+        var oldObjectId = resolve(oldCommitId);
+
+        if (newObjectId == null) {
+            logger.warn("listFilesChangedBetweenCommits: Could not resolve newCommitId '{}'", newCommitId);
+            return List.of();
+        }
+        if (oldObjectId == null) {
+            logger.warn("listFilesChangedBetweenCommits: Could not resolve oldCommitId '{}'", oldCommitId);
+            return List.of();
+        }
+        if (newObjectId.equals(oldObjectId)) {
+            logger.debug("listFilesChangedBetweenCommits: newCommitId and oldCommitId are the same ('{}'). Returning empty list.", newCommitId);
+            return List.of();
+        }
+
+        try (var revWalk = new RevWalk(repository)) {
+            var newCommit = revWalk.parseCommit(newObjectId);
+            var oldCommit = revWalk.parseCommit(oldObjectId);
+
+            try (var diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) { // Output stream is not used for listing files
+                diffFormatter.setRepository(repository);
+                var diffs = diffFormatter.scan(oldCommit.getTree(), newCommit.getTree());
+                return extractFilesFromDiffEntries(diffs);
+            }
+        } catch (IOException e) {
+            throw new GitWrappedIOException(e);
+        }
+    }
+
+
     /**
      * List changed RepoFiles in a commit range.
+     *
+     * @deprecated Prefer listFilesChangedInCommit or listFilesChangedBetweenCommits for clarity.
+     * This method diffs (lastCommitId + "^") vs (firstCommitId).
      */
+    @Deprecated
     public List<ProjectFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId) throws GitAPIException {
         var firstCommitObj = resolve(firstCommitId);
-        var lastCommitObj = resolve(lastCommitId + "^");
+        var lastCommitObj = resolve(lastCommitId + "^"); // Note the parent operator here
+        if (firstCommitObj == null || lastCommitObj == null) {
+            logger.warn("listChangedFilesInCommitRange: could not resolve one or both commit IDs ({} , {}^).", firstCommitId, lastCommitId);
+            return List.of();
+        }
+
         try (var revWalk = new RevWalk(repository)) {
-            var firstCommit = revWalk.parseCommit(firstCommitObj);
-            var lastCommit = revWalk.parseCommit(lastCommitObj);
+            var firstCommit = revWalk.parseCommit(firstCommitObj); // "new"
+            var lastCommitParent = revWalk.parseCommit(lastCommitObj); // "old"
             try (var diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) {
                 diffFormatter.setRepository(repository);
-                var diffs = diffFormatter.scan(lastCommit.getTree(), firstCommit.getTree());
-                var fileSet = new HashSet<String>();
-                for (var diff : diffs) {
-                    if (diff.getNewPath() != null && !"/dev/null".equals(diff.getNewPath())) {
-                        fileSet.add(diff.getNewPath());
-                    }
-                    if (diff.getOldPath() != null && !"/dev/null".equals(diff.getOldPath())) {
-                        fileSet.add(diff.getOldPath());
-                    }
-                }
-                return fileSet.stream()
-                        .map(path -> new ProjectFile(root, path))
-                        .collect(Collectors.toList());
+                var diffs = diffFormatter.scan(lastCommitParent.getTree(), firstCommit.getTree());
+                return extractFilesFromDiffEntries(diffs);
             }
         } catch (IOException e) {
             throw new GitWrappedIOException(e);
@@ -800,7 +929,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * 5. Soft-reset back to restore the working directory with the UN-selected files uncommitted
      * 6. Clean up the temporary branch
      *
-     * @param message The stash message
+     * @param message      The stash message
      * @param filesToStash The specific files to include in the stash
      * @throws GitAPIException If there's an error during the stash process
      */
@@ -812,8 +941,8 @@ public class GitRepo implements Closeable, IGitRepo {
 
         var allUncommittedFilesWithStatus = getModifiedFiles();
         var allUncommittedProjectFiles = allUncommittedFilesWithStatus.stream()
-                                             .map(ModifiedFile::file)
-                                             .collect(Collectors.toSet());
+                .map(ModifiedFile::file)
+                .collect(Collectors.toSet());
         if (!allUncommittedProjectFiles.containsAll(new HashSet<>(filesToStash))) {
             throw new GitStateException("Files to stash are not actually uncommitted!?");
         }
@@ -877,7 +1006,8 @@ public class GitRepo implements Closeable, IGitRepo {
     /**
      * A record to hold stash details
      */
-    public record StashInfo(String id, String message, String author, Date date, int index) {}
+    public record StashInfo(String id, String message, String author, Date date, int index) {
+    }
 
     /**
      * Lists all stashes in the repository
@@ -936,11 +1066,11 @@ public class GitRepo implements Closeable, IGitRepo {
                 diffFormatter.setRepository(repository);
                 var diffs = diffFormatter.scan(headCommit.getTree(), indexCommit.getTree());
                 if (!diffs.isEmpty()) {
-                    additionalCommits.put("index", new CommitInfo(
-                            indexCommit.getName(),
-                            "Index (staged) changes in " + stashRef,
-                            indexCommit.getAuthorIdent().getName(),
-                            indexCommit.getAuthorIdent().getWhen()
+                    additionalCommits.put("index", new CommitInfo(this,
+                                                                  indexCommit.getName(),
+                                                                  "Index (staged) changes in " + stashRef,
+                                                                  indexCommit.getAuthorIdent().getName(),
+                                                                  indexCommit.getAuthorIdent().getWhen()
                     ));
                 }
             }
@@ -956,11 +1086,11 @@ public class GitRepo implements Closeable, IGitRepo {
                     hasFiles = treeWalk.next();
                 }
                 if (hasFiles) {
-                    additionalCommits.put("untracked", new CommitInfo(
-                            untrackedCommit.getName(),
-                            "Untracked files in " + stashRef,
-                            untrackedCommit.getAuthorIdent().getName(),
-                            untrackedCommit.getAuthorIdent().getWhen()
+                    additionalCommits.put("untracked", new CommitInfo(this,
+                                                                      untrackedCommit.getName(),
+                                                                      "Untracked files in " + stashRef,
+                                                                      untrackedCommit.getAuthorIdent().getName(),
+                                                                      untrackedCommit.getAuthorIdent().getWhen()
                     ));
                 }
             }
@@ -989,7 +1119,7 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public void popStash(int stashIndex) throws GitAPIException {
         var stashRef = "stash@{" + stashIndex + "}";
-            logger.debug("Popping stash {}", stashRef);
+        logger.debug("Popping stash {}", stashRef);
         git.stashApply()
                 .setStashRef(stashRef)
                 .setRestoreIndex(false)
@@ -1023,7 +1153,7 @@ public class GitRepo implements Closeable, IGitRepo {
             var message = commit.getShortMessage();
             var author = commit.getAuthorIdent().getName();
             var date = commit.getAuthorIdent().getWhen();
-            commits.add(new CommitInfo(id, message, author, date));
+            commits.add(new CommitInfo(this, id, message, author, date));
         }
         return commits;
     }
@@ -1086,13 +1216,12 @@ public class GitRepo implements Closeable, IGitRepo {
 
             if (cMessage.contains(lowerQuery)
                     || cAuthorName.contains(lowerQuery)
-                    || cAuthorEmail.contains(lowerQuery))
-            {
+                    || cAuthorEmail.contains(lowerQuery)) {
                 var id = commit.getName();
                 var message = commit.getShortMessage();
                 var author = commit.getAuthorIdent().getName();
                 var date = commit.getAuthorIdent().getWhen();
-                commits.add(new CommitInfo(id, message, author, date));
+                commits.add(new CommitInfo(this, id, message, author, date));
             }
         }
         return commits;

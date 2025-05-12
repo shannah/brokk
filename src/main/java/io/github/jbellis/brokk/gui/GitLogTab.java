@@ -4,7 +4,8 @@ import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.git.GitRepo.CommitInfo;
+import io.github.jbellis.brokk.git.CommitInfo;
+import io.github.jbellis.brokk.git.ICommitInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -918,7 +919,7 @@ public class GitLogTab extends JPanel {
                 // Special handling for stashes virtual branch
                 if ("stashes".equals(branchName)) {
                     try {
-                        commits = getStashesAsCommits();
+                        commits = getRepo().getStashesAsCommits();
                     } catch (GitAPIException e) {
                         logger.error("Error fetching stashes", e);
                         commits = List.of();
@@ -1479,27 +1480,6 @@ public class GitLogTab extends JPanel {
             logger.debug("Could not format date: {}", date, e);
             return date.toString();
         }
-    }
-
-    /**
-     * Represent each stash as a single logical commit, mirroring
-     * `git stash list`.  We intentionally ignore the internal
-     * index/untracked helper commits so the log stays concise.
-     */
-    private List<CommitInfo> getStashesAsCommits() throws GitAPIException
-    {
-        List<GitRepo.StashInfo> stashes = getRepo().listStashes();
-        List<CommitInfo> result = new ArrayList<>();
-
-        for (GitRepo.StashInfo s : stashes) {
-            result.add(new CommitInfo(
-                    s.id(),
-                    s.message() + " (stash@{" + s.index() + "})",
-                    s.author(),
-                    s.date()
-            ));
-        }
-        return result;
     }
 
     /**

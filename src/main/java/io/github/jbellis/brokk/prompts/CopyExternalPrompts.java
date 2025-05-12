@@ -11,14 +11,14 @@ import java.util.stream.Stream;
 public abstract class CopyExternalPrompts extends CodePrompts {
     public static final CopyExternalPrompts instance = new CopyExternalPrompts() {};
 
-    public List<ChatMessage> collectMessages(ContextManager cm) {
+    public List<ChatMessage> collectMessages(ContextManager cm) throws InterruptedException {
         // omits edit instructions and examples
         return Streams.concat(Stream.of(systemMessage(cm, CodePrompts.LAZY_REMINDER)),
                               collectMessagesInternal(cm).stream())
                         .toList();
     }
 
-    private List<ChatMessage> collectMessagesInternal(ContextManager cm) {
+    private List<ChatMessage> collectMessagesInternal(ContextManager cm) throws InterruptedException {
         var messages = new ArrayList<ChatMessage>();
         messages.addAll(cm.getHistoryMessagesForCopy());
         messages.addAll(cm.getWorkspaceContentsMessages());

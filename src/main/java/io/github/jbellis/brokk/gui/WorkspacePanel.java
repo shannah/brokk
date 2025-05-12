@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui;
 
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.Context;
 import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
@@ -1012,7 +1013,13 @@ public class WorkspacePanel extends JPanel {
         String content;
         if (selectedFragments.isEmpty()) {
             // gather entire context
-            var msgs = CopyExternalPrompts.instance.collectMessages(contextManager);
+            List<ChatMessage> msgs = null;
+            try {
+                msgs = CopyExternalPrompts.instance.collectMessages(contextManager);
+            } catch (InterruptedException e) {
+                // the signature is misleading, IE will never be thrown on this path
+                throw new AssertionError(e);
+            }
             var combined = new StringBuilder();
             for (var m : msgs) {
                 if (!(m instanceof AiMessage)) {

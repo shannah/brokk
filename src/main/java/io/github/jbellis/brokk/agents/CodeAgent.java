@@ -89,13 +89,13 @@ public class CodeAgent {
 
         while (true) {
             // Prepare and send request to LLM
-            var allMessages = CodePrompts.instance.collectCodeMessages(contextManager,
-                                                                       model,
-                                                                       parser,
-                                                                       sessionMessages,
-                                                                       nextRequest);
             StreamingResult streamingResult;
             try {
+                var allMessages = CodePrompts.instance.collectCodeMessages(contextManager,
+                                                                           model,
+                                                                           parser,
+                                                                           sessionMessages,
+                                                                           nextRequest);
                 streamingResult = coder.sendRequest(allMessages, true);
             } catch (InterruptedException e) {
                 logger.debug("CodeAgent interrupted during sendRequest");

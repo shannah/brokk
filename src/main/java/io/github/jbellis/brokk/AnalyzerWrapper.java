@@ -243,6 +243,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         }
 
         logger.debug("Analyzer (re)build completed");
+        currentAnalyzer = newAnalyzer;
         return newAnalyzer;
     }
 
@@ -310,8 +311,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         logger.trace("Rebuilding analyzer");
         future = runner.submit("Rebuilding code intelligence", () -> {
             try {
-                currentAnalyzer = createAndSaveAnalyzer();
-                return currentAnalyzer;
+                return createAndSaveAnalyzer();
             } finally {
                 synchronized (AnalyzerWrapper.this) {
                     rebuildInProgress = false;

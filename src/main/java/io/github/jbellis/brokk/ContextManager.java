@@ -339,7 +339,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     @Override
     public IAnalyzer getAnalyzerUninterrupted() {
-        return analyzerWrapper.getNonBlocking();
+        try {
+            return analyzerWrapper.get();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
@@ -1028,7 +1032,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @return A collection containing one UserMessage (potentially multimodal) and one AiMessage acknowledgment, or empty if no content.
      */
-    public Collection<ChatMessage> getWorkspaceContentsMessages(boolean includeRelatedClasses) {
+    public Collection<ChatMessage> getWorkspaceContentsMessages(boolean includeRelatedClasses) throws InterruptedException {
         var c = topContext();
         var allContents = new ArrayList<Content>(); // Will hold TextContent and ImageContent
 
@@ -1141,7 +1145,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
     }
 
-    public Collection<ChatMessage> getWorkspaceContentsMessages() {
+    public Collection<ChatMessage> getWorkspaceContentsMessages() throws InterruptedException {
         return getWorkspaceContentsMessages(false);
     }
 

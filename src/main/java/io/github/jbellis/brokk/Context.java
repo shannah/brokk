@@ -266,9 +266,9 @@ public class Context implements Serializable {
      * 3) Build a multiline skeleton text for the top autoContextFileCount results
      * 4) Return the new AutoContext instance
      */
-    public SkeletonFragment buildAutoContext(int topK) {
+    public SkeletonFragment buildAutoContext(int topK) throws InterruptedException {
         IAnalyzer analyzer;
-        analyzer = contextManager.getAnalyzerUninterrupted();
+        analyzer = contextManager.getAnalyzer();
 
         // Collect ineligible classnames from fragments not eligible for auto-context
         var ineligibleSources = Streams.concat(editableFiles.stream(), readonlyFiles.stream(), virtualFragments.stream())

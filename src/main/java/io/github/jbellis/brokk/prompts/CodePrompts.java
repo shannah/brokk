@@ -57,6 +57,7 @@ public abstract class CodePrompts {
                                                        EditBlockParser parser,
                                                        ArrayList<ChatMessage> sessionMessages,
                                                        UserMessage request)
+    throws InterruptedException
     {
         // TODO revisit cache-friendly message ordering with the next generation of models,
         // as of early 2025 o4-mini in particular gets very confused when it sees (its own) edits in the history
@@ -74,7 +75,7 @@ public abstract class CodePrompts {
         return messages;
     }
 
-    public final List<ChatMessage> collectAskMessages(ContextManager cm, String input) {
+    public final List<ChatMessage> collectAskMessages(ContextManager cm, String input) throws InterruptedException {
         var messages = new ArrayList<ChatMessage>();
 
         messages.add(systemMessage(cm, ""));
@@ -308,6 +309,7 @@ public abstract class CodePrompts {
                                                                 ProjectFile targetFile,
                                                                 String goal,
                                                                 ArrayList<ChatMessage> taskMessages)
+    throws InterruptedException
     {
         var messages = new ArrayList<ChatMessage>();
         var styleGuide = cm.getProject().getStyleGuide();

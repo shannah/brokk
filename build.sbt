@@ -65,6 +65,7 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.0",
   "com.vladsch.flexmark" % "flexmark" % "0.64.8",
   "com.vladsch.flexmark" % "flexmark-html2md-converter" % "0.64.8",
+  "org.kohsuke" % "github-api" % "1.327",
   "org.jsoup" % "jsoup" % "1.19.1",
   "com.jgoodies" % "jgoodies-forms" % "1.9.0",
 
@@ -73,6 +74,7 @@ libraryDependencies ++= Seq(
   "io.github.bonede" % "tree-sitter-c-sharp" % "0.23.1",
   "io.github.bonede" % "tree-sitter-javascript" % "0.23.1",
   "io.github.bonede" % "tree-sitter-python" % "0.23.4",
+  "io.github.bonede" % "tree-sitter-typescript" % "0.21.1",
 
   // Testing
   "org.junit.jupiter" % "junit-jupiter" % "5.10.2" % Test,
@@ -107,3 +109,4 @@ Compile / run / fork := true
 javaOptions += "-ea"
 javaOptions += "--add-modules=jdk.incubator.vector"
 javaOptions += "-Dbrokk.devmode=true"
+javaOptions += "-Dbrokk.prtab=true"
