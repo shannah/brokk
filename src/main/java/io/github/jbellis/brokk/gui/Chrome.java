@@ -17,10 +17,14 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*; // Added WindowAdapter, WindowEvent
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.ContextListener {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
@@ -150,12 +154,11 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
                 Component newFocusOwner = (Component) evt.getNewValue();
                 // Update lastRelevantFocusOwner only if the new focus owner is one of our primary targets
-                if (newFocusOwner != null && instructionsPanel != null && workspacePanel != null && historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null && historyOutputPanel.getHistoryTable() != null)
-                {
+                if (newFocusOwner != null && instructionsPanel != null && workspacePanel != null && historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null && historyOutputPanel.getHistoryTable() != null) {
                     if (newFocusOwner == instructionsPanel.getInstructionsArea()
-                        || SwingUtilities.isDescendingFrom(newFocusOwner, workspacePanel)
-                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())
-                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getLlmStreamArea())) // Check for LLM area
+                            || SwingUtilities.isDescendingFrom(newFocusOwner, workspacePanel)
+                            || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())
+                            || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getLlmStreamArea())) // Check for LLM area
                     {
                         this.lastRelevantFocusOwner = newFocusOwner;
                     }
@@ -394,7 +397,26 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     @Override
     public List<ChatMessage> getLlmRawMessages() {
-        return SwingUtil.runOnEdt(() -> historyOutputPanel.getLlmRawMessages(), null);
+        // this can get interrupted at the end of a Code or Ask action, but we don't want to just throw InterruptedException
+        // because at this point we're basically done with the action and all that's left is reporting the result. So if we're
+        // unlucky enough to be interrupted at exactly the wrong time, we retry instead.
+        if (SwingUtilities.isEventDispatchThread()) {
+            return historyOutputPanel.getLlmRawMessages();
+        }
+
+        while (true) {
+            try {
+                final CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
+                SwingUtilities.invokeAndWait(() -> future.complete(historyOutputPanel.getLlmRawMessages()));
+                return future.get();
+            } catch (InterruptedException e) {
+                // retry
+            } catch (ExecutionException | InvocationTargetException e) {
+                toolErrorRaw("Error retrieving LLM messages");
+                logger.error("Error retrieving LLM messages", e);
+                return List.of();
+            }
+        }
     }
 
     private JComponent buildBackgroundStatusLabel() {
@@ -716,7 +738,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             io.github.jbellis.brokk.analyzer.ProjectFile file = null;
             // Handle PathFragment using the unified previewFile method
             if (fragment instanceof ContextFragment.PathFragment pf) {
-                 // Ensure we are on the EDT before calling previewFile
+                // Ensure we are on the EDT before calling previewFile
                 if (!SwingUtilities.isEventDispatchThread()) {
                     SwingUtilities.invokeLater(() -> previewFile((ProjectFile) pf.file()));
                 } else {
@@ -973,16 +995,16 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // Check if focus is within ContextPanel or HistoryOutputPanel's historyTable
         boolean inContextPanel = workspacePanel != null && SwingUtilities.isDescendingFrom(focusOwner, workspacePanel);
         boolean inHistoryTable = historyOutputPanel != null && historyOutputPanel.getHistoryTable() != null &&
-                                 SwingUtilities.isDescendingFrom(focusOwner, historyOutputPanel.getHistoryTable());
+                SwingUtilities.isDescendingFrom(focusOwner, historyOutputPanel.getHistoryTable());
         return inContextPanel || inHistoryTable;
     }
 
     private boolean isFocusInTextCopyableArea(Component focusOwner) {
         if (focusOwner == null) return false;
         boolean inCommandInput = instructionsPanel != null && instructionsPanel.getInstructionsArea() != null &&
-                                 lastRelevantFocusOwner == instructionsPanel.getInstructionsArea();
+                lastRelevantFocusOwner == instructionsPanel.getInstructionsArea();
         boolean inLlmStreamArea = historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null &&
-                                 SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea());
+                SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea());
         return inCommandInput || inLlmStreamArea;
     }
 
@@ -1062,7 +1084,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getLlmStreamArea())) {
                 historyOutputPanel.getLlmStreamArea().copy(); // Assumes MarkdownOutputPanel has copy()
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel) ||
-                        SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
+                    SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
                 // If focus is in ContextPanel, use its selected fragments.
                 // If focus is in HistoryTable, it's like "Copy All" from ContextPanel.
                 List<ContextFragment> fragmentsToCopy = List.of(); // Default to "all"
@@ -1088,7 +1110,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 String selectedText = llmArea.getSelectedText();
                 canCopyNow = (selectedText != null && !selectedText.isEmpty()) || !llmArea.getDisplayedText().isEmpty();
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel) ||
-                        SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
+                    SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
                 // ContextPanel's copy action is enabled if contextManager is available,
                 // as it can copy the goal even if the context itself is empty.
                 canCopyNow = contextManager != null;
