@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
 
+
 /**
  * Manages dynamically loaded models via LiteLLM.
  */
@@ -34,6 +35,11 @@ public final class Models {
      * Represents the parsed Brokk API key components.
      */
     public record KeyParts(java.util.UUID userId, String token) {}
+
+    /**
+     * Represents a user-defined favorite model alias.
+     */
+    public record FavoriteModel(String alias, String modelName, Project.ReasoningLevel reasoning) {}
 
     /**
      * Parses a Brokk API key of the form 'brk+<userId>+<proToken>+<freeToken>'.
@@ -68,7 +74,7 @@ public final class Models {
     // Share OkHttpClient across instances for efficiency
     // Model name constants
     public static final String O3 = "o3";
-    public static final String GEMINI_2_5_PRO_PREVIEW = "gemini-2.5-pro-preview";
+    public static final String GEMINI_2_5_PRO = "gemini-2.5-pro";
 
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -405,7 +411,7 @@ public final class Models {
      * Checks if the model supports reasoning effort by checking if "reasoning_effort"
      * is listed in its "supported_openai_params" metadata.
      *
-     * @param modelName The display name of the model (e.g., "gemini-2.5-pro-preview").
+     * @param modelName The display name of the model (e.g., "gemini-2.5-pro").
      * @return True if "reasoning_effort" is in "supported_openai_params", false otherwise.
      */
     public boolean supportsReasoningEffort(String modelName) {

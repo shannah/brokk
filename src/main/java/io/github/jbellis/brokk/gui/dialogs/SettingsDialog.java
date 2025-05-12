@@ -1,24 +1,26 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Models;
-import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.Project.DataRetentionPolicy;
+import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumn;
 import java.awt.*;
-
-import io.github.jbellis.brokk.gui.components.BrowserLabel;
-
-import java.io.IOException;
-import java.util.Arrays; // Import the Arrays class
-
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 
 public class SettingsDialog extends JDialog {
     public static final String MODELS_TAB = "Models";
@@ -60,6 +62,9 @@ public class SettingsDialog extends JDialog {
     // Project -> Build tab specific fields
     private JList<String> excludedDirectoriesList;
     private DefaultListModel<String> excludedDirectoriesListModel;
+    // Quick Models Tab components
+    private JTable quickModelsTable;
+    private FavoriteModelsTableModel quickModelsTableModel;
 
 
     public SettingsDialog(Frame owner, Chrome chrome) {
@@ -155,16 +160,21 @@ public class SettingsDialog extends JDialog {
         var appearancePanel = createAppearancePanel();
         globalSubTabbedPane.addTab("Appearance", null, appearancePanel, "Theme settings");
 
-        // Models Tab
+        // Default Models Tab (Renamed)
         var project = chrome.getProject(); // Models settings depend on project context
-        var modelsPanel = createModelsPanel(project);
-        globalSubTabbedPane.addTab(MODELS_TAB, null, modelsPanel, "Model selection and configuration");
+        var defaultModelsPanel = createModelsPanel(project);
+        globalSubTabbedPane.addTab(MODELS_TAB, null, defaultModelsPanel, "Default model selection and configuration");
 
-        // Enable/disable components within the Models panel based on project state
-        // The Models tab itself (within globalSubTabbedPane) remains enabled.
+        // Quick Models Tab
+        var quickModelsPanel = createQuickModelsPanel();
+        globalSubTabbedPane.addTab("Quick Models", null, quickModelsPanel, "Define model aliases (shortcuts)");
+
+
+        // Enable/disable components within the Default Models panel based on project state
+        // The Default Models tab itself (within globalSubTabbedPane) remains enabled.
         boolean projectIsOpen = (project != null);
-        modelsPanel.setEnabled(projectIsOpen);
-        for (Component comp : modelsPanel.getComponents()) {
+        defaultModelsPanel.setEnabled(projectIsOpen);
+        for (Component comp : defaultModelsPanel.getComponents()) {
             comp.setEnabled(projectIsOpen);
             // If a component is a container (like a sub-panel for reasoning), recursively enable/disable its children.
             // This is particularly important if createModelsPanel returns a panel that itself contains other panels/components.
@@ -182,6 +192,9 @@ public class SettingsDialog extends JDialog {
 
         return globalSubTabbedPane;
     }
+
+
+    // --- Panel Creation Methods ---
 
     private void setEnabledRecursive(Container container, boolean enabled) {
         for (Component c : container.getComponents()) {
@@ -351,6 +364,78 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.VERTICAL;
         appearancePanel.add(Box.createVerticalGlue(), gbc);
         return appearancePanel;
+    }
+
+    private JPanel createQuickModelsPanel() {
+        var panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        var models = chrome.getContextManager().getModels(); // Needed for available models & reasoning support check
+        var availableModelNames = models.getAvailableModels().keySet().stream().sorted().toArray(String[]::new);
+        var reasoningLevels = Project.ReasoningLevel.values();
+
+        // Table Model
+        quickModelsTableModel = new FavoriteModelsTableModel(Project.loadFavoriteModels());
+
+        // Table
+        quickModelsTable = new JTable(quickModelsTableModel);
+        quickModelsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        quickModelsTable.setRowHeight(quickModelsTable.getRowHeight() + 4); // Add padding
+
+        // Column Setup
+        // Alias Column (default editor is fine)
+        TableColumn aliasColumn = quickModelsTable.getColumnModel().getColumn(0);
+        aliasColumn.setPreferredWidth(100);
+
+        // Model Name Column (ComboBox editor)
+        TableColumn modelColumn = quickModelsTable.getColumnModel().getColumn(1);
+        var modelComboBox = new JComboBox<>(availableModelNames);
+        modelColumn.setCellEditor(new DefaultCellEditor(modelComboBox));
+        modelColumn.setPreferredWidth(200);
+
+        // Reasoning Column (ComboBox editor, potentially disabled)
+        TableColumn reasoningColumn = quickModelsTable.getColumnModel().getColumn(2);
+        var reasoningComboBox = new JComboBox<>(reasoningLevels);
+        // Custom renderer/editor to handle disabling based on model support
+        reasoningColumn.setCellEditor(new ReasoningCellEditor(reasoningComboBox, models, quickModelsTable));
+        reasoningColumn.setCellRenderer(new ReasoningCellRenderer(models, quickModelsTable));
+        reasoningColumn.setPreferredWidth(100);
+
+        // Add/Remove Buttons
+        var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        var addButton = new JButton("Add");
+        var removeButton = new JButton("Remove");
+        buttonPanel.add(addButton);
+        buttonPanel.add(removeButton);
+
+        addButton.addActionListener(e -> {
+            // Stop editing before adding a new row
+            if (quickModelsTable.isEditing()) {
+                quickModelsTable.getCellEditor().stopCellEditing();
+            }
+            quickModelsTableModel.addFavorite(new Models.FavoriteModel("new-alias", availableModelNames[0], Project.ReasoningLevel.DEFAULT));
+            int newRowIndex = quickModelsTableModel.getRowCount() - 1;
+            quickModelsTable.setRowSelectionInterval(newRowIndex, newRowIndex);
+            quickModelsTable.scrollRectToVisible(quickModelsTable.getCellRect(newRowIndex, 0, true));
+            quickModelsTable.editCellAt(newRowIndex, 0); // Start editing the alias
+            quickModelsTable.getEditorComponent().requestFocusInWindow();
+        });
+
+        removeButton.addActionListener(e -> {
+            int selectedRow = quickModelsTable.getSelectedRow();
+            if (selectedRow != -1) {
+                // Stop editing before removing row
+                if (quickModelsTable.isEditing()) {
+                    quickModelsTable.getCellEditor().stopCellEditing();
+                }
+                quickModelsTableModel.removeFavorite(selectedRow);
+            }
+        });
+
+        panel.add(new JScrollPane(quickModelsTable), BorderLayout.CENTER);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
     }
 
 
@@ -992,6 +1077,17 @@ public class SettingsDialog extends JDialog {
             logger.debug("Applied Brokk Key: {}", newBrokkKey.isEmpty() ? "<empty>" : "****");
         }
 
+        // -- Apply Quick Models --
+        // Stop editing if a cell is currently being edited
+        if (quickModelsTable != null && quickModelsTable.isEditing()) {
+            quickModelsTable.getCellEditor().stopCellEditing();
+        }
+        if (quickModelsTableModel != null) {
+            Project.saveFavoriteModels(quickModelsTableModel.getFavorites());
+            // TODO: Need a way to notify the main application (e.g., Quick Context menu) about changes
+        }
+
+
         // -- Apply LLM Proxy Setting --
         Project.LlmProxySetting proxySetting = brokkProxyRadio.isSelected()
                                                ? Project.LlmProxySetting.BROKK
@@ -1354,4 +1450,255 @@ public class SettingsDialog extends JDialog {
         }
         dialog.setVisible(true); // show the modal dialog
     }
+
+    // --- Inner Classes for Quick Models Table ---
+
+    /**
+     * TableModel for managing FavoriteModel data.
+     */
+    private static class FavoriteModelsTableModel extends AbstractTableModel {
+        private final List<Models.FavoriteModel> favorites;
+        private final String[] columnNames = {"Alias", "Model Name", "Reasoning"};
+
+        public FavoriteModelsTableModel(List<Models.FavoriteModel> initialFavorites) {
+            // Work on a mutable copy
+            this.favorites = new ArrayList<>(initialFavorites);
+        }
+
+        public List<Models.FavoriteModel> getFavorites() {
+            // Return an immutable copy or the direct list depending on desired behavior outside the dialog
+            return new ArrayList<>(favorites);
+        }
+
+        public void addFavorite(Models.FavoriteModel favorite) {
+            favorites.add(favorite);
+            fireTableRowsInserted(favorites.size() - 1, favorites.size() - 1);
+        }
+
+        public void removeFavorite(int rowIndex) {
+            if (rowIndex >= 0 && rowIndex < favorites.size()) {
+                favorites.remove(rowIndex);
+                fireTableRowsDeleted(rowIndex, rowIndex);
+            }
+        }
+
+        @Override
+        public int getRowCount() {
+            return favorites.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columnNames.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columnNames[column];
+        }
+
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            return switch (columnIndex) {
+                case 0 -> String.class; // Alias
+                case 1 -> String.class; // Model Name (uses JComboBox editor)
+                case 2 -> Project.ReasoningLevel.class; // Reasoning (uses JComboBox editor)
+                default -> Object.class;
+            };
+        }
+
+        @Override
+        public boolean isCellEditable(int rowIndex, int columnIndex) {
+            return true; // All cells are editable
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            Models.FavoriteModel favorite = favorites.get(rowIndex);
+            return switch (columnIndex) {
+                case 0 -> favorite.alias();
+                case 1 -> favorite.modelName();
+                case 2 -> favorite.reasoning();
+                default -> null;
+            };
+        }
+
+        @Override
+        public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
+            if (rowIndex < 0 || rowIndex >= favorites.size()) return;
+
+            Models.FavoriteModel oldFavorite = favorites.get(rowIndex);
+            Models.FavoriteModel newFavorite = oldFavorite; // Start with old values
+
+            try {
+                switch (columnIndex) {
+                    case 0: // Alias
+                        if (aValue instanceof String alias) {
+                            newFavorite = new Models.FavoriteModel(alias.trim(), oldFavorite.modelName(), oldFavorite.reasoning());
+                        }
+                        break;
+                    case 1: // Model Name
+                        if (aValue instanceof String modelName) {
+                            // If model changes, potentially reset reasoning if new model doesn't support the old level (though editor should handle this)
+                            // For simplicity, we just update the model name here. The editor/renderer handles enabling.
+                            newFavorite = new Models.FavoriteModel(oldFavorite.alias(), modelName, oldFavorite.reasoning());
+                        }
+                        break;
+                    case 2: // Reasoning
+                        if (aValue instanceof Project.ReasoningLevel reasoning) {
+                            newFavorite = new Models.FavoriteModel(oldFavorite.alias(), oldFavorite.modelName(), reasoning);
+                        }
+                        break;
+                }
+            } catch (Exception e) {
+                logger.error("Error setting value at ({}, {}) to {}", rowIndex, columnIndex, aValue, e);
+                return; // Prevent saving invalid state
+            }
+
+
+            // Only update if the favorite actually changed
+            if (!newFavorite.equals(oldFavorite)) {
+                favorites.set(rowIndex, newFavorite);
+                // Notify listeners about the change in the specific cell and potentially related cells (like reasoning if model changed)
+                fireTableCellUpdated(rowIndex, columnIndex);
+                if (columnIndex == 1) { // If model changed, reasoning display might need update
+                    fireTableCellUpdated(rowIndex, 2);
+                }
+            }
+        }
+    }
+
+    /**
+     * Custom cell renderer for the Reasoning column.
+     * Displays "Off" if the model in the same row doesn't support reasoning.
+     */
+    private static class ReasoningCellRenderer extends DefaultTableCellRenderer {
+        private final Models models;
+        private final JTable table;
+
+        public ReasoningCellRenderer(Models models, JTable table) {
+            this.models = models;
+            this.table = table;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+            // Get the model name from the 'Model Name' column (index 1) in the current row
+            String modelName = (String) table.getModel().getValueAt(row, 1);
+
+            if (modelName != null && !models.supportsReasoningEffort(modelName)) {
+                label.setText("Off");
+                label.setEnabled(false); // Visually indicate disabled state
+                label.setToolTipText("Reasoning effort not supported by " + modelName);
+            } else if (value instanceof Project.ReasoningLevel level) {
+                label.setText(level.toString());
+                label.setEnabled(true);
+                label.setToolTipText("Select reasoning effort");
+            } else {
+                 label.setText(value == null ? "" : value.toString()); // Handle null or unexpected types
+                 label.setEnabled(true); // Default to enabled if model support is unknown or value is wrong type
+                 label.setToolTipText(null);
+            }
+
+            // Ensure background/foreground colors are correct for selection/non-selection
+            if (!isSelected) {
+                label.setBackground(table.getBackground());
+                label.setForeground(label.isEnabled() ? table.getForeground() : UIManager.getColor("Label.disabledForeground"));
+            } else {
+                 label.setBackground(table.getSelectionBackground());
+                 label.setForeground(label.isEnabled() ? table.getSelectionForeground() : UIManager.getColor("Label.disabledForeground"));
+            }
+
+
+            return label;
+        }
+    }
+
+
+    /**
+     * Custom cell editor for the Reasoning column.
+     * Disables the ComboBox if the model in the same row doesn't support reasoning.
+     */
+    private static class ReasoningCellEditor extends DefaultCellEditor {
+        private final Models models;
+        private final JTable table;
+        private final JComboBox<Project.ReasoningLevel> comboBox; // Keep reference to the actual combo
+
+        public ReasoningCellEditor(JComboBox<Project.ReasoningLevel> comboBox, Models models, JTable table) {
+            super(comboBox);
+            this.comboBox = comboBox; // Store the combo box instance
+            this.models = models;
+            this.table = table;
+            setClickCountToStart(1); // Start editing on a single click
+        }
+
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+            // Get the model name from the 'Model Name' column (index 1)
+            String modelName = (String) table.getModel().getValueAt(row, 1);
+            boolean supportsReasoning = modelName != null && models.supportsReasoningEffort(modelName);
+
+            // Enable/disable the editor component (the ComboBox)
+            Component editorComponent = super.getTableCellEditorComponent(table, value, isSelected, row, column);
+            editorComponent.setEnabled(supportsReasoning);
+            comboBox.setEnabled(supportsReasoning); // Explicitly enable/disable the combo
+
+            if (!supportsReasoning) {
+                 // If not supported, ensure the displayed value is DEFAULT (rendered as "Off")
+                 comboBox.setSelectedItem(Project.ReasoningLevel.DEFAULT);
+                 comboBox.setToolTipText("Reasoning effort not supported by " + modelName);
+                 // Use the same renderer logic as the cell renderer for consistency
+                 comboBox.setRenderer(new DefaultListCellRenderer() {
+                    @Override
+                    public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                        JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                        if (index == -1) { // Display value in the editor box when disabled
+                            label.setText("Off");
+                            label.setForeground(UIManager.getColor("ComboBox.disabledForeground"));
+                        } else if (value instanceof Project.ReasoningLevel level) {
+                            label.setText(level.toString());
+                        } else {
+                            label.setText(value == null ? "" : value.toString());
+                        }
+                        return label;
+                    }
+                 });
+
+            } else {
+                comboBox.setToolTipText("Select reasoning effort");
+                // Restore default renderer when enabled
+                comboBox.setRenderer(new DefaultListCellRenderer());
+                // Set the actual value from the model
+                comboBox.setSelectedItem(value);
+            }
+
+            return editorComponent;
+        }
+
+        @Override
+        public boolean isCellEditable(java.util.EventObject anEvent) {
+            // Prevent editing if reasoning is not supported by the model in this row
+            if (table != null) {
+                int editingRow = table.getEditingRow();
+                if (editingRow != -1) {
+                    String modelName = (String) table.getModel().getValueAt(editingRow, 1);
+                    return modelName != null && models.supportsReasoningEffort(modelName);
+                }
+            }
+            // Default behavior if table/row info isn't available (shouldn't happen in normal use)
+            return super.isCellEditable(anEvent);
+        }
+
+         @Override
+         public Object getCellEditorValue() {
+             // If the editor was disabled, return DEFAULT, otherwise return the selected item.
+             return comboBox.isEnabled() ? super.getCellEditorValue() : Project.ReasoningLevel.DEFAULT;
+         }
+    }
+
+
 }

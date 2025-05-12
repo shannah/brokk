@@ -278,7 +278,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getArchitectModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(ARCHITECT_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+        return props.getProperty(ARCHITECT_MODEL_KEY, Models.GEMINI_2_5_PRO);
     }
 
     /**
@@ -295,7 +295,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getCodeModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(CODE_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+        return props.getProperty(CODE_MODEL_KEY, Models.GEMINI_2_5_PRO);
     }
 
     /**
@@ -312,7 +312,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getAskModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(ASK_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+        return props.getProperty(ASK_MODEL_KEY, Models.GEMINI_2_5_PRO);
     }
 
     /**
@@ -330,7 +330,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getEditModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+        return props.getProperty(EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO);
     }
 
     /**
@@ -433,7 +433,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getSearchModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+        return props.getProperty(SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO);
     }
 
     /**
@@ -1118,10 +1118,10 @@ public class Project implements IProject, AutoCloseable {
 
         // Define preferred defaults for each model type
         var preferredDefaults = Map.of(ARCHITECT_MODEL_KEY, Models.O3,
-                                       CODE_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW,
-                                       ASK_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW,
-                                       EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW,
-                                       SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO_PREVIEW);
+                                       CODE_MODEL_KEY, Models.GEMINI_2_5_PRO,
+                                       ASK_MODEL_KEY, Models.GEMINI_2_5_PRO,
+                                       EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO,
+                                       SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO);
 
         for (var e : preferredDefaults.entrySet()) {
             var key = e.getKey();
@@ -1236,6 +1236,7 @@ public class Project implements IProject, AutoCloseable {
     }
 
     private static final String DATA_RETENTION_POLICY_KEY = "dataRetentionPolicy";
+    private static final String FAVORITE_MODELS_KEY = "favoriteModelsJson";
 
     /**
      * Gets the data retention policy for the project.
@@ -1262,6 +1263,72 @@ public class Project implements IProject, AutoCloseable {
         // TODO: Potentially invalidate/update available models based on policy change here or elsewhere
     }
 
+    /**
+     * Default favorite model aliases.
+     */
+    public static final List<Models.FavoriteModel> DEFAULT_FAVORITE_MODELS = List.of(
+            new Models.FavoriteModel("o3", Models.O3, ReasoningLevel.DEFAULT),
+            new Models.FavoriteModel("Gemini Pro 2.5", Models.GEMINI_2_5_PRO, ReasoningLevel.DEFAULT),
+            new Models.FavoriteModel("Flash 2.5", "gemini-2.5-flash", ReasoningLevel.DEFAULT)
+    );
+
+    /**
+     * Loads the list of favorite models from global properties.
+     * Returns defaults if not found or invalid.
+     *
+     * @return List of FavoriteModel records.
+     */
+    public static List<Models.FavoriteModel> loadFavoriteModels() {
+        var props = loadGlobalProperties();
+        String json = props.getProperty(FAVORITE_MODELS_KEY);
+        if (json != null && !json.isEmpty()) {
+            try {
+                // Need to handle deserialization carefully, maybe custom deserializer if needed
+                // For now, assuming ObjectMapper can handle the record directly
+                var typeFactory = objectMapper.getTypeFactory();
+                var listType = typeFactory.constructCollectionType(List.class, Models.FavoriteModel.class);
+                // Explicit cast needed as readValue with JavaType returns Object
+                @SuppressWarnings("unchecked") // Cast is safe due to the type factory construction
+                List<Models.FavoriteModel> loadedList = (List<Models.FavoriteModel>) objectMapper.readValue(json, listType);
+                logger.debug("Loaded {} favorite models from global properties.", loadedList.size());
+                return loadedList;
+            } catch (JsonProcessingException | ClassCastException e) { // Catch potential ClassCastException too
+                logger.error("Error loading/casting favorite models from JSON: {}", json, e);
+                // Fall through to return defaults
+            }
+        }
+        logger.debug("No favorite models found or error loading, returning defaults.");
+        return new ArrayList<>(DEFAULT_FAVORITE_MODELS); // Return mutable copy of defaults
+    }
+
+    /**
+     * Saves the list of favorite models to global properties as JSON.
+     * Only saves if the list is different from the currently saved one.
+     *
+     * @param favorites The list of FavoriteModel records to save.
+     */
+    public static void saveFavoriteModels(List<Models.FavoriteModel> favorites) {
+        assert favorites != null;
+        var props = loadGlobalProperties();
+        String newJson = "";
+        try {
+            newJson = objectMapper.writeValueAsString(favorites);
+        } catch (JsonProcessingException e) {
+            logger.error("Error serializing favorite models to JSON", e);
+            return; // Don't save if serialization fails
+        }
+
+        String oldJson = props.getProperty(FAVORITE_MODELS_KEY, ""); // Default to empty string if not present
+
+        // Only save if the JSON representation has changed
+        if (!newJson.equals(oldJson)) {
+            props.setProperty(FAVORITE_MODELS_KEY, newJson);
+            saveGlobalProperties(props);
+            logger.debug("Saved {} favorite models to global properties.", favorites.size());
+        } else {
+            logger.trace("Favorite models unchanged, skipping save.");
+        }
+    }
 
     // --- Static methods for managing projects.properties ---
 
