@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import io.github.jbellis.brokk.util.SyntaxDetector;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -65,7 +66,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     // Panels:
     private WorkspacePanel workspacePanel;
-    private GitPanel gitPanel; // Will be null for dependency projects
+    @Nullable
+    private GitPanel gitPanel; // Null when no git repo is present
 
     // Command input panel is now encapsulated in InstructionsPanel.
     private InstructionsPanel instructionsPanel;
@@ -443,7 +445,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     public void enableActionButtons() {
         instructionsPanel.enableButtons();
-        gitPanel.getCommitTab().enableButtons();
+        if (gitPanel != null) {
+            gitPanel.getCommitTab().enableButtons();
+        }
     }
 
     public void updateCommitPanel() {
