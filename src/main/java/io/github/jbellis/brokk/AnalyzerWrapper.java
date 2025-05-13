@@ -142,6 +142,7 @@ public class AnalyzerWrapper implements AutoCloseable {
             logger.debug("Rebuilding analyzer due to changes in tracked files: {}",
                          batch.stream()
                                  .filter(e -> trackedPaths.contains(e.path))
+                                 .distinct()
                                  .map(e -> e.path.toString())
                                  .collect(Collectors.joining(", "))
             );
@@ -173,10 +174,8 @@ public class AnalyzerWrapper implements AutoCloseable {
         if (project.getAnalyzerRefresh() == CpgRefresh.UNSET) {
             logger.debug("First startup: timing Analyzer creation");
             long start = System.currentTimeMillis();
-            var excludedStrings = project.awaitBuildDetails().excludedDirectories();
-            var excluded = excludedStrings.stream().map(Paths::get).collect(Collectors.toSet());
             logger.debug("Creating {} analyzer for {}", language.name(), project.getRoot());
-            var analyzer = language.createAnalyzer(project, excluded);
+            var analyzer = language.createAnalyzer(project);
             currentAnalyzer = analyzer;
             logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
             long duration = System.currentTimeMillis() - start;
@@ -219,10 +218,8 @@ public class AnalyzerWrapper implements AutoCloseable {
 
         var analyzer = loadCachedAnalyzer(analyzerPath);
         if (analyzer == null) {
-            var excludedStrings = project.awaitBuildDetails().excludedDirectories();
-            var excluded = excludedStrings.stream().map(Paths::get).collect(Collectors.toSet());
             logger.debug("Creating {} analyzer for {}", language.name(), project.getRoot());
-            analyzer = language.createAnalyzer(project, excluded);
+            analyzer = language.createAnalyzer(project);
             currentAnalyzer = analyzer;
             logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
         }
@@ -246,7 +243,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         if (project.getAnalyzerRefresh() == CpgRefresh.MANUAL) {
             logger.debug("MANUAL refresh mode - using cached analyzer");
             try {
-                return new JavaAnalyzer(root, analyzerPath);
+                return project.getAnalyzerLanguage().loadAnalyzer(project);
             } catch (Throwable th) {
                 logger.info("Error loading analyzer", th);
                 return null;
@@ -260,26 +257,21 @@ public class AnalyzerWrapper implements AutoCloseable {
         } catch (IOException e) {
             throw new RuntimeException("Error reading analyzer file timestamp", e);
         }
-        long maxTrackedMTime = 0L;
         for (ProjectFile rf : trackedFiles) {
             try {
                 long fileMTime = Files.getLastModifiedTime(rf.absPath()).toMillis();
-                maxTrackedMTime = Math.max(maxTrackedMTime, fileMTime);
+                if (fileMTime > cpgMTime) {
+                    logger.debug("Tracked file {} is newer than cpg ({} > {})", rf.absPath(), fileMTime, cpgMTime);
+                    return null;
+                }
             } catch (IOException e) {
                 // probable cause: file exists in git but is removed
                 logger.debug("Error reading analyzer file timestamp", e);
             }
         }
-        if (cpgMTime > maxTrackedMTime) {
-            logger.debug("Using cached code intelligence data ({} > {})", cpgMTime, maxTrackedMTime);
-            try {
-                return new JavaAnalyzer(root, analyzerPath);
-            } catch (Throwable th) {
-                logger.info("Error loading analyzer", th);
-                // fall through to return null
-            }
-        }
-        return null;
+
+        // saved analyzer is up to date
+        return project.getAnalyzerLanguage().loadAnalyzer(project);
     }
 
     /**
@@ -300,10 +292,8 @@ public class AnalyzerWrapper implements AutoCloseable {
         logger.trace("Rebuilding analyzer");
         future = runner.submit("Rebuilding code intelligence", () -> {
             try {
-                var excludedStrings = project.awaitBuildDetails().excludedDirectories();
-                var excluded = excludedStrings.stream().map(Paths::get).collect(Collectors.toSet());
                 logger.debug("Creating {} analyzer for {}", language.name(), project.getRoot());
-                IAnalyzer newAnalyzer = language.createAnalyzer(project, excluded);
+                IAnalyzer newAnalyzer = language.createAnalyzer(project);
                 currentAnalyzer = newAnalyzer;
                 logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
                 return newAnalyzer;

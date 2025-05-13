@@ -1,19 +1,19 @@
 package io.github.jbellis.brokk.analyzer;
 
 import io.github.jbellis.brokk.Project;
+import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 
 public interface Language {
     List<String> getExtensions();
     String name();
-    IAnalyzer createAnalyzer(Project project, Set<Path> excluded);
+    IAnalyzer createAnalyzer(Project project);
+    IAnalyzer loadAnalyzer(Project project);
 
     default boolean isCpg() {
         return false;
@@ -26,10 +26,10 @@ public interface Language {
         @Override public List<String> getExtensions() { return extensions; }
         @Override public String name() { return "C_SHARP"; }
         @Override public String toString() { return name(); } // For compatibility
-        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
-            var excludedStrings = excluded.stream().map(Path::toString).collect(Collectors.toSet());
-            return new CSharpAnalyzer(project, excludedStrings);
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            return new CSharpAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
+        @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
     };
 
     Language JAVA = new Language() {
@@ -37,12 +37,18 @@ public interface Language {
         @Override public List<String> getExtensions() { return extensions; }
         @Override public String name() { return "JAVA"; }
         @Override public String toString() { return name(); }
-        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
-            var excludedStrings = excluded.stream().map(Path::toString).collect(Collectors.toSet());
-            var analyzer = new JavaAnalyzer(project.getRoot(), excludedStrings);
-            Path analyzerPath = project.getRoot().resolve(".brokk").resolve("joern.cpg");
-            analyzer.writeCpg(analyzerPath);
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            var analyzer = new JavaAnalyzer(project.getRoot(), project.getBuildDetails().excludedDirectories());
+            analyzer.writeCpg(getAnalyzerPath(project));
             return analyzer;
+        }
+
+        private static @NotNull Path getAnalyzerPath(Project project) {
+            return project.getRoot().resolve(".brokk").resolve("joern.cpg");
+        }
+
+        @Override public JavaAnalyzer loadAnalyzer(Project project) {
+            return new JavaAnalyzer(project.getRoot(), getAnalyzerPath(project));
         }
         @Override
         public boolean isCpg() { return true; }
@@ -53,10 +59,10 @@ public interface Language {
         @Override public List<String> getExtensions() { return extensions; }
         @Override public String name() { return "JAVASCRIPT"; }
         @Override public String toString() { return name(); }
-        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
-            var excludedStrings = excluded.stream().map(Path::toString).collect(Collectors.toSet());
-            return new JavascriptAnalyzer(project, excludedStrings);
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            return new JavascriptAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
+        @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
     };
 
     Language PYTHON = new Language() {
@@ -64,10 +70,10 @@ public interface Language {
         @Override public List<String> getExtensions() { return extensions; }
         @Override public String name() { return "PYTHON"; }
         @Override public String toString() { return name(); }
-        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
-            var excludedStrings = excluded.stream().map(Path::toString).collect(Collectors.toSet());
-            return new PythonAnalyzer(project, excludedStrings);
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            return new PythonAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
+        @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
     };
 
     Language C_CPP = new Language() {
@@ -75,12 +81,18 @@ public interface Language {
         @Override public List<String> getExtensions() { return extensions; }
         @Override public String name() { return "C_CPP"; }
         @Override public String toString() { return name(); }
-        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
-            var excludedStrings = excluded.stream().map(Path::toString).collect(Collectors.toSet());
-            var analyzer = new CppAnalyzer(project.getRoot(), excludedStrings);
-            Path analyzerPath = project.getRoot().resolve(".brokk").resolve("joern_c_cpp.cpg"); // Or a suitable name
-            analyzer.writeCpg(analyzerPath);
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            var analyzer = new CppAnalyzer(project.getRoot(), project.getBuildDetails().excludedDirectories());
+            analyzer.writeCpg(getAnalyzerPath(project));
             return analyzer;
+        }
+
+        private static @NotNull Path getAnalyzerPath(Project project) {
+            return project.getRoot().resolve(".brokk").resolve("joern.cpg");
+        }
+
+        @Override public CppAnalyzer loadAnalyzer(Project project) {
+            return new CppAnalyzer(project.getRoot(), getAnalyzerPath(project));
         }
         @Override
         public boolean isCpg() { return true; }
@@ -91,9 +103,10 @@ public interface Language {
         @Override public List<String> getExtensions() { return extensions; }
         @Override public String name() { return "NONE"; }
         @Override public String toString() { return name(); }
-        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
+        @Override public IAnalyzer createAnalyzer(Project project) {
             return new DisabledAnalyzer();
         }
+        @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
     };
 
     // --- Infrastructure for fromExtension and enum-like static methods ---

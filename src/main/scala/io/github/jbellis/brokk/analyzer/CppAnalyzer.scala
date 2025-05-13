@@ -6,8 +6,6 @@ import io.joern.x2cpg.{X2Cpg, Defines as X2CpgDefines}
 import io.shiftleft.codepropertygraph.generated.Cpg
 import io.shiftleft.codepropertygraph.generated.nodes.{Method, NamespaceBlock, TypeDecl}
 import io.shiftleft.semanticcpg.language.*
-// Import astcreation.Defines specifically if needed, or rely on X2CpgDefines for common ones
-// import io.joern.c2cpg.astcreation.{Defines as C2CpgAstDefines}
 import io.shiftleft.semanticcpg.layers.LayerCreatorContext
 
 import java.io.IOException
