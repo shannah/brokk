@@ -239,16 +239,16 @@ public class Brokk {
                 }
                 logger.debug("Removed project from open windows map: {}", projectPath);
 
-                // I/O part of closing, run in background
-                CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
-                                 .exceptionally(ex -> {
-                                     logger.error("Error removing project from open projects list: {}", projectPath, ex);
-                                     return null;
-                                 });
-
                 if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
                     System.exit(0);
                 }
+
+                // I/O part of closing, run in background
+                CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
+                        .exceptionally(ex -> {
+                            logger.error("Error removing project from open projects list: {}", projectPath, ex);
+                            return null;
+                        });
 
                 if (reOpeningProjects.contains(projectPath)) {
                     Path pathToReopen = projectPath; // Effectively final for lambda
