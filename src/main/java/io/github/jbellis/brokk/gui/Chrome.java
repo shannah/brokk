@@ -15,14 +15,13 @@ import org.apache.logging.log4j.Logger;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.*; // Added WindowAdapter, WindowEvent
+import java.awt.event.*;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -522,11 +521,17 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     }
 
     public void backgroundOutput(String message) {
+        backgroundOutput(message, null);
+    }
+    
+    public void backgroundOutput(String message, String tooltip) {
         SwingUtilities.invokeLater(() -> {
             if (message == null || message.isEmpty()) {
                 backgroundStatusLabel.setText(BGTASK_EMPTY);
+                backgroundStatusLabel.setToolTipText(null);
             } else {
                 backgroundStatusLabel.setText(message);
+                backgroundStatusLabel.setToolTipText(tooltip);
             }
             backgroundStatusLabel.setPreferredSize(backgroundLabelPreferredSize);
         });

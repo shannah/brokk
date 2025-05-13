@@ -1404,7 +1404,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         var lastTaskDescription = taskDescriptions.values().stream().findFirst().orElse("");
                         io.backgroundOutput(lastTaskDescription);
                     } else {
-                        io.backgroundOutput("Tasks running: " + remaining);
+                        io.backgroundOutput("Tasks running: " + remaining, String.join("\n", taskDescriptions.values()));
                     }
                 });
             }
