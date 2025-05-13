@@ -79,6 +79,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   protected def methodSignature(m: Method): String
 
   // --- Abstract CodeUnit Creation Methods ---
+
   /** Create a CLASS CodeUnit from FQCN. Relies on language-specific heuristics. Prefer CodeUnit factories where complete information is available. */
   def cuClass(fqcn: String, file: ProjectFile): Option[CodeUnit]
 
@@ -250,7 +251,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     val scalaOpt = cpg.typeDecl.fullNameExact(fqName).headOption.flatMap(toFile)
     scalaOpt match
       case Some(file) => java.util.Optional.of(file)
-      case None       => java.util.Optional.empty()
+      case None => java.util.Optional.empty()
   }
 
   private def toFile(td: TypeDecl): Option[ProjectFile] = {
@@ -302,7 +303,16 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     sb.toString
   }
 
-  private def chopColon(full: String) = full.split(":").head
+  /**
+   * Remove the trailing “:signature” **only**.  Keep any earlier colon that
+   * is part of a CPG global-function name, e.g.
+   * geometry.cpp:global_func:void(int)  →  geometry.cpp:global_func
+   * shapes.Circle.getArea:double()      →  shapes.Circle.getArea
+   */
+  private def chopColon(full: String) =
+    full.lastIndexOf(':') match
+      case -1 => full
+      case idx => full.substring(0, idx)
 
   /**
    * For a given method node `m`, returns the CPG Method nodes of its callers.
@@ -356,7 +366,11 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
    */
   protected def referencesToClassAsType(classFullName: String): List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-    val typePattern = "^" + Regex.quote(classFullName) + "(\\$.*)?(\\[\\])?"
+    val typePattern =
+      "^" +
+        "(?:struct |class |union |enum )?" + // optional C/C++ keyword prefix
+        Regex.quote(classFullName) +
+        "(\\$.*)?(\\[\\])?"
 
     // Fields typed with this class → return as field CodeUnits
     val fieldRefs = cpg.member
@@ -373,7 +387,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
             val packageName = if (lastDot > 0) td.fullName.substring(0, lastDot) else ""
             val className = td.name
             val fieldName = member.name
-            
+
             // Create using exact 3-parameter factory
             Try(CodeUnit.field(file, packageName, s"$className.$fieldName")).toOption
           }.toList // Convert the final Iterator[CodeUnit] to List[CodeUnit]
@@ -396,7 +410,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
               val packageName = if (classLastDot > 0) fullClassPath.substring(0, classLastDot) else ""
               val className = if (classLastDot > 0) fullClassPath.substring(classLastDot + 1) else fullClassPath
               val memberName = methodName.substring(lastDot + 1)
-              
+
               Try(CodeUnit.fn(file, packageName, s"$className.$memberName")).toOption
             } else {
               cuFunction(methodName, file)
@@ -422,7 +436,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
               val packageName = if (classLastDot > 0) fullClassPath.substring(0, classLastDot) else ""
               val className = if (classLastDot > 0) fullClassPath.substring(classLastDot + 1) else fullClassPath
               val memberName = methodName.substring(lastDot + 1)
-              
+
               Try(CodeUnit.fn(file, packageName, s"$className.$memberName")).toOption
             } else {
               cuFunction(methodName, file)
@@ -447,7 +461,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
               val packageName = if (classLastDot > 0) fullClassPath.substring(0, classLastDot) else ""
               val className = if (classLastDot > 0) fullClassPath.substring(classLastDot + 1) else fullClassPath
               val memberName = methodName.substring(lastDot + 1)
-              
+
               Try(CodeUnit.fn(file, packageName, s"$className.$memberName")).toOption
             } else {
               cuFunction(methodName, file)
@@ -466,7 +480,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
           val lastDot = td.fullName.lastIndexOf('.')
           val packageName = if (lastDot > 0) td.fullName.substring(0, lastDot) else ""
           val className = td.name
-          
+
           Try(CodeUnit.cls(file, packageName, className)).toOption
         }
       }
@@ -497,7 +511,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
     val resolvedSymbol = resolveMethodName(symbol) // Resolve once upfront
     logger.debug(s"Getting uses for symbol: '$symbol' (resolved: '$resolvedSymbol')")
-    
+
     val expandedMethodMatches =
       if (resolvedSymbol.contains(".")) {
         val lastDot = resolvedSymbol.lastIndexOf('.')
@@ -540,14 +554,27 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
         fileOpt.flatMap { file =>
           val isGlobalMethod = cpgMethod.astParent match {
             case parentNode: NamespaceBlock => true
-            case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty
+            case parentNode: TypeDecl => parentNode.name.endsWith("<global>")
             case _ => false
           }
 
           // For global methods, CPG fullName might be "filename.ext:funcname".
           // For class methods, it's "pkg.Cls.method:sig" or "Cls.method:sig".
           // resolveMethodName(chopColon(...)) handles this.
-          val fqnForCu = resolveMethodName(chopColon(cpgMethod.fullName))
+          val baseFqn = resolveMethodName(chopColon(cpgMethod.fullName))
+
+          val fqnForCu =
+            if !baseFqn.contains(".") && !baseFqn.contains(":") then
+              // synthesise package  “filename_ext”
+              val fn = baseFqn
+              val fileName = Path.of(file.toString).getFileName.toString
+              val dot = fileName.lastIndexOf('.')
+              val (stem, ext) = if dot > 0 then (fileName.substring(0, dot), fileName.substring(dot + 1))
+              else (fileName, "")
+              val pkg = if ext.nonEmpty then s"${stem}_${ext}" else stem
+              s"$pkg.$fn"
+            else baseFqn
+
           cuFunction(fqnForCu, file)
         }
       }
@@ -616,7 +643,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       }
     }.distinct // Ensure CPG methods are distinct before converting to CodeUnits
     logger.debug(s"Found ${methodUsesAsCpgMethods.size} distinct CPG methods using class methods (transitively).")
-    
+
     // fieldRefUses already returns List[String] which are FQNs of methods referencing fields.
     // This needs to be consistent or converted carefully. For now, assume it's List[String] of method FQNs.
     val fieldRefMethodFqns = classDecls.flatMap { td =>
@@ -637,7 +664,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       fileOpt.flatMap { file =>
         val isGlobalMethod = cpgMethod.astParent match {
           case parentNode: NamespaceBlock => true
-          case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty
+          case parentNode: TypeDecl => parentNode.name.endsWith("<global>")
           case _ => false
         }
         val fqnForCu = resolveMethodName(chopColon(cpgMethod.fullName))
@@ -648,18 +675,18 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
     // Convert fieldRefMethodFqns (List[String] of method FQNs) to CodeUnits
     val fieldUseUnits = fieldRefMethodFqns.flatMap { methodFqnString =>
-        // methodFqnString is already a resolved FQN of a method.
-        // methodsFromName should be able to find the CPG Method node(s).
-        val cpgMethods = methodsFromName(methodFqnString)
-        cpgMethods.headOption.flatMap { cpgMethod => // Take first if multiple, or handle ambiguity if needed
-            val fileOpt = if (cpgMethod.filename.nonEmpty) toFile(cpgMethod.filename) else cpgMethod.typeDecl.headOption.flatMap(toFile)
-            fileOpt.flatMap { file =>
-                 // The fqnForCu should be the methodFqnString itself, as it's already resolved.
-                 // Or, re-resolve from CPG method to be absolutely sure it's canonical.
-                val fqnForCuFromCpg = resolveMethodName(chopColon(cpgMethod.fullName))
-                cuFunction(fqnForCuFromCpg, file)
-            }
+      // methodFqnString is already a resolved FQN of a method.
+      // methodsFromName should be able to find the CPG Method node(s).
+      val cpgMethods = methodsFromName(methodFqnString)
+      cpgMethods.headOption.flatMap { cpgMethod => // Take first if multiple, or handle ambiguity if needed
+        val fileOpt = if (cpgMethod.filename.nonEmpty) toFile(cpgMethod.filename) else cpgMethod.typeDecl.headOption.flatMap(toFile)
+        fileOpt.flatMap { file =>
+          // The fqnForCu should be the methodFqnString itself, as it's already resolved.
+          // Or, re-resolve from CPG method to be absolutely sure it's canonical.
+          val fqnForCuFromCpg = resolveMethodName(chopColon(cpgMethod.fullName))
+          cuFunction(fqnForCuFromCpg, file)
         }
+      }
     }
     logger.debug(s"Converted ${fieldRefMethodFqns.size} field-referencing method FQNs to ${fieldUseUnits.size} CodeUnits.")
 
@@ -766,7 +793,10 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
   override def searchDefinitions(pattern: String): java.util.List[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
-    val ciPattern = "(?i)" + pattern // case-insensitive
+    // If the user did not include a wildcard, match the pattern anywhere
+    val preparedPattern =
+      if pattern.contains(".*") then pattern else s".*${Regex.quote(pattern)}.*"
+    val ciPattern = "(?i)" + preparedPattern // case-insensitive substring match
 
     // Classes
     val matchingClasses = cpg.typeDecl
@@ -788,7 +818,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       .filter { m => // A method is relevant if its parent class is in project OR it's a global
         val isGlobalHeuristic = m.astParent match {
           case parentNode: NamespaceBlock => true // Directly in namespace (file scope)
-          case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty // File-level TypeDecl
+          case parentNode: TypeDecl => parentNode.name.endsWith("<global>") // file-scope pseudo-class
           case _ => false
         }
         m.typeDecl.headOption.exists(td => isClassInProject(td.fullName)) || isGlobalHeuristic
@@ -805,7 +835,17 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
           // CPG method fullName is the source of truth. resolveMethodName cleans it up.
           // CppAnalyzer.parseFqName will handle "filename.ext:funcname" or "pkg.Cls.method" etc.
-          val fqnForCu = resolveMethodName(chopColon(m.fullName))
+          val baseFqn = resolveMethodName(chopColon(m.fullName))
+          val fqnForCu =
+            if !baseFqn.contains(".") && !baseFqn.contains(":") then
+              val fileName = Path.of(file.toString).getFileName.toString
+              val dot = fileName.lastIndexOf('.')
+              val (stem, ext) =
+                if dot > 0 then (fileName.substring(0, dot), fileName.substring(dot + 1))
+                else (fileName, "")
+              val pkg = if ext.nonEmpty then s"${stem}_${ext}" else stem
+              s"$pkg.$baseFqn"
+            else baseFqn
           cuFunction(fqnForCu, file)
         }
       }
@@ -820,7 +860,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
         // Ensure the owning class itself is not a pseudo-class (e.g. "<operator>")
         // and that it's considered part of the project.
         !owningTypeDecl.name.matches("<.*>") &&
-        isClassInProject(owningTypeDecl.fullName)
+          isClassInProject(owningTypeDecl.fullName)
       }
       .flatMap { f =>
         val td = f.typeDecl // Get the TypeDecl node directly
@@ -867,13 +907,13 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       val theMethod = methodCandidates.head // Assuming methodsFromName returns best/single match first
       // For global methods, typeDecl might not give the file, use method.filename
       val fileOpt = if (theMethod.filename.nonEmpty) toFile(theMethod.filename)
-                    else theMethod.typeDecl.headOption.flatMap(toFile)
+      else theMethod.typeDecl.headOption.flatMap(toFile)
 
       val codeUnitOpt = fileOpt.flatMap(file => cuFunction(fqName, file))
 
       codeUnitOpt match {
         case Some(cu) => return java.util.Optional.of(cu)
-        case None     => // Fall through if no suitable CodeUnit could be created
+        case None => // Fall through if no suitable CodeUnit could be created
       }
     }
 
@@ -889,7 +929,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
         .filter(f => isClassInProject(f.typeDecl.fullName)) // f.typeDecl is a TypeDecl node
         .flatMap { f =>
           val td = f.typeDecl // Get the TypeDecl node directly
-          toFile(td).flatMap { file => 
+          toFile(td).flatMap { file =>
             // Extract package and class properly
             val packageName = if (td.fullName.contains('.')) {
               td.fullName.substring(0, td.fullName.lastIndexOf('.'))
@@ -1073,13 +1113,6 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     // Add global functions/methods defined in this file
     cpg.method
       .filenameExact(relPathString)
-      .filter { m => // Filter for global methods based on AST parent
-        m.astParent match {
-          case parentNode: NamespaceBlock => true // Directly in namespace (file scope)
-          case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty // File-level TypeDecl
-          case _ => false
-        }
-      }
       .foreach { m =>
         // Construct FQN for global function.
         // e.g., for file "utils.cpp", function "do_work", FQN might be "utils_cpp.do_work"
@@ -1103,7 +1136,16 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
         // CppAnalyzer.parseFqName is responsible for parsing this correctly for globals.
         // For a global function in "geometry.cpp" named "global_func", m.fullName might be "geometry.cpp:global_func:void()"
         // resolveMethodName(chopColon(m.fullName)) would yield "geometry.cpp:global_func"
-        val fqnForCu = resolveMethodName(chopColon(m.fullName))
+        val baseFqn = resolveMethodName(chopColon(m.fullName))
+        val fqnForCu =
+          if !baseFqn.contains(".") && !baseFqn.contains(":") then
+            val fileName = Path.of(file.toString).getFileName.toString
+            val dot = fileName.lastIndexOf('.')
+            val (stem, ext) = if dot > 0 then (fileName.substring(0, dot), fileName.substring(dot + 1))
+            else (fileName, "")
+            val pkg = if ext.nonEmpty then s"${stem}_${ext}" else stem
+            s"$pkg.$baseFqn"
+          else baseFqn
         cuFunction(fqnForCu, file).foreach(declarations.add)
       }
 

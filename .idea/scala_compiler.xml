@@ -6,6 +6,7 @@
       <option name="reflectiveCalls" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>
+        <parameter value="-Xfatal-warnings" />
         <parameter value="-print-lines" />
         <parameter value="-encoding" />
         <parameter value="UTF-8" />
