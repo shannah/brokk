@@ -594,7 +594,6 @@ public class GitPullRequestsTab extends JPanel {
 
                 fetchedPrs = auth.listOpenPullRequests(apiState);
                 logger.debug("Fetched {} PRs", fetchedPrs.size());
-
             } catch (Exception ex) {
                 logger.error("Failed to fetch pull requests", ex);
                 SwingUtilities.invokeLater(() -> {
@@ -613,6 +612,10 @@ public class GitPullRequestsTab extends JPanel {
                     assigneeChoices.clear();
                 });
                 return null;
+            }
+
+            for (var pr: fetchedPrs) {
+                pr.isMerged(); // pre-fetch this before we go back to EDT
             }
 
             // Process fetched PRs on EDT
