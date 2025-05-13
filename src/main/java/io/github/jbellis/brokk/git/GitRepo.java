@@ -1200,6 +1200,40 @@ public class GitRepo implements Closeable, IGitRepo {
         repository.close();
     }
 
+    /**
+     * Initializes a new Git repository in the specified root directory.
+     * Creates a .gitignore file with a .brokk/ entry if it doesn't exist or if .brokk/ is missing.
+     *
+     * @param root The path to the directory where the Git repository will be initialized.
+     * @throws GitAPIException If an error occurs during Git initialization.
+     * @throws IOException If an I/O error occurs while creating or modifying .gitignore.
+     */
+    public static void initRepo(Path root) throws GitAPIException, IOException {
+        logger.info("Initializing new Git repository at {}", root);
+        Git.init().setDirectory(root.toFile()).call();
+        logger.info("Git repository initialized at {}.", root);
+
+        Path gitignorePath = root.resolve(".gitignore");
+        String brokkDirEntry = ".brokk/";
+
+        if (!Files.exists(gitignorePath)) {
+            Files.writeString(gitignorePath, brokkDirEntry + "\n", StandardCharsets.UTF_8);
+            logger.info("Created default .gitignore file with '{}' entry at {}.", brokkDirEntry, gitignorePath);
+        } else {
+            List<String> lines = Files.readAllLines(gitignorePath, StandardCharsets.UTF_8);
+            boolean entryExists = lines.stream().anyMatch(line -> line.trim().equals(brokkDirEntry.trim()) || line.trim().equals(brokkDirEntry.substring(0, brokkDirEntry.length() -1 )) );
+
+            if (!entryExists) {
+                // Append with a newline ensuring not to add multiple blank lines if file ends with one
+                String contentToAppend = (lines.isEmpty() || lines.getLast().isBlank()) ? brokkDirEntry + "\n" : "\n" + brokkDirEntry + "\n";
+                Files.writeString(gitignorePath, contentToAppend, StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+                logger.info("Appended '{}' entry to existing .gitignore file at {}.", brokkDirEntry, gitignorePath);
+            } else {
+                logger.debug("'{}' entry already exists in .gitignore file at {}.", brokkDirEntry, gitignorePath);
+            }
+        }
+    }
+
     public static class GitRepoException extends GitAPIException {
         protected GitRepoException(String message, Throwable cause) {
             super(message, cause);

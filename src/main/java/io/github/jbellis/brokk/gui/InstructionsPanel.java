@@ -1486,15 +1486,34 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         SwingUtilities.invokeLater(() -> {
             boolean projectLoaded = chrome.getProject() != null;
             boolean cmAvailable = this.contextManager != null;
+            boolean gitAvailable = projectLoaded && chrome.getProject().hasGit();
 
-            architectButton.setEnabled(projectLoaded && cmAvailable);
-            codeButton.setEnabled(projectLoaded && cmAvailable);
+            // Architect Button
+            if (projectLoaded && !gitAvailable) {
+                architectButton.setEnabled(false);
+                architectButton.setToolTipText("Architect feature requires Git integration for this project.");
+            } else {
+                architectButton.setEnabled(projectLoaded && cmAvailable);
+                // Default tooltip is set during initialization, no need to reset unless it changed
+            }
+
+            // Code Button
+            if (projectLoaded && !gitAvailable) {
+                codeButton.setEnabled(false);
+                codeButton.setToolTipText("Code feature requires Git integration for this project.");
+            } else {
+                codeButton.setEnabled(projectLoaded && cmAvailable);
+                // Default tooltip is set during initialization, no need to reset unless it changed
+            }
+
             askButton.setEnabled(projectLoaded && cmAvailable);
             searchButton.setEnabled(projectLoaded && cmAvailable);
             runButton.setEnabled(cmAvailable); // Requires CM for getRoot()
+            // Enable deepScanButton only if instructionsArea is also enabled
             deepScanButton.setEnabled(projectLoaded && cmAvailable && instructionsArea.isEnabled());
+            // Stop is only enabled when an action is running
+            stopButton.setEnabled(false);
 
-            stopButton.setEnabled(false); // Stop is only enabled when an action is running
             if (projectLoaded && cmAvailable) {
                 chrome.enableHistoryPanel();
             } else {
