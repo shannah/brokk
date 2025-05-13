@@ -173,7 +173,12 @@ public class AnalyzerWrapper implements AutoCloseable {
         if (project.getAnalyzerRefresh() == CpgRefresh.UNSET) {
             logger.debug("First startup: timing Analyzer creation");
             long start = System.currentTimeMillis();
-            var analyzer = createAndSaveAnalyzer();
+            var excludedStrings = project.awaitBuildDetails().excludedDirectories();
+            var excluded = excludedStrings.stream().map(Paths::get).collect(Collectors.toSet());
+            logger.debug("Creating {} analyzer for {}", language.name(), project.getRoot());
+            var analyzer = language.createAnalyzer(project, excluded);
+            currentAnalyzer = analyzer;
+            logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
             long duration = System.currentTimeMillis() - start;
             if (analyzer.isEmpty()) {
                 logger.info("Empty analyzer");
@@ -214,7 +219,12 @@ public class AnalyzerWrapper implements AutoCloseable {
 
         var analyzer = loadCachedAnalyzer(analyzerPath);
         if (analyzer == null) {
-            analyzer = createAndSaveAnalyzer();
+            var excludedStrings = project.awaitBuildDetails().excludedDirectories();
+            var excluded = excludedStrings.stream().map(Paths::get).collect(Collectors.toSet());
+            logger.debug("Creating {} analyzer for {}", language.name(), project.getRoot());
+            analyzer = language.createAnalyzer(project, excluded);
+            currentAnalyzer = analyzer;
+            logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
         }
         if (project.getAnalyzerRefresh() == CpgRefresh.AUTO) {
             startWatcher();
@@ -223,29 +233,7 @@ public class AnalyzerWrapper implements AutoCloseable {
     }
 
     public boolean isCpg() {
-        return project.getAnalyzerLanguage() == Language.JAVA;
-    }
-
-    private IAnalyzer createAndSaveAnalyzer() {
-        IAnalyzer newAnalyzer;
-        logger.debug("Creating {} analyzer for {}", language, project.getRoot());
-        var excluded = project.awaitBuildDetails().excludedDirectories();
-        if (language == Language.JAVA) {
-            newAnalyzer = new JavaAnalyzer(root, excluded);
-            Path analyzerPath = root.resolve(".brokk").resolve("joern.cpg");
-            ((JavaAnalyzer) newAnalyzer).writeCpg(analyzerPath);
-        } else {
-            newAnalyzer = switch (language) {
-                case PYTHON -> new PythonAnalyzer(project, excluded);
-                case C_SHARP -> new CSharpAnalyzer(project, excluded);
-                case JAVASCRIPT -> new JavascriptAnalyzer(project, excluded);
-                default -> new DisabledAnalyzer();
-            };
-        }
-
-        logger.debug("Analyzer (re)build completed");
-        currentAnalyzer = newAnalyzer;
-        return newAnalyzer;
+        return project.getAnalyzerLanguage().isCpg();
     }
 
     /** Load a cached analyzer if it is up to date; otherwise return null. */
@@ -312,7 +300,13 @@ public class AnalyzerWrapper implements AutoCloseable {
         logger.trace("Rebuilding analyzer");
         future = runner.submit("Rebuilding code intelligence", () -> {
             try {
-                return createAndSaveAnalyzer();
+                var excludedStrings = project.awaitBuildDetails().excludedDirectories();
+                var excluded = excludedStrings.stream().map(Paths::get).collect(Collectors.toSet());
+                logger.debug("Creating {} analyzer for {}", language.name(), project.getRoot());
+                IAnalyzer newAnalyzer = language.createAnalyzer(project, excluded);
+                currentAnalyzer = newAnalyzer;
+                logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
+                return newAnalyzer;
             } finally {
                 synchronized (AnalyzerWrapper.this) {
                     rebuildInProgress = false;
