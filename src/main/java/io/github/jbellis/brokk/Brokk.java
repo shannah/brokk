@@ -6,6 +6,7 @@ import com.github.tjake.jlama.safetensors.DType;
 import com.github.tjake.jlama.safetensors.SafeTensorSupport;
 import io.github.jbellis.brokk.gui.CheckThreadViolationRepaintManager;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.gui.dialogs.StartupDialog;
 import org.apache.logging.log4j.LogManager;
@@ -21,6 +22,7 @@ import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 
 public class Brokk {
@@ -62,147 +64,212 @@ public class Brokk {
     public static void main(String[] args) {
         logger.debug("Brokk starting");
 
-        // Set macOS to use system menu bar
+        // Set macOS system properties (non-UI, can be immediate)
         System.setProperty("apple.laf.useScreenMenuBar", "true");
+        if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+            System.setProperty("apple.awt.application.name", "Brokk");
+        }
 
-        // 1) Load your icon
+        // Set up thread violation checker for dev mode
+        if (Boolean.getBoolean("brokk.devmode")) {
+            RepaintManager.setCurrentManager(new CheckThreadViolationRepaintManager());
+        }
+
+        // Set application icon
         var iconUrl = Brokk.class.getResource(ICON_RESOURCE);
         if (iconUrl != null) {
             var icon = new ImageIcon(iconUrl);
-
-            // 2) Attempt to set icon in macOS Dock & Windows taskbar (Java 9+)
             if (Taskbar.isTaskbarSupported()) {
                 var taskbar = Taskbar.getTaskbar();
                 try {
                     taskbar.setIconImage(icon.getImage());
                 } catch (UnsupportedOperationException | SecurityException e) {
-                    System.err.println("Unable to set taskbar icon: " + e.getMessage());
+                    logger.warn("Unable to set taskbar icon: {}", e.getMessage());
                 }
             }
         }
 
-        // 3) On macOS, optionally set the app name for the Dock:
-        if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-            System.setProperty("apple.awt.application.name", "Brokk");
-        }
-
-        if (Boolean.getBoolean("brokk.devmode")) {
-            RepaintManager.setCurrentManager(new CheckThreadViolationRepaintManager());
-        }
-
-        SwingUtilities.invokeLater(() -> {
-            // 1) Set FlatLaf Look & Feel - we'll use light as default initially
-            try {
-                com.formdev.flatlaf.FlatLightLaf.setup();
-            } catch (Exception e) {
-                logger.warn("Failed to set LAF, using default", e);
-            }
-
-            // Check for command-line flags
-            boolean noProjectFlag = false;
-            boolean noKeyFlag = false;
-            String projectPathArg = null;
-
-            for (String arg : args) {
-                if (arg.equals("--no-project")) {
-                    noProjectFlag = true;
-                } else if (arg.equals("--no-key")) {
-                    noKeyFlag = true;
-                } else if (!arg.startsWith("--")) {
-                    projectPathArg = arg;
-                }
-            }
-
-            // Determine initial project path
-            Path determinedProjectPath = null;
-            if (projectPathArg != null) {
-                determinedProjectPath = Path.of(projectPathArg).toAbsolutePath().normalize();
-            } else if (!noProjectFlag) { // only check recent if not --no-project
-                var openProjects = Project.getOpenProjects();
-                if (!openProjects.isEmpty()) {
-                    determinedProjectPath = openProjects.getFirst();
-                }
-            }
-
-            // Validate Brokk API Key, unless --no-key is specified
-            String currentBrokkKey = "";
-            boolean keyIsValid = false;
-            if (!noKeyFlag) {
-                currentBrokkKey = Project.getBrokkKey();
-                if (!currentBrokkKey.isEmpty()) {
-                    try {
-                        Models.validateKey(currentBrokkKey);
-                        keyIsValid = true;
-                    } catch (IOException e) {
-                        // Network error during startup validation. Assume key is valid so user can get into his project
-                        logger.warn("Network error validating existing Brokk key at startup. Will re-evaluate in dialog.", e);
-                        keyIsValid = true;
-                        JOptionPane.showMessageDialog(null,
-                                                      "Network error talking to Brokk. AI services may be unavailable.",
-                                                      "Network error",
-                                                      JOptionPane.ERROR_MESSAGE);
-                    } catch (IllegalArgumentException e) {
-                        logger.warn("Existing Brokk key is invalid: {}", e.getMessage());
-                    }
-                }
-            } // If noKeyFlag is true, currentBrokkKey is "" and keyIsValid is false.
-
-            // Validate project path
-            boolean projectPathIsValid = false;
-            if (determinedProjectPath != null) {
+        // Ensure L&F is set on EDT before any UI is created.
+        try {
+            SwingUtilities.invokeAndWait(() -> {
                 try {
-                    Path realProjectPath = determinedProjectPath.toRealPath(); // Resolve symlinks
-                    if (Files.isDirectory(realProjectPath)) {
-                        projectPathIsValid = true;
-                        determinedProjectPath = realProjectPath; // Use the real path
-                    } else {
-                        logger.warn("Project path is not a directory: {}", realProjectPath);
-                    }
-                } catch (IOException e) { // Includes NoSuchFileException
-                    logger.warn("Project path is not valid or not accessible: {}. Error: {}", determinedProjectPath, e.getMessage());
+                    com.formdev.flatlaf.FlatLightLaf.setup();
+                } catch (Exception e) {
+                    logger.warn("Failed to set LAF, using default", e);
+                }
+            });
+        } catch (Exception e) { // Catches InterruptedException and InvocationTargetException
+            logger.fatal("Failed to initialize Look and Feel on EDT. Exiting.", e);
+            System.exit(1);
+        }
+
+        // Argument parsing and initial validation (off-EDT / main thread)
+        boolean noProjectFlag = false;
+        boolean noKeyFlag = false;
+        String projectPathArg = null;
+
+        for (String arg : args) {
+            if (arg.equals("--no-project")) {
+                noProjectFlag = true;
+            } else if (arg.equals("--no-key")) {
+                noKeyFlag = true;
+            } else if (!arg.startsWith("--")) {
+                projectPathArg = arg;
+            }
+        }
+
+        Path determinedProjectPath = null;
+        if (projectPathArg != null) {
+            determinedProjectPath = Path.of(projectPathArg).toAbsolutePath().normalize();
+        } else if (!noProjectFlag) {
+            var openProjects = Project.getOpenProjects(); // I/O
+            if (!openProjects.isEmpty()) {
+                determinedProjectPath = openProjects.getFirst();
+            }
+        }
+
+        String currentBrokkKey = "";
+        boolean keyIsValid = false;
+        if (!noKeyFlag) {
+            currentBrokkKey = Project.getBrokkKey(); // I/O (prefs)
+            if (currentBrokkKey != null && !currentBrokkKey.isEmpty()) {
+                try {
+                    Models.validateKey(currentBrokkKey); // I/O (network)
+                    keyIsValid = true;
+                } catch (IOException e) {
+                    logger.warn("Network error validating existing Brokk key at startup. Assuming valid for now.", e);
+                    keyIsValid = true; // Assume valid to allow offline use / project access
+                    // Show error on EDT
+                    SwingUtilities.invokeLater(() ->
+                        JOptionPane.showMessageDialog(null,
+                                                      "Network error validating Brokk key. AI services may be unavailable.",
+                                                      "Network Validation Warning",
+                                                      JOptionPane.WARNING_MESSAGE));
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Existing Brokk key is invalid: {}", e.getMessage());
+                    // keyIsValid remains false
                 }
             }
+        }
 
-            // Exit if a specific project path was given via CLI and it's invalid
-            if (projectPathArg != null && !projectPathIsValid) {
-                System.out.printf("Specified project path `%s` does not appear to be a valid directory%n", projectPathArg);
-                System.exit(1);
+        boolean projectPathIsValid = false;
+        if (determinedProjectPath != null) {
+            try {
+                Path realProjectPath = determinedProjectPath.toRealPath(); // I/O
+                if (Files.isDirectory(realProjectPath)) { // I/O
+                    projectPathIsValid = true;
+                    determinedProjectPath = realProjectPath;
+                } else {
+                    logger.warn("Project path is not a directory: {}", realProjectPath);
+                }
+            } catch (IOException e) { // Includes NoSuchFileException
+                logger.warn("Project path not valid or not accessible: {}. Error: {}", determinedProjectPath, e.getMessage());
             }
+        }
 
-            // Attempt to open directly if all conditions met
-            if (keyIsValid && projectPathIsValid) {
-                openProject(determinedProjectPath);
-                return;
-            }
+        if (projectPathArg != null && !projectPathIsValid) {
+            System.err.printf("Specified project path `%s` does not appear to be a valid directory%n", projectPathArg);
+            System.exit(1);
+        }
 
-            // One or both are missing/invalid, show the startup dialog
-            StartupDialog.DialogMode mode;
-            Path initialProjectPathForDialog = projectPathIsValid ? determinedProjectPath : null;
+        // Attempt to open directly if all conditions met
+        if (keyIsValid && projectPathIsValid) {
+            openProject(determinedProjectPath); // Called from main thread
+            return;
+        }
 
-            if (!keyIsValid && !projectPathIsValid) {
-                mode = StartupDialog.DialogMode.REQUIRE_BOTH;
-            } else if (!keyIsValid) {
-                mode = StartupDialog.DialogMode.REQUIRE_KEY_ONLY;
-            } else { // keyIsValid (implicitly true here due to outer if) && !projectPathIsValid
-                mode = StartupDialog.DialogMode.REQUIRE_PROJECT_ONLY;
-            }
+        // One or both are missing/invalid, show the startup dialog on EDT
+        final String finalCurrentBrokkKey = currentBrokkKey;
+        final boolean finalKeyIsValid = keyIsValid;
+        final Path finalInitialProjectPathForDialog = projectPathIsValid ? determinedProjectPath : null;
+        final boolean finalProjectPathIsValid = projectPathIsValid; // Need this for mode determination
 
-            Path projectToOpen = StartupDialog.showDialog(null, currentBrokkKey, keyIsValid, initialProjectPathForDialog, mode);
-            if (projectToOpen != null) {
-                openProject(projectToOpen);
-            } else {
-                logger.info("Startup dialog was closed or exited. Shutting down.");
-                System.exit(0);
+        Path projectToOpenFromDialog;
+        try {
+            projectToOpenFromDialog = SwingUtil.runOnEdt(() -> {
+                StartupDialog.DialogMode mode;
+                if (!finalKeyIsValid && !finalProjectPathIsValid) {
+                    mode = StartupDialog.DialogMode.REQUIRE_BOTH;
+                } else if (!finalKeyIsValid) {
+                    mode = StartupDialog.DialogMode.REQUIRE_KEY_ONLY;
+                } else { // finalKeyIsValid && !finalProjectPathIsValid
+                    mode = StartupDialog.DialogMode.REQUIRE_PROJECT_ONLY;
+                }
+                return StartupDialog.showDialog(null, finalCurrentBrokkKey, finalKeyIsValid, finalInitialProjectPathForDialog, mode);
+            }, null);
+        } catch (Exception e) { // Catches InterruptedException and InvocationTargetException
+            logger.error("Error showing StartupDialog or it was interrupted. Shutting down.", e);
+            System.exit(1);
+            return; // Unreachable
+        }
+
+        if (projectToOpenFromDialog != null) {
+            openProject(projectToOpenFromDialog); // Called from main thread
+        } else {
+            logger.info("Startup dialog was closed or exited. Shutting down.");
+            System.exit(0);
+        }
+    }
+
+    private static void createAndShowGui(Path projectPath, ContextManager contextManager) {
+        assert SwingUtilities.isEventDispatchThread();
+
+        var io = new Chrome(contextManager);
+        io.systemOutput("Opening project at " + projectPath);
+        contextManager.resolveCircularReferences(io);
+
+        var project = contextManager.getProject();
+        if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
+            logger.debug("Project {} has no Data Retention Policy set. Showing dialog.", projectPath.getFileName());
+            // This dialog is modal and runs on the EDT.
+            SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
+            io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
+        }
+
+        io.onComplete(); // Finalize UI setup
+        openProjectWindows.put(projectPath, io);
+
+        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                // This listener is invoked on the EDT.
+                Chrome closedChrome = openProjectWindows.remove(projectPath);
+                if (closedChrome != null) {
+                    closedChrome.close(); // Assumes Chrome.close() is EDT-safe
+                }
+                logger.debug("Removed project from open windows map: {}", projectPath);
+
+                // I/O part of closing, run in background
+                CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
+                                 .exceptionally(ex -> {
+                                     logger.error("Error removing project from open projects list: {}", projectPath, ex);
+                                     return null;
+                                 });
+
+                if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
+                    System.exit(0);
+                }
+
+                if (reOpeningProjects.contains(projectPath)) {
+                    Path pathToReopen = projectPath; // Effectively final for lambda
+                    reOpeningProjects.remove(pathToReopen);
+                    // openProject is called from EDT here. It will internally dispatch I/O.
+                    openProject(pathToReopen);
+                }
             }
         });
+
+        // remove placeholder frame if present
+        if (openProjectWindows.get(EMPTY_PROJECT) != null) {
+            openProjectWindows.remove(EMPTY_PROJECT).close();
+        }
     }
 
     /**
      * Opens the given project folder in Brokk, or brings existing window to front.
      * The folder must contain a .git subdirectory or else we will show an error.
      */
-    public static void openProject(Path path)
-    {
+    public static void openProject(Path path) {
         final Path projectPath = path.toAbsolutePath().normalize();
         logger.debug("Opening project at " + projectPath);
 
@@ -218,58 +285,47 @@ public class Brokk {
             return;
         }
 
-        Project.updateRecentProject(projectPath);
-
-        var contextManager = new ContextManager(projectPath);
-
-        var io = new Chrome(contextManager);
-        io.systemOutput("Opening project at " + projectPath);
-        contextManager.resolveCircularReferences(io);
-
-        // Check and potentially force setting Data Retention Policy *before* showing main window fully
-        // but *after* the project and UI frame are created
-        var project = contextManager.getProject();
-        if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
-            logger.debug("Project {} has no Data Retention Policy set. Showing dialog.", projectPath.getFileName());
-            // Run the dialog on the EDT after the main frame setup might have happened
-            SwingUtilities.invokeLater(() -> {
-                SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
-                // After dialog is closed (policy is set), ensure UI reflects any consequences if needed
-                // e.g., update model list if policy affects it. (Future enhancement)
-                // Models.refreshAvailableModels(); // TODO: Implement model refresh based on policy
-                io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
+        // If on EDT, dispatch I/O to background thread. Otherwise, do I/O on current (non-EDT) thread.
+        if (SwingUtilities.isEventDispatchThread()) {
+            CompletableFuture<ContextManager> ioOperation = CompletableFuture.supplyAsync(() -> {
+                // I/O Part
+                Project.updateRecentProject(projectPath); // I/O
+                return new ContextManager(projectPath); // I/O
             });
-        }
 
-        io.onComplete(); // Finalize UI setup
+            // Explicitly define the Consumer for clarity
+            Consumer<ContextManager> uiSchedulingTask = (ContextManager cm) -> {
+                // This consumer's body runs in the thread that completes ioOperation (a background thread).
+                // It then schedules the actual GUI work on the EDT.
+                SwingUtilities.invokeLater(() -> {
+                    createAndShowGui(projectPath, cm);
+                });
+            };
 
-        openProjectWindows.put(projectPath, io);
+            CompletableFuture<Void> uiOperation = ioOperation.thenAccept(uiSchedulingTask);
 
-        // Window listener that removes from maps; only exit if not in re-opening and zero windows remain
-        io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e)
-            {
-                openProjectWindows.remove(projectPath).close();
-
-                // Only exit if we now have no windows open and we are NOT re-opening a project
-                if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
-                    System.exit(0);
-                }
-
-                Project.removeFromOpenProjects(projectPath);
-                logger.debug("Removed project from open windows map: {}", projectPath);
-
-                if (reOpeningProjects.contains(projectPath)) {
-                    reOpeningProjects.remove(projectPath);
-                    openProject(projectPath);
-                }
+            uiOperation.exceptionally(ex -> {
+                logger.error("Error opening project in background: {}", projectPath, ex);
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(null,
+                                                                              "Error opening project " + projectPath.getFileName() + ": " + ex.getMessage(),
+                                                                              "Open Project Error", JOptionPane.ERROR_MESSAGE));
+                return null;
+            });
+        } else {
+            // Already on a background thread (e.g., main thread from startup)
+            try {
+                // I/O Part
+                Project.updateRecentProject(projectPath); // I/O
+                var contextManager = new ContextManager(projectPath); // I/O
+                // Schedule UI Part on EDT
+                SwingUtilities.invokeLater(() -> createAndShowGui(projectPath, contextManager));
+            } catch (Exception ex) {
+                logger.error("Error opening project: {}", projectPath, ex);
+                // Show error on EDT
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(null,
+                                                                              "Error opening project " + projectPath.getFileName() + ": " + ex.getMessage(),
+                                                                              "Open Project Error", JOptionPane.ERROR_MESSAGE));
             }
-        });
-
-        // remove placeholder frame if present
-        if (openProjectWindows.get(EMPTY_PROJECT) != null) {
-            openProjectWindows.remove(EMPTY_PROJECT).close();
         }
     }
 

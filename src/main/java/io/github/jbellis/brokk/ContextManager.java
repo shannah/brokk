@@ -9,7 +9,9 @@ import io.github.jbellis.brokk.ContextHistory.UndoResult;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.analyzer.*;
+import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.SearchTools;
@@ -161,7 +163,48 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Called from Brokk to finish wiring up references to Chrome and Coder
      */
     public void resolveCircularReferences(Chrome chrome) {
+//        assert !SwingUtilities.isEventDispatchThread();
+
         this.io = chrome;
+
+        // Create an initial Project instance to check for Git
+        Project initialProject = new Project(root);
+
+        if (!initialProject.hasGit()) {
+            // Not on EDT, so use SwingUtil.runOnEdt for modal dialog
+            // Provide a default value for the Callable version of runOnEdt and cast the result
+            int response = SwingUtil.runOnEdt(() -> JOptionPane.showConfirmDialog(
+                    io.getFrame(), // Parent frame
+                    "This project is not under Git version control. Would you like to initialize a new Git repository here?"
+                    + "\n\nWithout Git, the project will be read-only.",
+                    "Initialize Git Repository?",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE), JOptionPane.NO_OPTION);
+
+            if (response == JOptionPane.YES_OPTION) {
+                try {
+                    io.systemOutput("Initializing Git repository at " + root + "...");
+                    GitRepo.initRepo(root); // Use imported GitRepo
+                    this.project = new Project(root); // Re-create project to pick up new .git
+                    io.systemOutput("Git repository initialized successfully.");
+                } catch (Exception e) { // Catch GitAPIException, IOException, etc.
+                    logger.error("Failed to initialize Git repository at {}: {}", root, e.getMessage(), e);
+                    final String errorMessage = e.getMessage();
+                    // Show error to user on EDT
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                            io.getFrame(),
+                            "Failed to initialize Git repository: " + errorMessage,
+                            "Git Initialization Error",
+                            JOptionPane.ERROR_MESSAGE
+                    ));
+                    this.project = initialProject; // Fallback to the non-Git project instance
+                }
+            } else {
+                this.project = initialProject; // User declined or closed dialog
+            }
+        } else {
+            this.project = initialProject; // Project already has Git
+        }
 
         // Set up the listener for analyzer events
         var analyzerListener = new AnalyzerListener() {
@@ -200,7 +243,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         };
 
-        this.project = new Project(root);
         this.analyzerWrapper = new AnalyzerWrapper(project, this::submitBackgroundTask, analyzerListener);
         this.models.reinit(project);
         this.toolRegistry = new ToolRegistry(this);
@@ -210,12 +252,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // Load saved context or create a new one
         submitBackgroundTask("Loading saved context", () -> {
-            var welcomeMessage = buildWelcomeMessage();
+            var welcomeMessage = buildWelcomeMessage(); // welcome message might change if git status changed
             var initialContext = project.loadContext(this, welcomeMessage);
             if (initialContext == null) {
                 initialContext = new Context(this, welcomeMessage);
             }
             contextHistory.setInitialContext(initialContext);
+            // If git was just initialized, Chrome components like GitPanel will be updated
+            // by their own construction logic based on the new project.hasGit() state.
+            // Explicit io.updateGitRepo() might not be needed here if Chrome rebuilds relevant parts.
             chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
         });
 
