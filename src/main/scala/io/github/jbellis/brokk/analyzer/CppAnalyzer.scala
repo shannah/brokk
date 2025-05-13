@@ -26,13 +26,6 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
 
   def this(sourcePath: Path) = this(sourcePath, java.util.Collections.emptySet[String]())
 
-  def this(sourcePath: Path, language: Language, excludedFiles: java.util.Set[String]) =
-    this(sourcePath, excludedFiles)
-
-  def this(sourcePath: Path, language: Language) = this(sourcePath, language, java.util.Collections.emptySet[String]())
-
-  def this(sourcePath: Path, preloadedPath: Path, language: Language) = this(sourcePath, preloadedPath)
-
   override def isCpg: Boolean = true
 
   //---------------------------------------------------------------------
