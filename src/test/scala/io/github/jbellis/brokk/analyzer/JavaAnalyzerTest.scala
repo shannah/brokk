@@ -370,7 +370,7 @@ class JavaAnalyzerTest {
     val analyzer = getAnalyzer
     val symbol = "NoSuchClass"
     val ex = assertThrows(classOf[IllegalArgumentException], () => analyzer.getUses(symbol))
-    assertTrue(ex.getMessage.contains("Symbol 'NoSuchClass' not found"))
+    assertTrue(ex.getMessage.contains("Symbol 'NoSuchClass' (resolved: 'NoSuchClass') not found as a method, field, or class"))
   }
 
   @Test

@@ -8,7 +8,7 @@ import io.joern.joerncli.CpgBasedTool
 import io.joern.x2cpg.{ValidationMode, X2Cpg}
 import io.shiftleft.codepropertygraph.generated.Cpg
 import io.shiftleft.codepropertygraph.generated.language.*
-import io.shiftleft.codepropertygraph.generated.nodes.{Call, Method, TypeDecl}
+import io.shiftleft.codepropertygraph.generated.nodes.{Call, Method, TypeDecl, NamespaceBlock}
 import io.shiftleft.semanticcpg.language.*
 import io.shiftleft.semanticcpg.layers.LayerCreatorContext
 
@@ -34,7 +34,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   extends IAnalyzer with Closeable {
 
   // Logger instance for this class
-  private val logger = LoggerFactory.getLogger(getClass)
+  protected val logger = LoggerFactory.getLogger(getClass)
 
   // Convert to absolute filename immediately and verify it's a directory
   protected val absolutePath: Path = {
@@ -258,8 +258,13 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     else toFile(td.filename)
   }
 
-  private[brokk] def toFile(relName: String): Option[ProjectFile] =
-    Some(ProjectFile(absolutePath, relName))
+  private[brokk] def toFile(relName: String): Option[ProjectFile] = {
+    if (relName == null || relName.isEmpty || (relName.startsWith("<") && relName.endsWith(">"))) {
+      None // Filter out pseudo-files like <empty>, <unknown>, etc.
+    } else {
+      Some(ProjectFile(absolutePath, relName))
+    }
+  }
 
   // using cpg.all doesn't work because there are always-present nodes for files and the ANY typedecl
   override def isEmpty: Boolean = cpg.member.isEmpty
@@ -300,23 +305,19 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   private def chopColon(full: String) = full.split(":").head
 
   /**
-   * For a given method node `m`, returns the calling method .fullName (with the suffix after `:` chopped).
+   * For a given method node `m`, returns the CPG Method nodes of its callers.
    * If `excludeSelfRefs` is true, we skip callers whose TypeDecl matches `m.typeDecl`.
    */
-  protected def callersOfMethodNode(m: Method, excludeSelfRefs: Boolean): List[String] = {
-    var calls = m.callIn
+  protected def callersOfMethodNode(m: Method, excludeSelfRefs: Boolean): List[Method] = {
+    var callNodes = m.callIn
     if (excludeSelfRefs) {
-      val selfSource = m.typeDecl.fullName.head
-      calls = calls.filterNot { call =>
-        val callerSource = call.method.typeDecl.fullName.head
-        partOfClass(selfSource, callerSource)
+      m.typeDecl.fullName.headOption.foreach { selfSourceFqn =>
+        callNodes = callNodes.filterNot { call =>
+          call.method.typeDecl.fullName.headOption.exists(callerSourceFqn => partOfClass(selfSourceFqn, callerSourceFqn))
+        }
       }
     }
-    calls.method
-      .fullName
-      .map(name => resolveMethodName(chopColon(name)))
-      .distinct
-      .l
+    callNodes.method.dedup.l // .method gets the calling method node(s)
   }
 
   protected def partOfClass(parentFqcn: String, childFqcn: String): Boolean = {
@@ -494,77 +495,86 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     val baseMethodMatches = methodsFromName(symbol)
     logger.debug(s"Found ${baseMethodMatches.size} base method matches for '$symbol'")
 
+    val resolvedSymbol = resolveMethodName(symbol) // Resolve once upfront
+    logger.debug(s"Getting uses for symbol: '$symbol' (resolved: '$resolvedSymbol')")
+    
     val expandedMethodMatches =
-      if (symbol.contains(".")) {
-        val lastDot = symbol.lastIndexOf('.')
-        val classPart = symbol.substring(0, lastDot)
-        val methodPart = symbol.substring(lastDot + 1)
+      if (resolvedSymbol.contains(".")) {
+        val lastDot = resolvedSymbol.lastIndexOf('.')
+        val classPart = resolvedSymbol.substring(0, lastDot)
+        val methodPart = resolvedSymbol.substring(lastDot + 1)
         logger.debug(s"Symbol contains dot: classPart='$classPart', methodPart='$methodPart'")
 
         val subclasses = allSubclasses(classPart)
         logger.debug(s"Found ${subclasses.size} subclasses of '$classPart'")
 
         // candidate fully-qualified method names: original and each subclass override
-        val expandedSymbols = (Set(symbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
+        val expandedSymbols = (Set(resolvedSymbol) ++ subclasses.map(sub => s"$sub.$methodPart")).toList
         logger.debug(s"Expanded to ${expandedSymbols.size} symbol candidates: ${expandedSymbols.take(5).mkString(", ")}${if (expandedSymbols.size > 5) "..." else ""}")
 
         val expanded = expandedSymbols.flatMap(mn => methodsFromName(mn))
         logger.debug(s"After expanding, found ${expanded.size} method matches")
         expanded
-      } else {
-        logger.debug("Symbol doesn't contain a dot, using base matches only")
-        baseMethodMatches
-      }
-
-    if expandedMethodMatches.nonEmpty then {
-      logger.debug(s"Processing ${expandedMethodMatches.size} matched methods")
-      // Collect all callers from all matched methods
-      val calls = expandedMethodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
-      logger.debug(s"Call sites: ${calls.take(5).mkString(", ")}${if (calls.size > 5) "..." else ""}")
-
-      val results = calls.flatMap { methodName => // Changed variable name to results
-        // Find method nodes for the caller's name
-        val methods = cpg.method.fullName(s"$methodName:.*").l
+      } else { // Symbol does not contain a dot, could be a global function or a simple class name
+        // Check if it's a known method (global function in C/C++ context)
+        val methods = methodsFromName(resolvedSymbol)
         if (methods.nonEmpty) {
-          // Attempt to get the file for the method's declaring type
-          methods.head.typeDecl.headOption.flatMap(toFile).flatMap { file =>
-            // If file found, create the CodeUnit
-            cuFunction(methodName, file)
-          }.orElse {
-            // If file not found, log and return None for this method
-            logger.debug(s"No file found for method: $methodName")
-            None
-          }
+          logger.debug(s"Symbol '$resolvedSymbol' (no dot) matches ${methods.size} methods (global functions).")
+          methods // Return these as the matches
         } else {
-          // If no method node found, log and return None
-          logger.debug(s"No method node found for: $methodName")
-          None
+          logger.debug(s"Symbol '$resolvedSymbol' (no dot) not a method, treating as potential class or unresolvable.")
+          // If not a method, it might be a class name, which will be handled by section (3).
+          // Or it's an unresolvable method name, in which case `baseMethodMatches` will be empty.
+          baseMethodMatches // This will be empty if it's not a known method
         }
       }
-      logger.debug(s"Calling methods: ${results.take(5).mkString(", ")}${if (results.size > 5) "..." else ""}") // Use results here
-      return results.asJava // Use results here
+
+    if (expandedMethodMatches.nonEmpty) {
+      logger.debug(s"Processing ${expandedMethodMatches.size} matched methods")
+      // Collect all CPG Method nodes of callers from all matched methods
+      val callingCpgMethods = expandedMethodMatches.flatMap(m => callersOfMethodNode(m, excludeSelfRefs = false)).distinct
+      logger.debug(s"Found ${callingCpgMethods.size} distinct calling CPG methods.")
+
+      val results = callingCpgMethods.flatMap { cpgMethod =>
+        val fileOpt = if (cpgMethod.filename.nonEmpty) toFile(cpgMethod.filename) else cpgMethod.typeDecl.headOption.flatMap(toFile)
+        fileOpt.flatMap { file =>
+          val isGlobalMethod = cpgMethod.astParent match {
+            case parentNode: NamespaceBlock => true
+            case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty
+            case _ => false
+          }
+
+          // For global methods, CPG fullName might be "filename.ext:funcname".
+          // For class methods, it's "pkg.Cls.method:sig" or "Cls.method:sig".
+          // resolveMethodName(chopColon(...)) handles this.
+          val fqnForCu = resolveMethodName(chopColon(cpgMethod.fullName))
+          cuFunction(fqnForCu, file)
+        }
+      }
+      logger.debug(s"Created ${results.size} CodeUnits for calling methods. Example: ${results.take(5).map(_.fqName()).mkString(", ")}")
+      return results.asJava
     }
 
-    // (2) Possibly a field: com.foo.Bar.field
-    val lastDot = symbol.lastIndexOf('.')
-    if lastDot > 0 then {
+    // (2) Possibly a field: com.foo.Bar.field (or resolvedSymbol equivalent)
+    val lastDotInResolved = resolvedSymbol.lastIndexOf('.')
+    if (lastDotInResolved > 0) {
       logger.debug("Trying to interpret as field reference")
-      val classPart = symbol.substring(0, lastDot)
-      val fieldPart = symbol.substring(lastDot + 1)
+      val classPart = resolvedSymbol.substring(0, lastDotInResolved)
+      val fieldPart = resolvedSymbol.substring(lastDotInResolved + 1)
       logger.debug(s"Parsed as potential field: class='$classPart', field='$fieldPart'")
 
       val clsDecls = cpg.typeDecl.fullNameExact(classPart).l
-      if clsDecls.nonEmpty then {
+      if (clsDecls.nonEmpty) {
         logger.debug(s"Found class declaration for: $classPart")
         val maybeFieldDecl = clsDecls.head.member.nameExact(fieldPart).l
-        if maybeFieldDecl.nonEmpty then {
+        if (maybeFieldDecl.nonEmpty) {
           logger.debug(s"Found field declaration: $fieldPart")
           val refs = referencesToField(classPart, fieldPart, excludeSelfRefs = false)
           logger.debug(s"Found ${refs.size} references to field '$fieldPart'")
 
           val result = refs.flatMap { methodName =>
             val methods = cpg.method.fullName(s"$methodName:.*").l
-            if methods.nonEmpty then {
+            if (methods.nonEmpty) {
               methods.head.typeDecl.headOption.flatMap(toFile).flatMap { file =>
                 cuFunction(methodName, file)
               }
@@ -574,7 +584,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
             }
           }
           logger.debug(s"Returning ${result.size} field references")
-          return result.asJava // Reinstate return keyword
+          return result.asJava
         } else {
           logger.debug(s"No field named '$fieldPart' found in class '$classPart'")
         }
@@ -583,38 +593,36 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       }
     }
 
-    // (3) Otherwise treat as a class
+    // (3) Otherwise treat as a class (using original symbol for class name lookup)
     logger.debug("Treating symbol as a class")
-    val classDecls = cpg.typeDecl.fullNameExact(symbol).l
-    if classDecls.isEmpty then {
-      logger.warn(s"Symbol '$symbol' not found as a method, field, or class")
-      throw IllegalArgumentException(s"Symbol '$symbol' not found as a method, field, or class")
+    val classDecls = cpg.typeDecl.fullNameExact(symbol).l // Use original `symbol` for class lookup
+    if (classDecls.isEmpty) {
+      logger.warn(s"Symbol '$symbol' (resolved: '$resolvedSymbol') not found as a method, field, or class")
+      throw new IllegalArgumentException(s"Symbol '$symbol' (resolved: '$resolvedSymbol') not found as a method, field, or class")
     }
 
     logger.debug(s"Found ${classDecls.size} class declarations for '$symbol'")
 
     // Include the original class plus all subclasses
-    val subclasses = allSubclasses(symbol)
+    val subclasses = allSubclasses(symbol) // Use original `symbol`
     logger.debug(s"Found ${subclasses.size} subclasses of '$symbol'")
 
     val allClasses = (classDecls.map(_.fullName).toSet ++ subclasses).toList
     logger.debug(s"Processing ${allClasses.size} classes in total")
 
-    val methodUses = allClasses.flatMap { cn =>
-      val uses = cpg.typeDecl.fullNameExact(cn).l.flatMap { td =>
-        td.method.l.flatMap(m => callersOfMethodNode(m, true))
+    val methodUsesAsCpgMethods = allClasses.flatMap { cn =>
+      cpg.typeDecl.fullNameExact(cn).l.flatMap { td =>
+        td.method.l.flatMap(m => callersOfMethodNode(m, true)) // callersOfMethodNode now returns List[Method]
       }
-      logger.debug(s"Found ${uses.size} method uses for class: $cn")
-      uses
-    }
-    logger.debug(s"Total method uses across all classes: ${methodUses.size}")
-
-    val fieldRefUses = classDecls.flatMap { td =>
-      val uses = td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
-      logger.debug(s"Found ${uses.size} field reference uses for class: ${td.fullName}")
-      uses
-    }
-    logger.debug(s"Total field reference uses: ${fieldRefUses.size}")
+    }.distinct // Ensure CPG methods are distinct before converting to CodeUnits
+    logger.debug(s"Found ${methodUsesAsCpgMethods.size} distinct CPG methods using class methods (transitively).")
+    
+    // fieldRefUses already returns List[String] which are FQNs of methods referencing fields.
+    // This needs to be consistent or converted carefully. For now, assume it's List[String] of method FQNs.
+    val fieldRefMethodFqns = classDecls.flatMap { td =>
+      td.member.l.flatMap(mem => referencesToField(td.fullName, mem.name, excludeSelfRefs = true))
+    }.distinct
+    logger.debug(s"Found ${fieldRefMethodFqns.size} distinct method FQNs referencing fields.")
 
     val typeUses = allClasses.flatMap { cn =>
       val uses = referencesToClassAsType(cn)
@@ -623,32 +631,37 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     }
     logger.debug(s"Total type uses: ${typeUses.size}")
 
-    // Convert methodUses and fieldRefUses to actual CodeUnits
-    val methodUseUnits = methodUses.distinct.flatMap { methodName =>
-      val methods = cpg.method.fullName(s"$methodName:.*").l
-      if methods.nonEmpty then {
-        methods.head.typeDecl.headOption.flatMap(toFile).flatMap { file =>
-          cuFunction(methodName, file)
+    // Convert methodUsesAsCpgMethods (List[Method]) to CodeUnits
+    val methodUseUnits = methodUsesAsCpgMethods.flatMap { cpgMethod =>
+      val fileOpt = if (cpgMethod.filename.nonEmpty) toFile(cpgMethod.filename) else cpgMethod.typeDecl.headOption.flatMap(toFile)
+      fileOpt.flatMap { file =>
+        val isGlobalMethod = cpgMethod.astParent match {
+          case parentNode: NamespaceBlock => true
+          case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty
+          case _ => false
         }
-      } else {
-        logger.debug(s"No method node found for: $methodName")
-        None
+        val fqnForCu = resolveMethodName(chopColon(cpgMethod.fullName))
+        cuFunction(fqnForCu, file)
       }
     }
-    logger.debug(s"Converted to ${methodUseUnits.size} method use code units")
+    logger.debug(s"Converted ${methodUsesAsCpgMethods.size} CPG methods to ${methodUseUnits.size} CodeUnits.")
 
-    val fieldUseUnits = fieldRefUses.distinct.flatMap { methodName =>
-      val methods = cpg.method.fullName(s"$methodName:.*").l
-      if methods.nonEmpty then {
-        methods.head.typeDecl.headOption.flatMap(toFile).flatMap { file =>
-          cuFunction(methodName, file)
+    // Convert fieldRefMethodFqns (List[String] of method FQNs) to CodeUnits
+    val fieldUseUnits = fieldRefMethodFqns.flatMap { methodFqnString =>
+        // methodFqnString is already a resolved FQN of a method.
+        // methodsFromName should be able to find the CPG Method node(s).
+        val cpgMethods = methodsFromName(methodFqnString)
+        cpgMethods.headOption.flatMap { cpgMethod => // Take first if multiple, or handle ambiguity if needed
+            val fileOpt = if (cpgMethod.filename.nonEmpty) toFile(cpgMethod.filename) else cpgMethod.typeDecl.headOption.flatMap(toFile)
+            fileOpt.flatMap { file =>
+                 // The fqnForCu should be the methodFqnString itself, as it's already resolved.
+                 // Or, re-resolve from CPG method to be absolutely sure it's canonical.
+                val fqnForCuFromCpg = resolveMethodName(chopColon(cpgMethod.fullName))
+                cuFunction(fqnForCuFromCpg, file)
+            }
         }
-      } else {
-        logger.debug(s"No method node found for field reference: $methodName")
-        None
-      }
     }
-    logger.debug(s"Converted to ${fieldUseUnits.size} field use code units")
+    logger.debug(s"Converted ${fieldRefMethodFqns.size} field-referencing method FQNs to ${fieldUseUnits.size} CodeUnits.")
 
     val results = (methodUseUnits ++ fieldUseUnits ++ typeUses).distinct
     logger.debug(s"Final results: ${results.size} distinct usage references for '$symbol'")
@@ -772,22 +785,42 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
     val matchingMethods = cpg.method
       .nameNot("<.*>")
       .name(ciPattern)
-      .filter { m =>
-        m.typeDecl.headOption.exists(td => isClassInProject(td.fullName)) // Correct check
+      .filter { m => // A method is relevant if its parent class is in project OR it's a global
+        val isGlobalHeuristic = m.astParent match {
+          case parentNode: NamespaceBlock => true // Directly in namespace (file scope)
+          case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty // File-level TypeDecl
+          case _ => false
+        }
+        m.typeDecl.headOption.exists(td => isClassInProject(td.fullName)) || isGlobalHeuristic
       }
       .flatMap { m =>
-        m.typeDecl.headOption.flatMap(toFile).flatMap { file => // Use flatMap and Option
-          cuFunction(resolveMethodName(chopColon(m.fullName)), file)
+        // For global methods, m.typeDecl might not be useful for file path, use m.filename
+        val fileOpt = if (m.filename.nonEmpty) toFile(m.filename) else m.typeDecl.headOption.flatMap(toFile)
+        fileOpt.flatMap { file =>
+          val isGlobalMethod = m.astParent match {
+            case parentNode: NamespaceBlock => true
+            case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty
+            case _ => false
+          }
+
+          // CPG method fullName is the source of truth. resolveMethodName cleans it up.
+          // CppAnalyzer.parseFqName will handle "filename.ext:funcname" or "pkg.Cls.method" etc.
+          val fqnForCu = resolveMethodName(chopColon(m.fullName))
+          cuFunction(fqnForCu, file)
         }
       }
       .l
 
     // Fields
     val matchingFields = cpg.member
+      .nameNot("<.*>") // Exclude pseudo-members whose own name is e.g. "<init>"
       .name(ciPattern)
       .filter { f =>
-        // f.typeDecl returns a TypeDecl node directly. Check if its class is in the project.
-        isClassInProject(f.typeDecl.fullName)
+        val owningTypeDecl = f.typeDecl // This is the TypeDecl node for the class owning the field
+        // Ensure the owning class itself is not a pseudo-class (e.g. "<operator>")
+        // and that it's considered part of the project.
+        !owningTypeDecl.name.matches("<.*>") &&
+        isClassInProject(owningTypeDecl.fullName)
       }
       .flatMap { f =>
         val td = f.typeDecl // Get the TypeDecl node directly
@@ -827,28 +860,22 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
     if (classMatch.isDefined) return java.util.Optional.of(classMatch.get)
 
-    // Try finding as a method
-    // First, find all raw method nodes matching the resolved symbol name within project classes
-    val rawMethodMatches = cpg.method
-      .filter(m => resolveMethodName(chopColon(m.fullName)) == fqName)
-      .filter(m => m.typeDecl.fullName.headOption.exists(isClassInProject))
-      .l
+    // Try finding as a method using the language-specific methodsFromName
+    val methodCandidates = methodsFromName(fqName)
 
-    // If any method matches the resolved name, pick the first one.
-    // CodeUnit doesn't distinguish overloads, so ambiguity at this level is ignored.
-    if (rawMethodMatches.nonEmpty) {
-      val theMethod = rawMethodMatches.head
-      val methodCodeUnitOpt = theMethod.typeDecl.headOption
-        .flatMap(toFile) // Get Option[ProjectFile]
-        .flatMap(file => cuFunction(fqName, file)) // Call cuFunction
+    if (methodCandidates.nonEmpty) {
+      val theMethod = methodCandidates.head // Assuming methodsFromName returns best/single match first
+      // For global methods, typeDecl might not give the file, use method.filename
+      val fileOpt = if (theMethod.filename.nonEmpty) toFile(theMethod.filename)
+                    else theMethod.typeDecl.headOption.flatMap(toFile)
 
-      // Convert Option[CodeUnit] to java.util.Optional[CodeUnit]
-      // Moved the closing brace after the match statement
-      methodCodeUnitOpt match {
-        case Some(cu) => return java.util.Optional.of(cu) // Add return here
-        case None     => // Fall through if None
+      val codeUnitOpt = fileOpt.flatMap(file => cuFunction(fqName, file))
+
+      codeUnitOpt match {
+        case Some(cu) => return java.util.Optional.of(cu)
+        case None     => // Fall through if no suitable CodeUnit could be created
       }
-    } // Moved closing brace here
+    }
 
     // Try finding as a field (symbol must be className.fieldName)
     val lastDot = fqName.lastIndexOf('.')
@@ -1020,24 +1047,65 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   override def getDeclarationsInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     val declarations = mutable.Set[CodeUnit]()
+    val relPathString = file.toString().replace('\\', '/') // Normalize path separators, use public toString
 
-    val typeDeclsInFile = cpg.typeDecl.filter(td => toFile(td).contains(file)).l
+    // Add class/struct/union declarations and their members/methods
+    cpg.typeDecl
+      .filenameExact(relPathString) // More direct way to find TypeDecls in a file
+      .foreach { td =>
+        cuClass(td.fullName, file).foreach(declarations.add)
 
-    typeDeclsInFile.foreach { td =>
-      // Add class declaration
-      cuClass(td.fullName, file).foreach(declarations.add)
+        td.method.foreach { m =>
+          // Construct FQN for method: typically ClassName.MethodName or Namespace.ClassName.MethodName
+          // resolveMethodName(chopColon(m.fullName)) might be okay if m.fullName is structured well by CPG
+          // For C++, m.fullName could be pkg::Cls::meth:sig. chopColon makes it pkg::Cls::meth. resolveMethodName cleans.
+          val methodFqn = resolveMethodName(chopColon(m.fullName))
+          cuFunction(methodFqn, file).foreach(declarations.add)
+        }
 
-      // Add method declarations
-      td.method.foreach { m =>
-        val resolvedName = resolveMethodName(chopColon(m.fullName))
-        cuFunction(resolvedName, file).foreach(declarations.add)
+        td.member.filterNot(_.name == "outerClass").foreach { f =>
+          // Construct FQN for field: ClassName.FieldName or Namespace.ClassName.FieldName
+          val fieldFqn = td.fullName + "." + f.name
+          cuField(fieldFqn, file).foreach(declarations.add)
+        }
       }
 
-      // Add field declarations, excluding compiler-generated outer class references
-      td.member.filterNot(_.name == "outerClass").foreach { f =>
-        cuField(td.fullName + "." + f.name, file).foreach(declarations.add)
+    // Add global functions/methods defined in this file
+    cpg.method
+      .filenameExact(relPathString)
+      .filter { m => // Filter for global methods based on AST parent
+        m.astParent match {
+          case parentNode: NamespaceBlock => true // Directly in namespace (file scope)
+          case parentNode: TypeDecl => parentNode.method.isEmpty && parentNode.member.isEmpty // File-level TypeDecl
+          case _ => false
+        }
       }
-    }
+      .foreach { m =>
+        // Construct FQN for global function.
+        // e.g., for file "utils.cpp", function "do_work", FQN might be "utils_cpp.do_work"
+        // This requires knowledge of how parseFqName and cuFunction expect global FQNs.
+        // A common pattern for CodeUnit is pkgName = "filename_ext", shortName = "funcName"
+        // Since file.relPath is private, we need to reconstruct filename parts from file.toString() or similar
+        // Assuming file.toString() gives the relative path like "dir/filename.ext"
+        val pathString = file.toString() // e.g., "geometry.cpp" or "subdir/geometry.cpp"
+        val fileName = Path.of(pathString).getFileName.toString // e.g., "geometry.cpp"
+
+        val fileNameNoExt = fileName.lastIndexOf('.') match {
+          case i if i > 0 => fileName.substring(0, i)
+          case _ => fileName
+        }
+        val fileExt = fileName.lastIndexOf('.') match {
+          case i if i > 0 && i < fileName.length - 1 =>
+            fileName.substring(i + 1)
+          case _ => ""
+        }
+        // Construct FQN based on the CPG method's full name, resolved.
+        // CppAnalyzer.parseFqName is responsible for parsing this correctly for globals.
+        // For a global function in "geometry.cpp" named "global_func", m.fullName might be "geometry.cpp:global_func:void()"
+        // resolveMethodName(chopColon(m.fullName)) would yield "geometry.cpp:global_func"
+        val fqnForCu = resolveMethodName(chopColon(m.fullName))
+        cuFunction(fqnForCu, file).foreach(declarations.add)
+      }
 
     declarations.toSet.asJava
   }

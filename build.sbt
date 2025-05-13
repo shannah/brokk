@@ -17,6 +17,7 @@ javacOptions ++= Seq(
   "-g:source,lines,vars"   // Generate full debugging information
 )
 scalacOptions ++= Seq(
+  "-Xfatal-warnings",
   "-print-lines",
   "-encoding",
   "UTF-8",
