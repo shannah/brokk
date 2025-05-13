@@ -1035,7 +1035,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
       // Add field declarations, excluding compiler-generated outer class references
       td.member.filterNot(_.name == "outerClass").foreach { f =>
-        cuField(td.name + "." + f.name, file).foreach(declarations.add)
+        cuField(td.fullName + "." + f.name, file).foreach(declarations.add)
       }
     }
 

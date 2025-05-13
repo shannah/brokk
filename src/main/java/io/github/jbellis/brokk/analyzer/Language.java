@@ -70,6 +70,22 @@ public interface Language {
         }
     };
 
+    Language C_CPP = new Language() {
+        private final List<String> extensions = List.of("c", "h", "cpp", "hpp", "cc", "hh", "cxx", "hxx");
+        @Override public List<String> getExtensions() { return extensions; }
+        @Override public String name() { return "C_CPP"; }
+        @Override public String toString() { return name(); }
+        @Override public IAnalyzer createAnalyzer(Project project, Set<Path> excluded) {
+            var excludedStrings = excluded.stream().map(Path::toString).collect(Collectors.toSet());
+            var analyzer = new CppAnalyzer(project.getRoot(), excludedStrings);
+            Path analyzerPath = project.getRoot().resolve(".brokk").resolve("joern_c_cpp.cpg"); // Or a suitable name
+            analyzer.writeCpg(analyzerPath);
+            return analyzer;
+        }
+        @Override
+        public boolean isCpg() { return true; }
+    };
+
     Language NONE = new Language() {
         private final List<String> extensions = Collections.emptyList();
         @Override public List<String> getExtensions() { return extensions; }
@@ -86,6 +102,7 @@ public interface Language {
                                            JAVA,
                                            JAVASCRIPT,
                                            PYTHON,
+                                           C_CPP,
                                            NONE);
 
     /**
