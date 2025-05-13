@@ -281,38 +281,48 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.NONE;
         servicePanel.add(new JLabel("LLM Proxy:"), gbc);
 
-        brokkProxyRadio = new JRadioButton("Brokk");
-        localhostProxyRadio = new JRadioButton("Localhost");
-        var proxyGroup = new ButtonGroup();
-        proxyGroup.add(brokkProxyRadio);
-        proxyGroup.add(localhostProxyRadio);
-
-        if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
-            brokkProxyRadio.setSelected(true);
+        if (Project.getProxySetting() == Project.LlmProxySetting.STAGING) {
+            var proxyInfoLabel = new JLabel("Proxy has been set to STAGING in ~/.brokk/brokk.properties. Changing it back must be done in the same place.");
+            proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+            gbc.weightx = 1.0;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            servicePanel.add(proxyInfoLabel, gbc);
         } else {
-            localhostProxyRadio.setSelected(true);
+            brokkProxyRadio = new JRadioButton("Brokk");
+            localhostProxyRadio = new JRadioButton("Localhost");
+            var proxyGroup = new ButtonGroup();
+            proxyGroup.add(brokkProxyRadio);
+            proxyGroup.add(localhostProxyRadio);
+
+            if (Project.getProxySetting() == Project.LlmProxySetting.BROKK) {
+                brokkProxyRadio.setSelected(true);
+            } else {
+                localhostProxyRadio.setSelected(true);
+            }
+
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+            gbc.weightx = 1.0;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            servicePanel.add(brokkProxyRadio, gbc);
+
+            gbc.gridy = row++;
+            servicePanel.add(localhostProxyRadio, gbc);
+
+            var proxyInfoLabel = new JLabel("Brokk will look for a litellm proxy on localhost:4000");
+            proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
+            gbc.insets = new Insets(0, 25, 2, 5); // Indent
+            gbc.gridy = row++;
+            servicePanel.add(proxyInfoLabel, gbc);
+
+            var restartLabel = new JLabel("Restart required after changing proxy settings");
+            restartLabel.setFont(restartLabel.getFont().deriveFont(Font.ITALIC));
+            gbc.gridy = row++;
+            servicePanel.add(restartLabel, gbc);
+            gbc.insets = new Insets(2, 5, 2, 5); // Reset insets
         }
-
-        gbc.gridx = 1;
-        gbc.gridy = row++;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        servicePanel.add(brokkProxyRadio, gbc);
-
-        gbc.gridy = row++;
-        servicePanel.add(localhostProxyRadio, gbc);
-
-        var proxyInfoLabel = new JLabel("Brokk will look for a litellm proxy on localhost:4000");
-        proxyInfoLabel.setFont(proxyInfoLabel.getFont().deriveFont(Font.ITALIC));
-        gbc.insets = new Insets(0, 25, 2, 5); // Indent
-        gbc.gridy = row++;
-        servicePanel.add(proxyInfoLabel, gbc);
-
-        var restartLabel = new JLabel("Restart required after changing proxy settings");
-        restartLabel.setFont(restartLabel.getFont().deriveFont(Font.ITALIC));
-        gbc.gridy = row++;
-        servicePanel.add(restartLabel, gbc);
-        gbc.insets = new Insets(2, 5, 2, 5); // Reset insets
 
         // Add vertical glue to push content up
         gbc.gridy = row;
@@ -1087,13 +1097,14 @@ public class SettingsDialog extends JDialog {
             // TODO: Need a way to notify the main application (e.g., Quick Context menu) about changes
         }
 
-
         // -- Apply LLM Proxy Setting --
-        Project.LlmProxySetting proxySetting = brokkProxyRadio.isSelected()
-                                               ? Project.LlmProxySetting.BROKK
-                                               : Project.LlmProxySetting.LOCALHOST;
-        Project.setLlmProxySetting(proxySetting);
-        logger.debug("Applied LLM Proxy Setting: {}", proxySetting);
+        if (brokkProxyRadio != null && localhostProxyRadio != null) {
+            Project.LlmProxySetting proxySetting = brokkProxyRadio.isSelected()
+                                                   ? Project.LlmProxySetting.BROKK
+                                                   : Project.LlmProxySetting.LOCALHOST;
+            Project.setLlmProxySetting(proxySetting);
+            logger.debug("Applied LLM Proxy Setting: {}", proxySetting);
+        }
 
 
         // -- Apply Theme --

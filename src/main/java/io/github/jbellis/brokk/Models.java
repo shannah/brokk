@@ -109,7 +109,7 @@ public final class Models {
             policy = Project.DataRetentionPolicy.MINIMAL;
         }
 
-        String proxyUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project setting
+        String proxyUrl = Project.getProxyUrl(); // Get full URL (including scheme) from project setting
         logger.info("Initializing models using policy: {} and proxy: {}", policy, proxyUrl);
         // isLowBalance is now an instance field, set within fetchAvailableModels
         try {
@@ -220,8 +220,8 @@ public final class Models {
      * @throws IOException If network or parsing errors occur.
      */
     private void fetchAvailableModels(Project.DataRetentionPolicy policy) throws IOException {
-        String baseUrl = Project.getLlmProxy(); // Get full URL (including scheme) from project settings
-        boolean isBrokk = Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK;
+        String baseUrl = Project.getProxyUrl(); // Get full URL (including scheme) from project settings
+        boolean isBrokk = Project.getProxySetting() == Project.LlmProxySetting.BROKK;
         this.isFreeTierOnly = false; // Reset/default to false before checking
 
         // Pick correct Authorization header for model/info
@@ -455,7 +455,7 @@ public final class Models {
 
         // We connect to LiteLLM using an OpenAiStreamingChatModel, specifying baseUrl
         // placeholder, LiteLLM manages actual keys
-        String baseUrl = Project.getLlmProxy();
+        String baseUrl = Project.getProxyUrl();
         var builder = OpenAiStreamingChatModel.builder()
                 .logRequests(true)
                 .logResponses(true)
@@ -464,7 +464,7 @@ public final class Models {
                 .baseUrl(baseUrl)
                 .timeout(Duration.ofMinutes(3)); // default 60s is not enough
 
-            if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+            if (Project.getProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
                 builder = builder
                         .apiKey(kp.token)
@@ -735,11 +735,11 @@ public final class Models {
             RequestBody requestBody = builder.build();
 
             // Determine endpoint and authentication
-            String proxyUrl = Project.getLlmProxy();
+            String proxyUrl = Project.getProxyUrl();
             String endpoint = proxyUrl + "/audio/transcriptions";
 
             var authHeader = "Bearer dummy-key"; // Default for non-Brokk
-            if (Project.getLlmProxySetting() == Project.LlmProxySetting.BROKK) {
+            if (Project.getProxySetting() == Project.LlmProxySetting.BROKK) {
                 var kp = parseKey(Project.getBrokkKey());
                 authHeader = "Bearer " + kp.token;
             }

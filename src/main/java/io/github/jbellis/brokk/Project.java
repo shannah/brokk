@@ -62,14 +62,14 @@ public class Project implements IProject, AutoCloseable {
     private static final String LLM_PROXY_KEY = "llmProxyUrl";
 
     // New enum to represent just which proxy to use
-    public enum LlmProxySetting {BROKK, LOCALHOST}
+    public enum LlmProxySetting {BROKK, LOCALHOST, STAGING}
 
     private static final String LLM_PROXY_SETTING_KEY = "llmProxySetting";
 
     /**
      * Gets the stored LLM proxy setting (BROKK or LOCALHOST).
      */
-    public static LlmProxySetting getLlmProxySetting() {
+    public static LlmProxySetting getProxySetting() {
         var props = loadGlobalProperties();
         String val = props.getProperty(LLM_PROXY_SETTING_KEY, LlmProxySetting.BROKK.name());
         try {
@@ -91,6 +91,7 @@ public class Project implements IProject, AutoCloseable {
     // The actual endpoint URLs for each proxy
     public static final String BROKK_PROXY_URL = "https://proxy.brokk.ai";
     public static final String LOCALHOST_PROXY_URL = "http://localhost:4000";
+    public static final String STAGING_PROXY_URL = "https://staging.brokk.ai";
 
     public Project(Path root) {
         this.repo = GitRepo.hasGitRepo(root) ? new GitRepo(root) : new LocalFileRepo(root);
@@ -1047,11 +1048,13 @@ public class Project implements IProject, AutoCloseable {
      *
      * @return The configured proxy URL, defaulting to DEFAULT_LLM_PROXY if not set or blank.
      */
-    public static String getLlmProxy() {
+    public static String getProxyUrl() {
         // Return the actual endpoint URL based on the enum setting
-        return getLlmProxySetting() == LlmProxySetting.BROKK
-               ? BROKK_PROXY_URL
-               : LOCALHOST_PROXY_URL;
+        return switch (getProxySetting()) {
+            case BROKK -> BROKK_PROXY_URL;
+            case LOCALHOST -> LOCALHOST_PROXY_URL;
+            case STAGING -> STAGING_PROXY_URL;
+        };
     }
 
     /**

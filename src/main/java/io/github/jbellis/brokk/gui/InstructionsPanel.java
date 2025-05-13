@@ -36,11 +36,8 @@ import java.awt.event.KeyEvent;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 import java.util.function.BiConsumer;
-import java.util.stream.Collectors;
 import java.util.Comparator;
 
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
@@ -1048,7 +1045,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * if the balance is low.
      */
     public void checkBalanceAndNotify() {
-        if (Project.getLlmProxySetting() != Project.LlmProxySetting.BROKK) {
+        if (Project.getProxySetting() != Project.LlmProxySetting.BROKK) {
             return; // Only check balance when using Brokk proxy
         }
 
