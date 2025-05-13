@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -162,6 +163,9 @@ public final class TreeSitterAnalyzerTest {
 
     /* -------------------- C# -------------------- */
 
+    private static final java.util.function.Function<String, String> normalizeSource =
+        (String s) -> s.lines().map(String::strip).collect(Collectors.joining("\n"));
+
     @Test
     void testCSharpInitializationAndSkeletons() {
         TestProject project = createTestProject("testcode-cs", io.github.jbellis.brokk.analyzer.Language.C_SHARP);
@@ -190,6 +194,7 @@ public final class TreeSitterAnalyzerTest {
           public int MyField;
           public string MyProperty { get; set; }
           public void MethodA() { … }
+          public void MethodA(int param) { … }
           public A() { … }
         }
         """.stripIndent();
@@ -253,6 +258,58 @@ public final class TreeSitterAnalyzerTest {
 
         Set<CodeUnit> expectedClassesNested = Set.of(myNestedClass, myNestedInterface, outerClass, anotherClass);
         assertEquals(expectedClassesNested, analyzer.getDeclarationsInFile(nestedNamespacesFile), "getClassesInFile mismatch for NestedNamespaces.cs");
+    }
+
+    @Test
+    void testCSharpGetMethodSource() throws IOException {
+        TestProject project = createTestProject("testcode-cs", Language.C_SHARP);
+        CSharpAnalyzer analyzer = new CSharpAnalyzer(project);
+        assertFalse(analyzer.isEmpty());
+
+        // Case 1: Single method (Constructor in this case, as it's simple and unique)
+        // FQName for constructor of class A in TestNamespace is "TestNamespace.A.<init>"
+        Optional<String> constructorSourceOpt = analyzer.getMethodSource("TestNamespace.A.<init>");
+        assertTrue(constructorSourceOpt.isPresent(), "Source for constructor A.<init> should be present.");
+        String expectedConstructorSource = """
+        public A()
+        {
+            MyField = 0;
+            MyProperty = "default";
+        }""";
+        assertEquals(normalizeSource.apply(expectedConstructorSource), normalizeSource.apply(constructorSourceOpt.get()), "Constructor A.<init> source mismatch.");
+
+        // Case 2: Multiple overloads for TestNamespace.A.MethodA
+        Optional<String> methodASourcesOpt = analyzer.getMethodSource("TestNamespace.A.MethodA");
+        assertTrue(methodASourcesOpt.isPresent(), "Sources for TestNamespace.A.MethodA overloads should be present.");
+
+        String expectedMethodAOverload1Source = """
+        public void MethodA()
+        {
+            // Method body
+        }""";
+        String expectedMethodAOverload2Source = """
+        public void MethodA(int param)
+        {
+            // Overloaded method body
+            int x = param + 1;
+        }""";
+        String expectedCombinedMethodASource =
+            normalizeSource.apply(expectedMethodAOverload1Source) +
+            "\n\n" +
+            normalizeSource.apply(expectedMethodAOverload2Source);
+
+        assertEquals(expectedCombinedMethodASource, normalizeSource.apply(methodASourcesOpt.get()), "Combined sources for TestNamespace.A.MethodA mismatch.");
+
+        // Case 3: Non-existent method
+        Optional<String> nonExistentSourceOpt = analyzer.getMethodSource("TestNamespace.A.NonExistentMethod");
+        assertFalse(nonExistentSourceOpt.isPresent(), "Source for non-existent method should be empty.");
+
+        // Case 4: Method in a nested namespace class
+        Optional<String> nestedMethodSourceOpt = analyzer.getMethodSource("Outer.Inner.MyNestedClass.NestedMethod");
+        assertTrue(nestedMethodSourceOpt.isPresent(), "Source for Outer.Inner.MyNestedClass.NestedMethod should be present.");
+        String expectedNestedMethodSource = """
+        public void NestedMethod() {}"""; // This is the exact content from NestedNamespaces.cs
+        assertEquals(normalizeSource.apply(expectedNestedMethodSource), normalizeSource.apply(nestedMethodSourceOpt.get()), "NestedMethod source mismatch.");
     }
 
     /* -------------------- JavaScript / JSX -------------------- */

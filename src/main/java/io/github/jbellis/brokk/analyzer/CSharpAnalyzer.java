@@ -74,19 +74,18 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
                     String finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
                     yield CodeUnit.cls(file, packageName, finalShortName);
                 }
-                case "function.definition" -> {
-                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                case "function.definition" -> { // simpleName is method name, classChain is FQ short name of owning class
+                    String finalShortName = classChain + "." + simpleName;
                     yield CodeUnit.fn(file, packageName, finalShortName);
                 }
-                case "constructor.definition" -> { // simpleName is the class name itself
-                    String finalShortName = (classChain.isEmpty() ? "" : classChain + "$") + simpleName + ".<init>";
+                case "constructor.definition" -> { // simpleName is class name, classChain is FQ short name of owning class
+                    String finalShortName = classChain + ".<init>";
                     yield CodeUnit.fn(file, packageName, finalShortName);
                 }
-                case "field.definition" -> { // Covers fields and properties
-                    String finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                case "field.definition" -> { // simpleName is field name, classChain is FQ short name of owning class
+                    String finalShortName = classChain + "." + simpleName;
                     yield CodeUnit.field(file, packageName, finalShortName);
                 }
-                // Ignore other captures
                 default -> {
                     log.warn("Unhandled capture name in CSharpAnalyzer.createCodeUnit: '{}' for simple name '{}', package '{}', classChain '{}' in file {}. Returning null.",
                              captureName, simpleName, packageName, classChain, file);

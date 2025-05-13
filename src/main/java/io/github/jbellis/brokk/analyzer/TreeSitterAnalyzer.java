@@ -34,7 +34,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     private final TSQuery query;
     final Map<ProjectFile, List<CodeUnit>> topLevelDeclarations = new ConcurrentHashMap<>(); // package-private for testing
     final Map<CodeUnit, List<CodeUnit>> childrenByParent = new ConcurrentHashMap<>(); // package-private for testing
-    final Map<CodeUnit, String> signatures = new ConcurrentHashMap<>(); // package-private for testing
+    final Map<CodeUnit, List<String>> signatures = new ConcurrentHashMap<>(); // package-private for testing
     private final Map<CodeUnit, List<Range>> sourceRanges = new ConcurrentHashMap<>();
     private final IProject project;
     protected final Set<String> normalizedExcludedFiles;
@@ -71,7 +71,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
     private record FileAnalysisResult(List<CodeUnit> topLevelCUs,
                                       Map<CodeUnit, List<CodeUnit>> children,
-                                      Map<CodeUnit, String> signatures,
+                                      Map<CodeUnit, List<String>> signatures,
                                       Map<CodeUnit, List<Range>> sourceRanges) {}
 
     /* ---------- constructor ---------- */
@@ -152,7 +152,16 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                                 return Collections.unmodifiableList(combined);
                             }));
 
-                            signatures.putAll(analysisResult.signatures()); // Signatures are final strings
+                            analysisResult.signatures().forEach((cu, newSignaturesList) -> signatures.compute(cu, (key, existingSignaturesList) -> {
+                                if (existingSignaturesList == null) {
+                                    return newSignaturesList; // Already unmodifiable from result
+                                }
+                                List<String> combined = new ArrayList<>(existingSignaturesList);
+                                combined.addAll(newSignaturesList);
+                                // Assuming order from newSignaturesList is appropriate to append.
+                                // If global ordering or deduplication of signatures for a CU is needed, add here.
+                                return Collections.unmodifiableList(combined);
+                            }));
 
                             analysisResult.sourceRanges().forEach((cu, newRangesList) -> sourceRanges.compute(cu, (key, existingRangesList) -> {
                                 if (existingRangesList == null) {
@@ -297,20 +306,23 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     }
 
     private void reconstructSkeletonRecursive(CodeUnit cu, String indent, StringBuilder sb) {
-        String signature = signatures.get(cu);
-        if (signature == null) {
-            log.warn("Missing signature for CU: {}. Skipping in skeleton reconstruction.", cu);
+        List<String> sigList = signatures.get(cu);
+        if (sigList == null || sigList.isEmpty()) {
+            log.warn("Missing or empty signature list for CU: {}. Skipping in skeleton reconstruction.", cu);
             return;
         }
 
-        // Apply indent to each line of the signature
-        String[] signatureLines = signature.split("\n", -1); // Use -1 limit to keep trailing empty strings if necessary
-        for (String line : signatureLines) {
-            sb.append(indent).append(line).append('\n');
+        for (String individualFullSignature : sigList) {
+            if (individualFullSignature == null || individualFullSignature.isBlank()) {
+                log.warn("Encountered null or blank signature in list for CU: {}. Skipping this signature.", cu);
+                continue;
+            }
+            // Apply indent to each line of the current signature
+            String[] signatureLines = individualFullSignature.split("\n", -1); // Use -1 limit
+            for (String line : signatureLines) {
+                sb.append(indent).append(line).append('\n');
+            }
         }
-        // If signature itself was empty or only newlines, the above loop might not add a final newline.
-        // However, signatures are expected to have content. If signature ends with \n, split might produce an empty string at the end.
-        // The logic implies signature is one or more content lines, each terminated by \n by the loop.
 
         List<CodeUnit> kids = childrenByParent.getOrDefault(cu, List.of());
         // Only add children and closer if the CU can have them (e.g. class, or function that can nest)
@@ -366,30 +378,42 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
     @Override
     public Optional<String> getMethodSource(String fqName) {
-        return getDefinition(fqName)
-                .filter(CodeUnit::isFunction)
-                .flatMap(cu -> {
-                    var ranges = sourceRanges.get(cu);
-                    if (ranges == null || ranges.isEmpty()) {
-                        return Optional.empty();
-                    }
+        return getDefinition(fqName) // Finds the single CodeUnit representing this FQN (due to CodeUnit equality for overloads)
+            .filter(CodeUnit::isFunction)
+            .flatMap(cu -> {
+                List<Range> rangesForOverloads = sourceRanges.get(cu);
+                if (rangesForOverloads == null || rangesForOverloads.isEmpty()) {
+                    log.warn("No source ranges found for CU {} (fqName {}) although definition was found.", cu, fqName);
+                    return Optional.empty();
+                }
 
-                    String src = null;
-                    try {
-                        src = cu.source().read();
-                    } catch (IOException e) {
-                        return Optional.empty();
+                String fileContent;
+                try {
+                    fileContent = cu.source().read();
+                } catch (IOException e) {
+                    log.warn("Could not read source for CU {} (fqName {}): {}", cu, fqName, e.getMessage());
+                    return Optional.empty();
+                }
+
+                List<String> individualMethodSources = new ArrayList<>();
+                for (Range range : rangesForOverloads) {
+                    // Ensure range is within fileContent bounds, though it should be by construction.
+                    int startByte = Math.max(0, range.startByte());
+                    int endByte = Math.min(fileContent.length(), range.endByte());
+                    if (startByte < endByte) {
+                        individualMethodSources.add(fileContent.substring(startByte, endByte));
+                    } else {
+                        log.warn("Invalid range [{}, {}] for CU {} (fqName {}) in file of length {}. Skipping this range.",
+                                 range.startByte(), range.endByte(), cu, fqName, fileContent.length());
                     }
-                    // For methods/functions, similar to classes, expect one primary definition range,
-                    // especially since JS/Python don't have overloads in the same way C#/Java do
-                    // that would result in multiple ranges for the *same* FQ name.
-                    // If `ranges` were to capture multiple distinct parts of a single logical entity
-                    // (e.g. C# partial methods if they shared a CU FQ name), concatenation might be desired.
-                    // However, for the current scenarios and to fix erroneous duplication (e.g. export + plain),
-                    // taking the first range is safer.
-                    var range = ranges.getFirst();
-                    return Optional.of(src.substring(range.startByte(), range.endByte()));
-                });
+                }
+
+                if (individualMethodSources.isEmpty()) {
+                    log.warn("After processing ranges, no valid method sources found for CU {} (fqName {}).", cu, fqName);
+                    return Optional.empty();
+                }
+                return Optional.of(String.join("\n\n", individualMethodSources));
+            });
     }
 
 
@@ -487,7 +511,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
         List<CodeUnit> localTopLevelCUs = new ArrayList<>();
         Map<CodeUnit, List<CodeUnit>> localChildren = new HashMap<>();
-        Map<CodeUnit, String> localSignatures = new HashMap<>();
+        Map<CodeUnit, List<String>> localSignatures = new HashMap<>();
         Map<CodeUnit, List<Range>> localSourceRanges = new HashMap<>();
         Map<String, CodeUnit> localCuByFqName = new HashMap<>(); // For parent lookup within the file
 
@@ -627,32 +651,51 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             }
 
             if (signature == null || signature.isBlank()) {
-                log.warn("buildSignatureString returned empty/null for node {} ({})", simpleName, primaryCaptureName);
+                // buildSignatureString might legitimately return blank for some nodes that don't form part of a textual skeleton but create a CU.
+                // However, if it's blank, it shouldn't be added to signatures map.
+                log.debug("buildSignatureString returned empty/null for node {} ({}), simpleName {}. This CU might not have a direct textual signature.", node.getType(), primaryCaptureName, simpleName);
                 continue;
             }
             
             // Handle potential duplicates (e.g. JS export and direct lexical declaration)
-            // Prefer exported version if a CU already exists.
-            CodeUnit existingCU = localCuByFqName.get(cu.fqName());
-            if (existingCU != null) {
-                String existingSignature = localSignatures.get(existingCU);
+            // This logic might need adjustment if a single CodeUnit (due to fqName equality)
+            // can arise from both an exported and non-exported declaration, and we are now
+            // collecting multiple signatures. For now, we assume `computeIfAbsent` for signatures handles accumulation,
+            // and this "export" preference applies if different `CodeUnit` instances (which are not `equals()`)
+            // somehow map to the same `fqName` in `localCuByFqName` before `cu` itself is unified.
+            // If overloads result in CodeUnits that are `equals()`, this block is less relevant for them.
+            CodeUnit existingCUforKeyLookup = localCuByFqName.get(cu.fqName());
+            if (existingCUforKeyLookup != null && !existingCUforKeyLookup.equals(cu)) {
+                // This case implies two distinct CodeUnit objects map to the same FQName.
+                // The export preference logic might apply here.
+                // However, if `cu` is for an overload of `existingCUforKeyLookup` and they are `equals()`,
+                // then this block should ideally not be the primary path for handling overload signatures.
+                // The current approach of `localSignatures.computeIfAbsent` will handle accumulation for equal CUs.
+                // This existing block seems more for replacing a less specific CU with a more specific one (e.g. exported).
+                // For now, let's assume this logic remains for such non-overload "duplicate FQName" cases.
+                // If it causes issues with overloads, it needs refinement.
+                List<String> existingSignatures = localSignatures.get(existingCUforKeyLookup); // Existing signatures for the *other* CU instance
                 boolean newIsExported = signature.trim().startsWith("export");
-                boolean oldIsExported = (existingSignature != null) && existingSignature.trim().startsWith("export");
+                boolean oldIsExported = (existingSignatures != null && !existingSignatures.isEmpty()) && existingSignatures.getFirst().trim().startsWith("export"); // Check first existing
 
                 if (newIsExported && !oldIsExported) {
-                    log.warn("Replacing non-exported CU/signature for {} with EXPORTED version.", cu.fqName());
-                    // Update will happen below. If logic needs explicit removal of old from localChildren's values, add here.
+                    log.warn("Replacing non-exported CU/signature list for {} with new EXPORTED signature.", cu.fqName());
+                    localSignatures.remove(existingCUforKeyLookup); // Remove old CU's signatures
+                    // The new signature for `cu` will be added below.
                 } else if (!newIsExported && oldIsExported) {
-                    log.trace("Keeping existing EXPORTED CU/signature for {}. Discarding new non-exported.", cu.fqName());
-                    continue; // Skip adding/processing this non-exported duplicate
+                    log.trace("Keeping existing EXPORTED CU/signature list for {}. Discarding new non-exported signature for current CU.", cu.fqName());
+                    continue; // Skip adding this new signature if an exported one exists for a CU with the same FQName
                 } else {
-                    log.warn("Duplicate CU processing for {}. Signatures might differ. Keeping first encountered or based on export status.", cu.fqName());
-                    //Potentially skip if signatures are identical or other tie-breaking logic. For now, allow overwrite if not export-related.
+                    log.warn("Duplicate CU FQName {} (distinct instances). New signature will be added. Review if this is expected.", cu.fqName());
                 }
             }
 
-
-            localSignatures.put(cu, signature);
+            if (signature != null && !signature.isBlank()) { // Only add non-blank signatures
+                List<String> sigsForCu = localSignatures.computeIfAbsent(cu, k -> new ArrayList<>());
+                if (!sigsForCu.contains(signature)) { // Avoid duplicate signature strings for the same CU
+                    sigsForCu.add(signature);
+                }
+            }
             var currentRange = new Range(node.getStartByte(), node.getEndByte(),
                                          node.getStartPoint().getRow(), node.getEndPoint().getRow());
             localSourceRanges.computeIfAbsent(cu, k -> new ArrayList<>()).add(currentRange);
@@ -736,62 +779,67 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
      */
     private String buildSignatureString(TSNode definitionNode, String simpleName, String src, String primaryCaptureName) {
         List<String> signatureLines = new ArrayList<>();
-        // String baseIndent = computeIndentation(definitionNode, src); // Original indentation is not prepended to stored signature.
-
-        TSNode effectiveDefinitionNode = definitionNode; // Default to the given node
-
-        // Handle Python's decorated_definition structure specifically for decorators
         var profile = getLanguageSyntaxProfile();
-        // Handle Python's decorated_definition structure specifically for decorators
-        // TODO: Generalize this further if other languages have similar compound decorator structures.
-        if ("decorated_definition".equals(definitionNode.getType()) && project.getAnalyzerLanguage() == Language.PYTHON) {
+
+        TSNode nodeForContent = definitionNode; // Node used for extracting the main signature text
+        // TSNode nodeForContext = definitionNode; // Node for contextual things like overall export (kept as definitionNode for now)
+
+        // 1. Handle language-specific structural unwrapping (e.g., export statements, Python's decorated_definition)
+        if (project.getAnalyzerLanguage() == Language.JAVASCRIPT && "export_statement".equals(definitionNode.getType())) {
+            TSNode declarationInExport = definitionNode.getChildByFieldName("declaration");
+            if (declarationInExport != null && !declarationInExport.isNull()) {
+                nodeForContent = declarationInExport;
+            }
+        } else if (project.getAnalyzerLanguage() == Language.PYTHON && "decorated_definition".equals(definitionNode.getType())) {
+            // Python's decorated_definition: decorators and actual def are children.
+            // Process decorators directly here and identify the actual content node.
             for (int i = 0; i < definitionNode.getNamedChildCount(); i++) {
                 TSNode child = definitionNode.getNamedChild(i);
                 if (profile.decoratorNodeTypes().contains(child.getType())) {
                     signatureLines.add(textSlice(child, src).stripLeading());
                 } else if (profile.functionLikeNodeTypes().contains(child.getType()) || profile.classLikeNodeTypes().contains(child.getType())) {
-                    // In Python, the 'definition' field of a decorated_definition holds the actual func/class def.
-                    // Check if the query gave us decorated_definition but named a function_definition inside it.
-                    // The primaryCaptureName would be function.definition in that case.
-                    // Use the actual function_definition node for building the main signature part.
-                    effectiveDefinitionNode = child; 
+                    nodeForContent = child; // This will be used for the main signature body
                 }
             }
-            // If the @function.name capture was from the inner function_definition, simpleName is already correct.
-            // effectiveDefinitionNode is now set to the actual function_definition.
-        } else {
-            // General decorator handling for other languages (or non-decorated Python items)
-            List<TSNode> decorators = getPrecedingDecorators(definitionNode);
+        }
+
+        // 2. Handle decorators for languages where they precede the definition
+        //    (Skip if Python already handled its specific decorator structure)
+        if (!(project.getAnalyzerLanguage() == Language.PYTHON && "decorated_definition".equals(definitionNode.getType()))) {
+            List<TSNode> decorators = getPrecedingDecorators(nodeForContent); // Decorators precede the actual content node
             for (TSNode decoratorNode : decorators) {
                 signatureLines.add(textSlice(decoratorNode, src).stripLeading());
             }
         }
 
+        // 3. Determine export/visibility prefix based on the actual content node and its context
+        //    (e.g. if nodeForContent's parent is an export statement)
+        String exportPrefix = getVisibilityPrefix(nodeForContent, src);
+
+        // 4. Build main signature based on type, using nodeForContent
         SkeletonType skeletonType = getSkeletonTypeForCapture(primaryCaptureName);
         switch (skeletonType) {
             case CLASS_LIKE: {
-                String exportPrefix = getVisibilityPrefix(effectiveDefinitionNode, src);
-                TSNode bodyNode = effectiveDefinitionNode.getChildByFieldName(profile.bodyFieldName());
+                TSNode bodyNode = nodeForContent.getChildByFieldName(profile.bodyFieldName());
                 String classSignatureText;
                 if (bodyNode != null && !bodyNode.isNull()) {
-                    classSignatureText = textSlice(effectiveDefinitionNode.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
+                    classSignatureText = textSlice(nodeForContent.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
                 } else {
-                    // If bodyNode is not present, take the text up to the end of the effectiveDefinitionNode
-                    classSignatureText = textSlice(effectiveDefinitionNode.getStartByte(), effectiveDefinitionNode.getEndByte(), src).stripTrailing();
-                    // Then, perform standard cleanup of trailing braces or semicolons
+                    classSignatureText = textSlice(nodeForContent.getStartByte(), nodeForContent.getEndByte(), src).stripTrailing();
                     if (classSignatureText.endsWith("{")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                     else if (classSignatureText.endsWith(";")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                 }
-                String headerLine = assembleClassSignature(effectiveDefinitionNode, src, exportPrefix, classSignatureText, "");
+                String headerLine = assembleClassSignature(nodeForContent, src, exportPrefix, classSignatureText, "");
                 if (headerLine != null && !headerLine.isBlank()) signatureLines.add(headerLine);
                 break;
             }
             case FUNCTION_LIKE:
-                buildFunctionSkeleton(effectiveDefinitionNode, Optional.of(simpleName), src, "", signatureLines);
+                // Pass determined exportPrefix to buildFunctionSkeleton
+                buildFunctionSkeleton(nodeForContent, Optional.of(simpleName), src, "", signatureLines, exportPrefix);
                 break;
             case FIELD_LIKE: {
-                String exportPrefix = getVisibilityPrefix(definitionNode, src); // definitionNode is correct here, not effectiveDefinitionNode
-                signatureLines.add(exportPrefix + textSlice(definitionNode, src).stripLeading().strip());
+                // The signature is exportPrefix + text_of_field_declaration (from nodeForContent)
+                signatureLines.add(exportPrefix + textSlice(nodeForContent, src).stripLeading().strip());
                 break;
             }
             case UNSUPPORTED:
@@ -880,7 +928,16 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         return ""; // Default implementation returns an empty string
     }
 
-    protected void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines) {
+    /**
+     * Builds the function signature lines.
+     * @param funcNode The TSNode for the function definition.
+     * @param providedNameOpt Optional pre-determined name (e.g. from a specific capture).
+     * @param src Source code.
+     * @param indent Indentation string.
+     * @param lines List to add signature lines to.
+     * @param outerExportPrefix Pre-determined export prefix from the broader context (e.g. if function is in an export statement).
+     */
+    protected void buildFunctionSkeleton(TSNode funcNode, Optional<String> providedNameOpt, String src, String indent, List<String> lines, String outerExportPrefix) {
         var profile = getLanguageSyntaxProfile();
         String functionName;
         TSNode nameNode = funcNode.getChildByFieldName(profile.identifierFieldName());
@@ -931,18 +988,18 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                      profile.bodyFieldName(), funcNode.getType(), functionName);
         }
 
-
-        String exportPrefix = getVisibilityPrefix(funcNode, src);
+        // Use the passed-in outerExportPrefix. If it's empty, then allow getVisibilityPrefix to check funcNode itself for local modifiers.
+        String exportPrefix = (outerExportPrefix != null && !outerExportPrefix.isEmpty()) ? outerExportPrefix : getVisibilityPrefix(funcNode, src);
         String asyncPrefix = "";
-        TSNode firstChildOfFunc = funcNode.getChild(0); 
+        TSNode firstChildOfFunc = funcNode.getChild(0);
         String asyncKWType = profile.asyncKeywordNodeType();
         if (!asyncKWType.isEmpty() && firstChildOfFunc != null && !firstChildOfFunc.isNull() && asyncKWType.equals(firstChildOfFunc.getType())) {
-            asyncPrefix = "async ";
+            asyncPrefix = textSlice(firstChildOfFunc, src).strip() + " "; // Capture "async " or similar from source
         }
-        
+
         String paramsText = formatParameterList(paramsNode, src);
         String returnTypeText = formatReturnType(returnTypeNode, src);
-        
+
         String functionLine = assembleFunctionSignature(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
         if (functionLine != null && !functionLine.isBlank()) {
             lines.add(functionLine);
