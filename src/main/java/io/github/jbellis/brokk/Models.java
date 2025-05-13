@@ -14,6 +14,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
@@ -179,7 +181,17 @@ public final class Models {
         return getUserBalance(Project.getBrokkKey());
     }
 
+    /**
+     * Fetches the user's balance for the given Brokk API key.
+     * @param key The Brokk API key.
+     * @return The user's balance.
+     * @throws IOException If a network error occurs or the API response is invalid.
+     * @throws IllegalArgumentException if the key is invalid.
+     */
     public static float getUserBalance(String key) throws IOException {
+        // Validate key format before making the call
+        parseKey(key); // Throws IllegalArgumentException if key is malformed
+
         String url = "https://app.brokk.ai/api/payments/balance-lookup/" + key;
         Request request = new Request.Builder()
                 .url(url)
@@ -209,9 +221,62 @@ public final class Models {
         }
     }
 
+    /**
+     * Checks if data sharing is allowed for the organization associated with the given Brokk API key.
+     * Defaults to true (sharing allowed) if the key is invalid or the request fails.
+     * @param key The Brokk API key.
+     * @return True if data sharing is allowed or cannot be determined, false otherwise.
+     */
+    public static boolean getDataShareAllowed(String key) {
+        if (key == null || key.isBlank()) {
+            // No key, no specific organizational policy can be fetched, assume allowed.
+            return true;
+        }
+        try {
+            parseKey(key); // Validate key format first
+        } catch (IllegalArgumentException e) {
+            // Invalid key format, cannot fetch org policy, assume allowed.
+            LogManager.getLogger(Models.class).debug("Invalid key format, cannot fetch data sharing status. Assuming allowed.", e);
+            return true;
+        }
+
+        String encodedKey = URLEncoder.encode(key, StandardCharsets.UTF_8);
+        String url = "https://app.brokk.ai/api/users/check-data-sharing?brokk_key=" + encodedKey;
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "(no body)";
+                LogManager.getLogger(Models.class).warn("Failed to fetch data sharing status (HTTP {}): {}. Assuming allowed.", response.code(), errorBody);
+                return true; // Assume allowed if request fails
+            }
+            String responseBody = response.body() != null ? response.body().string() : "";
+            try {
+                JsonNode rootNode = new ObjectMapper().readValue(responseBody, JsonNode.class);
+                if (rootNode.has("data_sharing_enabled") && rootNode.get("data_sharing_enabled").isBoolean()) {
+                    return rootNode.get("data_sharing_enabled").asBoolean();
+                } else {
+                    LogManager.getLogger(Models.class).warn("Data sharing status response did not contain 'data_sharing_enabled' boolean field: {}. Assuming allowed.", responseBody);
+                    return true; // Assume allowed if field is missing or not a boolean
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                LogManager.getLogger(Models.class).warn("Failed to parse data sharing status JSON response: {}. Assuming allowed.", responseBody, e);
+                return true; // Assume allowed if JSON parsing fails
+            }
+        } catch (IOException e) {
+            LogManager.getLogger(Models.class).warn("IOException while fetching data sharing status. Assuming allowed.", e);
+            return true; // Assume allowed if network error
+        }
+    }
+
     public static void validateKey(String key) throws IOException {
         parseKey(key);
         getUserBalance(key);
+        // We don't need to validate getDataShareAllowed here as it has built-in fallbacks
+        // and is not critical for key validation in the same way balance is.
     }
 
     /**

@@ -737,7 +737,10 @@ public class SettingsDialog extends JDialog {
         private final Project project;
         private final ButtonGroup policyGroup;
         private final JRadioButton improveRadio;
+        private final JLabel improveDescLabel;
         private final JRadioButton minimalRadio;
+        private final JLabel minimalDescLabel;
+        private final JLabel orgDisabledLabel;
         private final JLabel infoLabel;
 
         public DataRetentionPanel(Project project) {
@@ -757,38 +760,64 @@ public class SettingsDialog extends JDialog {
             improveRadio = new JRadioButton(DataRetentionPolicy.IMPROVE_BROKK.getDisplayName());
             improveRadio.putClientProperty("policy", DataRetentionPolicy.IMPROVE_BROKK);
             policyGroup.add(improveRadio);
-            gbc.gridx = 0;
-            gbc.gridy = y++;
-            gbc.insets = new Insets(5, 5, 0, 5); // Reduced bottom margin
-            add(improveRadio, gbc);
 
             // --- Improve Brokk Description Label ---
-            var improveDescLabel = new JLabel("<html>Allow Brokk and/or its partners to use requests from this project " + "to train models and improve the Brokk service.</html>");
+            improveDescLabel = new JLabel("<html>Allow Brokk and/or its partners to use requests from this project " + "to train models and improve the Brokk service.</html>");
             improveDescLabel.setFont(improveDescLabel.getFont().deriveFont(Font.ITALIC, improveDescLabel.getFont().getSize() * 0.9f));
-            gbc.gridx = 0;
-            gbc.gridy = y++;
-            gbc.insets = new Insets(0, 25, 10, 5); // Indent left, add bottom margin
-            add(improveDescLabel, gbc);
 
             // --- Minimal Radio Button ---
             minimalRadio = new JRadioButton(DataRetentionPolicy.MINIMAL.getDisplayName());
             minimalRadio.putClientProperty("policy", DataRetentionPolicy.MINIMAL);
             policyGroup.add(minimalRadio);
-            gbc.gridx = 0;
-            gbc.gridy = y++;
-            gbc.insets = new Insets(5, 5, 0, 5); // Reduced bottom margin
-            add(minimalRadio, gbc);
 
             // --- Minimal Description Label ---
-            var minimalDescLabel = new JLabel("<html>Brokk will not share data from this project with anyone and " + "will restrict its use to the minimum necessary to provide the Brokk service.</html>");
+            minimalDescLabel = new JLabel("<html>Brokk will not share data from this project with anyone and " + "will restrict its use to the minimum necessary to provide the Brokk service.</html>");
             minimalDescLabel.setFont(minimalDescLabel.getFont().deriveFont(Font.ITALIC, minimalDescLabel.getFont().getSize() * 0.9f));
-            gbc.gridx = 0;
-            gbc.gridy = y++;
-            gbc.insets = new Insets(0, 25, 10, 5); // Indent left, add bottom margin
-            add(minimalDescLabel, gbc);
+
+            // --- Organization Disabled Label ---
+            orgDisabledLabel = new JLabel("<html><b>Data sharing is disabled by your organization.</b></html>");
+
+            boolean dataSharingAllowedByOrg = project.isDataShareAllowed();
+
+            if (dataSharingAllowedByOrg) {
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(5, 5, 0, 5);
+                add(improveRadio, gbc);
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(0, 25, 10, 5);
+                add(improveDescLabel, gbc);
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(5, 5, 0, 5);
+                add(minimalRadio, gbc);
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(0, 25, 10, 5);
+                add(minimalDescLabel, gbc);
+
+                // Hide the org disabled label if previously shown
+                orgDisabledLabel.setVisible(false);
+            } else {
+                // Hide all the data sharing controls
+                improveRadio.setVisible(false);
+                improveDescLabel.setVisible(false);
+                minimalRadio.setVisible(false);
+                minimalDescLabel.setVisible(false);
+
+                // Show the "disabled by org" message
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(5, 5, 10, 5);
+                add(orgDisabledLabel, gbc);
+                orgDisabledLabel.setVisible(true);
+            }
 
             // --- Informational Text ---
-            // Adjust top inset for spacing after the description labels
             gbc.insets = new Insets(15, 5, 5, 5); // Add spacing above info text
             infoLabel = new JLabel("<html>Data retention policy affects which AI models are allowed. In particular, Deepseek models are not available under the Essential Use Only policy, since Deepseek will train on API requests independently of Brokk.</html>");
             infoLabel.setFont(infoLabel.getFont().deriveFont(infoLabel.getFont().getSize() * 0.9f));
@@ -798,8 +827,8 @@ public class SettingsDialog extends JDialog {
 
             // Add vertical glue to push components to the top
             gbc.gridx = 0;
-            gbc.gridy = y; // Use the final incremented y value
-            gbc.weighty = 1.0; // Take up remaining vertical space
+            gbc.gridy = y;
+            gbc.weighty = 1.0;
             gbc.fill = GridBagConstraints.VERTICAL;
             add(Box.createVerticalGlue(), gbc);
 
@@ -807,23 +836,34 @@ public class SettingsDialog extends JDialog {
         }
 
         /**
-         * Loads the current policy from the project and selects the corresponding radio button.
+         * Loads the current policy from the project and selects the corresponding radio button
+         * if data sharing is allowed by the organization.
          */
         public void loadPolicy() {
-            var currentPolicy = project.getDataRetentionPolicy();
-            if (currentPolicy == DataRetentionPolicy.IMPROVE_BROKK) {
-                improveRadio.setSelected(true);
-            } else if (currentPolicy == DataRetentionPolicy.MINIMAL) {
-                minimalRadio.setSelected(true);
-            } else {
-                policyGroup.clearSelection(); // No selection for UNSET
+            if (project.isDataShareAllowed()) {
+                var currentPolicy = project.getDataRetentionPolicy();
+                if (currentPolicy == DataRetentionPolicy.IMPROVE_BROKK) {
+                    improveRadio.setSelected(true);
+                } else if (currentPolicy == DataRetentionPolicy.MINIMAL) {
+                    minimalRadio.setSelected(true);
+                } else {
+                    policyGroup.clearSelection(); // No selection for UNSET
+                }
             }
+            // If data sharing is not allowed, radio buttons are hidden,
+            // and project.getDataRetentionPolicy() will return MINIMAL.
+            // No specific UI update for radio buttons is needed here.
         }
 
         /**
-         * Returns the currently selected policy, or UNSET if none is selected.
+         * Returns the currently selected policy. If data sharing is disabled by the organization,
+         * this will always be MINIMAL. Otherwise, it's based on the radio button selection.
+         * Returns UNSET if no radio button is selected and sharing is allowed.
          */
         public DataRetentionPolicy getSelectedPolicy() {
+            if (!project.isDataShareAllowed()) {
+                return DataRetentionPolicy.MINIMAL;
+            }
             if (improveRadio.isSelected()) {
                 return DataRetentionPolicy.IMPROVE_BROKK;
             } else if (minimalRadio.isSelected()) {
@@ -834,12 +874,13 @@ public class SettingsDialog extends JDialog {
         }
 
         /**
-         * Saves the currently selected policy back to the project if it has changed.
+         * Saves the currently selected policy (or MINIMAL if org disallows sharing)
+         * back to the project if it's a valid policy (not UNSET).
          */
         public void applyPolicy() {
             var selectedPolicy = getSelectedPolicy();
-            // Only save if a valid policy is selected and it's different from the current one
-            if (selectedPolicy != DataRetentionPolicy.UNSET && selectedPolicy != project.getDataRetentionPolicy()) {
+            // project.setDataRetentionPolicy already asserts that policy is not UNSET.
+            if (selectedPolicy != DataRetentionPolicy.UNSET) {
                 project.setDataRetentionPolicy(selectedPolicy);
             }
         }
@@ -1309,6 +1350,11 @@ public class SettingsDialog extends JDialog {
      * @param owner   The parent frame for the dialog.
      */
     public static void showStandaloneDataRetentionDialog(Project project, Frame owner) {
+        // This dialog should only be shown if the project's policy is UNSET.
+        // If data sharing is disabled by the org, project.getDataRetentionPolicy() will return MINIMAL, not UNSET.
+        // Therefore, project.isDataShareAllowed() must be true if this dialog is shown.
+        assert project.isDataShareAllowed() : "Standalone data retention dialog should not be shown if data sharing is disabled by organization";
+
         var dialog = new JDialog(owner, "Data Retention Policy Required", true);
         dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE); // Prevent closing without selection initially
         dialog.setSize(600, 400);

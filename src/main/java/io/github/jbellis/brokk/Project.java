@@ -54,6 +54,9 @@ public class Project implements IProject, AutoCloseable {
             Use these for <type>: debug, fix, feat, chore, config, docs, style, refactor, perf, test, enh
             """.stripIndent();
 
+    // Cache for organization-level data sharing policy
+    private static volatile Boolean isDataShareAllowedCache = null;
+
 
     // --- Static paths ---
     private static final Path BROKK_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".config", "brokk");
@@ -1041,7 +1044,37 @@ public class Project implements IProject, AutoCloseable {
             props.setProperty("brokkApiKey", key.trim());
         }
         saveGlobalProperties(props);
+
+        // Clear cache when key changes
+        logger.trace("Cleared data share allowed cache.");
+        isDataShareAllowedCache = null;
     }
+
+    /**
+     * Checks if data sharing is allowed by the organization.
+     * This is fetched from the Brokk service and cached.
+     * Defaults to true (allowed) if the key is not set or fetching fails.
+     *
+     * @return true if data sharing is allowed by the organization, false otherwise.
+     */
+    public boolean isDataShareAllowed() {
+        if (isDataShareAllowedCache != null) {
+            return isDataShareAllowedCache;
+        }
+
+        String brokkKey = getBrokkKey();
+        if (brokkKey.isEmpty()) {
+            isDataShareAllowedCache = true; // No key, assume allowed
+            return true;
+        }
+
+        // Pass the key directly to the static Models method
+        boolean allowed = Models.getDataShareAllowed(brokkKey);
+        isDataShareAllowedCache = allowed;
+        logger.info("Data sharing allowed for organization: {}", allowed);
+        return allowed;
+    }
+
 
     /**
      * Gets the configured LLM proxy URL (including scheme, e.g., "https://...") from global settings.
@@ -1232,6 +1265,10 @@ public class Project implements IProject, AutoCloseable {
      */
     @Override
     public DataRetentionPolicy getDataRetentionPolicy() {
+        if (!isDataShareAllowed()) {
+            return DataRetentionPolicy.MINIMAL;
+        }
+
         String value = projectProps.getProperty(DATA_RETENTION_POLICY_KEY);
         return DataRetentionPolicy.fromString(value);
     }
