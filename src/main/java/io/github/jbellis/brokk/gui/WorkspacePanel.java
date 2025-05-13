@@ -326,22 +326,32 @@ public class WorkspacePanel extends JPanel {
                                         ppf.file()
                                 );
                                 // Add specific actions using existing helpers
-                                contextMenu.add(buildAddMenuItem(fileData));
+                                contextMenu.add(buildAddMenuItem(fileData)); // Handles edit for single tracked file
                                 contextMenu.add(buildReadMenuItem(fileData));
                                 contextMenu.add(buildSummarizeMenuItem(fileData));
                             } else {
-                                // Default: Show "All References" actions, enabled based on file presence
+                                // Default: Show "All References" actions, enabled based on file presence and track status
                                 var project = contextManager.getProject();
                                 Set<BrokkFile> allFiles = selectedFragments.stream()
                                         .flatMap(frag -> frag.files(project).stream())
                                         .collect(Collectors.toSet());
-                                boolean hasFiles = !allFiles.isEmpty();
+
+                                boolean allFilesAreTrackedProjectFiles = !allFiles.isEmpty() && allFiles.stream().allMatch(f ->
+                                        f instanceof ProjectFile pf &&
+                                        project.getRepo().getTrackedFiles().contains(pf)
+                                );
+                                boolean hasFiles = !allFiles.isEmpty(); // Re-introduce hasFiles
 
                                 JMenuItem editAllRefsItem = new JMenuItem("Edit all References");
                                 editAllRefsItem.addActionListener(e1 -> {
                                     performContextActionAsync(ContextAction.EDIT, selectedFragments);
                                 });
-                                editAllRefsItem.setEnabled(hasFiles); // Disable if no files associated
+                                editAllRefsItem.setEnabled(allFilesAreTrackedProjectFiles);
+                                if (!allFilesAreTrackedProjectFiles && !allFiles.isEmpty()) {
+                                    editAllRefsItem.setToolTipText("Cannot edit because selection includes untracked or external files.");
+                                } else if (allFiles.isEmpty()) {
+                                    editAllRefsItem.setToolTipText("No files associated with the selection to edit.");
+                                }
 
                                 JMenuItem readAllRefsItem = new JMenuItem("Read all References");
                                 readAllRefsItem.addActionListener(e1 -> {
@@ -720,10 +730,18 @@ public class WorkspacePanel extends JPanel {
                 chrome.toolErrorRaw("Cannot edit file: " + fileRef.getFullPath() + " - no ProjectFile available"); // Corrected message
             }
         });
-        // Disable for dependency projects
-        if (contextManager != null && contextManager.getProject() != null && !contextManager.getProject().hasGit()) {
+        // Disable if no git, file isn't a ProjectFile, or file isn't tracked
+        var project = contextManager.getProject();
+        var repoFile = fileRef.getRepoFile(); // Cache the result
+        if (project == null || !project.hasGit()) {
             editItem.setEnabled(false);
             editItem.setToolTipText("Editing not available without Git");
+        } else if (repoFile == null) {
+            editItem.setEnabled(false);
+            editItem.setToolTipText("Editing not available for external files"); // Should generally not happen if repoFile is null
+        } else if (!project.getRepo().getTrackedFiles().contains(repoFile)) {
+            editItem.setEnabled(false);
+            editItem.setToolTipText("Cannot edit untracked file: " + fileRef.getFullPath());
         }
         return editItem;
     }
