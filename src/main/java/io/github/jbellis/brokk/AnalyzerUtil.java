@@ -119,7 +119,7 @@ public class AnalyzerUtil {
 
     public static @NotNull Map<CodeUnit, String> getSkeletonStrings(IAnalyzer analyzer, Set<CodeUnit> classes) {
         var coalescedUnits = coalesceInnerClasses(classes);
-        return coalescedUnits.stream()
+        return coalescedUnits.stream().parallel()
                 .map(cu -> Map.entry(cu, analyzer.getSkeleton(cu.fqName())))
                 .filter(entry -> entry.getValue().isPresent())
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get()));

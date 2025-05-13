@@ -881,16 +881,23 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Combine skeletons from both files and specific classes
         var allSkeletons = new java.util.HashMap<CodeUnit, String>();
 
-        // Process files: get skeletons for all classes within each file
-        for (var file : files) {
-            try {
-                var fileSkeletons = analyzer.getSkeletons(file);
-                allSkeletons.putAll(fileSkeletons);
-            } catch (Exception e) {
-                logger.warn("Failed to get skeletons for file {}: {}", file, e.getMessage());
-                // Optionally inform the user via io.toolErrorRaw or systemOutput
-            }
-        }
+        // Process files: get skeletons for all classes within each file in parallel
+        Map<CodeUnit, String> skeletonsFromFiles = files.parallelStream()
+            .map(file -> {
+                try {
+                    return analyzer.getSkeletons(file);
+                } catch (Exception e) {
+                    logger.warn("Failed to get skeletons for file {}: {}", file, e.getMessage());
+                    return Collections.<CodeUnit, String>emptyMap();
+                }
+            })
+            .flatMap(map -> map.entrySet().stream())
+            .collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    Map.Entry::getValue,
+                    (v1, v2) -> v1 // In case of duplicate keys (shouldn't happen)
+            ));
+        allSkeletons.putAll(skeletonsFromFiles);
 
         // Process specific classes/symbols
         if (!classes.isEmpty()) {
