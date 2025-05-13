@@ -337,7 +337,11 @@ public class Llm {
             backoffSeconds = Math.min(backoffSeconds, 16L);
 
             // Busywait with countdown
-            io.systemOutput(String.format("LLM issue on attempt %d/%d (retrying in %d seconds).", attempt, maxAttempts, backoffSeconds));
+            if (backoffSeconds > 1) {
+                io.systemOutput(String.format("LLM issue on attempt %d/%d (retrying in %d seconds).", attempt, maxAttempts, backoffSeconds));
+            } else {
+                io.systemOutput(String.format("LLM issue on attempt %d/%d (retrying).", attempt, maxAttempts, backoffSeconds));
+            }
             long endTime = System.currentTimeMillis() + backoffSeconds * 1000;
             while (System.currentTimeMillis() < endTime) {
                 long remain = endTime - System.currentTimeMillis();
