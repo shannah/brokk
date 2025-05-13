@@ -360,28 +360,6 @@ public class MultiFileSelectionDialog extends JDialog {
     }
 
     /**
-     * Appends a fully qualified class name to the class input text area.
-     */
-    private void appendClassNameToInput(String fqn) {
-        String currentText = classInput.getText();
-        String textToAppend = fqn + " "; // Always add trailing space
-
-        int caretPos = classInput.getCaretPosition();
-        // If caret is at the end, or text ends with space, just append
-        if (caretPos == currentText.length() || currentText.endsWith(" ")) {
-            classInput.insert(textToAppend, caretPos);
-        } else {
-            // Insert with a leading space if needed
-            classInput.insert(" " + textToAppend, caretPos);
-        }
-
-        classInput.requestFocusInWindow();
-        classInput.setCaretPosition(classInput.getDocument().getLength());
-    }
-
-    // Removed duplicate appendFilenameToInput method
-
-    /**
      * When OK is pressed, determine the active tab and parse its input.
      * Populates the selectionResult record.
      */
