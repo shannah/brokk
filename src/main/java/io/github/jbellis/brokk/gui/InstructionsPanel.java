@@ -331,6 +331,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
         });
 
+        // Add Shift+Enter shortcut to insert a newline
+        var shiftEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+        area.getInputMap().put(shiftEnter, "insertNewline");
+        area.getActionMap().put("insertNewline", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                int caretPosition = area.getCaretPosition();
+                area.insert("\n", caretPosition);
+            }
+        });
 
         return area;
     }
