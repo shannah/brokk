@@ -12,7 +12,7 @@ import scala.jdk.OptionConverters.RichOptional
 import scala.jdk.javaapi.*
 import scala.jdk.javaapi.CollectionConverters.asScala
 
-class AnalyzerTest {
+class JavaAnalyzerTest {
   implicit val callResolver: ICallResolver = NoResolve
 
   @Test
