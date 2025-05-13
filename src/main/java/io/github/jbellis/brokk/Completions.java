@@ -127,8 +127,8 @@ public class Completions {
                 })
                 .filter(sc -> sc.score() != Integer.MAX_VALUE)
                 .sorted(Comparator.<Scored<T>>comparingInt(Scored::score)
-                                .thenComparing(sc -> extractShort.apply(sc.source))
-                                .thenComparingInt(Scored::tiebreakScore))
+                                .thenComparingInt(Scored::tiebreakScore)
+                                .thenComparing(sc -> extractShort.apply(sc.source)))
                 .toList();
 
         // Find the highest score among the "short" matches

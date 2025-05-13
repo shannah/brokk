@@ -49,4 +49,15 @@ public interface BrokkFile extends Serializable, Comparable<BrokkFile> {
     default long mtime() throws IOException {
         return Files.getLastModifiedTime(absPath()).toMillis();
     }
+
+    /** return the (lowercased) extension [not including the dot] */
+    default String extension() {
+        var filename = toString();
+        int lastDot = filename.lastIndexOf('.');
+        // Ensure dot is not the first character and is not the last character
+        if (lastDot > 0 && lastDot < filename.length() - 1) {
+            return filename.substring(lastDot + 1).toLowerCase();
+        }
+        return ""; // No extension found or invalid placement
+    } 
 }

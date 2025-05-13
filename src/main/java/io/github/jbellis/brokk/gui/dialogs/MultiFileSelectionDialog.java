@@ -638,8 +638,7 @@ public class MultiFileSelectionDialog extends JDialog {
             return "";
         }
     }
-
-
+    
     // ========================================================================
     // Completion Providers
     // ========================================================================
@@ -703,7 +702,23 @@ public class MultiFileSelectionDialog extends JDialog {
                         projectFiles,
                         ProjectFile::getFileName,
                         ProjectFile::toString,
-                        pf -> contextManager.getRepo().getTrackedFiles().contains(pf) ? 0 : 1,
+                        pf -> {
+                            boolean isTracked = contextManager.getRepo().getTrackedFiles().contains(pf);
+                            boolean isProjectLanguage = false;
+                            Language projectLanguage = project.getAnalyzerLanguage();
+                            if (projectLanguage != null && projectLanguage != Language.NONE) {
+                                String fileExtension = pf.extension();
+                                if (fileExtension != null) {
+                                    isProjectLanguage = projectLanguage.getExtensions().contains(fileExtension);
+                                }
+                            }
+
+                            if (isTracked) {
+                                return isProjectLanguage ? 0 : 1; // Tracked, project lang = 0; Tracked, other lang = 1
+                            } else {
+                                return isProjectLanguage ? 2 : 3; // Not tracked, project lang = 2; Not tracked, other lang = 3
+                            }
+                        },
                         this::createRepoCompletion);
 
                 // Call sizePopupWindows only when we have ShorthandCompletions

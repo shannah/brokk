@@ -471,30 +471,13 @@ public class Project implements IProject, AutoCloseable {
         }
     }
 
-    /**
-     * Extracts the lowercase file extension from a filename string.
-     *
-     * @param filename The filename.
-     * @return The extension (without the dot), or an empty string if no extension is found.
-     */
-    private String getFileExtension(String filename) {
-        int lastDot = filename.lastIndexOf('.');
-        // Ensure dot is not the first character and is not the last character
-        if (lastDot > 0 && lastDot < filename.length() - 1) {
-            return filename.substring(lastDot + 1).toLowerCase();
-        }
-        return ""; // No extension found or invalid placement
-    }
-
-
     @Override
     public Language getAnalyzerLanguage() {
         String lang = projectProps.getProperty("code_intelligence_language");
         if (lang == null || lang.isBlank()) {
             // Scan project files to determine the most common language if not specified
             var languageCounts = repo.getTrackedFiles().stream()
-                                     .map(ProjectFile::toString)              // Get relative path string via toString()
-                                     .map(this::getFileExtension)             // Extract extension
+                                     .map(ProjectFile::extension)
                                      .map(Language::fromExtension)            // Map extension to Language
                                      .filter(l -> l != Language.NONE)         // Ignore files with unknown/no extensions
                                      .collect(Collectors.groupingBy(l -> l, Collectors.counting())); // Count occurrences
