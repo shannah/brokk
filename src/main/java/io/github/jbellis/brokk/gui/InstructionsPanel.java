@@ -1473,8 +1473,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             searchButton.setEnabled(false);
             runButton.setEnabled(false);
             deepScanButton.setEnabled(false);
-            micButton.setEnabled(false); // Disable mic during operations
-            configureModelsButton.setEnabled(false); // Disable model config during operations
             stopButton.setEnabled(true);
             chrome.disableHistoryPanel();
         });
@@ -1495,11 +1493,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             searchButton.setEnabled(projectLoaded && cmAvailable);
             runButton.setEnabled(cmAvailable); // Requires CM for getRoot()
             deepScanButton.setEnabled(projectLoaded && cmAvailable && instructionsArea.isEnabled());
-            configureModelsButton.setEnabled(projectLoaded && cmAvailable); // Requires CM for Models
-            micButton.setEnabled(cmAvailable); // VoiceInputButton constructor takes CM
 
             stopButton.setEnabled(false); // Stop is only enabled when an action is running
-
             if (projectLoaded && cmAvailable) {
                 chrome.enableHistoryPanel();
             } else {
