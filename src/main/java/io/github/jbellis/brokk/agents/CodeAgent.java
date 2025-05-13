@@ -337,12 +337,35 @@ public class CodeAgent {
 
         io.systemOutput("Attempting full file replacement for: " + failuresByFile.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
 
+        // Ensure original content is available for all files before parallel processing
+        var filesToProcess = new ArrayList<ProjectFile>();
+        for (var file : failuresByFile) {
+            if (originalContents.containsKey(file)) {
+                filesToProcess.add(file);
+                continue;
+            }
+
+            try {
+                originalContents.put(file, file.read());
+                filesToProcess.add(file);
+            } catch (IOException e) {
+                logger.error("Failed to read content of {} for full replacement fallback", file, e);
+                // Skip this file if we can't read its content
+            }
+        }
+
+        if (filesToProcess.isEmpty()) {
+            logger.debug("No files eligible for full file replacement after checking/reading content.");
+            // Return error indicating failure, as the initial failures couldn't be addressed by fallback
+            return new SessionResult.StopDetails(SessionResult.StopReason.APPLY_ERROR, "Could not read content for any files needing full replacement.");
+        }
+
         var succeededCount = new AtomicInteger(0);
 
         // Process files in parallel using streams
-        var futures = failuresByFile.stream().parallel().map(file -> CompletableFuture.supplyAsync(() -> {
+        var futures = filesToProcess.stream().parallel().map(file -> CompletableFuture.supplyAsync(() -> {
              try {
-                 assert originalContents.containsKey(file); // should have been added by diff attempt
+                 assert originalContents.containsKey(file); // Should now always be true for files in filesToProcess
 
                  // Prepare request
                  var goal = "The previous attempt to modify this file using SEARCH/REPLACE failed repeatedly. Original goal: " + originalUserInput;
