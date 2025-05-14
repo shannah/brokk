@@ -129,12 +129,10 @@ public class Environment {
         CompletableFuture.runAsync(() -> {
             try {
                 String os = System.getProperty("os.name").toLowerCase();
-                if (os.contains("linux")) {
-                    sendLinuxNotification(message);
-                } else if (os.contains("mac")) {
-                    sendMacNotification(message);
-                } else if (SystemTray.isSupported()) {
+                if (SystemTray.isSupported()) {
                     sendSystemTrayNotification(message);
+                } else if (os.contains("linux")) {
+                    sendLinuxNotification(message);
                 } else {
                     logger.info("Desktop notifications not supported on this platform ({})", os);
                 }
@@ -147,17 +145,7 @@ public class Environment {
     private void sendLinuxNotification(String message) throws IOException {
         runCommandFireAndForget("notify-send", "--category", "Brokk", message);
     }
-
-    private void sendMacNotification(String message) throws IOException {
-        String script = String.format("display notification \"%s\" with title \"%s\"",
-                                      escapeAppleScriptString(message), escapeAppleScriptString("Brokk"));
-        runCommandFireAndForget("osascript", "-e", script);
-    }
-
-    private String escapeAppleScriptString(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
+    
     private void sendSystemTrayNotification(String message) {
         SystemTray tray = SystemTray.getSystemTray();
         var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
