@@ -61,7 +61,7 @@ public class AnalyzerWrapper implements AutoCloseable {
             throw new RuntimeException(e);
         }
 
-        logger.debug("Setting up WatchService");
+        logger.debug("Setting up WatchService for {}", root);
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
             // Recursively register all directories except .brokk
             registerAllDirectories(root, watchService);
@@ -116,6 +116,8 @@ public class AnalyzerWrapper implements AutoCloseable {
      * Check if changes in this batch of events require a .git refresh and/or analyzer rebuild.
      */
     private void handleBatch(Set<FileChangeEvent> batch) {
+        logger.trace("Events batch: {}", batch);
+
         // 1) Possibly refresh Git
         boolean needsGitRefresh = batch.stream().anyMatch(event -> {
             Path gitDir = root.resolve(".git");
@@ -228,9 +230,9 @@ public class AnalyzerWrapper implements AutoCloseable {
             currentAnalyzer = analyzer;
             logger.debug("Analyzer (re)build completed after creating {} analyzer for {}", language.name(), project.getRoot());
         }
-        if (project.getAnalyzerRefresh() == CpgRefresh.AUTO) {
-            startWatcher();
-        }
+
+        startWatcher();
+
         return analyzer;
     }
 
