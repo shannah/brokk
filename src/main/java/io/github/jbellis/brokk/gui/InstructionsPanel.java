@@ -1047,6 +1047,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         } finally {
             deepScanButton.setEnabled(true);
             chrome.getContextManager().submitBackgroundTask("", this::checkBalanceAndNotify);
+            checkFocusAndNotify("Deep Scan");
         }
     }
 
@@ -1460,6 +1461,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 task.run();
             } finally {
                 checkBalanceAndNotify();
+                checkFocusAndNotify(action);
             }
         });
     }
@@ -1532,6 +1534,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public void enableButtons() {
         // Called when an action completes. Reset buttons based on current CM/project state.
         updateButtonStates();
+    }
+
+    private void checkFocusAndNotify(String actionName) {
+        SwingUtilities.invokeLater(() -> { // Ensure frame access is on EDT
+            JFrame mainFrame = chrome.getFrame();
+            if (mainFrame != null && mainFrame.isShowing() && !mainFrame.isActive()) {
+                Environment.instance.sendNotificationAsync("Action '" + actionName + "' completed.");
+            }
+        });
     }
 
     /**
