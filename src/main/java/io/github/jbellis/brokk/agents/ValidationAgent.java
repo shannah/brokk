@@ -123,13 +123,28 @@ public class ValidationAgent {
     /**
      * Step 2: Checks a list of potentially relevant files in parallel to confirm relevance using a parallel stream.
      */
-    private List<ProjectFile> checkFilesForRelevance(List<ProjectFile> potentialFiles, String instructions, Llm llm) {
+    private List<ProjectFile> checkFilesForRelevance(List<ProjectFile> potentialFiles, String instructions, Llm llm) throws InterruptedException {
         // Use a parallel stream to check files for relevance concurrently
-        return potentialFiles.stream().parallel()
-                .map(file -> isFileRelevant(file, instructions, llm))
-                .filter(result -> result.relevant)
-                .map(result -> result.file)
-                .collect(Collectors.toList());
+        try {
+            return potentialFiles.stream().parallel()
+                    .map(file -> {
+                        // bit of a dance to wrap/unwrap InterruptedException
+                        try {
+                            return isFileRelevant(file, instructions, llm);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .filter(result -> result.relevant)
+                    .map(result -> result.file)
+                    .collect(Collectors.toList());
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof InterruptedException) {
+                throw (InterruptedException) e.getCause();
+            }
+            throw e;
+        }
     }
 
     /**
@@ -142,7 +157,7 @@ public class ValidationAgent {
      * Asks the LLM if a specific test file is relevant to the instructions, given its content.
      * Retries if the LLM response doesn't clearly indicate relevance or irrelevance.
      */
-    private RelevanceResult isFileRelevant(ProjectFile file, String instructions, Llm llm) {
+    private RelevanceResult isFileRelevant(ProjectFile file, String instructions, Llm llm) throws InterruptedException {
         String fileContent;
         try {
             fileContent = file.read();
@@ -175,14 +190,7 @@ public class ValidationAgent {
         for (int attempt = 1; attempt <= MAX_RELEVANCE_TRIES; attempt++) {
             logger.trace("Invoking quickModel via Coder for relevance check of file: {} (Attempt {}/{})", file, attempt, MAX_RELEVANCE_TRIES);
             // Use Coder to send the request
-            Llm.StreamingResult result;
-            try {
-                result = llm.sendRequest(messages);
-            } catch (InterruptedException e) {
-                // normally we want to propagate request interruptions, but this is running in the parallel thread pool
-                // so we don't expect to be interrupted
-                throw new RuntimeException(e);
-            }
+            Llm.StreamingResult result = llm.sendRequest(messages);
 
             if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 logger.debug("Error during relevance check call for {} (Attempt {}): {}", file, attempt, result.error() != null ? result.error().getMessage() : "Empty response");
