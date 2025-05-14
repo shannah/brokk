@@ -127,26 +127,31 @@ public class AnalyzerWrapper implements AutoCloseable {
         if (needsGitRefresh) {
             logger.debug("Refreshing git due to changes in .git directory");
             listener.onRepoChange();
-            listener.onTrackedFileChange();
+            listener.onTrackedFileChange(); // not 100% sure this is necessary
         }
 
         // 2) Check if any *tracked* files changed
         Set<Path> trackedPaths = project.getRepo().getTrackedFiles().stream()
                 .map(ProjectFile::absPath)
                 .collect(Collectors.toSet());
-
-        boolean needsAnalyzerRefresh = batch.stream()
+        boolean trackedPathsChanged = batch.stream()
                 .anyMatch(event -> trackedPaths.contains(event.path));
 
-        if (needsAnalyzerRefresh && project.getAnalyzerRefresh() == CpgRefresh.AUTO) {
-            logger.debug("Rebuilding analyzer due to changes in tracked files: {}",
-                         batch.stream()
-                                 .filter(e -> trackedPaths.contains(e.path))
-                                 .distinct()
-                                 .map(e -> e.path.toString())
-                                 .collect(Collectors.joining(", "))
-            );
-            rebuild();
+        if (trackedPathsChanged) {
+            // call listener (refreshes git panel)
+            listener.onTrackedFileChange();
+
+            // update the analyzer if we're configured to do so
+            if (project.getAnalyzerRefresh() == CpgRefresh.AUTO) {
+                logger.debug("Rebuilding analyzer due to changes in tracked files: {}",
+                             batch.stream()
+                                     .filter(e -> trackedPaths.contains(e.path))
+                                     .distinct()
+                                     .map(e -> e.path.toString())
+                                     .collect(Collectors.joining(", "))
+                );
+                rebuild();
+            }
         } else {
             logger.trace("No tracked files changed; skipping analyzer rebuild");
         }
@@ -280,8 +285,6 @@ public class AnalyzerWrapper implements AutoCloseable {
      * the rebuild, a new rebuild will be scheduled immediately afterwards.
      */
     private synchronized void rebuild() {
-        listener.onTrackedFileChange();
-
         // If a rebuild is already running, just mark that another rebuild is pending.
         if (rebuildInProgress) {
             rebuildPending = true;
