@@ -711,10 +711,6 @@ public class PreviewTextPanel extends JPanel {
             public void hideOutputSpinner() {
                 // no-op
             }
-
-            @Override
-            public void blockLlmOutput(boolean blocked) {
-            }
         }
         var resultsIo = new QuickResultsIo();
 

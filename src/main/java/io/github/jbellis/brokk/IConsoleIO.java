@@ -2,6 +2,7 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
+import io.github.jbellis.brokk.gui.InstructionsPanel;
 
 import java.util.List;
 
@@ -16,6 +17,22 @@ public interface IConsoleIO {
     }
 
     void toolErrorRaw(String msg);
+
+    default int showConfirmDialog(String message, String title, int optionType, int messageType) {
+        throw new UnsupportedOperationException();
+    }
+
+    default void backgroundOutput(String taskDescription) {
+        // pass
+    }
+
+    default void backgroundOutput(String summary, String details) {
+        // pass
+    }
+
+    default void showMessageDialog(String message, String title, int messageType) {
+        throw new UnsupportedOperationException();
+    }
 
     enum MessageSubType {
         Run,
@@ -45,5 +62,55 @@ public interface IConsoleIO {
         throw new UnsupportedOperationException();
     }
 
-    void blockLlmOutput(boolean blocked);
+    default void blockLlmOutput(boolean blocked) {
+        // pass
+    }
+
+    //
+    // ----- gui hooks -----
+    //
+
+    default void postSummarize() {
+        // pass
+    }
+
+    default void disableHistoryPanel() {
+        // pass
+    }
+
+    default void enableHistoryPanel() {
+        // pass
+    }
+
+    default void updateCommitPanel() {
+        // pass
+    }
+
+    default void updateGitRepo() {
+        // pass
+    }
+
+    default void updateContextHistoryTable(Context context) {
+        // pass
+    }
+
+    default InstructionsPanel getInstructionsPanel() {
+        return null;
+    }
+
+    default void updateContextHistoryTable() {
+        // pass
+    }
+
+    default void updateContextTable() {
+        // pass
+    }
+
+    default void disableActionButtons() {
+        // pass
+    }
+
+    default void enableActionButtons() {
+        // pass
+    }
 }

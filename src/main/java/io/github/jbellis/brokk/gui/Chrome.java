@@ -108,7 +108,6 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             contextGitSplitPane.setBottomComponent(gitPanel);
 
             bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
-            updateCommitPanel();
             gitPanel.updateRepo();
         } else {
             // No Git => only a context panel in the center
@@ -505,10 +504,12 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         SwingUtilities.invokeLater(() -> instructionsPanel.appendSystemOutput(message));
     }
 
+    @Override
     public void backgroundOutput(String message) {
         backgroundOutput(message, null);
     }
 
+    @Override
     public void backgroundOutput(String message, String tooltip) {
         SwingUtilities.invokeLater(() -> {
             if (message == null || message.isEmpty()) {
@@ -1220,5 +1221,21 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 historyOutputPanel.setMarkdownOutputPanelBlocking(blocked);
             }
         });
+    }
+
+    @Override
+    public int showConfirmDialog(String message, String title, int optionType, int messageType) {
+        return JOptionPane.showConfirmDialog(frame, message, title, optionType, messageType);
+    }
+
+    @Override
+    public void postSummarize() {
+        updateContextTable();
+        updateContextHistoryTable();
+    }
+
+    @Override
+    public void showMessageDialog(String message, String title, int messageType) {
+        JOptionPane.showMessageDialog(frame, message, title, messageType);
     }
 }

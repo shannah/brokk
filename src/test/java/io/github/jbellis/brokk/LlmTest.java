@@ -37,7 +37,6 @@ public class LlmTest {
         @Override public void systemOutput(String message) {}
         @Override public void showOutputSpinner(String message) {}
         @Override public void hideOutputSpinner() {}
-        @Override public void blockLlmOutput(boolean blocked) {}
     }
 
     private static Llm llm;

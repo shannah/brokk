@@ -374,27 +374,15 @@ public class GitCommitTab extends JPanel {
      */
     private GitRepo getRepo() {
         var repo = contextManager.getProject().getRepo();
-        if (repo == null) {
-            // Log error or handle appropriately if no repo is expected
-            logger.error("getRepo() returned null - no Git repository available");
-        }
+        assert repo != null;
         return (GitRepo) repo;
     }
 
     /**
      * Populates the uncommitted files table and enables/disables commit-related buttons.
      */
-    public void updateCommitPanel()
-    {
+    public void updateCommitPanel() {
         logger.trace("Starting updateCommitPanel");
-        if (getRepo() == null) {
-            logger.warn("Cannot update commit panel, GitRepo is null");
-            suggestMessageButton.setEnabled(false);
-            commitButton.setEnabled(false);
-            stashButton.setEnabled(false);
-            ((DefaultTableModel) uncommittedFilesTable.getModel()).setRowCount(0);
-            return;
-        }
         // Store currently selected rows before updating
         int[] selectedRowsIndices = uncommittedFilesTable.getSelectedRows();
         List<ProjectFile> previouslySelectedFiles = new ArrayList<>();

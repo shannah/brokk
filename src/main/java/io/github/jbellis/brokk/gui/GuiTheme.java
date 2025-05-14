@@ -86,19 +86,17 @@ public class GuiTheme {
      * @param themeName "dark" or "light"
      */
     public void applyRSyntaxThemeAsync(String themeName) {
-        // Ensure all operations including theme loading are done on the EDT to avoid thread violations
-        SwingUtilities.invokeLater(() -> {
-            String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/"
-                    + (themeName.equals(THEME_DARK) ? "dark.xml" : "default.xml");
-            Theme theme;
-            try {
-                theme = Theme.load(getClass().getResourceAsStream(themeResource));
-            } catch (Exception e) {
-                logger.error("Could not load {}", themeName, e);
-                return;
-            }
+        String themeResource = "/org/fife/ui/rsyntaxtextarea/themes/%s".formatted(themeName.equals(THEME_DARK) ? "dark.xml" : "default.xml");
+        Theme theme;
+        try {
+            theme = Theme.load(getClass().getResourceAsStream(themeResource));
+        } catch (Exception e) {
+            logger.error("Could not load {} from {}", themeName, themeResource, e);
+            return;
+        }
 
-            // Apply to all RSyntaxTextArea components in open windows
+        // Apply to all RSyntaxTextArea components in open windows
+        SwingUtilities.invokeLater(() -> {
             for (Window window : Window.getWindows()) {
                 if (window instanceof JFrame) {
                     applyThemeToFrame((JFrame) window, theme);

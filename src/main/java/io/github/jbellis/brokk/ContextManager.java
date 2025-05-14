@@ -48,7 +48,7 @@ import java.util.stream.IntStream;
 public class ContextManager implements IContextManager, AutoCloseable {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
-    private Chrome io; // for UI feedback - Initialized in createGui
+    private IConsoleIO io; // for UI feedback - Initialized in createGui
     private AnalyzerWrapper analyzerWrapper;
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
@@ -161,6 +161,30 @@ public class ContextManager implements IContextManager, AutoCloseable {
         userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
         });
+
+        // dummy ConsoleIO until Chrome is constructed; necessary because Chrome starts submitting background tasks
+        // immediately during construction, which means our own reference to it will still be null
+        this.io = new IConsoleIO() {
+            @Override
+            public void actionOutput(String msg) {
+                logger.info(msg);
+            }
+
+            @Override
+            public void toolErrorRaw(String msg) {
+                logger.info(msg);
+            }
+
+            @Override
+            public void showMessageDialog(String message, String title, int messageType) {
+                logger.info(message);
+            }
+
+            @Override
+            public void llmOutput(String token, ChatMessageType type) {
+                // pass
+            }
+        };
     }
 
     /**
@@ -184,8 +208,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             public void afterFirstBuild(String msg) {
                 if (msg.isEmpty()) {
                     SwingUtilities.invokeLater(() -> {
-                        JOptionPane.showMessageDialog(
-                                io.getFrame(),
+                        io.showMessageDialog(
                                 "Code Intelligence is empty. Probably this means your language is not yet supported. File-based tools will continue to work.",
                                 "Code Intelligence Warning",
                                 JOptionPane.WARNING_MESSAGE
@@ -231,7 +254,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         io.getInstructionsPanel().checkBalanceAndNotify();
 
-        return io;
+        return (Chrome) this.io;
     }
 
     /**
@@ -1260,16 +1283,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
         if (tokenCount > 32 * 1024) {
             // Show a dialog asking if we should compress the history
             SwingUtilities.invokeLater(() -> {
-                int choice = JOptionPane.showConfirmDialog(io.getFrame(),
-                                                           """
-                                                           The conversation history is getting long (%,d lines or about %,d tokens).
-                                                           Compressing it can improve performance and reduce cost.
-                                                           
-                                                           Compress history now?
-                                                           """.formatted(cf.format().split("\n").length, tokenCount),
-                                                           "Compress History?",
-                                                           JOptionPane.YES_NO_OPTION,
-                                                           JOptionPane.QUESTION_MESSAGE);
+                int choice = io.showConfirmDialog("""
+                                                  The conversation history is getting long (%,d lines or about %,d tokens).
+                                                  Compressing it can improve performance and reduce cost.
+                                                  
+                                                  Compress history now?
+                                                  """.formatted(cf.format().split("\n").length, tokenCount),
+                                                  "Compress History?",
+                                                  JOptionPane.YES_NO_OPTION,
+                                                  JOptionPane.QUESTION_MESSAGE);
 
                 if (choice == JOptionPane.YES_OPTION) {
                     // Call the async compression method if user agrees
@@ -1321,8 +1343,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var worker = new SummarizeWorker(pastedContent, 12) {
             @Override
             protected void done() {
-                io.updateContextTable();
-                io.updateContextHistoryTable();
+                io.postSummarize();
             }
         };
 
@@ -1334,7 +1355,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var worker = new SummarizeWorker(input, 5) {
             @Override
             protected void done() {
-                io.updateContextHistoryTable();
+                io.postSummarize();
             }
         };
 
@@ -1382,9 +1403,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
             @Override
             protected void done() {
-                // Update UI tables after summarization attempt completes
-                io.updateContextTable();
-                io.updateContextHistoryTable();
+                io.postSummarize();
             }
         };
 

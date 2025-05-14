@@ -108,8 +108,7 @@ public class GitPanel extends JPanel
     /**
      * Public API to re-populate the commit table etc. (delegated to GitCommitTab now).
      */
-    public void updateCommitPanel()
-    {
+    public void updateCommitPanel() {
         commitTab.updateCommitPanel();
     }
 
