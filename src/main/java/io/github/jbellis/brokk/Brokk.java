@@ -31,8 +31,6 @@ public class Brokk {
     private static final ConcurrentHashMap<Path, Chrome> openProjectWindows = new ConcurrentHashMap<>();
     private static final Set<Path> reOpeningProjects = ConcurrentHashMap.newKeySet();
     public static final CompletableFuture<AbstractModel> embeddingModelFuture;
-    // key for empty project in the openProjectWindows map, should not be used as a path on disk
-    private static final Path EMPTY_PROJECT = Path.of("∅");
 
     public static final String ICON_RESOURCE = "/brokk-icon.png";
 
@@ -40,10 +38,12 @@ public class Brokk {
         embeddingModelFuture = CompletableFuture.supplyAsync(() -> {
             logger.info("Loading embedding model asynchronously...");
             var modelName = "sentence-transformers/all-MiniLM-L6-v2";
-            File localModelPath = null;
+            File localModelPath;
             try {
                 var cacheDir = System.getProperty("user.home") + "/.cache/brokk";
-                new File(cacheDir).mkdirs();
+                if (!new File(cacheDir).mkdirs()) {
+                    throw new IOException("Unable to create model-cache directory");
+                }
                 localModelPath = SafeTensorSupport.maybeDownloadModel(cacheDir, modelName);
             } catch (IOException e) {
                 logger.warn(e);
@@ -128,11 +128,11 @@ public class Brokk {
             }
         }
 
-        String currentBrokkKey = "";
+        String currentBrokkKey;
         boolean keyIsValid = false;
         if (!noKeyFlag) {
             currentBrokkKey = Project.getBrokkKey(); // I/O (prefs)
-            if (currentBrokkKey != null && !currentBrokkKey.isEmpty()) {
+            if (!currentBrokkKey.isEmpty()) {
                 try {
                     Models.validateKey(currentBrokkKey); // I/O (network)
                     keyIsValid = true;
@@ -178,13 +178,13 @@ public class Brokk {
 
         while (true) {
             // If no project is selected, or key is invalid, or selected project is not a valid directory, show StartupDialog
-            if (projectToOpen == null || !currentKeyIsValid || !isValidDirectory(projectToOpen)) {
+            if (!currentKeyIsValid || !isValidDirectory(projectToOpen)) {
                 final Path initialDialogPath = projectToOpen; // Capture for lambda
                 final boolean initialDialogKeyValid = currentKeyIsValid; // Capture for lambda
 
                 projectToOpen = SwingUtil.runOnEdt(() -> {
                     StartupDialog.DialogMode mode;
-                    boolean needsProject = initialDialogPath == null || !isValidDirectory(initialDialogPath);
+                    boolean needsProject = !isValidDirectory(initialDialogPath);
                     boolean needsKey = !initialDialogKeyValid;
 
                     if (needsProject && needsKey) {
@@ -202,7 +202,6 @@ public class Brokk {
                     System.exit(0);
                     return; // Unreachable
                 }
-                currentKeyIsValid = true; // If dialog returned a project, key is considered valid
             }
 
             CompletableFuture<Boolean> openFuture = openProject(projectToOpen);
@@ -335,7 +334,7 @@ public class Brokk {
         // Stage 1: Initialize Project and ContextManager (off-EDT)
         CompletableFuture.supplyAsync(() -> initializeProjectAndContextManager(projectPath), ForkJoinPool.commonPool())
             .thenAcceptAsync(contextManagerOpt -> { // Stage 2: Handle policy dialog and GUI creation (on-EDT)
-                if (!contextManagerOpt.isPresent()) {
+                if (contextManagerOpt.isEmpty()) {
                     openCompletionFuture.complete(false); // Initialization failed
                     return;
                 }
@@ -397,8 +396,10 @@ public class Brokk {
             if (!project.hasGit()) {
                 int response = SwingUtil.runOnEdt(() -> JOptionPane.showConfirmDialog(
                         null,
-                        "This project is not under Git version control. Would you like to initialize a new Git repository here?"
-                        + "\n\nWithout Git, the project will be read-only, and some features may be limited.",
+                        """
+                        This project is not under Git version control. Would you like to initialize a new Git repository here?\
+
+                        Without Git, the project will be read-only, and some features may be limited.""",
                         "Initialize Git Repository?",
                         JOptionPane.YES_NO_OPTION,
                         JOptionPane.QUESTION_MESSAGE), JOptionPane.NO_OPTION);

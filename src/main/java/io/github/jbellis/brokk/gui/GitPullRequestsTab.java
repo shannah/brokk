@@ -2,11 +2,11 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.GitHubAuth;
-import io.github.jbellis.brokk.git.CommitInfo;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.ICommitInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.transport.RefSpec;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.kohsuke.github.GHIssueState;
@@ -131,17 +131,13 @@ public class GitPullRequestsTab extends JPanel {
         this.contextManager = contextManager;
         this.gitPanel = gitPanel;
 
-        buildPrPanelContent();
-    }
-
-    private void buildPrPanelContent() {
         // Split panel with PRs on left (larger) and commits on right (smaller)
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setResizeWeight(0.6); // 60% for PR list, 40% for commits
 
         // --- Left side - Pull Requests table and filters ---
         // This mainPrAreaPanel will hold filters on WEST and table+buttons on CENTER
-        JPanel mainPrAreaPanel = new JPanel(new BorderLayout(new Constants().H_GAP, 0));
+        JPanel mainPrAreaPanel = new JPanel(new BorderLayout(Constants.H_GAP, 0));
         mainPrAreaPanel.setBorder(BorderFactory.createTitledBorder("Pull Requests"));
 
         // Vertical Filter Panel
@@ -151,9 +147,9 @@ public class GitPullRequestsTab extends JPanel {
         JLabel filterLabel = new JLabel("Filter:");
         filterLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         verticalFilterPanel.add(filterLabel);
-        verticalFilterPanel.add(Box.createVerticalStrut(new Constants().V_GAP)); // Space after label
+        verticalFilterPanel.add(Box.createVerticalStrut(Constants.V_GAP)); // Space after label
 
-        statusFilter = new FilterBox(chrome, "Status", () -> STATUS_FILTER_OPTIONS, "Open");
+        statusFilter = new FilterBox(this.chrome, "Status", () -> STATUS_FILTER_OPTIONS, "Open");
         statusFilter.setToolTipText("Filter by PR status");
         statusFilter.setAlignmentX(Component.LEFT_ALIGNMENT);
         statusFilter.addPropertyChangeListener("value", e -> {
@@ -162,25 +158,25 @@ public class GitPullRequestsTab extends JPanel {
         });
         verticalFilterPanel.add(statusFilter);
 
-        authorFilter = new FilterBox(chrome, "Author", this::getAuthorFilterOptions);
+        authorFilter = new FilterBox(this.chrome, "Author", this::getAuthorFilterOptions);
         authorFilter.setToolTipText("Filter by author");
         authorFilter.setAlignmentX(Component.LEFT_ALIGNMENT);
         authorFilter.addPropertyChangeListener("value", e -> filterAndDisplayPrs());
         verticalFilterPanel.add(authorFilter);
 
-        labelFilter = new FilterBox(chrome, "Label", this::getLabelFilterOptions);
+        labelFilter = new FilterBox(this.chrome, "Label", this::getLabelFilterOptions);
         labelFilter.setToolTipText("Filter by label");
         labelFilter.setAlignmentX(Component.LEFT_ALIGNMENT);
         labelFilter.addPropertyChangeListener("value", e -> filterAndDisplayPrs());
         verticalFilterPanel.add(labelFilter);
 
-        assigneeFilter = new FilterBox(chrome, "Assignee", this::getAssigneeFilterOptions);
+        assigneeFilter = new FilterBox(this.chrome, "Assignee", this::getAssigneeFilterOptions);
         assigneeFilter.setToolTipText("Filter by assignee");
         assigneeFilter.setAlignmentX(Component.LEFT_ALIGNMENT);
         assigneeFilter.addPropertyChangeListener("value", e -> filterAndDisplayPrs());
         verticalFilterPanel.add(assigneeFilter);
 
-        reviewFilter = new FilterBox(chrome, "Review", () -> REVIEW_FILTER_OPTIONS);
+        reviewFilter = new FilterBox(this.chrome, "Review", () -> REVIEW_FILTER_OPTIONS);
         reviewFilter.setToolTipText("Filter by review status (Note: Some options may be placeholders)");
         reviewFilter.setAlignmentX(Component.LEFT_ALIGNMENT);
         reviewFilter.addPropertyChangeListener("value", e -> filterAndDisplayPrs());
@@ -343,7 +339,7 @@ public class GitPullRequestsTab extends JPanel {
                                     }
                                     tooltipBuilder.append("</html>");
                                     return tooltipBuilder.toString();
-                                } catch (org.eclipse.jgit.api.errors.GitAPIException e) { // CommitInfo.changedFiles can throw GitAPIException (and its subclass GitRepoException)
+                                } catch (GitAPIException e) { // CommitInfo.changedFiles can throw GitAPIException (and its subclass GitRepoException)
                                     logger.warn("Could not get changed files for PR commit tooltip ({}): {}", commitInfo.id(), e.getMessage());
                                     return "Error loading changed files for this commit.";
                                 }
@@ -392,7 +388,7 @@ public class GitPullRequestsTab extends JPanel {
                          disablePrButtonsAndClearCommits();
                          return;
                     }
-                    org.kohsuke.github.GHPullRequest selectedPr = displayedPrs.get(modelRow);
+                    GHPullRequest selectedPr = displayedPrs.get(modelRow);
                     int prNumber = selectedPr.getNumber();
                     updateCommitsForPullRequest(selectedPr);
 
@@ -402,7 +398,7 @@ public class GitPullRequestsTab extends JPanel {
                     diffPrButton.setEnabled(true);
                     openInBrowserButton.setEnabled(true);
 
-                    contextManager.submitBackgroundTask("Updating PR #" + prNumber + " local status", () -> {
+                    this.contextManager.submitBackgroundTask("Updating PR #" + prNumber + " local status", () -> {
                         String prHeadSha = selectedPr.getHead().getSha(); // This call might throw a RTE from the library on failure
                         // If getHead() or getSha() fails internally (e.g. network issue leading to RTE in library),
                         // the whole background task will fail and be logged by submitBackgroundTask's wrapper.
@@ -456,7 +452,7 @@ public class GitPullRequestsTab extends JPanel {
             }
         });
 
-        contextManager.submitBackgroundTask("Updating Pull Requests", this::updatePrList);
+        updatePrList(); // async
     }
 
     private void disablePrButtonsAndClearCommits() {
