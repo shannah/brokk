@@ -65,6 +65,8 @@ public class SettingsDialog extends JDialog {
     // Quick Models Tab components
     private JTable quickModelsTable;
     private FavoriteModelsTableModel quickModelsTableModel;
+    // Balance field (Global -> Service)
+    private JTextField balanceField;
 
 
     public SettingsDialog(Frame owner, Chrome chrome) {
@@ -123,11 +125,12 @@ public class SettingsDialog extends JDialog {
         var applyButton = new JButton("Apply"); // Added Apply button
 
         okButton.addActionListener(e -> {
-            applySettings();
-            dispose();
+            if (applySettings()) {
+                dispose();
+            }
         });
         cancelButton.addActionListener(e -> dispose());
-        applyButton.addActionListener(e -> applySettings());
+        applyButton.addActionListener(e -> applySettings()); // applySettings shows errors, dialog stays open
 
         // Add Escape key binding to close the dialog (like Cancel)
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
@@ -235,11 +238,11 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.NONE;
         servicePanel.add(new JLabel("Balance:"), gbc);
 
-        var balanceField = new JTextField("Loading...");
-        balanceField.setEditable(false);
-        balanceField.setColumns(8);
+        this.balanceField = new JTextField("Loading..."); // Assign to member field
+        this.balanceField.setEditable(false);
+        this.balanceField.setColumns(8);
         var balanceDisplayPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        balanceDisplayPanel.add(balanceField);
+        balanceDisplayPanel.add(this.balanceField);
         var topUpUrl = Models.TOP_UP_URL;
         var topUpLabel = new BrowserLabel(topUpUrl, "Top Up");
         balanceDisplayPanel.add(topUpLabel);
@@ -250,17 +253,7 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.NONE;
         servicePanel.add(balanceDisplayPanel, gbc);
 
-        var contextManager = chrome.getContextManager();
-        var models = contextManager.getModels();
-        contextManager.submitBackgroundTask("Fetching user balance", () -> {
-            try {
-                float balance = models.getUserBalance();
-                SwingUtilities.invokeLater(() -> balanceField.setText(String.format("$%.2f", balance)));
-            } catch (java.io.IOException e) {
-                logger.debug("Failed to fetch user balance", e);
-                SwingUtilities.invokeLater(() -> balanceField.setText("Error"));
-            }
-        });
+        refreshBalanceDisplay(); // Initial balance fetch
 
         // Sign-up/login link
         var signupUrl = "https://brokk.ai";
@@ -832,6 +825,87 @@ public class SettingsDialog extends JDialog {
             gbc.fill = GridBagConstraints.VERTICAL;
             add(Box.createVerticalGlue(), gbc);
 
+            // Initial layout and policy load
+            layoutControls();
+            loadPolicy();
+        }
+
+        /**
+         * Sets up the UI controls based on whether data sharing is allowed by the organization.
+         * This method clears existing components and re-adds them.
+         */
+        private void layoutControls() {
+            removeAll(); // Clear existing components before re-adding
+
+            var gbc = new GridBagConstraints(); // Re-initialize GBC for local use
+            gbc.insets = new Insets(5, 5, 5, 5);
+            gbc.anchor = GridBagConstraints.WEST;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.weightx = 1.0;
+            int y = 0;
+
+            boolean dataSharingAllowedByOrg = project.isDataShareAllowed();
+
+            if (dataSharingAllowedByOrg) {
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(5, 5, 0, 5);
+                add(improveRadio, gbc);
+                improveRadio.setVisible(true); // Ensure visible
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(0, 25, 10, 5);
+                add(improveDescLabel, gbc);
+                improveDescLabel.setVisible(true); // Ensure visible
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(5, 5, 0, 5);
+                add(minimalRadio, gbc);
+                minimalRadio.setVisible(true); // Ensure visible
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(0, 25, 10, 5);
+                add(minimalDescLabel, gbc);
+                minimalDescLabel.setVisible(true); // Ensure visible
+
+                orgDisabledLabel.setVisible(false); // Ensure this is not visible
+            } else {
+                improveRadio.setVisible(false);
+                improveDescLabel.setVisible(false);
+                minimalRadio.setVisible(false);
+                minimalDescLabel.setVisible(false);
+
+                gbc.gridx = 0;
+                gbc.gridy = y++;
+                gbc.insets = new Insets(5, 5, 10, 5);
+                add(orgDisabledLabel, gbc);
+                orgDisabledLabel.setVisible(true); // Ensure visible
+            }
+
+            gbc.insets = new Insets(15, 5, 5, 5);
+            infoLabel.setVisible(true); // Always visible
+            gbc.gridx = 0;
+            gbc.gridy = y++;
+            add(infoLabel, gbc);
+
+            gbc.gridx = 0;
+            gbc.gridy = y;
+            gbc.weighty = 1.0;
+            gbc.fill = GridBagConstraints.VERTICAL;
+            add(Box.createVerticalGlue(), gbc); // Always add glue
+
+            revalidate();
+            repaint();
+        }
+
+        /**
+         * Refreshes the UI based on the current data sharing allowance and reloads the policy.
+         */
+        public void refreshStateAndUI() {
+            layoutControls();
             loadPolicy();
         }
 
@@ -1029,6 +1103,26 @@ public class SettingsDialog extends JDialog {
         return panel;
     }
 
+    private void refreshBalanceDisplay() {
+        if (this.balanceField == null) {
+            logger.warn("balanceField is null, cannot refresh balance display.");
+            return;
+        }
+        this.balanceField.setText("Loading...");
+
+        var contextManager = chrome.getContextManager();
+        var models = contextManager.getModels();
+        contextManager.submitBackgroundTask("Refreshing user balance", () -> {
+            try {
+                float balance = models.getUserBalance(); // This uses the current key context
+                SwingUtilities.invokeLater(() -> this.balanceField.setText(String.format("$%.2f", balance)));
+            } catch (java.io.IOException e) {
+                logger.debug("Failed to refresh user balance", e);
+                SwingUtilities.invokeLater(() -> this.balanceField.setText("Error"));
+            }
+        });
+    }
+
     /**
      * Adds one “model / reasoning / explanation” block to the grid-bag panel and
      * returns the next free row index.
@@ -1100,7 +1194,7 @@ public class SettingsDialog extends JDialog {
         return startRow + 2;   // next free row
     }
 
-    private void applySettings() {
+    private boolean applySettings() {
         // Apply Global Settings
 
         // -- Apply Brokk Key --
@@ -1115,7 +1209,7 @@ public class SettingsDialog extends JDialog {
                                                   "Invalid Brokk Key",
                                                   "Invalid Key",
                                                   JOptionPane.ERROR_MESSAGE);
-                    return;
+                    return false; // Validation failed, do not proceed further with OK
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(this,
                                                   "Network error: " + ex.getMessage(),
@@ -1126,6 +1220,15 @@ public class SettingsDialog extends JDialog {
             }
             Project.setBrokkKey(newBrokkKey);
             logger.debug("Applied Brokk Key: {}", newBrokkKey.isEmpty() ? "<empty>" : "****");
+
+            // Refresh balance display as it might change with the key
+            refreshBalanceDisplay();
+
+            // Re-evaluate data sharing allowance and update DataRetentionPanel UI accordingly
+            var projectForRefresh = chrome.getProject(); // get a fresh reference or use existing `project` var
+            if (projectForRefresh != null && dataRetentionPanel != null) {
+                dataRetentionPanel.refreshStateAndUI();
+            }
         }
 
         // -- Apply Quick Models --
@@ -1272,6 +1375,7 @@ public class SettingsDialog extends JDialog {
                                    project::getSearchModelName, project::setSearchModelName,
                                    project::getSearchReasoningLevel, project::setSearchReasoningLevel);
         }
+        return true; // All settings applied successfully or with non-blocking errors
     }
 
 
