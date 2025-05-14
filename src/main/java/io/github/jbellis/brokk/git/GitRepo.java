@@ -36,22 +36,46 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * A Git repository abstraction using JGit
+ * A Git repository abstraction using JGit.
+ *
+ * The semantics are that GitRepo represents a subset of the files in the full Git repository
+ * that is located in the `location` directory or one of its parents. The common case is that
+ * the git dir is a child of `location` but we support instantiating in one of the working
+ * tree's subdirectories as well.
  */
 public class GitRepo implements Closeable, IGitRepo {
     private static final Logger logger = LogManager.getLogger(GitRepo.class);
 
-    private final Path root;
+    private final Path projectRoot; // The root directory for ProjectFile instances this GitRepo deals with
+    private final Path gitTopLevel; // The actual top-level directory of the git repository
     private final Repository repository;
     private final Git git;
     private Set<ProjectFile> trackedFilesCache = null;
 
     /**
+     * Find the directory containing the .git folder (i.e., the git top-level directory),
+     * searching up the directory tree from the given directory.
+     * Returns null if no .git directory is found.
+     */
+    private static Path findTopLevel(Path dir) {
+        assert dir != null;
+        Path current = dir;
+        while (true) {
+            if (current.resolve(".git").toFile().isDirectory()) {
+                return current;
+            }
+            if (current.getParent() == null) {
+                return null;
+            }
+            current = current.getParent();
+        }
+    }
+
+    /**
      * Returns true if the directory has a .git folder.
      */
     public static boolean hasGitRepo(Path dir) {
-        assert dir != null;
-        return dir.resolve(".git").toFile().isDirectory();
+        return findTopLevel(dir) != null;
     }
 
     /**
@@ -61,19 +85,49 @@ public class GitRepo implements Closeable, IGitRepo {
         return git;
     }
 
-    public GitRepo(Path root) {
-        this.root = root;
-        if (root == null) {
-            throw new IllegalStateException("No git repository found");
-        }
+    public GitRepo(Path projectRoot) {
+        assert projectRoot != null;
+        this.projectRoot = projectRoot;
+        this.gitTopLevel = findTopLevel(projectRoot);
+        assert this.gitTopLevel != null : "No git repo found at or above " + projectRoot;
+
         try {
+            Path gitDir = this.gitTopLevel.resolve(".git");
+            assert Files.isDirectory(gitDir) : ".git directory not found at " + gitDir;
             repository = new FileRepositoryBuilder()
-                    .setGitDir(root.resolve(".git").toFile())
+                    .setGitDir(gitDir.toFile())
                     .build();
             git = new Git(repository);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to open repository", e);
+            throw new RuntimeException("Failed to open repository at " + this.gitTopLevel, e);
         }
+    }
+
+    @Override
+    public Path getGitTopLevel() {
+        return gitTopLevel;
+    }
+
+    /**
+     * Converts a ProjectFile (which is relative to projectRoot) into a path string
+     * relative to gitTopLevel, suitable for JGit commands.
+     */
+    private String toRepoRelativePath(ProjectFile file) {
+        // ProjectFile.absPath() gives the absolute path on the filesystem.
+        // We need to make it relative to the gitTopLevel for JGit.
+        Path relativeToGitTopLevel = gitTopLevel.relativize(file.absPath());
+        return relativeToGitTopLevel.toString().replace('\\', '/');
+    }
+
+    /**
+     * Creates a ProjectFile instance from a path string returned by JGit.
+     * JGit paths are relative to gitTopLevel. The returned ProjectFile will be
+     * relative to projectRoot.
+     */
+    private ProjectFile toProjectFile(String gitPath) {
+        Path absolutePath = gitTopLevel.resolve(gitPath);
+        Path pathRelativeToProjectRoot = projectRoot.relativize(absolutePath);
+        return new ProjectFile(projectRoot, pathRelativeToProjectRoot);
     }
 
     @Override
@@ -90,8 +144,15 @@ public class GitRepo implements Closeable, IGitRepo {
     public synchronized void add(List<ProjectFile> files) throws GitAPIException {
         var addCommand = git.add();
         for (var file : files) {
-            addCommand.addFilepattern(toGitPath(file.toString()));
+            addCommand.addFilepattern(toRepoRelativePath(file));
         }
+        addCommand.call();
+    }
+
+    @Override
+    public synchronized void add(Path path) throws GitAPIException {
+        var addCommand = git.add();
+        addCommand.addFilepattern(path.toString());
         addCommand.call();
     }
 
@@ -105,7 +166,7 @@ public class GitRepo implements Closeable, IGitRepo {
     public synchronized void remove(ProjectFile file) throws GitAPIException {
         logger.debug("Removing file from Git index (git rm --cached): {}", file);
         git.rm()
-                .addFilepattern(toGitPath(file.toString()))
+                .addFilepattern(toRepoRelativePath(file))
                 .setCached(true) // Remove from index only -- EditBlock removes from disk
                 .call();
         refresh(); // Refresh repository state, including tracked files cache
@@ -130,24 +191,28 @@ public class GitRepo implements Closeable, IGitRepo {
                     treeWalk.addTree(headTree);
                     treeWalk.setRecursive(true);
                     while (treeWalk.next()) {
-                        trackedPaths.add(treeWalk.getPathString());
+                        String gitPath = treeWalk.getPathString();
+                        // Only add paths that are under the projectRoot
+                        if (gitTopLevel.resolve(gitPath).startsWith(projectRoot)) {
+                            trackedPaths.add(gitPath);
+                        }
                     }
                 }
             }
             // Staged/modified/added/removed
             var status = git.status().call();
-            trackedPaths.addAll(status.getChanged());
-            trackedPaths.addAll(status.getModified());
-            trackedPaths.addAll(status.getAdded());
-            trackedPaths.addAll(status.getRemoved());
+            Stream.of(status.getChanged(), status.getModified(), status.getAdded(), status.getRemoved())
+                  .flatMap(Collection::stream)
+                  .filter(gitPath -> gitTopLevel.resolve(gitPath).startsWith(projectRoot))
+                  .forEach(trackedPaths::add);
         } catch (IOException | GitAPIException e) {
             logger.error("getTrackedFiles failed", e);
             // not really much caller can do about this, it's a critical method
             throw new RuntimeException(e);
         }
         trackedFilesCache = trackedPaths.stream()
-                .map(path -> new ProjectFile(root, path))
-                .collect(Collectors.toSet());
+                                     .map(this::toProjectFile)
+                                     .collect(Collectors.toSet());
         return trackedFilesCache;
     }
 
@@ -165,7 +230,7 @@ public class GitRepo implements Closeable, IGitRepo {
     public synchronized String diffFiles(List<ProjectFile> files) throws GitAPIException {
         try (var out = new ByteArrayOutputStream()) {
             var filters = files.stream()
-                    .map(file -> PathFilter.create(file.toString()))
+                    .map(file -> PathFilter.create(toRepoRelativePath(file)))
                     .collect(Collectors.toCollection(ArrayList::new));
             var filterGroup = PathFilterGroup.create(filters);
 
@@ -259,7 +324,7 @@ public class GitRepo implements Closeable, IGitRepo {
         allRelevantPaths.addAll(statusResult.getChanged());
 
         for (var path : allRelevantPaths) {
-            var projectFile = new ProjectFile(root, path);
+            var projectFile = toProjectFile(path);
             String determinedStatus;
 
             // Determine status based on "git commit -a" behavior:
@@ -298,7 +363,7 @@ public class GitRepo implements Closeable, IGitRepo {
 
         if (!files.isEmpty()) {
             for (var file : files) {
-                commitCommand.setOnly(toGitPath(file.toString()));
+                commitCommand.setOnly(toRepoRelativePath(file));
             }
         }
 
@@ -649,9 +714,9 @@ public class GitRepo implements Closeable, IGitRepo {
             }
         }
         return fileSet.stream()
-                .filter(path -> !"/dev/null".equals(path))
-                .map(path -> new ProjectFile(root, path))
-                .collect(Collectors.toList());
+                      .filter(path -> !"/dev/null".equals(path))
+                      .map(this::toProjectFile)
+                      .collect(Collectors.toList());
     }
 
     /**
@@ -817,8 +882,9 @@ public class GitRepo implements Closeable, IGitRepo {
             try (var treeWalk = new TreeWalk(repository)) {
                 treeWalk.addTree(tree);
                 treeWalk.setRecursive(true);
+                String targetPath = toRepoRelativePath(file);
                 while (treeWalk.next()) {
-                    if (treeWalk.getPathString().equals(toGitPath(file.toString()))) {
+                    if (treeWalk.getPathString().equals(targetPath)) {
                         var blobId = treeWalk.getObjectId(0);
                         var loader = repository.open(blobId);
                         return new String(loader.getBytes(), StandardCharsets.UTF_8);
@@ -846,7 +912,7 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public String showFileDiff(String commitIdA, String commitIdB, ProjectFile file) throws GitAPIException {
         try (var out = new ByteArrayOutputStream()) {
-            var pathFilter = PathFilter.create(toGitPath(file.toString()));
+            var pathFilter = PathFilter.create(toRepoRelativePath(file));
             if ("HEAD".equals(commitIdA)) {
                 git.diff()
                         .setOldTree(prepareTreeParser(commitIdB))
@@ -1114,7 +1180,7 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public List<CommitInfo> getFileHistory(ProjectFile file) throws GitAPIException {
         var commits = new ArrayList<CommitInfo>();
-        for (var commit : git.log().addPath(toGitPath(file.toString())).call()) {
+        for (var commit : git.log().addPath(toRepoRelativePath(file)).call()) {
             // Use factory method
             commits.add(this.fromRevCommit(commit));
         }
@@ -1148,7 +1214,7 @@ public class GitRepo implements Closeable, IGitRepo {
      * @return A list of patterns from .gitignore, or an empty list if the file doesn't exist or an error occurs.
      */
     public List<String> getIgnoredPatterns() {
-        var gitignoreFile = this.root.resolve(".gitignore");
+        var gitignoreFile = this.gitTopLevel.resolve(".gitignore");
         if (!Files.exists(gitignoreFile) || !Files.isReadable(gitignoreFile)) {
             logger.debug(".gitignore file not found or not readable at {}", gitignoreFile);
             return List.of();
@@ -1185,13 +1251,6 @@ public class GitRepo implements Closeable, IGitRepo {
             }
         }
         return commits;
-    }
-
-    /**
-     * Normalizes a file path to use forward slashes as Git expects
-     */
-    private String toGitPath(String path) {
-        return path.replace('\\', '/');
     }
 
     @Override

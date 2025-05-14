@@ -4,6 +4,7 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ObjectId;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
@@ -12,6 +13,10 @@ public interface IGitRepo {
 
     default String diff() throws GitAPIException {
         return "";
+    }
+
+    default Path getGitTopLevel() {
+        throw new UnsupportedOperationException();
     }
 
     default void refresh() {
@@ -46,6 +51,13 @@ public interface IGitRepo {
     }
 
     default void add(List<ProjectFile> files) throws GitAPIException {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * for the rare case when you need to add a file (e.g. .gitignore) that is not necessarily under the project's root
+     */
+    default void add(Path path) throws GitAPIException {
         throw new UnsupportedOperationException();
     }
 

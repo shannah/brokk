@@ -197,10 +197,10 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         contextManager.submitBackgroundTask("Updating .gitignore", () -> {
             try {
                 var gitRepo = (GitRepo) getProject().getRepo();
-                var root = getProject().getRoot();
+                var projectRoot = getProject().getRoot();
 
                 // Update .gitignore
-                var gitignorePath = root.resolve(".gitignore");
+                var gitignorePath = gitRepo.getGitTopLevel().resolve(".gitignore");
                 String content = "";
 
                 if (Files.exists(gitignorePath)) {
@@ -221,11 +221,11 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                     systemOutput("Updated .gitignore with .brokk entries");
 
                     // Add .gitignore to git if it's not already in the index
-                    gitRepo.add(List.of(new ProjectFile(root, ".gitignore")));
+                    gitRepo.add(gitignorePath);
                 }
 
                 // Create .brokk directory if it doesn't exist
-                var brokkDir = root.resolve(".brokk");
+                var brokkDir = projectRoot.resolve(".brokk");
                 Files.createDirectories(brokkDir);
 
                 // Add specific files to git
@@ -242,8 +242,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
                 // Add files to git
                 var filesToAdd = new ArrayList<ProjectFile>();
-                filesToAdd.add(new ProjectFile(root, ".brokk/style.md"));
-                filesToAdd.add(new ProjectFile(root, ".brokk/project.properties"));
+                filesToAdd.add(new ProjectFile(projectRoot, ".brokk/style.md"));
+                filesToAdd.add(new ProjectFile(projectRoot, ".brokk/project.properties"));
 
                 gitRepo.add(filesToAdd);
                 systemOutput("Added .brokk project files to git");
