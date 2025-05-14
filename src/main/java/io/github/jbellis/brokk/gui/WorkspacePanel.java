@@ -676,9 +676,81 @@ public class WorkspacePanel extends JPanel {
         }
 
         var approxTokens = Messages.getApproximateTokens(fullText.toString());
-        ((JLabel) locSummaryLabel.getComponent(0)).setText(
-                "Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000)
+        var innerLabel = (JLabel) locSummaryLabel.getComponent(0);
+
+        // Check for context size warnings against configured models
+        var models = contextManager.getModels();
+        var project = contextManager.getProject();
+
+        Map<String, Integer> redWarningModels = new HashMap<>();
+        Map<String, Integer> yellowWarningModels = new HashMap<>();
+
+        // Helper record to store model name and reasoning level for checking
+        record ModelConfig(String name, io.github.jbellis.brokk.Project.ReasoningLevel level) {}
+
+        List<ModelConfig> configuredModelChecks = List.of(
+                new ModelConfig(project.getArchitectModelName(), project.getArchitectReasoningLevel()),
+                new ModelConfig(project.getCodeModelName(), project.getCodeReasoningLevel()),
+                new ModelConfig(project.getAskModelName(), project.getAskReasoningLevel()),
+                new ModelConfig(project.getEditModelName(), project.getEditReasoningLevel()),
+                new ModelConfig(project.getSearchModelName(), project.getSearchReasoningLevel())
         );
+
+        for (var config : configuredModelChecks) {
+            if (config.name() == null || config.name().isBlank()) {
+                continue;
+            }
+            try {
+                var model = models.get(config.name(), config.level());
+                // Skip if model is unavailable or a placeholder
+                if (model instanceof io.github.jbellis.brokk.Models.UnavailableStreamingModel) {
+                    logger.debug("Skipping unavailable model for context warning: {}", config.name());
+                    continue;
+                }
+
+                int maxInputTokens = models.getMaxInputTokens(model);
+                if (maxInputTokens <= 0) {
+                    logger.warn("Model {} has invalid maxInputTokens: {}. Skipping for context warning.", config.name(), maxInputTokens);
+                    continue;
+                }
+
+                // Red warning: context > 90.9% of max (approxTokens > maxInputTokens / 1.1)
+                if (approxTokens > maxInputTokens / 1.1) {
+                    redWarningModels.put(config.name(), maxInputTokens);
+                }
+                // Yellow warning: context > 50% of max (approxTokens > maxInputTokens / 2.0)
+                else if (approxTokens > maxInputTokens / 2.0) {
+                    yellowWarningModels.put(config.name(), maxInputTokens);
+                }
+            } catch (Exception e) {
+                logger.warn("Error processing model {} for context warning: {}", config.name(), e.getMessage(), e);
+            }
+        }
+
+        String warningTooltip = """
+        Consider replacing full files with summaries or tackling a smaller piece of your problem to start with. 
+        Deep Scan can help surface the parts of your codebase that are necessary to solving the problem.
+        """;
+
+        if (!redWarningModels.isEmpty()) {
+            innerLabel.setForeground(Color.RED);
+            String modelListStr = redWarningModels.entrySet().stream()
+                    .map(entry -> String.format("%s (%,d)", entry.getKey(), entry.getValue()))
+                    .collect(Collectors.joining(", "));
+            innerLabel.setText(String.format("Warning! Your Workspace (~%,d tokens) fills more than 90%% of the context window for the following models: %s. Performance will be degraded.", approxTokens, modelListStr));
+            innerLabel.setToolTipText(warningTooltip);
+        } else if (!yellowWarningModels.isEmpty()) {
+            innerLabel.setForeground(Color.YELLOW);
+            String modelListStr = yellowWarningModels.entrySet().stream()
+                    .map(entry -> String.format("%s (%,d)", entry.getKey(), entry.getValue()))
+                    .collect(Collectors.joining(", "));
+            innerLabel.setText(String.format("Warning! Your Workspace (~%,d tokens) fills more than half of the context window for the following models: %s. Performance may be degraded.", approxTokens, modelListStr));
+            innerLabel.setToolTipText(warningTooltip);
+        } else {
+            innerLabel.setForeground(UIManager.getColor("Label.foreground")); // Reset to default color
+            innerLabel.setText("Total: %,d LOC, or about %,dk tokens".formatted(totalLines, approxTokens / 1000));
+            innerLabel.setToolTipText(null); // Clear tooltip
+        }
 
         revalidate();
         repaint();
