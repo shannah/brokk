@@ -251,7 +251,6 @@ public class MenuBar {
             contextMenu.add(symbolUsageItem);
 
         var callersItem = new JMenuItem("Call graph to function");
-            callersItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
             callersItem.addActionListener(e -> {
                 chrome.getContextPanel().findMethodCallersAsync(); // Call via ContextPanel
             });
@@ -259,7 +258,6 @@ public class MenuBar {
             contextMenu.add(callersItem);
 
         var calleesItem = new JMenuItem("Call graph from function");
-            calleesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
             calleesItem.addActionListener(e -> {
                 chrome.getContextPanel().findMethodCalleesAsync(); // Call via ContextPanel
             });
