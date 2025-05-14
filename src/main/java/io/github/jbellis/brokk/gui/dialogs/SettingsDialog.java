@@ -513,25 +513,19 @@ public class SettingsDialog extends JDialog {
         row++; // Move to the next conceptual row
 
         // Excluded Directories
-        gbc.gridx = 0;
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gbc.weighty = 0.0; // Label doesn't take vertical space
-        gbc.anchor = GridBagConstraints.NORTHWEST;
-        gbc.fill = GridBagConstraints.NONE;
-
-        var codeIntelligenceLabel = new JLabel("Code Intelligence");
-        buildPanel.add(codeIntelligenceLabel, gbc);
-        row++;
+        // Create a panel for the labels
+        var labelsPanel = new JPanel(new GridLayout(2, 1, 0, 4));
+        labelsPanel.setOpaque(false);
+        labelsPanel.add(new JLabel("Code Intelligence"));
+        labelsPanel.add(new JLabel("Exclusions:"));
 
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0.0;
-        gbc.weighty = 0.0; // Label doesn't take vertical space
+        gbc.weighty = 0.0;
         gbc.anchor = GridBagConstraints.NORTHWEST;
         gbc.fill = GridBagConstraints.NONE;
-        var exclusionsLabel = new JLabel("Exclusions:");
-        buildPanel.add(exclusionsLabel, gbc);
+        buildPanel.add(labelsPanel, gbc);
 
         excludedDirectoriesListModel = new DefaultListModel<>();
         var sortedExcludedDirs = details.excludedDirectories().stream().sorted().toList();
@@ -547,6 +541,7 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 1.0;
         gbc.weighty = 0.5; // Share vertical space equally
         gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.NORTH;
         buildPanel.add(excludedScrollPane, gbc);
 
         // Buttons for Excluded Directories
