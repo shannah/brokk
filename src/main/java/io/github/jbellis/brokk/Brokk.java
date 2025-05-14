@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -172,47 +173,75 @@ public class Brokk {
             System.exit(1);
         }
 
-        // Attempt to open directly if all conditions met
-        if (keyIsValid && projectPathIsValid) {
-            openProject(determinedProjectPath); // Called from main thread
-            return;
-        }
+        // Main application loop: select project, attempt to open, repeat if failed.
+        Path projectToOpen = determinedProjectPath; // Initially from args or recent
+        boolean currentKeyIsValid = keyIsValid;    // Initially from startup check
 
-        // One or both are missing/invalid, show the startup dialog on EDT
-        final String finalCurrentBrokkKey = currentBrokkKey;
-        final boolean finalKeyIsValid = keyIsValid;
-        final Path finalInitialProjectPathForDialog = projectPathIsValid ? determinedProjectPath : null;
-        final boolean finalProjectPathIsValid = projectPathIsValid; // Need this for mode determination
+        while (true) {
+            // If no project is selected, or key is invalid, or selected project is not a valid directory, show StartupDialog
+            if (projectToOpen == null || !currentKeyIsValid || !isValidDirectory(projectToOpen)) {
+                final Path initialDialogPath = projectToOpen; // Capture for lambda
+                final boolean initialDialogKeyValid = currentKeyIsValid; // Capture for lambda
 
-        Path projectToOpenFromDialog;
-        try {
-            projectToOpenFromDialog = SwingUtil.runOnEdt(() -> {
-                StartupDialog.DialogMode mode;
-                if (!finalKeyIsValid && !finalProjectPathIsValid) {
-                    mode = StartupDialog.DialogMode.REQUIRE_BOTH;
-                } else if (!finalKeyIsValid) {
-                    mode = StartupDialog.DialogMode.REQUIRE_KEY_ONLY;
-                } else { // finalKeyIsValid && !finalProjectPathIsValid
-                    mode = StartupDialog.DialogMode.REQUIRE_PROJECT_ONLY;
+                projectToOpen = SwingUtil.runOnEdt(() -> {
+                    StartupDialog.DialogMode mode;
+                    boolean needsProject = initialDialogPath == null || !isValidDirectory(initialDialogPath);
+                    boolean needsKey = !initialDialogKeyValid;
+
+                    if (needsProject && needsKey) {
+                        mode = StartupDialog.DialogMode.REQUIRE_BOTH;
+                    } else if (needsKey) {
+                        mode = StartupDialog.DialogMode.REQUIRE_KEY_ONLY;
+                    } else { // needsProject is true
+                        mode = StartupDialog.DialogMode.REQUIRE_PROJECT_ONLY;
+                    }
+                    return StartupDialog.showDialog(null, Project.getBrokkKey(), initialDialogKeyValid, initialDialogPath, mode);
+                }, null);
+
+                if (projectToOpen == null) { // User quit the dialog
+                    logger.info("Startup dialog was closed or exited. Shutting down.");
+                    System.exit(0);
+                    return; // Unreachable
                 }
-                return StartupDialog.showDialog(null, finalCurrentBrokkKey, finalKeyIsValid, finalInitialProjectPathForDialog, mode);
-            }, null);
-        } catch (Exception e) { // Catches InterruptedException and InvocationTargetException
-            logger.error("Error showing StartupDialog or it was interrupted. Shutting down.", e);
-            System.exit(1);
-            return; // Unreachable
-        }
+                currentKeyIsValid = true; // If dialog returned a project, key is considered valid
+            }
 
-        if (projectToOpenFromDialog != null) {
-            openProject(projectToOpenFromDialog); // Called from main thread
-        } else {
-            logger.info("Startup dialog was closed or exited. Shutting down.");
-            System.exit(0);
+            CompletableFuture<Boolean> openFuture = openProject(projectToOpen);
+            boolean success = false;
+            try {
+                success = openFuture.get(); // Block for the result of opening
+            } catch (Exception e) { // Catches InterruptedException and ExecutionException
+                logger.error("Exception waiting for project {} to open: {}", projectToOpen, e);
+                // success remains false, error logged by openProject or initializeProjectAndContextManager
+            }
+
+            if (success) {
+                // Project opened successfully, break the loop.
+                // The AWT event dispatch thread will keep the application alive if windows are open.
+                break;
+            } else {
+                // Project failed to open. Error messages/dialogs handled by openProject/initializeProjectAndContextManager.
+                // Nullify projectToOpen to force StartupDialog again for a new selection.
+                projectToOpen = null;
+                // Assume key might be an issue, or user might want to change it.
+                // StartupDialog will re-verify/prompt for key if currentKeyIsValid is false.
+                currentKeyIsValid = false;
+            }
+        }
+    }
+
+    private static boolean isValidDirectory(Path path) {
+        if (path == null) return false;
+        try {
+            return Files.isDirectory(path.toRealPath());
+        } catch (IOException e) {
+            return false;
         }
     }
 
     private static void createAndShowGui(Path projectPath, ContextManager contextManager) {
         assert SwingUtilities.isEventDispatchThread();
+        assert contextManager != null : "ContextManager cannot be null when creating GUI";
 
         var io = new Chrome(contextManager);
         io.systemOutput("Opening project at " + projectPath);
@@ -221,7 +250,6 @@ public class Brokk {
         var project = contextManager.getProject();
         if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
             logger.debug("Project {} has no Data Retention Policy set. Showing dialog.", projectPath.getFileName());
-            // This dialog is modal and runs on the EDT.
             SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
             io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
         }
@@ -232,18 +260,12 @@ public class Brokk {
         io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosed(java.awt.event.WindowEvent e) {
-                // This listener is invoked on the EDT.
                 Chrome closedChrome = openProjectWindows.remove(projectPath);
                 if (closedChrome != null) {
-                    closedChrome.close(); // Assumes Chrome.close() is EDT-safe
+                    closedChrome.close();
                 }
                 logger.debug("Removed project from open windows map: {}", projectPath);
 
-                if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
-                    System.exit(0);
-                }
-
-                // I/O part of closing, run in background
                 CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
                         .exceptionally(ex -> {
                             logger.error("Error removing project from open projects list: {}", projectPath, ex);
@@ -251,27 +273,39 @@ public class Brokk {
                         });
 
                 if (reOpeningProjects.contains(projectPath)) {
-                    Path pathToReopen = projectPath; // Effectively final for lambda
-                    reOpeningProjects.remove(pathToReopen);
-                    // openProject is called from EDT here. It will internally dispatch I/O.
-                    openProject(pathToReopen);
+                    Path pathToReopen = projectPath;
+                    // Attempt to reopen. Failure is handled by logging and not exiting.
+                    openProject(pathToReopen).whenCompleteAsync((success, ex) -> {
+                        reOpeningProjects.remove(pathToReopen); // Always remove after attempt
+                        if (ex != null) {
+                            logger.error("Exception occurred while trying to reopen project: {}", pathToReopen, ex);
+                        } else if (success == null || !success) {
+                            logger.warn("Failed to reopen project: {}. It will not be reopened.", pathToReopen);
+                        }
+                        // Check for exit condition after processing reopen attempt
+                        if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
+                            System.exit(0);
+                        }
+                    }, SwingUtilities::invokeLater);
+                } else {
+                    // Normal closure, no re-open attempt
+                    if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
+                        System.exit(0);
+                    }
                 }
             }
         });
-
-        // remove placeholder frame if present
-        if (openProjectWindows.get(EMPTY_PROJECT) != null) {
-            openProjectWindows.remove(EMPTY_PROJECT).close();
-        }
     }
 
     /**
      * Opens the given project folder in Brokk, or brings existing window to front.
-     * The folder must contain a .git subdirectory or else we will show an error.
+     *
+     * @param path The path to the project.
+     * @return A CompletableFuture that completes with true if the project was opened successfully, false otherwise.
      */
-    public static void openProject(Path path) {
+    public static CompletableFuture<Boolean> openProject(Path path) {
         final Path projectPath = path.toAbsolutePath().normalize();
-        logger.debug("Opening project at " + projectPath);
+        logger.debug("Attempting to open project at " + projectPath);
 
         var existingWindow = openProjectWindows.get(projectPath);
         if (existingWindow != null) {
@@ -282,41 +316,33 @@ public class Brokk {
                 frame.toFront();
                 frame.requestFocus();
             });
-            return;
+            return CompletableFuture.completedFuture(true);
         }
 
-        CompletableFuture<ContextManager> ioOperation = CompletableFuture.supplyAsync(() -> {
-            try {
-                return initializeProjectAndContextManager(projectPath);
-            } catch (Exception e) {
-                // Wrap checked exceptions for CompletableFuture
-                throw new RuntimeException("Failed during project initialization: " + e.getMessage(), e);
-            }
-        });
+        return CompletableFuture.supplyAsync(() -> initializeProjectAndContextManager(projectPath))
+                .thenComposeAsync(contextManagerOpt -> {
+                    if (contextManagerOpt.isPresent()) {
+                        SwingUtilities.invokeLater(() -> createAndShowGui(projectPath, contextManagerOpt.get()));
+                        return CompletableFuture.completedFuture(true);
+                    } else {
+                        // Initialization failed, error already shown by initializeProjectAndContextManager
+                        return CompletableFuture.completedFuture(false);
+                    }
+                }, ForkJoinPool.commonPool()) // Ensure thenComposeAsync has an executor for off-EDT work
+                .exceptionally(ex -> {
+                    logger.fatal("Fatal error during project opening process for: {}", projectPath, ex);
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    String errorMessage = """
+                                          A critical error occurred while trying to open the project:
+                                          %s
 
-        CompletableFuture<Void> uiOperation = ioOperation.thenAccept((ContextManager cm) -> {
-            SwingUtilities.invokeLater(() -> createAndShowGui(projectPath, cm));
-        });
-
-        uiOperation.exceptionally(ex -> {
-            logger.fatal("Fatal error opening project: {}", projectPath, ex);
-            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-            String errorMessage = """
-                                  A fatal error occurred during project initialization:
-                                  %s
-
-                                  Please file a bug report including ~/.brokk/debug.log.
-                                  
-                                  The application will now exit.
-                                  """.formatted(cause.getMessage()).stripIndent();
-            SwingUtilities.invokeLater(() -> {
-                JOptionPane.showMessageDialog(null,
-                                              errorMessage,
-                                              "Fatal Project Initialization Error", JOptionPane.ERROR_MESSAGE);
-                System.exit(1);
-            });
-            return null;
-        });
+                                          Please check the logs at ~/.brokk/debug.log and consider filing a bug report.
+                                          """.formatted(cause.getMessage()).stripIndent();
+                    SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(null,
+                                                                      errorMessage,
+                                                                      "Project Open Error", JOptionPane.ERROR_MESSAGE));
+                    return false; // Signify failure
+                });
     }
 
     /**
@@ -324,46 +350,56 @@ public class Brokk {
      * This method performs I/O and may show dialogs (which are correctly dispatched to EDT).
      *
      * @param projectPath The path to the project.
-     * @return A new ContextManager instance, or null if initialization is aborted (e.g., user declines Git init for a non-Git project and we decide not to proceed).
+     * @return An Optional containing the ContextManager if successful, or Optional.empty() if initialization fails.
      */
-    private static ContextManager initializeProjectAndContextManager(Path projectPath) {
-        Project.updateRecentProject(projectPath);
-        Project project = new Project(projectPath);
+    private static java.util.Optional<ContextManager> initializeProjectAndContextManager(Path projectPath) {
+        try {
+            Project.updateRecentProject(projectPath);
+            Project project = new Project(projectPath);
 
-        // Git Initialization Logic
-        if (!project.hasGit()) {
-            // This JOptionPane runs on EDT due to SwingUtil.runOnEdt
-            int response = SwingUtil.runOnEdt(() -> JOptionPane.showConfirmDialog(
-                    null,
-                    "This project is not under Git version control. Would you like to initialize a new Git repository here?"
-                    + "\n\nWithout Git, the project will be read-only, and some features may be limited.",
-                    "Initialize Git Repository?",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.QUESTION_MESSAGE), JOptionPane.NO_OPTION);
+            if (!project.hasGit()) {
+                int response = SwingUtil.runOnEdt(() -> JOptionPane.showConfirmDialog(
+                        null,
+                        "This project is not under Git version control. Would you like to initialize a new Git repository here?"
+                        + "\n\nWithout Git, the project will be read-only, and some features may be limited.",
+                        "Initialize Git Repository?",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE), JOptionPane.NO_OPTION);
 
-            if (response == JOptionPane.YES_OPTION) {
-                try {
-                    logger.info("Initializing Git repository at " + project.getRoot() + "...");
-                    io.github.jbellis.brokk.git.GitRepo.initRepo(project.getRoot());
-                    project = new Project(project.getRoot()); // Re-create project to reflect new .git dir
-                    logger.info("Git repository initialized successfully.");
-                } catch (Exception e) {
-                    logger.error("Failed to initialize Git repository at {}: {}", project.getRoot(), e.getMessage(), e);
-                    final String errorMessage = e.getMessage();
-                    // This JOptionPane also runs on EDT
-                    SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(
-                            null,
-                            "Failed to initialize Git repository: " + errorMessage +
-                            "\nThe project will be opened as read-only.",
-                            "Git Initialization Error",
-                            JOptionPane.ERROR_MESSAGE));
-                    // Project remains the initial non-Git project, continue as read-only.
+                if (response == JOptionPane.YES_OPTION) {
+                    try {
+                        logger.info("Initializing Git repository at {}...", project.getRoot());
+                        io.github.jbellis.brokk.git.GitRepo.initRepo(project.getRoot());
+                        project = new Project(project.getRoot()); // Re-create project to reflect new .git dir
+                        logger.info("Git repository initialized successfully at {}.", project.getRoot());
+                    } catch (Exception e) {
+                        logger.error("Failed to initialize Git repository at {}: {}", project.getRoot(), e.getMessage(), e);
+                        final String errorMsg = e.getMessage();
+                        SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(
+                                null,
+                                "Failed to initialize Git repository: " + errorMsg +
+                                "\nThe project will be opened as read-only.",
+                                "Git Initialization Error",
+                                JOptionPane.ERROR_MESSAGE));
+                        // Continue as read-only with the non-Git project instance
+                    }
+                } else {
+                    logger.info("User declined Git initialization for project {}. Proceeding as read-only.", project.getRoot());
+                    // Continue as read-only
                 }
-            } else {
-                logger.info("User declined Git initialization for project {}. Proceeding as read-only.", project.getRoot());
             }
+            return java.util.Optional.of(new ContextManager(project));
+        } catch (Exception e) {
+            logger.error("Failed to initialize project and ContextManager for path {}: {}", projectPath, e.getMessage(), e);
+            final String errorMsg = e.getMessage();
+            SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(
+                    null,
+                    "Could not open project " + projectPath.getFileName() + ":\n" + errorMsg +
+                    "\nPlease check the logs for more details.",
+                    "Project Initialization Failed",
+                    JOptionPane.ERROR_MESSAGE));
+            return java.util.Optional.empty();
         }
-        return new ContextManager(project);
     }
 
     /**
