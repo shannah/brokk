@@ -519,7 +519,19 @@ public class SettingsDialog extends JDialog {
         gbc.weighty = 0.0; // Label doesn't take vertical space
         gbc.anchor = GridBagConstraints.NORTHWEST;
         gbc.fill = GridBagConstraints.NONE;
-        buildPanel.add(new JLabel("Excluded Directories:"), gbc);
+
+        var codeIntelligenceLabel = new JLabel("Code Intelligence");
+        buildPanel.add(codeIntelligenceLabel, gbc);
+        row++;
+
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.weighty = 0.0; // Label doesn't take vertical space
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+        gbc.fill = GridBagConstraints.NONE;
+        var exclusionsLabel = new JLabel("Exclusions:");
+        buildPanel.add(exclusionsLabel, gbc);
 
         excludedDirectoriesListModel = new DefaultListModel<>();
         var sortedExcludedDirs = details.excludedDirectories().stream().sorted().toList();
@@ -555,6 +567,7 @@ public class SettingsDialog extends JDialog {
         gbc.insets = new Insets(2, 2, 2, 2); // Reset insets
 
         // Add button action
+        row++;
         addButton.addActionListener(e -> {
             String newDir = JOptionPane.showInputDialog(SettingsDialog.this,
                                                         "Enter directory to exclude (e.g., target/, build/):",
