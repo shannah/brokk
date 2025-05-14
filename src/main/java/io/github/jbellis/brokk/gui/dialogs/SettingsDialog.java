@@ -1460,8 +1460,9 @@ public class SettingsDialog extends JDialog {
      *
      * @param project The project requiring a policy.
      * @param owner   The parent frame for the dialog.
+     * @return true if a policy was selected and OK'd, false if cancelled or closed.
      */
-    public static void showStandaloneDataRetentionDialog(Project project, Frame owner) {
+    public static boolean showStandaloneDataRetentionDialog(Project project, Frame owner) {
         // This dialog should only be shown if the project's policy is UNSET.
         // If data sharing is disabled by the org, project.getDataRetentionPolicy() will return MINIMAL, not UNSET.
         // Therefore, project.isDataShareAllowed() must be true if this dialog is shown.
@@ -1480,42 +1481,49 @@ public class SettingsDialog extends JDialog {
 
         // Add note about changing settings later
         var noteLabel = new JLabel("<html>(You can change this setting later under Project -> Data Retention in the main Settings dialog.)</html>");
-        // Use deriveFont with PLAIN style to ensure it's not italic
         noteLabel.setFont(noteLabel.getFont().deriveFont(Font.PLAIN, noteLabel.getFont().getSize() * 0.9f));
         contentPanel.add(noteLabel, BorderLayout.NORTH);
 
         var okButton = new JButton("OK");
+        var cancelButton = new JButton("Cancel"); // Added Cancel button
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton); // Add Cancel button to panel
         contentPanel.add(buttonPanel, BorderLayout.SOUTH);
 
-        // Shared logic for handling the OK button click or window close attempt
-        Runnable confirmAndClose = () -> {
+        // Holder for the dialog result
+        final boolean[] dialogResult = {false}; // Default to false (cancelled)
+
+        okButton.addActionListener(e -> {
             var selectedPolicy = retentionPanel.getSelectedPolicy();
             if (selectedPolicy == DataRetentionPolicy.UNSET) {
-                // If no policy is selected, show a warning and *do not* close the dialog.
                 JOptionPane.showMessageDialog(dialog, "Please select a data retention policy to continue.", "Selection Required", JOptionPane.WARNING_MESSAGE);
             } else {
-                // Only apply and close if a valid policy is selected.
                 retentionPanel.applyPolicy();
+                dialogResult[0] = true; // Policy selected and applied
                 dialog.dispose();
             }
-        };
+        });
 
-        okButton.addActionListener(e -> confirmAndClose.run());
+        cancelButton.addActionListener(e -> {
+            dialogResult[0] = false; // Cancelled
+            dialog.dispose();
+        });
 
-        // Handle the window close ('X') button
+        // Handle the window close ('X') button - treat as Cancel
         dialog.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                confirmAndClose.run(); // Run the same logic as the OK button
+                dialogResult[0] = false; // Cancelled via 'X'
+                dialog.dispose();
             }
         });
 
         dialog.setContentPane(contentPanel);
-        // Request focus on the OK button to avoid initial focus on a radio button
-        okButton.requestFocusInWindow();
+        okButton.requestFocusInWindow(); // Request focus on OK button
         dialog.setVisible(true); // Show the modal dialog and block until closed
+
+        return dialogResult[0]; // Return the outcome
     }
 
     /**

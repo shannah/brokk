@@ -243,13 +243,11 @@ public class Brokk {
         assert contextManager != null : "ContextManager cannot be null when creating GUI";
 
         var io = contextManager.createGui();
-
         var project = contextManager.getProject();
-        if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
-            logger.debug("Project {} has no Data Retention Policy set. Showing dialog.", projectPath.getFileName());
-            SettingsDialog.showStandaloneDataRetentionDialog(project, io.getFrame());
-            io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
-        }
+
+        // Log the current data retention policy.
+        // This is called after any necessary dialog has been shown and policy confirmed.
+        io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
 
         openProjectWindows.put(projectPath, io);
 
@@ -332,19 +330,42 @@ public class Brokk {
             return CompletableFuture.completedFuture(true);
         }
 
-        return CompletableFuture.supplyAsync(() -> initializeProjectAndContextManager(projectPath))
-                .thenComposeAsync(contextManagerOpt -> {
-                    if (contextManagerOpt.isPresent()) {
-                        SwingUtilities.invokeLater(() -> createAndShowGui(projectPath, contextManagerOpt.get()));
-                        return CompletableFuture.completedFuture(true);
-                    } else {
-                        // Initialization failed, error already shown by initializeProjectAndContextManager
-                        return CompletableFuture.completedFuture(false);
+        CompletableFuture<Boolean> openCompletionFuture = new CompletableFuture<>();
+
+        // Stage 1: Initialize Project and ContextManager (off-EDT)
+        CompletableFuture.supplyAsync(() -> initializeProjectAndContextManager(projectPath), ForkJoinPool.commonPool())
+            .thenAcceptAsync(contextManagerOpt -> { // Stage 2: Handle policy dialog and GUI creation (on-EDT)
+                if (!contextManagerOpt.isPresent()) {
+                    openCompletionFuture.complete(false); // Initialization failed
+                    return;
+                }
+
+                ContextManager contextManager = contextManagerOpt.get();
+                Project project = contextManager.getProject();
+                Path actualProjectPath = project.getRoot(); // Use path from Project instance
+
+                // Check and show data retention dialog if needed
+                if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
+                    logger.debug("Project {} has no Data Retention Policy set. Showing dialog.", actualProjectPath.getFileName());
+                    boolean policySetAndConfirmed = SettingsDialog.showStandaloneDataRetentionDialog(project, null); // Parent frame is null
+
+                    if (!policySetAndConfirmed) {
+                        logger.info("Data retention dialog cancelled for project {}. Aborting open.", actualProjectPath.getFileName());
+                        openCompletionFuture.complete(false);
+                        return;
                     }
-                }, ForkJoinPool.commonPool()) // Ensure thenComposeAsync has an executor for off-EDT work
-                .exceptionally(ex -> {
-                    logger.fatal("Fatal error during project opening process for: {}", projectPath, ex);
-                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    // Policy set and OK'd by dialog; project object is updated.
+                    logger.info("Data Retention Policy set to: {} for project {}", project.getDataRetentionPolicy(), actualProjectPath.getFileName());
+                }
+
+                // If policy was already set, or was set and OK'd by the dialog
+                createAndShowGui(actualProjectPath, contextManager);
+                openCompletionFuture.complete(true);
+
+            }, SwingUtilities::invokeLater) // Execute Stage 2 on EDT
+            .exceptionally(ex -> { // Handles exceptions from Stage 1 or Stage 2
+                logger.fatal("Fatal error during project opening process for: {}", projectPath, ex);
+                Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     String errorMessage = """
                                           A critical error occurred while trying to open the project:
                                           %s
@@ -354,8 +375,11 @@ public class Brokk {
                     SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(null,
                                                                       errorMessage,
                                                                       "Project Open Error", JOptionPane.ERROR_MESSAGE));
-                    return false; // Signify failure
+                    openCompletionFuture.complete(false); // Signify failure
+                    return null; // Required for exceptionally's Function<Throwable, ? extends T>
                 });
+
+        return openCompletionFuture;
     }
 
     /**
