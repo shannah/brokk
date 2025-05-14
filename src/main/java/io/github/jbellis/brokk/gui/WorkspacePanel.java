@@ -1198,8 +1198,11 @@ public class WorkspacePanel extends JPanel {
             });
 
             // Inform the user about what happened
-            String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-            chrome.systemOutput(message);
+            if (stacktrace == null) {
+                // addStackTraceFragment sends its own messages
+                String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
+                chrome.systemOutput(message);
+            }
         } else {
             chrome.toolErrorRaw("Unsupported clipboard content type");
         }
