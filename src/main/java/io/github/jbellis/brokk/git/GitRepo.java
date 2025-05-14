@@ -93,6 +93,7 @@ public class GitRepo implements Closeable, IGitRepo {
 
         try {
             Path gitDir = this.gitTopLevel.resolve(".git");
+            logger.trace("Git dir for {} is {}", projectRoot, gitDir);
             assert Files.isDirectory(gitDir) : ".git directory not found at " + gitDir;
             repository = new FileRepositoryBuilder()
                     .setGitDir(gitDir.toFile())
@@ -322,6 +323,7 @@ public class GitRepo implements Closeable, IGitRepo {
         allRelevantPaths.addAll(statusResult.getMissing());
         allRelevantPaths.addAll(statusResult.getModified());
         allRelevantPaths.addAll(statusResult.getChanged());
+        logger.trace("Raw modified files: {}", allRelevantPaths);
 
         for (var path : allRelevantPaths) {
             var projectFile = toProjectFile(path);
@@ -349,6 +351,7 @@ public class GitRepo implements Closeable, IGitRepo {
             uncommittedFilesWithStatus.add(new ModifiedFile(projectFile, determinedStatus));
         }
 
+        logger.trace("Modified files: {}", uncommittedFilesWithStatus);
         return uncommittedFilesWithStatus;
     }
 

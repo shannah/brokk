@@ -401,7 +401,7 @@ public class GitCommitTab extends JPanel {
 
         contextManager.submitBackgroundTask("Checking uncommitted files", () -> {
             try {
-                var uncommittedFileStatuses = getRepo().getModifiedFiles(); // This now returns Set<ModifiedFileStatus>
+                var uncommittedFileStatuses = getRepo().getModifiedFiles();
                 logger.trace("Found uncommitted files with statuses: {}", uncommittedFileStatuses.size());
 
                 SwingUtilities.invokeLater(() -> {
