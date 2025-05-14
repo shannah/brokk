@@ -256,38 +256,55 @@ public class Brokk {
         io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosed(java.awt.event.WindowEvent e) {
-                Chrome closedChrome = openProjectWindows.remove(projectPath);
-                if (closedChrome != null) {
-                    closedChrome.close();
+                // Use projectPath directly as it's effectively final from the enclosing scope.
+                Chrome ourChrome = openProjectWindows.remove(projectPath);
+                if (ourChrome != null) {
+                    ourChrome.close(); // Instance method on Chrome to release its resources
                 }
                 logger.debug("Removed project from open windows map: {}", projectPath);
 
-                CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
-                        .exceptionally(ex -> {
-                            logger.error("Error removing project from open projects list: {}", projectPath, ex);
-                            return null;
-                        });
-
                 if (reOpeningProjects.contains(projectPath)) {
-                    Path pathToReopen = projectPath;
-                    // Attempt to reopen. Failure is handled by logging and not exiting.
-                    openProject(pathToReopen).whenCompleteAsync((success, ex) -> {
-                        reOpeningProjects.remove(pathToReopen); // Always remove after attempt
+                    // This project is being reopened. Remove from persistent open list;
+                    // it will be re-added by updateRecentProject if the reopen succeeds.
+                    CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
+                            .exceptionally(ex -> {
+                                logger.error("Error removing project (before reopen) from open projects list: {}", projectPath, ex);
+                                return null;
+                            });
+
+                    // Reopen logic (same as before)
+                    openProject(projectPath).whenCompleteAsync((success, ex) -> {
+                        reOpeningProjects.remove(projectPath); // Always remove after attempt
                         if (ex != null) {
-                            logger.error("Exception occurred while trying to reopen project: {}", pathToReopen, ex);
+                            logger.error("Exception occurred while trying to reopen project: {}", projectPath, ex);
                         } else if (success == null || !success) {
-                            logger.warn("Failed to reopen project: {}. It will not be reopened.", pathToReopen);
+                            logger.warn("Failed to reopen project: {}. It will not be reopened.", projectPath);
                         }
                         // Check for exit condition after processing reopen attempt
                         if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
+                            logger.info("All projects closed after reopen attempt of {}. Exiting.", projectPath);
                             System.exit(0);
                         }
                     }, SwingUtilities::invokeLater);
+                    return;
+                }
+
+                // The project is actually being closed
+                boolean appIsExiting = openProjectWindows.isEmpty() && reOpeningProjects.isEmpty();
+                if (appIsExiting) {
+                    // We are about to exit the application.
+                    // Do NOT remove this project from the persistent "open projects" list.
+                    logger.info("Last project window ({}) closed. App exiting. It remains MRU.", projectPath);
+                    System.exit(0);
                 } else {
-                    // Normal closure, no re-open attempt
-                    if (openProjectWindows.isEmpty() && reOpeningProjects.isEmpty()) {
-                        System.exit(0);
-                    }
+                    // Other projects are still open or other projects are pending reopening.
+                    // This one is just closing, so remove it from the persistent "open projects" list.
+                    CompletableFuture.runAsync(() -> Project.removeFromOpenProjects(projectPath))
+                            .exceptionally(ex -> {
+                                logger.error("Error removing project from open projects list: {}", projectPath, ex);
+                                return null;
+                            });
+                    // No System.exit(0) here, as other windows/tasks are active.
                 }
             }
         });
