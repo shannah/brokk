@@ -9,9 +9,7 @@ import io.github.jbellis.brokk.ContextHistory.UndoResult;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.analyzer.*;
-import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.SearchTools;
@@ -50,9 +48,8 @@ import java.util.stream.IntStream;
 public class ContextManager implements IContextManager, AutoCloseable {
     private final Logger logger = LogManager.getLogger(ContextManager.class);
 
-    private Chrome io; // for UI feedback - Initialized in resolveCircularReferences
+    private Chrome io; // for UI feedback - Initialized in createGui
     private AnalyzerWrapper analyzerWrapper;
-
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
@@ -124,8 +121,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
             Set.of(InterruptedException.class));
 
     private final ModelsWrapper models;
-    private final Project project; // Initialized in resolveCircularReferences
-    private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
+    private final Project project;
+    private final ToolRegistry toolRegistry;
 
     // Context history for undo/redo functionality
     private final ContextHistory contextHistory;
@@ -169,9 +166,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * Called from Brokk to finish wiring up references to Chrome and Coder
      */
-    public void resolveCircularReferences(Chrome chrome) {
-//        assert !SwingUtilities.isEventDispatchThread();
-        this.io = chrome;
+    public Chrome createGui() {
+        assert SwingUtilities.isEventDispatchThread();
+
+        this.io = new Chrome(this);
 
         // Set up the listener for analyzer events
         var analyzerListener = new AnalyzerListener() {
@@ -223,7 +221,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // If git was just initialized, Chrome components like GitPanel will be updated
             // by their own construction logic based on the new project.hasGit() state.
             // Explicit io.updateGitRepo() might not be needed here if Chrome rebuilds relevant parts.
-            chrome.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
+            io.updateContextHistoryTable(initialContext); // Update UI with loaded/new context
         });
 
         // Ensure style guide and build details are loaded/generated asynchronously
@@ -231,7 +229,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         ensureBuildDetailsAsync(); // Changed from ensureBuildCommand
         cleanupOldHistoryAsync(); // Clean up old LLM history logs
 
-        chrome.getInstructionsPanel().checkBalanceAndNotify();
+        io.getInstructionsPanel().checkBalanceAndNotify();
+
+        return io;
     }
 
     /**

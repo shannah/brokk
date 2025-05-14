@@ -23,7 +23,6 @@ import java.util.Set;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 
 public class Brokk {
@@ -243,9 +242,7 @@ public class Brokk {
         assert SwingUtilities.isEventDispatchThread();
         assert contextManager != null : "ContextManager cannot be null when creating GUI";
 
-        var io = new Chrome(contextManager);
-        io.systemOutput("Opening project at " + projectPath);
-        contextManager.resolveCircularReferences(io);
+        var io = contextManager.createGui();
 
         var project = contextManager.getProject();
         if (project.getDataRetentionPolicy() == Project.DataRetentionPolicy.UNSET) {
@@ -254,7 +251,6 @@ public class Brokk {
             io.systemOutput("Data Retention Policy set to: " + project.getDataRetentionPolicy());
         }
 
-        io.onComplete(); // Finalize UI setup
         openProjectWindows.put(projectPath, io);
 
         io.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {

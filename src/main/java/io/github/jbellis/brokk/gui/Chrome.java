@@ -27,29 +27,25 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 
-
 public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.ContextListener {
     private static final Logger logger = LogManager.getLogger(Chrome.class);
 
     // Used as the default text for the background tasks label
     private final String BGTASK_EMPTY = "No background tasks";
 
-    // For collapsing/expanding the Git panel
-    private int lastGitPanelDividerLocation = -1;
-
     // is the change of the context triggered by a user or the system?
     private boolean internalContextChange = true;
 
     // Dependencies:
-    ContextManager contextManager;
+    final ContextManager contextManager;
     private Context activeContext; // Track the currently displayed context
 
     // Global Undo/Redo Actions
-    private GlobalUndoAction globalUndoAction;
-    private GlobalRedoAction globalRedoAction;
+    private final GlobalUndoAction globalUndoAction;
+    private final GlobalRedoAction globalRedoAction;
     // Global Copy/Paste Actions
-    private GlobalCopyAction globalCopyAction;
-    private GlobalPasteAction globalPasteAction;
+    private final GlobalCopyAction globalCopyAction;
+    private final GlobalPasteAction globalPasteAction;
     // necessary for undo/redo because clicking on menubar takes focus from whatever had it
     private Component lastRelevantFocusOwner = null;
 
@@ -65,20 +61,18 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     private HistoryOutputPanel historyOutputPanel;
 
     // Panels:
-    private WorkspacePanel workspacePanel;
+    private final WorkspacePanel workspacePanel;
     @Nullable
-    private GitPanel gitPanel; // Null when no git repo is present
+    private final GitPanel gitPanel; // Null when no git repo is present
 
     // Command input panel is now encapsulated in InstructionsPanel.
     private InstructionsPanel instructionsPanel;
 
     /**
      * Default constructor sets up the UI.
-     * We call this from Brokk after creating contextManager, before creating the Coder,
-     * and before calling .resolveCircularReferences(...).
-     * We allow contextManager to be null for the initial empty UI.
      */
     public Chrome(ContextManager contextManager) {
+        assert contextManager != null;
         this.contextManager = contextManager;
 
         // 2) Build main window
@@ -98,85 +92,66 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         this.globalCopyAction = new GlobalCopyAction("Copy");
         this.globalPasteAction = new GlobalPasteAction("Paste");
 
-        // 4) Register global keyboard shortcuts
-        // Global keyboard shortcuts will be registered in onComplete, after all components are set up
-        // to ensure actions can correctly determine their initial enabled state.
-
-        if (contextManager == null) {
-            disableActionButtons();
-        }
-    }
-
-    public Project getProject() {
-        return contextManager == null ? null : contextManager.getProject();
-    }
-
-    public void onComplete() {
         loadWindowSizeAndPosition();
-        if (contextManager == null) {
-            frame.setTitle("Brokk (no project)");
-            instructionsPanel.disableButtons(); // Ensure buttons disabled if no project/context
+        // Load saved theme, window size, and position
+        frame.setTitle("Brokk: " + getProject().getRoot());
+
+        // If the project uses Git, put the context panel and the Git panel in a split pane
+        if (getProject().hasGit()) {
+            contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+            contextGitSplitPane.setResizeWeight(0.7); // 70% for context panel
+
+            workspacePanel = new WorkspacePanel(this, contextManager);
+            contextGitSplitPane.setTopComponent(workspacePanel);
+
+            gitPanel = new GitPanel(this, contextManager);
+            contextGitSplitPane.setBottomComponent(gitPanel);
+
+            bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
+            updateCommitPanel();
+            gitPanel.updateRepo();
         } else {
-            // Load saved theme, window size, and position
-            frame.setTitle("Brokk: " + getProject().getRoot());
+            // No Git => only a context panel in the center
+            gitPanel = null;
+            workspacePanel = new WorkspacePanel(this, contextManager);
+            bottomPanel.add(workspacePanel, BorderLayout.CENTER);
+        }
 
-            // If the project uses Git, put the context panel and the Git panel in a split pane
-            if (getProject().hasGit()) {
-                contextGitSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-                contextGitSplitPane.setResizeWeight(0.7); // 70% for context panel
+        initializeThemeManager();
 
-                workspacePanel = new WorkspacePanel(this, contextManager);
-                contextGitSplitPane.setTopComponent(workspacePanel);
+        // Force layout update for the bottom panel
+        bottomPanel.revalidate();
+        bottomPanel.repaint();
 
-                gitPanel = new GitPanel(this, contextManager);
-                contextGitSplitPane.setBottomComponent(gitPanel);
+        // Set initial enabled state for global actions after all components are ready
+        this.globalUndoAction.updateEnabledState();
+        this.globalRedoAction.updateEnabledState();
+        this.globalCopyAction.updateEnabledState();
+        this.globalPasteAction.updateEnabledState();
 
-                bottomPanel.add(contextGitSplitPane, BorderLayout.CENTER);
-                updateCommitPanel();
-                gitPanel.updateRepo();
-            } else {
-                // No Git => only a context panel in the center
-                gitPanel = null;
-                workspacePanel = new WorkspacePanel(this, contextManager);
-                bottomPanel.add(workspacePanel, BorderLayout.CENTER);
+        // Listen for focus changes to update action states and track relevant focus
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
+            Component newFocusOwner = (Component) evt.getNewValue();
+            // Update lastRelevantFocusOwner only if the new focus owner is one of our primary targets
+            if (newFocusOwner != null && instructionsPanel != null && historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null && historyOutputPanel.getHistoryTable() != null) {
+                if (newFocusOwner == instructionsPanel.getInstructionsArea()
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, workspacePanel)
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())
+                        || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getLlmStreamArea())) // Check for LLM area
+                {
+                    this.lastRelevantFocusOwner = newFocusOwner;
+                }
+                // else: lastRelevantFocusOwner remains unchanged if focus moves to a menu or irrelevant component
             }
 
-            initializeThemeManager();
+            globalUndoAction.updateEnabledState();
+            globalRedoAction.updateEnabledState();
+            globalCopyAction.updateEnabledState();
+            globalPasteAction.updateEnabledState();
+        });
 
-            // Force layout update for the bottom panel
-            bottomPanel.revalidate();
-            bottomPanel.repaint();
-
-            // Set initial enabled state for global actions after all components are ready
-            this.globalUndoAction.updateEnabledState();
-            this.globalRedoAction.updateEnabledState();
-            this.globalCopyAction.updateEnabledState();
-            this.globalPasteAction.updateEnabledState();
-
-            // Listen for focus changes to update action states and track relevant focus
-            KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", evt -> {
-                Component newFocusOwner = (Component) evt.getNewValue();
-                // Update lastRelevantFocusOwner only if the new focus owner is one of our primary targets
-                if (newFocusOwner != null && instructionsPanel != null && workspacePanel != null && historyOutputPanel != null && historyOutputPanel.getLlmStreamArea() != null && historyOutputPanel.getHistoryTable() != null) {
-                    if (newFocusOwner == instructionsPanel.getInstructionsArea()
-                            || SwingUtilities.isDescendingFrom(newFocusOwner, workspacePanel)
-                            || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getHistoryTable())
-                            || SwingUtilities.isDescendingFrom(newFocusOwner, historyOutputPanel.getLlmStreamArea())) // Check for LLM area
-                    {
-                        this.lastRelevantFocusOwner = newFocusOwner;
-                    }
-                    // else: lastRelevantFocusOwner remains unchanged if focus moves to a menu or irrelevant component
-                }
-
-                if (globalUndoAction != null) globalUndoAction.updateEnabledState();
-                if (globalRedoAction != null) globalRedoAction.updateEnabledState();
-                if (globalCopyAction != null) globalCopyAction.updateEnabledState();
-                if (globalPasteAction != null) globalPasteAction.updateEnabledState();
-            });
-
-            // Listen for context changes (Chrome already implements IContextManager.ContextListener)
-            contextManager.addContextListener(this);
-        }
+        // Listen for context changes (Chrome already implements IContextManager.ContextListener)
+        contextManager.addContextListener(this);
 
         // Build menu (now that everything else is ready)
         frame.setJMenuBar(MenuBar.buildMenuBar(this));
@@ -190,7 +165,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         frame.repaint();
 
         // Possibly check if .gitignore is set
-        if (getProject() != null && getProject().hasGit()) {
+        if (getProject().hasGit()) {
             contextManager.submitBackgroundTask("Checking .gitignore", () -> {
                 if (!getProject().isGitIgnoreSet()) {
                     SwingUtilities.invokeLater(() -> {
@@ -211,10 +186,15 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         }
     }
 
+    public Project getProject() {
+        return contextManager.getProject();
+    }
+
     /**
      * Sets up .gitignore entries and adds .brokk project files to git
      */
     private void setupGitIgnore() {
+        assert gitPanel != null;
         contextManager.submitBackgroundTask("Updating .gitignore", () -> {
             try {
                 var gitRepo = (GitRepo) getProject().getRepo();
@@ -314,6 +294,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Top Area: Instructions + History/Output
         instructionsPanel = new InstructionsPanel(this);
+        instructionsPanel.appendSystemOutput("Opening project at " + getProject().getRoot());
         historyOutputPanel = new HistoryOutputPanel(this, contextManager);
 
         topSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
@@ -527,7 +508,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     public void backgroundOutput(String message) {
         backgroundOutput(message, null);
     }
-    
+
     public void backgroundOutput(String message, String tooltip) {
         SwingUtilities.invokeLater(() -> {
             if (message == null || message.isEmpty()) {
@@ -631,9 +612,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                         // We must explicitly set the default close operation here because
                         // the user might click 'X' multiple times.
                         previewFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-                     }
+                    }
                 } else {
-                     // If not a PreviewTextPanel, just allow the default dispose operation
+                    // If not a PreviewTextPanel, just allow the default dispose operation
                     previewFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
                 }
             }
@@ -747,7 +728,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
             // Handle text fragments
             String content = fragment.text();
-            io.github.jbellis.brokk.analyzer.ProjectFile file = null;
+            io.github.jbellis.brokk.analyzer.ProjectFile file;
             // Handle PathFragment using the unified previewFile method
             if (fragment instanceof ContextFragment.PathFragment pf) {
                 // Ensure we are on the EDT before calling previewFile
@@ -945,7 +926,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             return;
         }
 
-        lastGitPanelDividerLocation = contextGitSplitPane.getDividerLocation();
+        // For collapsing/expanding the Git panel
+        int lastGitPanelDividerLocation = contextGitSplitPane.getDividerLocation();
         var totalHeight = contextGitSplitPane.getHeight();
         var dividerSize = contextGitSplitPane.getDividerSize();
         contextGitSplitPane.setDividerLocation(totalHeight - dividerSize - 1);
@@ -1033,7 +1015,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 if (instructionsPanel.getCommandInputUndoManager().canUndo()) {
                     instructionsPanel.getCommandInputUndoManager().undo();
                 }
-            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+            } else if (isFocusInContextArea(lastRelevantFocusOwner)) {
                 if (contextManager.getContextHistory().hasUndoStates()) {
                     contextManager.undoContextAsync();
                 }
@@ -1044,7 +1026,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             boolean canUndoNow = false;
             if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 canUndoNow = instructionsPanel.getCommandInputUndoManager().canUndo();
-            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+            } else if (isFocusInContextArea(lastRelevantFocusOwner)) {
                 canUndoNow = contextManager.getContextHistory().hasUndoStates();
             }
             setEnabled(canUndoNow);
@@ -1062,7 +1044,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 if (instructionsPanel.getCommandInputUndoManager().canRedo()) {
                     instructionsPanel.getCommandInputUndoManager().redo();
                 }
-            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+            } else if (isFocusInContextArea(lastRelevantFocusOwner)) {
                 if (contextManager.getContextHistory().hasRedoStates()) {
                     contextManager.redoContextAsync();
                 }
@@ -1073,7 +1055,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             boolean canRedoNow = false;
             if (instructionsPanel != null && lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 canRedoNow = instructionsPanel.getCommandInputUndoManager().canRedo();
-            } else if (contextManager != null && isFocusInContextArea(lastRelevantFocusOwner)) {
+            } else if (isFocusInContextArea(lastRelevantFocusOwner)) {
                 canRedoNow = contextManager.getContextHistory().hasRedoStates();
             }
             setEnabled(canRedoNow);
@@ -1123,9 +1105,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 canCopyNow = (selectedText != null && !selectedText.isEmpty()) || !llmArea.getDisplayedText().isEmpty();
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel) ||
                     SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, historyOutputPanel.getHistoryTable())) {
-                // ContextPanel's copy action is enabled if contextManager is available,
-                // as it can copy the goal even if the context itself is empty.
-                canCopyNow = contextManager != null;
+                // Focus is in a context area, context copy is always available
+                canCopyNow = true;
             }
             setEnabled(canCopyNow);
         }
@@ -1157,8 +1138,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             } else if (lastRelevantFocusOwner == instructionsPanel.getInstructionsArea()) {
                 canPasteNow = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().isDataFlavorAvailable(java.awt.datatransfer.DataFlavor.stringFlavor);
             } else if (SwingUtilities.isDescendingFrom(lastRelevantFocusOwner, workspacePanel)) {
-                // ContextPanel's doPasteAction checks clipboard content type. Enable if CM is available.
-                canPasteNow = contextManager != null;
+                // ContextPanel's doPasteAction checks clipboard content type
+                canPasteNow = true;
             }
             setEnabled(canPasteNow);
         }
