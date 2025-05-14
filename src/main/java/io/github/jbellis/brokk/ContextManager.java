@@ -123,9 +123,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                    Executors.defaultThreadFactory()),
             Set.of(InterruptedException.class));
 
-    private final Path root;
     private final ModelsWrapper models;
-    private Project project; // Initialized in resolveCircularReferences
+    private final Project project; // Initialized in resolveCircularReferences
     private ToolRegistry toolRegistry; // Initialized in resolveCircularReferences
 
     // Context history for undo/redo functionality
@@ -149,11 +148,19 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * Minimal constructor called from Brokk
      */
-    public ContextManager(Path root)
+    public ContextManager(Project project)
     {
-        this.root = root.toAbsolutePath().normalize();
+        this.project = project;
         this.contextHistory = new ContextHistory();
         this.models = new ModelsWrapper();
+        this.models.reinit(project);
+
+        // set up global tools
+        this.toolRegistry = new ToolRegistry(this);
+        this.toolRegistry.register(new SearchTools(this));
+        this.toolRegistry.register(new WorkspaceTools(this));
+
+        // grab the user action thread so we can interrupt it on Stop
         userActionExecutor.submit(() -> {
             userActionThread.set(Thread.currentThread());
         });
@@ -164,47 +171,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      */
     public void resolveCircularReferences(Chrome chrome) {
 //        assert !SwingUtilities.isEventDispatchThread();
-
         this.io = chrome;
-
-        // Create an initial Project instance to check for Git
-        Project initialProject = new Project(root);
-
-        if (!initialProject.hasGit()) {
-            // Not on EDT, so use SwingUtil.runOnEdt for modal dialog
-            // Provide a default value for the Callable version of runOnEdt and cast the result
-            int response = SwingUtil.runOnEdt(() -> JOptionPane.showConfirmDialog(
-                    io.getFrame(), // Parent frame
-                    "This project is not under Git version control. Would you like to initialize a new Git repository here?"
-                    + "\n\nWithout Git, the project will be read-only.",
-                    "Initialize Git Repository?",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.QUESTION_MESSAGE), JOptionPane.NO_OPTION);
-
-            if (response == JOptionPane.YES_OPTION) {
-                try {
-                    io.systemOutput("Initializing Git repository at " + root + "...");
-                    GitRepo.initRepo(root); // Use imported GitRepo
-                    this.project = new Project(root); // Re-create project to pick up new .git
-                    io.systemOutput("Git repository initialized successfully.");
-                } catch (Exception e) { // Catch GitAPIException, IOException, etc.
-                    logger.error("Failed to initialize Git repository at {}: {}", root, e.getMessage(), e);
-                    final String errorMessage = e.getMessage();
-                    // Show error to user on EDT
-                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                            io.getFrame(),
-                            "Failed to initialize Git repository: " + errorMessage,
-                            "Git Initialization Error",
-                            JOptionPane.ERROR_MESSAGE
-                    ));
-                    this.project = initialProject; // Fallback to the non-Git project instance
-                }
-            } else {
-                this.project = initialProject; // User declined or closed dialog
-            }
-        } else {
-            this.project = initialProject; // Project already has Git
-        }
 
         // Set up the listener for analyzer events
         var analyzerListener = new AnalyzerListener() {
@@ -244,11 +211,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         };
 
         this.analyzerWrapper = new AnalyzerWrapper(project, this::submitBackgroundTask, analyzerListener);
-        this.models.reinit(project);
-        this.toolRegistry = new ToolRegistry(this);
-        // Register standard tools
-        this.toolRegistry.register(new SearchTools(this));
-        this.toolRegistry.register(new WorkspaceTools(this));
 
         // Load saved context or create a new one
         submitBackgroundTask("Loading saved context", () -> {
@@ -369,7 +331,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public ProjectFile toFile(String relName)
     {
-        return new ProjectFile(root, relName);
+        return new ProjectFile(project.getRoot(), relName);
     }
 
     @Override
@@ -409,7 +371,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public Path getRoot()
     {
-        return root;
+        return project.getRoot();
     }
 
     /**

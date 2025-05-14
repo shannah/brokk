@@ -285,48 +285,85 @@ public class Brokk {
             return;
         }
 
-        // If on EDT, dispatch I/O to background thread. Otherwise, do I/O on current (non-EDT) thread.
-        if (SwingUtilities.isEventDispatchThread()) {
-            CompletableFuture<ContextManager> ioOperation = CompletableFuture.supplyAsync(() -> {
-                // I/O Part
-                Project.updateRecentProject(projectPath); // I/O
-                return new ContextManager(projectPath); // I/O
-            });
-
-            // Explicitly define the Consumer for clarity
-            Consumer<ContextManager> uiSchedulingTask = (ContextManager cm) -> {
-                // This consumer's body runs in the thread that completes ioOperation (a background thread).
-                // It then schedules the actual GUI work on the EDT.
-                SwingUtilities.invokeLater(() -> {
-                    createAndShowGui(projectPath, cm);
-                });
-            };
-
-            CompletableFuture<Void> uiOperation = ioOperation.thenAccept(uiSchedulingTask);
-
-            uiOperation.exceptionally(ex -> {
-                logger.error("Error opening project in background: {}", projectPath, ex);
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(null,
-                                                                              "Error opening project " + projectPath.getFileName() + ": " + ex.getMessage(),
-                                                                              "Open Project Error", JOptionPane.ERROR_MESSAGE));
-                return null;
-            });
-        } else {
-            // Already on a background thread (e.g., main thread from startup)
+        CompletableFuture<ContextManager> ioOperation = CompletableFuture.supplyAsync(() -> {
             try {
-                // I/O Part
-                Project.updateRecentProject(projectPath); // I/O
-                var contextManager = new ContextManager(projectPath); // I/O
-                // Schedule UI Part on EDT
-                SwingUtilities.invokeLater(() -> createAndShowGui(projectPath, contextManager));
-            } catch (Exception ex) {
-                logger.error("Error opening project: {}", projectPath, ex);
-                // Show error on EDT
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(null,
-                                                                              "Error opening project " + projectPath.getFileName() + ": " + ex.getMessage(),
-                                                                              "Open Project Error", JOptionPane.ERROR_MESSAGE));
+                return initializeProjectAndContextManager(projectPath);
+            } catch (Exception e) {
+                // Wrap checked exceptions for CompletableFuture
+                throw new RuntimeException("Failed during project initialization: " + e.getMessage(), e);
+            }
+        });
+
+        CompletableFuture<Void> uiOperation = ioOperation.thenAccept((ContextManager cm) -> {
+            SwingUtilities.invokeLater(() -> createAndShowGui(projectPath, cm));
+        });
+
+        uiOperation.exceptionally(ex -> {
+            logger.fatal("Fatal error opening project: {}", projectPath, ex);
+            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+            String errorMessage = """
+                                  A fatal error occurred during project initialization:
+                                  %s
+
+                                  Please file a bug report including ~/.brokk/debug.log.
+                                  
+                                  The application will now exit.
+                                  """.formatted(cause.getMessage()).stripIndent();
+            SwingUtilities.invokeLater(() -> {
+                JOptionPane.showMessageDialog(null,
+                                              errorMessage,
+                                              "Fatal Project Initialization Error", JOptionPane.ERROR_MESSAGE);
+                System.exit(1);
+            });
+            return null;
+        });
+    }
+
+    /**
+     * Handles the core logic of initializing a project, including Git setup and ContextManager creation.
+     * This method performs I/O and may show dialogs (which are correctly dispatched to EDT).
+     *
+     * @param projectPath The path to the project.
+     * @return A new ContextManager instance, or null if initialization is aborted (e.g., user declines Git init for a non-Git project and we decide not to proceed).
+     */
+    private static ContextManager initializeProjectAndContextManager(Path projectPath) {
+        Project.updateRecentProject(projectPath);
+        Project project = new Project(projectPath);
+
+        // Git Initialization Logic
+        if (!project.hasGit()) {
+            // This JOptionPane runs on EDT due to SwingUtil.runOnEdt
+            int response = SwingUtil.runOnEdt(() -> JOptionPane.showConfirmDialog(
+                    null,
+                    "This project is not under Git version control. Would you like to initialize a new Git repository here?"
+                    + "\n\nWithout Git, the project will be read-only, and some features may be limited.",
+                    "Initialize Git Repository?",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE), JOptionPane.NO_OPTION);
+
+            if (response == JOptionPane.YES_OPTION) {
+                try {
+                    logger.info("Initializing Git repository at " + project.getRoot() + "...");
+                    io.github.jbellis.brokk.git.GitRepo.initRepo(project.getRoot());
+                    project = new Project(project.getRoot()); // Re-create project to reflect new .git dir
+                    logger.info("Git repository initialized successfully.");
+                } catch (Exception e) {
+                    logger.error("Failed to initialize Git repository at {}: {}", project.getRoot(), e.getMessage(), e);
+                    final String errorMessage = e.getMessage();
+                    // This JOptionPane also runs on EDT
+                    SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(
+                            null,
+                            "Failed to initialize Git repository: " + errorMessage +
+                            "\nThe project will be opened as read-only.",
+                            "Git Initialization Error",
+                            JOptionPane.ERROR_MESSAGE));
+                    // Project remains the initial non-Git project, continue as read-only.
+                }
+            } else {
+                logger.info("User declined Git initialization for project {}. Proceeding as read-only.", project.getRoot());
             }
         }
+        return new ContextManager(project);
     }
 
     /**
