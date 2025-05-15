@@ -430,8 +430,8 @@ public class FileSelectionPanel extends JPanel {
                 // Use token extraction logic for JTextArea (multi-select)
                 return getCurrentTokenTextForCompletion(comp);
             } else {
-                // Use default behavior for JTextField (single-select), which takes the whole text
-                return super.getAlreadyEnteredText(comp);
+                // use the entire text
+                return comp.getText();
             }
         }
 
