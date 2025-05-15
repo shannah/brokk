@@ -6,6 +6,8 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.util.regex.Pattern;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,11 +41,6 @@ public interface Language {
             return new CSharpAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
         @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
-
-        @Override
-        public List<Path> getDependencyCandidates(Project project) {
-            return List.of();
-        }
     };
 
     Language JAVA = new Language() {
@@ -152,6 +149,8 @@ public interface Language {
         public boolean isCpg() { return true; }
     };
 
+    Pattern PY_SITE_PKGS = Pattern.compile("^python\\d+\\.\\d+$");
+
     Language JAVASCRIPT = new Language() {
         private final List<String> extensions = List.of("js", "mjs", "cjs", "jsx");
         @Override public List<String> getExtensions() { return extensions; }
@@ -164,7 +163,32 @@ public interface Language {
 
         @Override
         public List<Path> getDependencyCandidates(Project project) {
-            return List.of();
+            var results = new ArrayList<Path>();
+            Path nodeModules = project.getRoot().resolve("node_modules");
+            
+            if (Files.isDirectory(nodeModules)) {
+                try (DirectoryStream<Path> ds = Files.newDirectoryStream(nodeModules)) {
+                    for (Path entry : ds) {
+                        String name = entry.getFileName().toString();
+                        if (name.equals(".bin")) continue;  // skip executables
+                        if (name.startsWith("@")) {        // scoped pkgs
+                            try (DirectoryStream<Path> scoped = Files.newDirectoryStream(entry)) {
+                                for (Path scopedPkg : scoped) {
+                                    if (Files.isDirectory(scopedPkg)) {
+                                        results.add(scopedPkg);
+                                    }
+                                }
+                            }
+                        } else if (Files.isDirectory(entry)) {
+                            results.add(entry);
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.warn("Error scanning node_modules: {}", e.getMessage());
+                }
+            }
+            
+            return results;
         }
     };
 
@@ -178,9 +202,62 @@ public interface Language {
         }
         @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
 
+        private List<Path> findVirtualEnvs(Path root) {
+            List<Path> envs = new ArrayList<>();
+            for (String candidate : List.of(".venv", "venv", "env")) {
+                Path p = root.resolve(candidate);
+                if (Files.isDirectory(p)) envs.add(p);
+            }
+            // also look one level down for monorepos with /backend/venv etc.
+            try (DirectoryStream<Path> ds = Files.newDirectoryStream(root)) {
+                for (Path sub : ds) {
+                    Path venv = sub.resolve(".venv");
+                    if (Files.isDirectory(venv)) envs.add(venv);
+                }
+            } catch (IOException e) {
+                logger.warn("Error scanning for virtual envs: {}", e.getMessage());
+            }
+            return envs;
+        }
+
+        private Path sitePackagesDir(Path venv) {
+            Path lib = venv.resolve("lib");
+            if (!Files.isDirectory(lib)) return Path.of("");
+            try (DirectoryStream<Path> pyVers = Files.newDirectoryStream(lib)) {
+                for (Path py : pyVers) {
+                    if (Files.isDirectory(py) && PY_SITE_PKGS.matcher(py.getFileName().toString()).matches()) {
+                        Path site = py.resolve("site-packages");
+                        if (Files.isDirectory(site)) return site;
+                    }
+                }
+            } catch (IOException e) {
+                logger.warn("Error scanning Python lib directory: {}", e.getMessage());
+            }
+            return Path.of("");
+        }
+
         @Override
         public List<Path> getDependencyCandidates(Project project) {
-            return List.of();
+            List<Path> results = new ArrayList<>();
+            findVirtualEnvs(project.getRoot()).stream()
+                .map(this::sitePackagesDir)
+                .filter(Files::isDirectory)
+                .forEach(dir -> {
+                    try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
+                        for (Path p : ds) {
+                            String name = p.getFileName().toString();
+                            if (name.endsWith(".dist-info") || name.endsWith(".egg-info") || name.startsWith("_")) {
+                                continue;
+                            }
+                            if (Files.isDirectory(p)) {
+                                results.add(p);
+                            }
+                        }
+                    } catch (IOException e) {
+                        logger.warn("Error scanning site-packages: {}", e.getMessage());
+                    }
+                });
+            return results;
         }
     };
 

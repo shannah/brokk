@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.util;
 
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.gui.Chrome;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -10,19 +9,13 @@ import org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler;
 import javax.swing.*;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Stream;
 import java.util.zip.ZipFile;
 
 public class Decompiler {
@@ -248,14 +241,5 @@ public class Decompiler {
                 return FileVisitResult.CONTINUE; // Continue deletion attempt
             }
         });
-    }
-
-    /**
-     * Scans the user-level caches of common JVM build tools (Maven, Gradle, Ivy, Coursier, SBT)
-     * on both Unix-like and Windows machines and returns every regular *.jar found,
-     * excluding source- and javadoc-only archives.
-     */
-    public static List<Path> findCommonDependencyJars() {
-        return Language.JAVA.getDependencyCandidates(null);
     }
 }

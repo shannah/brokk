@@ -187,7 +187,7 @@ public class ImportDependencyDialog {
 
             if (currentSourceType == SourceType.JAR) {
                 filter = file -> file.isDirectory() || file.getName().toLowerCase().endsWith(".jar");
-                candidates = chrome.getContextManager().submitBackgroundTask("Scanning for JAR files", Decompiler::findCommonDependencyJars);
+                candidates = chrome.getContextManager().submitBackgroundTask("Scanning for JAR files", () -> Language.JAVA.getDependencyCandidates(null));
             } else { // DIRECTORY
                 filter = File::isDirectory;
                 candidates = CompletableFuture.completedFuture(List.of());
