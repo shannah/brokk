@@ -184,13 +184,28 @@ public class ImportDependencyDialog {
 
             Predicate<File> filter;
             Future<List<Path>> candidates;
+            var projectLanguage = chrome.getProject().getAnalyzerLanguage();
 
             if (currentSourceType == SourceType.JAR) {
+                // This branch is only reachable if projectLanguage is JAVA,
+                // because the JAR radio button is only shown for Java projects.
+                assert projectLanguage == Language.JAVA : "JAR source type should only be possible for Java projects";
                 filter = file -> file.isDirectory() || file.getName().toLowerCase().endsWith(".jar");
-                candidates = chrome.getContextManager().submitBackgroundTask("Scanning for JAR files", () -> Language.JAVA.getDependencyCandidates(null));
+                // For JARs, use Java language's candidates. Passing null to getDependencyCandidates might be
+                // for fetching general, non-project-specific JARs (e.g. from a global cache).
+                candidates = chrome.getContextManager().submitBackgroundTask("Scanning for JAR files",
+                                                                           () -> Language.JAVA.getDependencyCandidates(null));
             } else { // DIRECTORY
                 filter = File::isDirectory;
-                candidates = CompletableFuture.completedFuture(List.of());
+                if (projectLanguage == Language.JAVA) {
+                    // For Java projects, directory import does not use getDependencyCandidates for autocompletion.
+                    // Users are expected to browse to specific source directories.
+                    candidates = CompletableFuture.completedFuture(List.of());
+                } else {
+                    // For other languages, get dependency candidates for directories.
+                    candidates = chrome.getContextManager().submitBackgroundTask("Scanning for dependency directories",
+                                                                               () -> projectLanguage.getDependencyCandidates(chrome.getProject()));
+                }
             }
 
             FileSelectionPanel.Config fspConfig;
@@ -199,22 +214,30 @@ public class ImportDependencyDialog {
                         chrome.getProject(),
                         true, // allowExternalFiles
                         filter,
-                        candidates,
+                        candidates, // Candidates from Language.JAVA.getDependencyCandidates(null)
                         false, // multiSelect = false
                         this::handleFspSingleFileConfirmed,
                         false, // includeProjectFilesInAutocomplete
                         "Ctrl+Space to autocomplete common dependency JARs.\nSelected JAR will be decompiled and its sources added to the project."
                 );
             } else { // DIRECTORY
+                String directoryHelpText;
+                if (projectLanguage == Language.JAVA) {
+                    // Java language, directory mode: No autocomplete candidates are provided.
+                    directoryHelpText = "Select a directory containing sources.\nSelected directory will be copied into the project.";
+                } else {
+                    // Non-Java language, directory mode: Autocomplete candidates ARE provided.
+                    directoryHelpText = "Ctrl+Space to autocomplete common dependency directories.\nSelected directory will be copied into the project.";
+                }
                 fspConfig = new FileSelectionPanel.Config(
                         chrome.getProject(),
                         true, // allowExternalFiles
                         filter,
-                        candidates,
+                        candidates, // Candidates are empty for Java/Directory, or from projectLanguage.getDependencyCandidates for non-Java/Directory
                         false, // multiSelect = false
                         this::handleFspSingleFileConfirmed,
                         false, // includeProjectFilesInAutocomplete
-                        "Select an external directory. Its contents will be copied into the project.\nProject's own directories cannot be selected."
+                        directoryHelpText
                 );
             }
 
