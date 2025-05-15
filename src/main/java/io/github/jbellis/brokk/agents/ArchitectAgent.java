@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.agents;
 
-import com.google.common.collect.Streams;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -15,9 +14,11 @@ import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
+import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.LogDescription;
+import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -32,7 +33,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 
 public class ArchitectAgent {
@@ -248,43 +248,89 @@ public class ArchitectAgent {
         }
 
         var llm = contextManager.getLlm(model, "Architect: " + goal);
+        var modelsService = contextManager.getModels();
 
         while (true) {
             io.llmOutput("\nPlanning", ChatMessageType.AI);
 
-            // Build the prompt messages, including history
-            var messages = buildPrompt();
+            // Determine active models and their minimum input token limit
+            var models = new ArrayList<StreamingChatLanguageModel>();
+            models.add(this.model);
+            if (options.includeCodeAgent) {
+                models.add(contextManager.getEditModel());
+            }
+            if (options.includeSearchAgent) {
+                models.add(contextManager.getSearchModel());;
+            }
+            int minInputTokenLimit = models.stream()
+                    .filter(Objects::nonNull)
+                    .mapToInt(modelsService::getMaxInputTokens)
+                    .filter(limit -> limit > 0)
+                    .min()
+                    .orElse(64_000);
 
-            // 4) Figure out which tools are allowed in this step
+            if (minInputTokenLimit == 64_000) {
+                logger.warn("Could not determine a valid minimum input token limit from active models {}", models);
+            }
+
+            // Calculate current workspace token size
+            List<ChatMessage> workspaceContentMessages = new ArrayList<>(contextManager.getWorkspaceContentsMessages(true));
+            int workspaceTokenSize = Messages.getApproximateTokens(workspaceContentMessages);
+
+            // Build the prompt messages, including history and conditional warnings
+            var messages = buildPrompt(workspaceTokenSize, minInputTokenLimit, workspaceContentMessages);
+
+            // Figure out which tools are allowed in this step
             var toolSpecs = new ArrayList<ToolSpecification>();
-            var analyzerTools = List.of("addClassesToWorkspace",
-                                        "addSymbolUsagesToWorkspace",
-                                        "addClassSummariesToWorkspace",
-                                        "addMethodSourcesToWorkspace",
-                                        "addCallGraphInToWorkspace",
-                                        "addCallGraphOutToWorkspace",
-                                        "getFiles");
-            // Check each option before adding the corresponding tools
-            if (options.includeAnalyzerTools()) {
-                toolSpecs.addAll(toolRegistry.getRegisteredTools(analyzerTools));
-            }
-            var workspaceTools = List.of("addFilesToWorkspace",
-                                         "addFileSummariesToWorkspace",
-                                         "addUrlContentsToWorkspace",
-                                         "addTextToWorkspace",
-                                         "dropWorkspaceFragments");
-            if (options.includeWorkspaceTools()) {
-                toolSpecs.addAll(toolRegistry.getRegisteredTools(workspaceTools));
-            }
-            if (options.includeCodeAgent()) {
-                toolSpecs.addAll(toolRegistry.getTools(this, List.of("callCodeAgent")));
-            }
-            if (options.includeSearchAgent()) {
-                toolSpecs.addAll(toolRegistry.getTools(this, List.of("callSearchAgent")));
-            }
-            toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject")));
+            boolean criticalWorkspaceSize = minInputTokenLimit < Integer.MAX_VALUE && workspaceTokenSize > (ArchitectPrompts.WORKSPACE_CRITICAL_THRESHOLD * minInputTokenLimit);
 
-            // 5) Ask the LLM for the next step with tools required
+            if (criticalWorkspaceSize) {
+                io.systemOutput(String.format("Workspace size (%,d tokens) is %.0f%% of limit %,d. Tool usage restricted to workspace modification.",
+                                              workspaceTokenSize,
+                                              (double) workspaceTokenSize / minInputTokenLimit * 100,
+                                              minInputTokenLimit));
+                toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject")));
+
+                var allowedWorkspaceModTools = new ArrayList<String>();
+                if (options.includeWorkspaceTools()) {
+                    allowedWorkspaceModTools.add("dropWorkspaceFragments");
+                    allowedWorkspaceModTools.add("addFileSummariesToWorkspace");
+                    allowedWorkspaceModTools.add("addTextToWorkspace");
+                }
+                if (options.includeAnalyzerTools()) { // addClassSummariesToWorkspace is conceptually analyzer-related but provided by WorkspaceTools
+                    allowedWorkspaceModTools.add("addClassSummariesToWorkspace");
+                }
+                toolSpecs.addAll(toolRegistry.getRegisteredTools(allowedWorkspaceModTools.stream().distinct().toList()));
+            } else {
+                // Default tool population logic
+                var analyzerTools = List.of("addClassesToWorkspace",
+                                            "addSymbolUsagesToWorkspace",
+                                            "addClassSummariesToWorkspace",
+                                            "addMethodSourcesToWorkspace",
+                                            "addCallGraphInToWorkspace",
+                                            "addCallGraphOutToWorkspace",
+                                            "getFiles");
+                if (options.includeAnalyzerTools()) {
+                    toolSpecs.addAll(toolRegistry.getRegisteredTools(analyzerTools));
+                }
+                var workspaceTools = List.of("addFilesToWorkspace",
+                                             "addFileSummariesToWorkspace",
+                                             "addUrlContentsToWorkspace",
+                                             "addTextToWorkspace",
+                                             "dropWorkspaceFragments");
+                if (options.includeWorkspaceTools()) {
+                    toolSpecs.addAll(toolRegistry.getRegisteredTools(workspaceTools));
+                }
+                if (options.includeCodeAgent()) {
+                    toolSpecs.addAll(toolRegistry.getTools(this, List.of("callCodeAgent")));
+                }
+                if (options.includeSearchAgent()) {
+                    toolSpecs.addAll(toolRegistry.getTools(this, List.of("callSearchAgent")));
+                }
+                toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject")));
+            }
+
+            // Ask the LLM for the next step
             Llm.StreamingResult result;
             result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
 
@@ -439,14 +485,22 @@ public class ArchitectAgent {
     }
 
     /**
-     * Build the system/user messages for the LLM:
-     * - System message explaining that this is a multi-step plan agent.
-     * - A user message showing the current stack top, the entire stack,
-     * the top-10 PageRank classes, and any relevant instructions.
+     * Build the system/user messages for the LLM.
+     * This includes the standard system prompt, workspace contents, history, agent's session messages,
+     * and the final user message with the goal and conditional workspace warnings.
      */
-    private List<ChatMessage> buildPrompt() throws InterruptedException {
-        // Concatenate system prompts (which should handle incorporating history) and the latest user message
-        return Streams.concat(ArchitectPrompts.instance.collectMessages(contextManager, architectMessages).stream(),
-                              Stream.of(new UserMessage(ArchitectPrompts.instance.getFinalInstructions(contextManager, goal)))).toList();
+    private List<ChatMessage> buildPrompt(int workspaceTokenSize, int minInputTokenLimit, List<ChatMessage> precomputedWorkspaceMessages) {
+        var messages = new ArrayList<ChatMessage>();
+        // System message defines the agent's role and general instructions
+        messages.add(ArchitectPrompts.instance.systemMessage(contextManager, CodePrompts.ARCHITECT_REMINDER));
+        // Workspace contents are added directly
+        messages.addAll(precomputedWorkspaceMessages);
+        // History from previous tasks/sessions
+        messages.addAll(contextManager.getHistoryMessages());
+        // This agent's own conversational history for the current goal
+        messages.addAll(architectMessages);
+        // Final user message with the goal and specific instructions for this turn, including workspace warnings
+        messages.add(new UserMessage(ArchitectPrompts.instance.getFinalInstructions(contextManager, goal, workspaceTokenSize, minInputTokenLimit)));
+        return messages;
     }
 }

@@ -1,26 +1,15 @@
 package io.github.jbellis.brokk.prompts;
 
-import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextManager;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public abstract class ArchitectPrompts extends CodePrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
-
-    public List<ChatMessage> collectMessages(ContextManager cm, List<ChatMessage> sessionMessages) throws InterruptedException {
-        var messages = new ArrayList<ChatMessage>();
-        messages.add(systemMessage(cm, CodePrompts.ARCHITECT_REMINDER));
-        messages.addAll(cm.getWorkspaceContentsMessages(true));
-        messages.addAll(cm.getHistoryMessages());
-        messages.addAll(sessionMessages);
-        return messages;
-    }
+    public static final double WORKSPACE_WARNING_THRESHOLD = 0.5;
+    public static final double WORKSPACE_CRITICAL_THRESHOLD = 0.9;
 
     @Override
-    protected SystemMessage systemMessage(ContextManager cm, String reminder) {
+    public SystemMessage systemMessage(ContextManager cm, String reminder) {
         var workspaceSummary = formatWorkspaceDescriptions(cm);
         var styleGuide = cm.getProject().getStyleGuide();
 
@@ -133,31 +122,70 @@ public abstract class ArchitectPrompts extends CodePrompts {
         """.stripIndent();
     }
 
-    public String getFinalInstructions(ContextManager cm, String goal) {
+    public String getFinalInstructions(ContextManager cm, String goal, int workspaceTokenSize, int minInputTokenLimit) {
+        String workspaceWarning = "";
+        if (minInputTokenLimit > 0) {
+            double criticalLimit = WORKSPACE_CRITICAL_THRESHOLD * minInputTokenLimit;
+            double warningLimit = WORKSPACE_WARNING_THRESHOLD * minInputTokenLimit;
+            double percentage = (double) workspaceTokenSize / minInputTokenLimit * 100;
+
+            if (workspaceTokenSize > criticalLimit) {
+                workspaceWarning = """
+                    CRITICAL WORKSPACE NOTICE:
+                    The current workspace size is %,d tokens. Your effective context limit for complex reasoning is %,d tokens.
+                    The workspace is consuming %.0f%% of this limit. This is critically high and may lead to errors or degraded performance.
+                    
+                    IMMEDIATE ACTION REQUIRED: Reduce the workspace size. Strategies:
+                    1. Replace full files/fragments with concise summaries (e.g., using `addClassSummariesToWorkspace`, `addFileSummariesToWorkspace`).
+                    2. Add your own commentary on the essential information in a fragment and then drop the original (e.g., using `addTextToWorkspace` then `dropWorkspaceFragments`).
+                    3. Critically evaluate if every item in the workspace is essential for the *current* step. Drop irrelevant items using `dropWorkspaceFragments`.
+                    4. Operations like replacing a fragment (e.g., a file with its summary) involve an 'add' and a 'drop', which can be performed in parallel.
+                    
+                    A lean, focused workspace is essential for complex tasks.
+                    """.stripIndent().formatted(workspaceTokenSize, minInputTokenLimit, percentage);
+            } else if (workspaceTokenSize > warningLimit) {
+                workspaceWarning = """
+                    IMPORTANT WORKSPACE NOTICE:
+                    The current workspace size is %,d tokens. Your maximum context limit for complex reasoning is %,d tokens.
+                    The workspace is consuming %.0f%% of this limit.
+                    
+                    To maintain optimal performance and avoid errors, consider reducing the workspace size. Strategies:
+                    1. Replace full files/fragments with concise summaries (e.g., using `addClassSummariesToWorkspace`, `addFileSummariesToWorkspace`).
+                    2. Add your own commentary on the essential information in a fragment and then drop the original (e.g., using `addTextToWorkspace` then `dropWorkspaceFragments`).
+                    3. Critically evaluate if every item in the workspace is essential for the *current* step. Drop irrelevant items using `dropWorkspaceFragments`.
+                    4. Operations like replacing a fragment (e.g., a file with its summary) involve an 'add' and a 'drop', which can be performed in parallel.
+                    
+                    A lean, focused workspace is crucial for complex tasks.
+                    """.stripIndent().formatted(workspaceTokenSize, minInputTokenLimit, percentage);
+            }
+        }
+
         return """
-                <goal>
-                %s
-                </goal>
-                
-                Please decide the next tool action(s) to make progress towards resolving the goal.
-                
-                You MUST think carefully before each function call, and reflect extensively on the outcomes of the previous function calls.
-                DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
-                
-                You are encouraged to call multiple tools simultaneously, especially
-                - when searching for relevant code: you can invoke callSearchAgent multiple times at once
-                - when manipulating Workspace context: make all desired manipulations at once
-                
-                Conversely, it does not make sense to call multiple tools with
-                - callCodeAgent, since you want to see what changes get made before proceeding
-                - projectFinished or abortProject, since they terminate execution
-                
-                When you are done, call projectFinished or abortProject.
-                
-                Here is a summary of the current Workspace. Its full contents were sent earlier in the chat.
-                <workspace_summary>
-                %s
-                </workspace_summary>
-                """.stripIndent().formatted(goal, formatWorkspaceDescriptions(cm));
+            <goal>
+            %s
+            </goal>
+            
+            Please decide the next tool action(s) to make progress towards resolving the goal.
+            
+            You MUST think carefully before each function call, and reflect extensively on the outcomes of the previous function calls.
+            DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
+            
+            You are encouraged to call multiple tools simultaneously, especially
+            - when searching for relevant code: you can invoke callSearchAgent multiple times at once
+            - when manipulating Workspace context: make all desired manipulations at once
+            
+            Conversely, it does not make sense to call multiple tools with
+            - callCodeAgent, since you want to see what changes get made before proceeding
+            - projectFinished or abortProject, since they terminate execution
+            
+            When you are done, call projectFinished or abortProject.
+            
+            Here is a summary of the current Workspace. Its full contents were sent earlier in the chat.
+            <workspace_summary>
+            %s
+            </workspace_summary>
+            
+            %s
+            """.stripIndent().formatted(goal, formatWorkspaceDescriptions(cm), workspaceWarning);
     }
 }
