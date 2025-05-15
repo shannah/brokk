@@ -240,7 +240,7 @@ public class AnalyzerWrapper implements AutoCloseable {
         return project.getAnalyzerLanguage().isCpg();
     }
 
-    /** Load a cached analyzer if it is up to date; otherwise return null. */
+    /** Load a cached analyzer if it is up to date; otherwise, or on any loading error, return null. */
     private IAnalyzer loadCachedAnalyzer(Path analyzerPath) {
         if (!Files.exists(analyzerPath)) {
             return null;
@@ -278,7 +278,12 @@ public class AnalyzerWrapper implements AutoCloseable {
         }
 
         // saved analyzer is up to date
-        return project.getAnalyzerLanguage().loadAnalyzer(project);
+        try {
+            return project.getAnalyzerLanguage().loadAnalyzer(project);
+        } catch (Throwable th) {
+            logger.warn("Error loading cached analyzer; falling back to full rebuild", th);
+            return null;
+        }
     }
 
     /**
