@@ -41,11 +41,11 @@ public class MenuBar {
         });
         fileMenu.add(openProjectItem);
 
-        var reopenProjectItem = new JMenuItem("Reopen Project");
+        var reopenProjectItem = new JMenuItem("Reopen `%s`".formatted(chrome.getProject().getRoot().getFileName()));
         reopenProjectItem.setEnabled(hasProject);
         reopenProjectItem.addActionListener(e -> {
             if (chrome.contextManager != null) {
-                var currentPath = chrome.contextManager.getProject().getRoot();
+                var currentPath = chrome.getProject().getRoot();
                 Brokk.reOpenProject(currentPath);
             }
         });
