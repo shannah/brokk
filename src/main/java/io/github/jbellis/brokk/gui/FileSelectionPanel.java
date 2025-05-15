@@ -101,11 +101,6 @@ public class FileSelectionPanel extends JPanel {
 
         // 3. FileTree
         fileTree = new FileTree(this.project, config.allowExternalFiles(), config.fileFilter());
-        if (config.multiSelect()) { // Only show loading for multi-select for now, as in original
-            fileTree.showLoadingPlaceholder();
-            SwingUtilities.invokeLater(fileTree::loadTreeInBackground);
-        }
-
 
         // Layout: Input at North, Tree at Center
         JPanel inputPanel = new JPanel(new BorderLayout());
@@ -138,6 +133,12 @@ public class FileSelectionPanel extends JPanel {
     private void setupListeners() {
         // Tree selection listener
         fileTree.addTreeSelectionListener(e -> {
+            // Only proceed if the current AWT event represents a user action
+            var awtEvent = EventQueue.getCurrentEvent();
+            if (!(awtEvent instanceof MouseEvent) && !(awtEvent instanceof KeyEvent)) {
+                return; // skip program-generated initial selection or other non-user-driven events
+            }
+
             TreePath currentPath = e.getPath(); // Use currentPath to avoid clash with java.nio.file.Path
             if (currentPath != null && currentPath.getLastPathComponent() instanceof DefaultMutableTreeNode node) {
                 Object userObject = node.getUserObject();

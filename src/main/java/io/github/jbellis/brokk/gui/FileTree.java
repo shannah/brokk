@@ -51,13 +51,9 @@ public class FileTree extends JTree {
         this.allowExternalFiles = allowExternalFiles;
         this.fileFilter = fileFilter;
 
-        if (allowExternalFiles) {
-            setupExternalFileSystem(fileFilter);
-            logger.trace("Attempting initial expansion to project root: {}", project.getRoot());
-            expandTreeToPath(project.getRoot());
-        } else {
-            setModel(setupProjectFileSystemModel());
-        }
+        // loadTreeInBackground will decide which model to build.
+        showLoadingPlaceholder();
+        SwingUtilities.invokeLater(this::loadTreeInBackground);
 
         setRootVisible(true);
         setShowsRootHandles(true);
@@ -65,20 +61,6 @@ public class FileTree extends JTree {
         setCellRenderer(new FileTreeCellRenderer()); // Use for both modes
 
         logger.trace("FileTree initialization complete");
-    }
-
-    /**
-     * Sets up the tree to display the full external file system with lazy loading.
-     */
-    private void setupExternalFileSystem(Predicate<File> fileFilter) {
-        logger.trace("Setting up external file system view");
-        DefaultMutableTreeNode rootNode = createExternalFileSystemRoot(fileFilter);
-        LazyLoadingTreeModel model = new LazyLoadingTreeModel(rootNode, fileFilter, logger);
-        setModel(model);
-
-        // Add listener for lazy loading on user expansion
-        addTreeWillExpandListener(createLazyLoadListener(model));
-        logger.trace("External file system view setup complete");
     }
 
     /**
@@ -184,7 +166,8 @@ public class FileTree extends JTree {
             @Override
             protected DefaultTreeModel doInBackground() throws Exception {
                 if (allowExternalFiles) {
-                    return new LazyLoadingTreeModel(createExternalFileSystemRoot(fileFilter), fileFilter, logger);
+                    DefaultMutableTreeNode rootNode = createExternalFileSystemRoot(fileFilter);
+                    return new LazyLoadingTreeModel(rootNode, fileFilter, logger);
                 } else {
                     return setupProjectFileSystemModel();
                 }
@@ -194,20 +177,30 @@ public class FileTree extends JTree {
             protected void done() {
                 try {
                     DefaultTreeModel newModel = get();
+
+                    // Clear any listeners that might have been associated with the old model
+                    // or any prematurely added listeners, before setting the new model and potentially new listeners.
+                    for (TreeWillExpandListener listener : FileTree.this.getTreeWillExpandListeners()) {
+                        FileTree.this.removeTreeWillExpandListener(listener);
+                    }
+
                     setModel(newModel); // Update the model on the EDT
 
-                    if (newModel instanceof LazyLoadingTreeModel) {
-                        // Add listener for lazy loading if using the external FS model
-                        addTreeWillExpandListener(createLazyLoadListener((LazyLoadingTreeModel) newModel));
+                    if (newModel instanceof LazyLoadingTreeModel lazyModel) {
+                        addTreeWillExpandListener(createLazyLoadListener(lazyModel));
                         logger.trace("LazyLoadingTreeModel set, added TreeWillExpandListener.");
 
                         // Attempt initial expansion to project root after model is ready
-                        logger.trace("Attempting initial expansion to project root: {}", project.getRoot());
-                        expandTreeToPath(project.getRoot());
-                    } else {
+                        if (project != null && project.getRoot() != null) {
+                            logger.trace("Attempting initial expansion to project root: {}", project.getRoot());
+                            expandTreeToPath(project.getRoot());
+                        } else {
+                            logger.trace("No project root to expand to for LazyLoadingTreeModel.");
+                        }
+                    } else { // DefaultTreeModel for project files
                         logger.trace("DefaultTreeModel set (Project files).");
                         // Optionally expand the project root node if desired
-                        if (getModel().getRoot() instanceof DefaultMutableTreeNode rootNode) {
+                        if (getModel().getRoot() instanceof DefaultMutableTreeNode rootNode && rootNode.getChildCount() > 0) {
                             expandPath(new TreePath(rootNode.getPath()));
                         }
                     }
