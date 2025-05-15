@@ -236,20 +236,20 @@ public class ContextAgent {
                                                           : contextManager.getWorkspaceSummaryMessages();
         var allFiles = contextManager.getProject().getAllFiles().stream().sorted().toList();
 
-        // Try summaries first if analyzer is available
-        if (!analyzer.isEmpty()) {
-            var summaryResult = executeWithSummaries(allFiles, workspaceRepresentation);
-            if (summaryResult.success) {
-                return summaryResult;
-            }
-            // If summaries failed (e.g., too large even for pruning), fall through to filename-based pruning
-        } else {
+        // try single-pass mode first
+        if (analyzer.isEmpty()) {
             // If no analyzer, try full file contents directly
             var contentResult = executeWithFileContents(allFiles, workspaceRepresentation);
             if (contentResult.success) {
                 return contentResult;
             }
             // If contents failed, fall through to filename-based pruning
+        } else {
+            var summaryResult = executeWithSummaries(allFiles, workspaceRepresentation);
+            if (summaryResult.success) {
+                return summaryResult;
+            }
+            // If summaries failed (e.g., too large even for pruning), fall through to filename-based pruning
         }
 
         if (!deepScan) {
@@ -542,7 +542,7 @@ public class ContextAgent {
         }
         var aiMessage = result.chatResponse().aiMessage();
         var toolRequests = aiMessage.toolExecutionRequests();
-        debug("LLM ToolRequests: %s", toolRequests);
+        debug("LLM ToolRequests: {}", toolRequests);
         // only one call is necessary but handle LLM making multiple calls
         for (var request : toolRequests) {
             contextManager.getToolRegistry().executeTool(contextTool, request);
@@ -570,8 +570,8 @@ public class ContextAgent {
                  .filter(CodeUnit::isClass) // Ensure it's actually a class
                  .toList();
 
-        debug("Tool recommended files: %s", projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
-        debug("Tool recommended classes: %s", projectClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
+        debug("Tool recommended files: {}", projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
+        debug("Tool recommended classes: {}", projectClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
         return new LlmRecommendation(projectFiles, projectClasses, reasoning);
     }
 
@@ -654,8 +654,8 @@ public class ContextAgent {
             debug("LLM simple suggested {} relevant files after pruning", recommendedFiles.size());
         }
 
-        debug("Quick scan recommended files: %s", recommendedFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
-        debug("Quick scan recommended classes: %s", recommendedClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
+        debug("Quick scan recommended files: {}", recommendedFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
+        debug("Quick scan recommended classes: {}", recommendedClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
         return new LlmRecommendation(recommendedFiles, recommendedClasses, reasoning);
     }
 
@@ -702,7 +702,7 @@ public class ContextAgent {
                                                    Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userPrompt))))
                 .toList();
         int promptTokens = Messages.getApproximateTokens(messages);
-        debug("Invoking LLM (Quick) to select relevant %s (prompt size ~%d tokens)", inputType.itemTypePlural, promptTokens);
+        debug("Invoking LLM (Quick) to select relevant {} (prompt size ~{} tokens)", inputType.itemTypePlural, promptTokens);
         var result = llm.sendRequest(messages); // No tools
 
         if (result.error() != null || result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
@@ -718,7 +718,7 @@ public class ContextAgent {
         }
 
         var responseLines = responseText.lines().map(String::strip).filter(s -> !s.isEmpty()).toList();
-        debug("LLM simple response lines (%s): %s", inputType.itemTypePlural, responseLines);
+        debug("LLM simple response lines ({}): {}", inputType.itemTypePlural, responseLines);
         return responseLines;
     }
 
