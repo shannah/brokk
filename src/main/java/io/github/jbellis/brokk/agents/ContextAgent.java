@@ -267,8 +267,7 @@ public class ContextAgent {
         }
 
         var prunedFiles = filenameResult.fragments.stream()
-                .map(ContextFragment.ProjectPathFragment.class::cast)
-                .map(ContextFragment.ProjectPathFragment::file)
+                .flatMap(f -> f.files(contextManager.getProject()).stream())
                 .toList();
 
         if (prunedFiles.isEmpty()) {
