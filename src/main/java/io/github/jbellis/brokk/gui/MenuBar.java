@@ -64,7 +64,6 @@ public class MenuBar {
         fileMenu.addSeparator();
 
         var openDependencyItem = new JMenuItem("Import Dependency...");
-        openDependencyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         openDependencyItem.setEnabled(hasProject);
         openDependencyItem.addActionListener(e -> {
             // Ensure this action is run on the EDT as it might interact with Swing components immediately
