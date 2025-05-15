@@ -30,6 +30,28 @@ public class SearchTools {
     public SearchTools(IContextManager contextManager) {
         this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
+
+    // --- Sanitization Helper Methods
+    // These methods strip trailing parentheses like "(params)" from symbol strings.
+    // This is necessary because LLMs may incorrectly include them, but the underlying
+    // code analysis tools expect clean FQNs or symbol names without parameter lists.
+
+    private static String stripParams(String sym) {
+        if (sym == null) {
+            return null;
+        }
+        // Remove trailing (...) if it looks like a parameter list
+        return sym.replaceAll("(?<=\\w)\\([^)]*\\)$", "");
+    }
+
+    private static List<String> stripParams(List<String> syms) {
+        if (syms == null) {
+            return List.of();
+        }
+        return syms.stream()
+                   .map(SearchTools::stripParams)
+                   .toList();
+    }
     
     private IAnalyzer getAnalyzer() {
         return contextManager.getAnalyzerUninterrupted();
@@ -191,6 +213,8 @@ public class SearchTools {
             String reasoning
     ) {
         assert getAnalyzer().isCpg() : "Cannot search definitions: CPG analyzer is not available.";
+        // Sanitize patterns: LLM might add `()` to symbols, Joern regex usually doesn't want that unless intentional.
+        patterns = stripParams(patterns);
         if (patterns.isEmpty()) {
             throw new IllegalArgumentException("Cannot search definitions: patterns list is empty");
         }
@@ -230,6 +254,8 @@ public class SearchTools {
             String reasoning
     ) {
         assert getAnalyzer().isCpg() : "Cannot search usages: CPG analyzer is not available.";
+        // Sanitize symbols: remove potential `(params)` suffix from LLM.
+        symbols = stripParams(symbols);
         if (symbols.isEmpty()) {
             throw new IllegalArgumentException("Cannot search usages: symbols list is empty");
         }
@@ -261,6 +287,8 @@ public class SearchTools {
             List<String> classNames
     ) {
         assert getAnalyzer().isCpg() : "Cannot find related classes: CPG analyzer is not available.";
+        // Sanitize classNames: remove potential `(params)` suffix from LLM.
+        classNames = stripParams(classNames);
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot search pagerank: classNames is empty");
         }
@@ -302,6 +330,8 @@ public class SearchTools {
             List<String> classNames
     ) {
         assert getAnalyzer().isCpg() : "Cannot get skeletons: Code Intelligence is not available.";
+        // Sanitize classNames: remove potential `(params)` suffix from LLM.
+        classNames = stripParams(classNames);
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get skeletons: class names list is empty");
         }
@@ -330,6 +360,8 @@ public class SearchTools {
             String reasoning
     ) {
         assert getAnalyzer().isCpg() : "Cannot get class sources: CPG analyzer is not available.";
+        // Sanitize classNames: remove potential `(params)` suffix from LLM.
+        classNames = stripParams(classNames);
         if (classNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get class sources: class names list is empty");
         }
@@ -373,6 +405,8 @@ public class SearchTools {
             List<String> methodNames
     ) {
          assert getAnalyzer().isCpg() : "Cannot get method sources: CPG analyzer is not available.";
+        // Sanitize methodNames: remove potential `(params)` suffix from LLM.
+        methodNames = stripParams(methodNames);
         if (methodNames.isEmpty()) {
             throw new IllegalArgumentException("Cannot get method sources: method names list is empty");
         }
@@ -413,6 +447,8 @@ public class SearchTools {
             String methodName
     ) {
         assert getAnalyzer().isCpg() : "Cannot get call graph: CPG analyzer is not available.";
+        // Sanitize methodName: remove potential `(params)` suffix from LLM.
+        methodName = stripParams(methodName);
         if (methodName.isBlank()) {
             throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
@@ -434,6 +470,8 @@ public class SearchTools {
             String methodName
     ) {
         assert getAnalyzer().isCpg() : "Cannot get call graph: CPG analyzer is not available.";
+        // Sanitize methodName: remove potential `(params)` suffix from LLM.
+        methodName = stripParams(methodName);
         if (methodName.isBlank()) {
             throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
