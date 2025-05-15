@@ -562,6 +562,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Push the context update: remove the *existing* read-only fragments and add the *new, unique* editable ones
         pushContext(ctx -> ctx.removeReadonlyFiles(existingReadOnlyFragmentsToRemove)
                 .addEditableFiles(uniqueNewEditableFragments));
+
+        io.systemOutput("Edited " + joinForOutput(fragments));
     }
 
     /**
@@ -587,6 +589,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Push the context update: remove the *existing* editable fragments and add the *new, unique* read-only ones
         pushContext(ctx -> ctx.removeEditableFiles(existingEditableFragmentsToRemove)
                 .addReadonlyFiles(uniqueNewReadOnlyFragments));
+
+        io.systemOutput("Read " + joinFilesForOutput(files));
     }
 
     /**
@@ -909,7 +913,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         // Combine skeletons from both files and specific classes
-        var allSkeletons = new java.util.HashMap<CodeUnit, String>();
 
         // Process files: get skeletons for all classes within each file in parallel
         Map<CodeUnit, String> skeletonsFromFiles = files.parallelStream()
@@ -927,7 +930,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     Map.Entry::getValue,
                     (v1, v2) -> v1 // In case of duplicate keys (shouldn't happen)
             ));
-        allSkeletons.putAll(skeletonsFromFiles);
+        var allSkeletons = new HashMap<>(skeletonsFromFiles);
 
         // Process specific classes/symbols
         if (!classes.isEmpty()) {
@@ -943,7 +946,24 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // Create and add the fragment
         var skeletonFragment = new ContextFragment.SkeletonFragment(allSkeletons);
         addVirtualFragment(skeletonFragment);
+
+        io.systemOutput("Summarized " + joinForOutput(List.of(skeletonFragment)));
         return true;
+    }
+
+    private String joinForOutput(Collection<? extends ContextFragment> fragments) {
+        return joinFilesForOutput(fragments.stream().flatMap(f -> f.files(project).stream()).collect(Collectors.toSet()));
+    }
+
+    private static String joinFilesForOutput(Collection<? extends BrokkFile> files) {
+        var toJoin = files.stream()
+                .map(BrokkFile::getFileName)
+                .sorted()
+                .toList();
+        if (files.size() <= 3) {
+            return String.join(", ", toJoin);
+        }
+        return String.join(", ", toJoin.subList(0, 3)) + " ...";
     }
 
     /**

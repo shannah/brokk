@@ -198,15 +198,13 @@ public final class ContextMenuUtils {
         JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
         summarizeItem.addActionListener(e1 -> {
             withTemporaryListenerDetachment(chrome, cm, () -> {
-                if (targetRef.getRepoFile() != null) {
+                if (targetRef.getRepoFile() == null) {
+                    chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
+                } else {
                     boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
-                    if (success) {
-                        chrome.systemOutput("Summarized " + targetRef.getFullPath());
-                    } else {
+                    if (!success) {
                         chrome.toolErrorRaw("No summarizable code found");
                     }
-                } else {
-                    chrome.toolErrorRaw("Cannot summarize: " + targetRef.getFullPath() + " - ProjectFile information not available");
                 }
             }, "Summarize files");
         });

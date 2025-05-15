@@ -393,15 +393,12 @@ class DeepScanDialog {
                     if (!success) {
                         chrome.toolErrorRaw("No summarizable code found in selected files");
                     }
-                    chrome.systemOutput("Added summaries of " + filesToSummarize);
                 }
                 if (!filesToEdit.isEmpty()) {
                     contextManager.editFiles(filesToEdit);
-                    chrome.systemOutput("Edited " + filesToEdit.size());
                 }
                 if (!filesToReadOnly.isEmpty()) {
                     contextManager.addReadOnlyFiles(filesToReadOnly);
-                    chrome.systemOutput("Added as read-only: " + filesToReadOnly);
                 }
 
                 SwingUtilities.invokeLater(() -> {
