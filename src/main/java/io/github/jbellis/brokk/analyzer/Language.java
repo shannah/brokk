@@ -1,19 +1,28 @@
 package io.github.jbellis.brokk.analyzer;
 
 import io.github.jbellis.brokk.Project;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.Stream;
 
 
 public interface Language {
+    Logger logger = LogManager.getLogger(Language.class);
+
     List<String> getExtensions();
     String name();
     IAnalyzer createAnalyzer(Project project);
     IAnalyzer loadAnalyzer(Project project);
+    default List<Path> getDependencyCandidates(Project project) {
+        return List.of();
+    }
 
     default boolean isCpg() {
         return false;
@@ -30,6 +39,11 @@ public interface Language {
             return new CSharpAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
         @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
+
+        @Override
+        public List<Path> getDependencyCandidates(Project project) {
+            return List.of();
+        }
     };
 
     Language JAVA = new Language() {
@@ -50,6 +64,90 @@ public interface Language {
         @Override public JavaAnalyzer loadAnalyzer(Project project) {
             return new JavaAnalyzer(project.getRoot(), getAnalyzerPath(project));
         }
+
+        @Override
+        public List<Path> getDependencyCandidates(Project project) {
+            long startTime = System.currentTimeMillis();
+
+            String userHome = System.getProperty("user.home");
+            if (userHome == null) {
+                logger.warn("Could not determine user home directory.");
+                return List.of();
+            }
+            Path homePath = Path.of(userHome);
+
+            List<Path> rootsToScan = new ArrayList<>();
+
+            /* ---------- default locations that exist on all OSes ---------- */
+            rootsToScan.add(homePath.resolve(".m2").resolve("repository"));
+            rootsToScan.add(homePath.resolve(".gradle").resolve("caches")
+                                    .resolve("modules-2").resolve("files-2.1"));
+            rootsToScan.add(homePath.resolve(".ivy2").resolve("cache"));
+            rootsToScan.add(homePath.resolve(".cache").resolve("coursier")
+                                    .resolve("v1").resolve("https"));
+            rootsToScan.add(homePath.resolve(".sbt"));
+
+            /* ---------- honour user-supplied overrides ---------- */
+            Optional.ofNullable(System.getenv("MAVEN_REPO"))
+                    .map(Path::of)
+                    .ifPresent(rootsToScan::add);
+
+            Optional.ofNullable(System.getProperty("maven.repo.local"))
+                    .map(Path::of)
+                    .ifPresent(rootsToScan::add);
+
+            Optional.ofNullable(System.getenv("GRADLE_USER_HOME"))
+                    .map(Path::of)
+                    .map(p -> p.resolve("caches")
+                            .resolve("modules-2").resolve("files-2.1"))
+                    .ifPresent(rootsToScan::add);
+
+            /* ---------- Windows-specific cache roots ---------- */
+            boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).contains("win");
+
+            if (isWindows) {
+                Optional.ofNullable(System.getenv("LOCALAPPDATA")).ifPresent(localAppData -> {
+                    Path lad = Path.of(localAppData);
+                    rootsToScan.add(lad.resolve("Coursier").resolve("cache")
+                                            .resolve("v1").resolve("https"));
+                    rootsToScan.add(lad.resolve("Gradle").resolve("caches")
+                                            .resolve("modules-2").resolve("files-2.1"));
+                });
+            }
+
+            /* ---------- de-duplicate & scan ---------- */
+            List<Path> uniqueRoots = rootsToScan.stream().distinct().toList();
+
+            var jarFiles = uniqueRoots.parallelStream()
+                    .filter(Files::isDirectory)
+                    .peek(root -> logger.debug("Scanning for JARs under: {}", root))
+                    .flatMap(root -> {
+                        try {
+                            return Files.walk(root, FileVisitOption.FOLLOW_LINKS);
+                        } catch (IOException e) {
+                            logger.warn("Error walking directory {}: {}", root, e.getMessage());
+                            return Stream.empty();
+                        } catch (SecurityException e) {
+                            logger.warn("Permission denied accessing directory {}: {}", root, e.getMessage());
+                            return Stream.empty();
+                        }
+                    })
+                    .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String name = path.getFileName().toString().toLowerCase(Locale.ENGLISH);
+                        return name.endsWith(".jar")
+                                && !name.endsWith("-sources.jar")
+                                && !name.endsWith("-javadoc.jar");
+                    })
+                    .toList();
+
+            long duration = System.currentTimeMillis() - startTime;
+            logger.info("Found {} JAR files in common dependency locations in {} ms",
+                        jarFiles.size(), duration);
+
+            return jarFiles;
+        }
+
         @Override
         public boolean isCpg() { return true; }
     };
@@ -63,6 +161,11 @@ public interface Language {
             return new JavascriptAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
         @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
+
+        @Override
+        public List<Path> getDependencyCandidates(Project project) {
+            return List.of();
+        }
     };
 
     Language PYTHON = new Language() {
@@ -74,6 +177,11 @@ public interface Language {
             return new PythonAnalyzer(project, project.getBuildDetails().excludedDirectories());
         }
         @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
+
+        @Override
+        public List<Path> getDependencyCandidates(Project project) {
+            return List.of();
+        }
     };
 
     Language C_CPP = new Language() {
