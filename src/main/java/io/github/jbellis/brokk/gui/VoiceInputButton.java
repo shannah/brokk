@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  */
 public class VoiceInputButton extends JButton {
     private static final Logger logger = LogManager.getLogger(VoiceInputButton.class);
-    
+
     private final JTextArea targetTextArea;
     private final ContextManager contextManager;
     private final Consumer<String> onError;
@@ -98,26 +98,26 @@ public class VoiceInputButton extends JButton {
             micOnIcon = null;
             micOffIcon = null;
         }
-        
+
         // Set default appearance
         if (micOffIcon != null) {
             setIcon(micOffIcon);
         } else {
             setText("Mic"); // Fallback text if icons fail to load
         }
-        
+
         Dimension buttonSize = new Dimension(normalButtonHeight, normalButtonHeight);
         setPreferredSize(buttonSize);
         setMinimumSize(buttonSize);
         setMaximumSize(buttonSize);
-        setMargin(new Insets(0,0,0,0)); // Remove default margins to center icon better if it's the only content
-        
+        setMargin(new Insets(0, 0, 0, 0)); // Remove default margins to center icon better if it's the only content
+
         // Track recording state
         putClientProperty("isRecording", false);
-        
+
         // Configure the toggle behavior
         addActionListener(e -> {
-            boolean isRecording = (boolean)getClientProperty("isRecording");
+            boolean isRecording = (boolean) getClientProperty("isRecording");
             if (isRecording) {
                 // If recording, stop and transcribe
                 stopMicCaptureAndTranscribe();
@@ -136,18 +136,18 @@ public class VoiceInputButton extends JButton {
     /**
      * Convenience constructor without custom symbols.
      *
-     * @param targetTextArea the text area where transcribed text will be placed
-     * @param contextManager the context manager for speech-to-text processing
+     * @param targetTextArea   the text area where transcribed text will be placed
+     * @param contextManager   the context manager for speech-to-text processing
      * @param onRecordingStart callback when recording starts
-     * @param onError callback for error handling
+     * @param onError          callback for error handling
      */
-     public VoiceInputButton(JTextArea targetTextArea,
-                             ContextManager contextManager,
-                             Runnable onRecordingStart,
-                             Consumer<String> onError)
-      {
-          this(targetTextArea, contextManager, onRecordingStart, null, onError);
-      }
+    public VoiceInputButton(JTextArea targetTextArea,
+                            ContextManager contextManager,
+                            Runnable onRecordingStart,
+                            Consumer<String> onError)
+    {
+        this(targetTextArea, contextManager, onRecordingStart, null, onError);
+    }
 
     /**
      * Starts capturing audio from the default microphone to micBuffer on a background thread.
@@ -222,8 +222,7 @@ public class VoiceInputButton extends JButton {
 
                 // Create an AudioInputStream wrapping the raw data + format
                 try (var bais = new java.io.ByteArrayInputStream(audioBytes);
-                     var ais = new AudioInputStream(bais, format, audioBytes.length / format.getFrameSize()))
-                {
+                     var ais = new AudioInputStream(bais, format, audioBytes.length / format.getFrameSize())) {
                     // Write to a temp .wav
                     var tempFile = Files.createTempFile("brokk-stt-", ".wav");
                     AudioSystem.write(ais, AudioFileFormat.Type.WAVE, tempFile.toFile());
@@ -245,37 +244,39 @@ public class VoiceInputButton extends JButton {
                         } catch (ExecutionException e) {
                             logger.warn("Error executing custom symbols future.", e.getCause());
                         } catch (InterruptedException e) {
-                             logger.warn("Interrupted while waiting for custom symbols future.", e);
-                             Thread.currentThread().interrupt();
-                         }
-                     }
+                            logger.warn("Interrupted while waiting for custom symbols future.", e);
+                            Thread.currentThread().interrupt();
+                        }
+                    }
 
                     // If custom symbols weren't retrieved or were empty, fall back to context symbols
                     if (symbolsForTranscription == null) {
                         logger.debug("Falling back to context symbols for transcription.");
-                        var analyzer = contextManager.getAnalyzerUninterrupted();
-                        var sources = contextManager.topContext().allFragments()
-                                .flatMap(f -> f.sources(analyzer).stream())
-                                .collect(Collectors.toSet());
+                        var analyzer = contextManager.getAnalyzerWrapper().getNonBlocking();
+                        if (analyzer != null) {
+                            var sources = contextManager.topContext().allFragments()
+                                    .flatMap(f -> f.sources(analyzer).stream())
+                                    .collect(Collectors.toSet());
 
-                        // Get full symbols first
-                        var fullSymbols = analyzer.getSymbols(sources);
+                            // Get full symbols first
+                            var fullSymbols = analyzer.getSymbols(sources);
 
-                        // Extract short names from sources and returned symbols
-                        symbolsForTranscription = sources.stream()
-                                .map(CodeUnit::shortName)
-                                .collect(Collectors.toSet());
-                        fullSymbols.stream()
-                                .map(s -> {
-                                    var parts = s.split("\\.");
-                                    // Get last part as short name
-                                    return parts.length > 0 ? parts[parts.length - 1] : null;
-                                })
-                                .filter(java.util.Objects::nonNull)
-                                // Add to the same set
-                                .forEach(symbolsForTranscription::add);
-                        logger.debug("Using context symbols for transcription: {}", symbolsForTranscription.size());
-                     }
+                            // Extract short names from sources and returned symbols
+                            symbolsForTranscription = sources.stream()
+                                    .map(CodeUnit::shortName)
+                                    .collect(Collectors.toSet());
+                            fullSymbols.stream()
+                                    .map(s -> {
+                                        var parts = s.split("\\.");
+                                        // Get last part as short name
+                                        return parts.length > 0 ? parts[parts.length - 1] : null;
+                                    })
+                                    .filter(java.util.Objects::nonNull)
+                                    // Add to the same set
+                                    .forEach(symbolsForTranscription::add);
+                            logger.debug("Using context symbols for transcription: {}", symbolsForTranscription.size());
+                        }
+                    }
 
                     // Perform transcription
                     String result;
@@ -302,7 +303,11 @@ public class VoiceInputButton extends JButton {
                     });
 
                     // cleanup
-                    try { Files.deleteIfExists(tempFile); } catch (IOException ignore) { logger.trace("Could not delete temp STT file: {}", tempFile); }
+                    try {
+                        Files.deleteIfExists(tempFile);
+                    } catch (IOException ignore) {
+                        logger.trace("Could not delete temp STT file: {}", tempFile);
+                    }
                 }
             } catch (IOException ex) { // Catch specific IO errors from file writing/reading
                 logger.error("Error processing audio file for transcription: {}", ex.getMessage(), ex);
