@@ -138,12 +138,22 @@ public class FileSelectionPanel extends JPanel {
     private void setupListeners() {
         // Tree selection listener
         fileTree.addTreeSelectionListener(e -> {
-            TreePath path = e.getPath();
-            if (path != null && path.getLastPathComponent() instanceof DefaultMutableTreeNode node && node.isLeaf()) {
-                updateFileInputFromTreeSelection(node, path);
-                // For single selection, a tree click could also imply immediate selection change notification.
-                // For multi-selection, it's more about appending to input.
-                // Let resolveSelectedFiles() be the source of truth for BrokkFiles.
+            TreePath currentPath = e.getPath(); // Use currentPath to avoid clash with java.nio.file.Path
+            if (currentPath != null && currentPath.getLastPathComponent() instanceof DefaultMutableTreeNode node) {
+                Object userObject = node.getUserObject();
+                if (userObject instanceof FileTree.FileTreeNode fileNodeUserObj) {
+                    File file = fileNodeUserObj.getFile();
+                    // A node in the tree is "selectable" if it passes the fileFilter.
+                    // This allows selecting directories if the filter accepts them, even if they aren't leaves.
+                    if (config.fileFilter().test(file)) {
+                        updateFileInputFromTreeSelection(node, currentPath);
+                    }
+                } else if (project != null && !config.allowExternalFiles() && node.isLeaf() && userObject instanceof String) {
+                    // This handles selection of leaf nodes in a project-files-only tree (not FileTreeNodes)
+                    // Such a tree is built if allowExternalFiles is false.
+                    // ImportDependencyDialog sets allowExternalFiles=true, so this branch is not typically hit for it.
+                    updateFileInputFromTreeSelection(node, currentPath);
+                }
             }
         });
 
