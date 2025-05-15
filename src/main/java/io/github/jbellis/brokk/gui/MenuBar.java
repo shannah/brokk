@@ -3,19 +3,15 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.BuildInfo;
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
+import io.github.jbellis.brokk.gui.dialogs.ImportDependencyDialog;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
-import io.github.jbellis.brokk.util.Decompiler;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
-import java.util.function.Predicate;
 
 public class MenuBar {
     /**
@@ -67,36 +63,12 @@ public class MenuBar {
 
         fileMenu.addSeparator();
 
-        var openDependencyItem = new JMenuItem("Decompile Dependency...");
+        var openDependencyItem = new JMenuItem("Import Dependency...");
         openDependencyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        openDependencyItem.setEnabled(hasProject);
         openDependencyItem.addActionListener(e -> {
-            // Fixme ensure the menu item is disabled if no project is open
-            assert chrome.getContextManager() != null;
-            assert chrome.getProject() != null;
-            var cm = chrome.getContextManager();
-
-            var jarCandidates = cm.submitBackgroundTask("Scanning for JAR files", Decompiler::findCommonDependencyJars);
-
-            // Now show the dialog on the EDT
-            SwingUtilities.invokeLater(() -> {
-                Predicate<File> jarFilter = file -> file.isDirectory() || file.getName().toLowerCase().endsWith(".jar");
-                FileSelectionDialog dialog = new FileSelectionDialog(
-                        chrome.getFrame(),
-                        cm.getProject(), // Pass the current project
-                        "Select JAR Dependency to Decompile",
-                        true, // Allow external files
-                        jarFilter, // Filter tree view for .jar files (and directories)
-                        jarCandidates // Provide candidates for autocomplete
-                );
-                dialog.setVisible(true); // Show the modal dialog
-
-                if (dialog.isConfirmed() && dialog.getSelectedFile() != null) {
-                    var selectedFile = dialog.getSelectedFile();
-                    Path jarPath = selectedFile.absPath();
-                    assert Files.isRegularFile(jarPath) && jarPath.toString().toLowerCase().endsWith(".jar");
-                    Decompiler.decompileJar(chrome, jarPath, cm::submitBackgroundTask);
-                }
-            });
+            // Ensure this action is run on the EDT as it might interact with Swing components immediately
+            SwingUtilities.invokeLater(() -> ImportDependencyDialog.show(chrome));
         });
         fileMenu.add(openDependencyItem);
 
