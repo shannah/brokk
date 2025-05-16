@@ -41,8 +41,8 @@ public class Brokk {
             File localModelPath;
             try {
                 var cacheDir = System.getProperty("user.home") + "/.cache/brokk";
-                if (!new File(cacheDir).mkdirs()) {
-                    throw new IOException("Unable to create model-cache directory");
+                if (!Files.exists(Path.of(cacheDir)) && !new File(cacheDir).mkdirs()) {
+                    throw new IOException("Unable to create model-cache directory at " + cacheDir);
                 }
                 localModelPath = SafeTensorSupport.maybeDownloadModel(cacheDir, modelName);
             } catch (IOException e) {
