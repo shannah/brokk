@@ -340,20 +340,13 @@ public class ImportDependencyDialog {
                 }
             } else { // DIRECTORY
                 if (Files.isDirectory(path)) {
-                    Path projectRoot = chrome.getProject().getRoot().normalize();
-                    Path selectedPathNormalized = path.normalize();
-
-                    if (selectedPathNormalized.startsWith(projectRoot)) {
-                        selectedBrokkFileForImport = null; // Or keep `file` but ensure button is disabled
-                        importButton.setEnabled(false);
-                        previewArea.setText("Cannot import the project's own directory or its subdirectories.");
-                    } else {
-                        selectedBrokkFileForImport = file;
-                        previewArea.setText(generateDirectoryPreviewText(path));
-                        importButton.setEnabled(true);
-                    }
+                    selectedBrokkFileForImport = file;
+                    previewArea.setText(generateDirectoryPreviewText(path));
+                    importButton.setEnabled(true);
                 } else {
                     previewArea.setText("Selected item is not a valid directory: " + path.getFileName());
+                    // selectedBrokkFileForImport is implicitly null or reset earlier
+                    // importButton is implicitly false or reset earlier
                 }
             }
             previewArea.setCaretPosition(0); // Scroll to top
@@ -465,12 +458,27 @@ public class ImportDependencyDialog {
                 dialog.dispose();
 
             } else { // DIRECTORY
+                var project = chrome.getProject();
+                var projectLanguage = project.getAnalyzerLanguage();
+
+                if (projectLanguage.isAnalyzed(project, sourcePath)) {
+                    int proceedResponse = JOptionPane.showConfirmDialog(dialog,
+                        "The selected directory might already be part of the project's analyzed sources.\n" +
+                        "Importing it as a dependency could lead to duplicate analysis or conflicts.\n\n" +
+                        "Proceed with import?",
+                        "Confirm Import", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    if (proceedResponse == JOptionPane.NO_OPTION) {
+                        importButton.setEnabled(true); // Re-enable if user cancels here
+                        return;
+                    }
+                }
+
                 Path targetPath = dependenciesRoot.resolve(sourcePath.getFileName());
                 if (Files.exists(targetPath)) {
-                    int response = JOptionPane.showConfirmDialog(dialog,
+                    int overwriteResponse = JOptionPane.showConfirmDialog(dialog,
                             "The destination directory '" + targetPath.getFileName() + "' already exists. Overwrite?",
                             "Confirm Overwrite", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-                    if (response == JOptionPane.NO_OPTION) {
+                    if (overwriteResponse == JOptionPane.NO_OPTION) {
                         importButton.setEnabled(true); // Re-enable if cancelled
                         return;
                     }
@@ -484,7 +492,6 @@ public class ImportDependencyDialog {
                             if (Files.exists(targetPath)) {
                                 ImportDependencyDialog.deleteRecursively(targetPath); // Use static method
                             }
-                            var projectLanguage = chrome.getProject().getAnalyzerLanguage();
                             ImportDependencyDialog.copyDirectoryRecursively(sourcePath, targetPath, projectLanguage.getExtensions()); // Use static method
                             SwingUtilities.invokeLater(() -> {
                                 chrome.systemOutput("Directory copied successfully to " + targetPath +
@@ -493,7 +500,7 @@ public class ImportDependencyDialog {
                                 if (currentFileSelectionPanel != null) currentFileSelectionPanel.setInputText("");
                                 previewArea.setText("Directory copied successfully.");
                                 selectedBrokkFileForImport = null;
-                                // importButton.setEnabled(false); // Keep disabled until new selection
+                                // importButton enabled state handled by selection logic
                             });
                         } catch (IOException ex) {
                             logger.error("Error copying directory {} to {}", sourcePath, targetPath, ex);

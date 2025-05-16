@@ -26,6 +26,20 @@ public interface Language {
         return List.of();
     }
 
+    /**
+     * Checks if the given path is likely already analyzed as part of the project's primary sources.
+     * This is used to warn the user if they try to import a directory that might be redundant.
+     * The path provided is expected to be absolute.
+     *
+     * @param project The current project.
+     * @param path The absolute path to check.
+     * @return {@code true} if the path is considered part of the project's analyzed sources, {@code false} otherwise.
+     */
+    default boolean isAnalyzed(Project project, Path path) {
+        assert path.isAbsolute() : "Path must be absolute for isAnalyzed check: " + path;
+        return path.normalize().startsWith(project.getRoot());
+    }
+
     default boolean isCpg() {
         return false;
     }
@@ -163,32 +177,55 @@ public interface Language {
 
         @Override
         public List<Path> getDependencyCandidates(Project project) {
+            logger.debug("Scanning for JavaScript dependency candidates in project: {}", project.getRoot());
             var results = new ArrayList<Path>();
             Path nodeModules = project.getRoot().resolve("node_modules");
             
             if (Files.isDirectory(nodeModules)) {
+                logger.debug("Scanning node_modules directory: {}", nodeModules);
                 try (DirectoryStream<Path> ds = Files.newDirectoryStream(nodeModules)) {
                     for (Path entry : ds) {
                         String name = entry.getFileName().toString();
                         if (name.equals(".bin")) continue;  // skip executables
                         if (name.startsWith("@")) {        // scoped pkgs
+                            logger.debug("Found scoped package directory: {}", entry);
                             try (DirectoryStream<Path> scoped = Files.newDirectoryStream(entry)) {
                                 for (Path scopedPkg : scoped) {
                                     if (Files.isDirectory(scopedPkg)) {
+                                        logger.debug("Found JS dependency candidate (scoped): {}", scopedPkg);
                                         results.add(scopedPkg);
                                     }
                                 }
                             }
                         } else if (Files.isDirectory(entry)) {
+                            logger.debug("Found JS dependency candidate: {}", entry);
                             results.add(entry);
                         }
                     }
                 } catch (IOException e) {
-                    logger.warn("Error scanning node_modules: {}", e.getMessage());
+                    logger.warn("Error scanning node_modules directory {}: {}", nodeModules, e.getMessage());
                 }
+            } else {
+                logger.debug("node_modules directory not found at: {}", nodeModules);
             }
             
+            logger.debug("Found {} JavaScript dependency candidates.", results.size());
             return results;
+        }
+
+        @Override
+        public boolean isAnalyzed(Project project, Path pathToImport) {
+            assert pathToImport.isAbsolute() : "Path must be absolute for isAnalyzed check: " + pathToImport;
+            Path projectRoot = project.getRoot();
+            Path normalizedPathToImport = pathToImport.normalize();
+
+            if (!normalizedPathToImport.startsWith(projectRoot)) {
+                return false; // Not part of this project
+            }
+
+            // Check if the path is node_modules or inside node_modules directly under project root
+            Path nodeModulesPath = projectRoot.resolve("node_modules");
+            return !normalizedPathToImport.startsWith(nodeModulesPath);
         }
     };
 
@@ -206,13 +243,20 @@ public interface Language {
             List<Path> envs = new ArrayList<>();
             for (String candidate : List.of(".venv", "venv", "env")) {
                 Path p = root.resolve(candidate);
-                if (Files.isDirectory(p)) envs.add(p);
+                if (Files.isDirectory(p)) {
+                    logger.debug("Found virtual env at: {}", p);
+                    envs.add(p);
+                }
             }
             // also look one level down for monorepos with /backend/venv etc.
             try (DirectoryStream<Path> ds = Files.newDirectoryStream(root)) {
                 for (Path sub : ds) {
+                    if (!Files.isDirectory(sub)) continue; // Skip files, only look in subdirectories
                     Path venv = sub.resolve(".venv");
-                    if (Files.isDirectory(venv)) envs.add(venv);
+                    if (Files.isDirectory(venv)) {
+                        logger.debug("Found virtual env at: {}", venv);
+                        envs.add(venv);
+                    }
                 }
             } catch (IOException e) {
                 logger.warn("Error scanning for virtual envs: {}", e.getMessage());
@@ -220,29 +264,60 @@ public interface Language {
             return envs;
         }
 
-        private Path sitePackagesDir(Path venv) {
-            Path lib = venv.resolve("lib");
-            if (!Files.isDirectory(lib)) return Path.of("");
-            try (DirectoryStream<Path> pyVers = Files.newDirectoryStream(lib)) {
+        private Path findSitePackagesInLibDir(Path libDir) {
+            if (!Files.isDirectory(libDir)) {
+                return Path.of("");
+            }
+            try (DirectoryStream<Path> pyVers = Files.newDirectoryStream(libDir)) {
                 for (Path py : pyVers) {
                     if (Files.isDirectory(py) && PY_SITE_PKGS.matcher(py.getFileName().toString()).matches()) {
                         Path site = py.resolve("site-packages");
-                        if (Files.isDirectory(site)) return site;
+                        if (Files.isDirectory(site)) {
+                            return site;
+                        }
                     }
                 }
             } catch (IOException e) {
-                logger.warn("Error scanning Python lib directory: {}", e.getMessage());
+                logger.warn("Error scanning Python lib directory {}: {}", libDir, e.getMessage());
             }
             return Path.of("");
         }
 
+        private Path sitePackagesDir(Path venv) {
+            // Try "lib" first
+            Path libDir = venv.resolve("lib");
+            Path sitePackages = findSitePackagesInLibDir(libDir);
+            if (Files.isDirectory(sitePackages)) { // Check if a non-empty and valid path was returned
+                logger.debug("Found site-packages in: {}", sitePackages);
+                return sitePackages;
+            }
+
+            // If not found in "lib", try "lib64"
+            Path lib64Dir = venv.resolve("lib64");
+            sitePackages = findSitePackagesInLibDir(lib64Dir);
+            if (Files.isDirectory(sitePackages)) { // Check again
+                logger.debug("Found site-packages in: {}", sitePackages);
+                return sitePackages;
+            }
+
+            logger.debug("No site-packages found in {} or {}", libDir, lib64Dir);
+            return Path.of(""); // Return empty path if not found in either
+        }
+
         @Override
         public List<Path> getDependencyCandidates(Project project) {
+            logger.debug("Scanning for Python dependency candidates in project: {}", project.getRoot());
             List<Path> results = new ArrayList<>();
-            findVirtualEnvs(project.getRoot()).stream()
+            List<Path> venvs = findVirtualEnvs(project.getRoot());
+            if (venvs.isEmpty()) {
+                logger.debug("No virtual environments found for Python dependency scan.");
+            }
+
+            venvs.stream()
                 .map(this::sitePackagesDir)
-                .filter(Files::isDirectory)
+                .filter(Files::isDirectory) // Filter out empty paths returned by sitePackagesDir if not found
                 .forEach(dir -> {
+                    logger.debug("Scanning site-packages directory: {}", dir);
                     try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
                         for (Path p : ds) {
                             String name = p.getFileName().toString();
@@ -250,14 +325,40 @@ public interface Language {
                                 continue;
                             }
                             if (Files.isDirectory(p)) {
+                                logger.debug("Found Python dependency candidate: {}", p);
                                 results.add(p);
                             }
                         }
                     } catch (IOException e) {
-                        logger.warn("Error scanning site-packages: {}", e.getMessage());
+                        logger.warn("Error scanning site-packages directory {}: {}", dir, e.getMessage());
                     }
                 });
+            logger.debug("Found {} Python dependency candidates.", results.size());
             return results;
+        }
+
+        @Override
+        public boolean isAnalyzed(Project project, Path pathToImport) {
+            assert pathToImport.isAbsolute() : "Path must be absolute for isAnalyzed check: " + pathToImport;
+            Path projectRoot = project.getRoot();
+            Path normalizedPathToImport = pathToImport.normalize();
+
+            if (!normalizedPathToImport.startsWith(projectRoot)) {
+                return false; // Not part of this project
+            }
+
+            // Check if the path is inside any known virtual environment locations.
+            // findVirtualEnvs looks at projectRoot and one level down.
+            List<Path> venvPaths = findVirtualEnvs(projectRoot).stream()
+                                                              .map(Path::normalize)
+                                                              .toList();
+            for (Path venvPath : venvPaths) {
+                if (normalizedPathToImport.startsWith(venvPath)) {
+                    // Paths inside virtual environments are dependencies, not primary analyzed sources.
+                    return false;
+                }
+            }
+            return true; // It's under project root and not in a known venv.
         }
     };
 

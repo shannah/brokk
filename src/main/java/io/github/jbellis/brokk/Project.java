@@ -97,6 +97,8 @@ public class Project implements IProject, AutoCloseable {
     public static final String STAGING_PROXY_URL = "https://staging.brokk.ai";
 
     public Project(Path root) {
+        assert root.isAbsolute() : root;
+        root = root.normalize();
         this.repo = GitRepo.hasGitRepo(root) ? new GitRepo(root) : new LocalFileRepo(root);
         this.root = root;
         this.propertiesFile = root.resolve(".brokk").resolve("project.properties");
@@ -603,6 +605,9 @@ public class Project implements IProject, AutoCloseable {
                 });
     }
 
+    /**
+     * @return the absolute, normalized path to the project root
+     */
     public Path getRoot() {
         return root;
     }
