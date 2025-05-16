@@ -192,14 +192,6 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   protected def outlineTypeDecl(td: TypeDecl, indent: Int = 0): String
 
   /**
-   * Builds a structural skeleton for a given class by name (simple or FQCN).
-   */
-  override def getSkeleton(className: String): Optional[String] = {
-    val decls = cpg.typeDecl.fullNameExact(className).l
-    if (decls.isEmpty) Optional.empty() else Optional.of(outlineTypeDecl(decls.head))
-  }
-
-  /**
    * Build a weighted adjacency map at the class level: className -> Map[targetClassName -> weight].
    */
   protected def buildWeightedAdjacency()(implicit callResolver: ICallResolver): Map[String, Map[String, Int]] = {
@@ -281,9 +273,6 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
       .asJava
   }
 
-  /**
-   * Returns just the class signature and field declarations, without method details.
-   */
   override def getSkeletonHeader(className: String): Optional[String] = {
     val decls = cpg.typeDecl.fullNameExact(className).l
     if (decls.isEmpty) Optional.empty()
@@ -1087,65 +1076,80 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   override def getDeclarationsInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     val declarations = mutable.Set[CodeUnit]()
-    val relPathString = file.toString().replace('\\', '/') // Normalize path separators, use public toString
+    val relPathString = file.toString().replace('\\', '/') // Normalize path separators
 
     // Add class/struct/union declarations and their members/methods
     cpg.typeDecl
-      .filenameExact(relPathString) // More direct way to find TypeDecls in a file
-      .foreach { td =>
-        cuClass(td.fullName, file).foreach(declarations.add)
-
-        td.method.foreach { m =>
-          // Construct FQN for method: typically ClassName.MethodName or Namespace.ClassName.MethodName
-          // resolveMethodName(chopColon(m.fullName)) might be okay if m.fullName is structured well by CPG
-          // For C++, m.fullName could be pkg::Cls::meth:sig. chopColon makes it pkg::Cls::meth. resolveMethodName cleans.
-          val methodFqn = resolveMethodName(chopColon(m.fullName))
-          cuFunction(methodFqn, file).foreach(declarations.add)
+      .filenameExact(relPathString)
+      .filterNot { td => // Filter out synthetic/internal TypeDecls
+        val name = td.name
+        val fullName = td.fullName
+        name == "<global>" || // Joern's pseudo-class for file-scope items
+        (name.startsWith("<") && name.endsWith(">") && name != "<global>") || // e.g. <operator>, <lambda>, but not file's <global> TypeDecl
+        fullName.contains(":") || // Filter fullNames like "ns:func_type()"
+        fullName.contains("(") || // Filter fullNames like "ns:func_type(int)"
+        fullName.contains("<lambda>") || // Lambda TypeDecls by fullName
+        fullName.startsWith("<operator>") // Operator TypeDecls by fullName
+      }
+      .foreach { td => // td is now a presumably valid user-defined type
+        // Additional check: ensure the short name of the TypeDecl is also not problematic
+        // This is because `cuClass` uses td.fullName, but the name part itself should be clean.
+        if (!td.name.contains(":") && !td.name.contains("(") && !(td.name.startsWith("<") && td.name.endsWith(">"))) {
+          cuClass(td.fullName, file).foreach(declarations.add)
+        } else {
+            logger.debug(s"Skipping TypeDecl in getDeclarationsInFile due to problematic short name: ${td.name} (fullName: ${td.fullName})")
         }
 
+        td.method
+          .filterNot(m => m.name == "<global>" || m.name.startsWith("<operator>")) // Filter unwanted methods
+          .foreach { m =>
+            val methodFqn = resolveMethodName(chopColon(m.fullName))
+            cuFunction(methodFqn, file).foreach(declarations.add)
+          }
+
         td.member.filterNot(_.name == "outerClass").foreach { f =>
-          // Construct FQN for field: ClassName.FieldName or Namespace.ClassName.FieldName
-          val fieldFqn = td.fullName + "." + f.name
+          val fieldFqn = td.fullName + "." + f.name // Simple concatenation for field FQN
           cuField(fieldFqn, file).foreach(declarations.add)
         }
       }
 
-    // Add global functions/methods defined in this file
+    // Add global/namespace-level functions
     cpg.method
       .filenameExact(relPathString)
+      .filterNot { m => // Filter out synthetic/internal methods by name
+        m.name == "<global>" || m.name.startsWith("<operator>")
+      }
+      .filterNot { m => // Filter out methods whose parent TypeDecl would have been filtered
+        Option(m.astParent).collect { case td: TypeDecl => td }.exists { parentTd =>
+          val name = parentTd.name
+          val fullName = parentTd.fullName
+          // These are conditions that would filter out the parent TypeDecl.
+          // We don't want to add methods of such synthetic/bogus classes independently.
+          // Note: parentTd.name == "<global>" is NOT filtered here because methods within
+          // the file's true global scope (often represented by a TypeDecl named <global>) are legitimate.
+          (name.startsWith("<") && name.endsWith(">") && name != "<global>") ||
+          name.contains(":") ||
+          name.contains("(") ||
+          fullName.contains("<lambda>") ||
+          fullName.startsWith("<operator>")
+        }
+      }
       .foreach { m =>
-        // Construct FQN for global function.
-        // e.g., for file "utils.cpp", function "do_work", FQN might be "utils_cpp.do_work"
-        // This requires knowledge of how parseFqName and cuFunction expect global FQNs.
-        // A common pattern for CodeUnit is pkgName = "filename_ext", shortName = "funcName"
-        // Since file.relPath is private, we need to reconstruct filename parts from file.toString() or similar
-        // Assuming file.toString() gives the relative path like "dir/filename.ext"
-        val pathString = file.toString() // e.g., "geometry.cpp" or "subdir/geometry.cpp"
-        val fileName = Path.of(pathString).getFileName.toString // e.g., "geometry.cpp"
-
-        val fileNameNoExt = fileName.lastIndexOf('.') match {
-          case i if i > 0 => fileName.substring(0, i)
-          case _ => fileName
-        }
-        val fileExt = fileName.lastIndexOf('.') match {
-          case i if i > 0 && i < fileName.length - 1 =>
-            fileName.substring(i + 1)
-          case _ => ""
-        }
-        // Construct FQN based on the CPG method's full name, resolved.
-        // CppAnalyzer.parseFqName is responsible for parsing this correctly for globals.
-        // For a global function in "geometry.cpp" named "global_func", m.fullName might be "geometry.cpp:global_func:void()"
-        // resolveMethodName(chopColon(m.fullName)) would yield "geometry.cpp:global_func"
+        // Deduplication is handled by the `declarations` Set.
+        // This loop will add true global functions (parent is NamespaceBlock)
+        // or methods within the file's <global> TypeDecl if not filtered above.
         val baseFqn = resolveMethodName(chopColon(m.fullName))
         val fqnForCu =
-          if !baseFqn.contains(".") && !baseFqn.contains(":") then
+          // Heuristic to create a package-like prefix for global functions if FQN is simple (no ns/class separators)
+          if (!baseFqn.contains(".") && !baseFqn.contains("::") && !baseFqn.contains(":")) then {
             val fileName = Path.of(file.toString).getFileName.toString
             val dot = fileName.lastIndexOf('.')
-            val (stem, ext) = if dot > 0 then (fileName.substring(0, dot), fileName.substring(dot + 1))
-            else (fileName, "")
-            val pkg = if ext.nonEmpty then s"${stem}_${ext}" else stem
-            s"$pkg.$baseFqn"
-          else baseFqn
+            val (stem, ext) = if (dot > 0) (fileName.substring(0, dot), fileName.substring(dot + 1)) else (fileName, "")
+            val pkg = if (ext.nonEmpty) s"${stem}_${ext}" else stem // e.g., "myFile_cpp"
+            s"$pkg.$baseFqn" // Results in "myFile_cpp.myGlobalFunc"
+          } else {
+            baseFqn // Handles "namespace::func" or "file.cpp:func" directly
+          }
         cuFunction(fqnForCu, file).foreach(declarations.add)
       }
 

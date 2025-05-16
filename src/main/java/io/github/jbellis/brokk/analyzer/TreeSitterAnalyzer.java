@@ -25,8 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public abstract class TreeSitterAnalyzer implements IAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(TreeSitterAnalyzer.class);
-    // Use System.out.println for quick debugging during tests; log4j files are not visible here.
-
     // Native library loading is assumed automatic by the io.github.bonede.tree_sitter library.
 
     /* ---------- instance state ---------- */

@@ -34,10 +34,18 @@ public interface IAnalyzer {
     }
 
     // Summarization
-    default Optional<String> getSkeleton(String className) {
+
+    /**
+     * return a summary of the given type or method
+     */
+    default Optional<String> getSkeleton(String fqName) {
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * Returns just the class signature and field declarations, without method details.
+     * Used in symbol usages lookup. (Show the "header" of the class that uses the referenced symbol in a field declaration.)
+     */
     default Optional<String> getSkeletonHeader(String className) {
         throw new UnsupportedOperationException();
     }
@@ -60,11 +68,9 @@ public interface IAnalyzer {
 
     default Map<CodeUnit, String> getSkeletons(ProjectFile file) {
         Map<CodeUnit, String> skeletons = new HashMap<>();
-        for (CodeUnit cls : getDeclarationsInFile(file)) {
-            Optional<String> skelOpt = getSkeleton(cls.fqName());
-            if (skelOpt.isPresent()) {
-                skeletons.put(cls, skelOpt.get());
-            }
+        for (CodeUnit symbol : getDeclarationsInFile(file)) {
+            Optional<String> skelOpt = getSkeleton(symbol.fqName());
+            skelOpt.ifPresent(s -> skeletons.put(symbol, s));
         }
         return skeletons;
     }

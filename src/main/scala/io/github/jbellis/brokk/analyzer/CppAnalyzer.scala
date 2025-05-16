@@ -44,7 +44,7 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
         }
         .mkString(", ")
       val signature = s"$returnType ${m.name}($params)"
-      logger.debug(s"Generated signature for ${m.fullName} (name: ${m.name}): $signature")
+      logger.trace(s"Generated signature for ${m.fullName} (name: ${m.name}): $signature")
       signature
     } catch {
       case e: Throwable =>
@@ -69,13 +69,25 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
    */
   override private[brokk] def resolveMethodName(methodName: String): String =
     val dupSuffix = io.joern.c2cpg.astcreation.Defines.DuplicateSuffix
-    // 1.  drop trailing “:signature”
-    val withoutSig =
-      methodName.lastIndexOf(':') match
-        case -1 => methodName
-        case idx => methodName.substring(0, idx)
+
+    // 1. Drop trailing CPG signature like ":returnType(paramTypes)"
+    //    A CPG signature starts with a colon that is NOT part of a "::" sequence,
+    //    and the signature string itself usually contains parentheses.
+    val withoutSig = {
+      val colonIdx = methodName.lastIndexOf(':')
+      // Check if colonIdx is valid, not part of "::", and followed by a signature with "()"
+      if (colonIdx > 0 && methodName.charAt(colonIdx - 1) != ':' && methodName.substring(colonIdx).contains('(')) {
+        // Found a colon that's likely introducing a signature part e.g. "name:ret(params)"
+        methodName.substring(0, colonIdx)
+      } else {
+        // No such signature pattern found, assume methodName is already without it,
+        // or has a different structure (e.g. "ns::func", "file.ext:func").
+        methodName
+      }
+    }
 
     // 2.  split at last colon – file-scope globals keep their prefix
+    //    `withoutSig` is now like "ns::func" or "file.ext:func" or "ns::cls::method"
     val lastColon = withoutSig.lastIndexOf(':')
     val (prefix, namePart0) =
       if lastColon == -1 then ("", withoutSig)
@@ -149,51 +161,164 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
     // e.g., test input "file_cpp.func" -> CPG "file.cpp:func"
     // Also handle cases where resolvedMethodName might already be "file.cpp:func" from a previous step.
     val potentialCpgFqns = mutable.ListBuffer[String]()
-    potentialCpgFqns += resolvedMethodName // Try as is first
+    // Construct a list of FQN patterns to try.
+    val searchPatterns = mutable.ListBuffer[String]()
+    searchPatterns += s"${Regex.quote(resolvedMethodName)}:.*" // Original attempt: exact FQN followed by :signature
 
-    if (resolvedMethodName.contains('.')) {
-      val lastDotIndex = resolvedMethodName.lastIndexOf('.')
-      if (lastDotIndex > 0) {
-        var filePart = resolvedMethodName.substring(0, lastDotIndex)
-        val memberPart = resolvedMethodName.substring(lastDotIndex + 1)
-
-        filePart = filePart.replace("_cpp", ".cpp").replace("_c", ".c")
-                           .replace("_hpp", ".hpp").replace("_h", ".h")
-                           .replace("_cc", ".cc").replace("_hh", ".hh")
-        potentialCpgFqns += s"$filePart:$memberPart"
+    // If resolvedMethodName contains "::", it's a C++ namespaced function.
+    // Anonymous namespaces are often represented as "<global>" by c2cpg.
+    // e.g., if resolvedMethodName is "ns::func", also try "ns::<global>::func:.*"
+    if (resolvedMethodName.contains("::")) {
+      val parts = resolvedMethodName.split("::").toList
+      if (parts.length > 1) {
+        val funcName = parts.last
+        val namespacePart = parts.init.mkString("::")
+        searchPatterns += s"${Regex.quote(namespacePart)}::<global>::${Regex.quote(funcName)}:.*"
       }
     }
 
-    for (fqn <- potentialCpgFqns.distinct; if methods.isEmpty) {
-        val escapedFqn = Regex.quote(fqn)
-        logger.debug(s"Trying query: '$escapedFqn:.*'")
-        methods = cpg.method.fullName(s"$escapedFqn:.*").l
-        if (methods.nonEmpty) logger.debug(s"Found ${methods.size} methods with query '$escapedFqn:.*'")
+    // If resolvedMethodName contains '.', it might be a file-prefixed global or from user input "pkg.Class.method".
+    // CPG might store file-prefixed globals as "file.ext:func".
+    if (resolvedMethodName.contains('.')) {
+      val lastDotIndex = resolvedMethodName.lastIndexOf('.')
+      if (lastDotIndex > 0) {
+        var fileOrClassPart = resolvedMethodName.substring(0, lastDotIndex)
+        val memberPart = resolvedMethodName.substring(lastDotIndex + 1)
+
+        // Convert file_ext to file.ext for file-prefixed globals
+        val filePartNormalized = fileOrClassPart.replace("_cpp", ".cpp").replace("_c", ".c")
+                                           .replace("_hpp", ".hpp").replace("_h", ".h")
+                                           .replace("_cc", ".cc").replace("_hh", ".hh")
+        if (filePartNormalized != fileOrClassPart) { // If a replacement happened, it's likely a file prefix
+             searchPatterns += s"${Regex.quote(filePartNormalized)}:${Regex.quote(memberPart)}:.*"
+        }
+        // Also consider the case where it might be like "ns.Class.method" (less common for C++ fullNames in CPG but user might type it)
+        // This is covered by the initial `resolvedMethodName` if it was already dot-separated.
+        // If `resolvedMethodName` was `ns::Class::method` the first pattern handles it.
+      }
     }
     
-    // Attempt 2: If still not found, try the original resolvedMethodName directly (no signature wildcard)
-    // This might match methods where the signature part was already part of resolvedMethodName (less likely for C++)
+    logger.debug(s"methodsFromName for '$resolvedMethodName': initial search patterns: [${searchPatterns.mkString(", ")}]")
+
+    // Try each pattern until methods are found
+    val distinctPatterns = searchPatterns.distinct
+    logger.trace(s"methodsFromName for '$resolvedMethodName': distinct search patterns: [${distinctPatterns.mkString(", ")}]")
+    for (pattern <- distinctPatterns) {
+      if (methods.isEmpty) { // Check if methods list is still empty before trying a new pattern
+        logger.trace(s"Trying CPG query with fullName regex: '$pattern'")
+        val currentAttemptMethods = cpg.method.fullName(pattern).l
+        if (currentAttemptMethods.nonEmpty) {
+          methods = currentAttemptMethods
+          logger.trace(s"Found ${methods.size} methods with query '$pattern'")
+        } else {
+          logger.trace(s"No methods found with query '$pattern'")
+        }
+      }
+    }
+
+    // If standard patterns (including <global>) fail, and it's a namespaced function (contains ::),
+    // try a broader search: find by short name and then check namespace.
+    // This helps if the CPG uses unexpected filename prefixes for namespaced functions.
+    if (methods.isEmpty && resolvedMethodName.contains("::")) {
+        val parts = resolvedMethodName.split("::").toList
+        val funcShortName = parts.last
+        val expectedNamespacePrefix = parts.init.mkString("::") + "::" // e.g., "at::native::"
+
+        logger.trace(s"Broadening search for namespaced function: shortName='$funcShortName', expectedNsPrefix='$expectedNamespacePrefix'")
+        val candidatesByName = cpg.method.nameExact(funcShortName).l
+        methods = candidatesByName.filter { m =>
+            val cpgFullName = m.fullName // e.g., "pytorch.cpp:at::native::<global>::start_index:int(int,int,int)"
+            val resolvedCpgFullName = resolveMethodName(cpgFullName) // e.g., "pytorch.cpp:at::native::<global>::start_index"
+            
+            val methodSimpleFilename = Path.of(m.filename).getFileName.toString
+            val nameToCheckAgainstNs = if (resolvedCpgFullName.startsWith(methodSimpleFilename + ":")) {
+                resolvedCpgFullName.substring(methodSimpleFilename.length + 1)
+            } else {
+                resolvedCpgFullName
+            }
+            
+            // Elevated to println for test visibility
+            logger.debug(
+                s"""BROADENING SEARCH FILTER (for input '$resolvedMethodName', candidate method '${m.fullName}'):
+                   |  cpgFullName='${m.fullName}', resolvedCpgFullName='$resolvedCpgFullName'
+                   |  methodSimpleFilename='$methodSimpleFilename', nameToCheckAgainstNs='$nameToCheckAgainstNs'
+                   |  expectedNsPrefix='$expectedNamespacePrefix', funcShortName='$funcShortName'""".stripMargin
+            )
+
+            // Normalize nameToCheckAgainstNs to use '::' for comparison with expectedNsPrefix (which uses '::')
+            // CPG might use "ns.member" (e.g. "at.native.start_index") while user query implies "ns::member" (e.g. "at::native::start_index").
+            // The expectedNsPrefix already uses '::'.
+            val normalizedNameToCheck = nameToCheckAgainstNs.replace(".", "::")
+            logger.debug(s"  normalizedNameToCheckForComparison='$normalizedNameToCheck'")
+
+            val directTargetName = expectedNamespacePrefix + funcShortName // This uses '::', e.g., "at::native::start_index"
+            val directMatch = normalizedNameToCheck == directTargetName
+            logger.debug(s"  directMatch target='$directTargetName', normalizedNameToCompare='$normalizedNameToCheck', result=$directMatch")
+
+            val intermediateNsMatch = if (!directMatch &&
+                                          normalizedNameToCheck.startsWith(expectedNamespacePrefix) &&
+                                          normalizedNameToCheck.endsWith("::" + funcShortName)) {
+                // This case handles "expectedNsPrefix" + "SomeOtherNs::" + "funcShortName"
+                // e.g. normalizedNameToCheck = "at::native::<global>::start_index"
+                //      expectedNsPrefix      = "at::native::"
+                //      funcShortName         = "start_index"
+                val middlePartWithTrailingColons = normalizedNameToCheck.substring(
+                    expectedNamespacePrefix.length,
+                    normalizedNameToCheck.length - funcShortName.length 
+                ) // Should extract "<global>::" or "some_anon_namespace::"
+                logger.debug(s"  intermediateNsMatch candidate, middlePartWithTrailingColons='$middlePartWithTrailingColons'")
+                val matchResult = middlePartWithTrailingColons.nonEmpty &&
+                                  middlePartWithTrailingColons.endsWith("::") &&
+                                  !middlePartWithTrailingColons.substring(0, middlePartWithTrailingColons.length - 2).contains("::")
+                matchResult
+            } else {
+                if (!directMatch) {
+                    logger.debug(
+                        s"""  intermediateNsMatch candidate for '$normalizedNameToCheck' failed initial checks:
+                           |    normalizedName ('$normalizedNameToCheck') does not start with expectedNsPrefix ('$expectedNamespacePrefix').
+                           |    normalizedName ('$normalizedNameToCheck') does not end with '::${funcShortName}'.
+                           |""".stripMargin
+                    )
+                }
+                false
+            }
+            logger.debug(s"  intermediateNsMatch result=$intermediateNsMatch")
+
+            val finalMatch = directMatch || intermediateNsMatch
+            logger.debug(s"  FINAL MATCH for ${m.fullName}: $finalMatch")
+            finalMatch
+        }
+        if (methods.nonEmpty) {
+            logger.debug(s"Found ${methods.size} methods by short name '$funcShortName' and namespace check for '$expectedNamespacePrefix'. First: ${methods.head.fullName}")
+        } else {
+            logger.trace(s"No methods found by short name and namespace check for '$funcShortName' in '$expectedNamespacePrefix'.")
+        }
+    }
+
+
+    // Fallback 1: Try exact match for resolvedMethodName (no signature wildcard)
+    // This might match methods where the signature part was already part of resolvedMethodName
     if (methods.isEmpty) {
-        logger.debug(s"Trying exact match for '$resolvedMethodName' (no signature wildcard).")
+        logger.debug(s"Fallback 1: Trying exact match for '$resolvedMethodName' (no signature wildcard).")
         methods = cpg.method.fullNameExact(resolvedMethodName).l
-        logger.debug(s"Found ${methods.size} methods with exact match.")
+        if (methods.nonEmpty) logger.debug(s"Found ${methods.size} methods with exact match.")
     }
-    
-    // Attempt 3: If still empty and resolvedMethodName fits "file_prefix.func_name" pattern
-    if (methods.isEmpty && resolvedMethodName.count(_ == '.') == 1) { // Heuristic: simple "file.func"
+
+    // Fallback 2: If still empty and resolvedMethodName fits "file_prefix.func_name" pattern (heuristic for simple globals)
+    if (methods.isEmpty && resolvedMethodName.count(_ == '.') == 1 && !resolvedMethodName.contains("::")) {
         val parts = resolvedMethodName.split('.')
         val fileNameGuess = parts.head.replace("_cpp", ".cpp").replace("_c", ".c")
                                       .replace("_h", ".h").replace("_hpp", ".hpp")
         val funcNameGuess = parts.last
-        logger.debug(s"Attempting filename-filtered search: filename containing '$fileNameGuess', func name '$funcNameGuess'")
+        logger.trace(s"Attempting filename-filtered search: filename containing '$fileNameGuess', func name '$funcNameGuess'")
         methods = cpg.method.nameExact(funcNameGuess).where(_.filename(s".*$fileNameGuess")).l
-        logger.debug(s"Found ${methods.size} methods by filename-filtered search.")
+        logger.trace(s"Found ${methods.size} methods by filename-filtered search.")
     }
     
     // Attempt 4: If it's a simple name (no dots or colons), it might be a global C function.
     // This could be noisy, so it's a later fallback.
     if (methods.isEmpty && !resolvedMethodName.contains('.') && !resolvedMethodName.contains(':')) {
-        logger.debug(s"Trying broad search for global function matching name '$resolvedMethodName'.")
+        logger.trace(s"Trying broad search for global function matching name '$resolvedMethodName'.")
         // Global functions in C/C++ often have their `astParentType` as `NAMESPACE_BLOCK` (for file scope)
         // or directly under a `TYPE_DECL` that represents the file (a pseudo TypeDecl with no methods/members).
         methods = cpg.method.nameExact(resolvedMethodName)
@@ -205,16 +330,16 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
                     case _ => false
                 }
             }.l
-        logger.debug(s"Found ${methods.size} methods by broad name search for global functions.")
+        logger.trace(s"Found ${methods.size} methods by broad name search for global functions.")
     }
 
-    logger.debug(s"Final result for '$resolvedMethodName': ${methods.size} methods -> ${methods.map(_.fullName).mkString("[", ", ", "]")}")
+    logger.trace(s"Final result for '$resolvedMethodName': ${methods.size} methods -> ${methods.map(_.fullName).mkString("[", ", ", "]")}")
     methods
   }
 
   override protected def outlineTypeDecl(td: TypeDecl, indent: Int = 0): String = {
     val sb = new StringBuilder
-    logger.debug(s"Outlining TypeDecl: ${td.fullName}, Name: ${td.name}, Code: ${td.code.take(50)}")
+    logger.trace(s"Outlining TypeDecl: ${td.fullName}, Name: ${td.name}, Code: ${td.code.take(50)}")
     // Query for methods whose semantic parent (TypeDecl) is this one.
     // This handles out-of-line definitions better than relying on AST parentage alone.
 
@@ -237,8 +362,8 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
     // Combine and deduplicate
     val availableMethods = (directMethods ++ outOfLineMethods).dedup.l
 
-    logger.debug(s"Methods available for ${td.name} (${availableMethods.size}): ${availableMethods.map(m => m.name + ":" + m.signature).mkString(", ")}")
-    availableMethods.foreach(m => logger.debug(s"Method in ${td.name}: ${m.name}, FullName: ${m.fullName}"))
+    logger.trace(s"Methods available for ${td.name} (${availableMethods.size}): ${availableMethods.map(m => m.name + ":" + m.signature).mkString(", ")}")
+    availableMethods.foreach(m => logger.trace(s"Method in ${td.name}: ${m.name}, FullName: ${m.fullName}"))
 
 
     val typeKeyword = td.code.toLowerCase match {
@@ -264,12 +389,12 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
     // Methods
     if (availableMethods.nonEmpty) {
         if (td.member.nonEmpty) sb.append("\n")
-        logger.debug(s"Processing ${availableMethods.size} methods for skeleton of ${td.fullName}")
+        logger.trace(s"Processing ${availableMethods.size} methods for skeleton of ${td.fullName}")
         availableMethods.foreach { m =>
             try {
-                logger.debug(s"Attempting signature for method ${m.fullName} (name: ${m.name}) in type ${td.fullName}")
+                logger.trace(s"Attempting signature for method ${m.fullName} (name: ${m.name}) in type ${td.fullName}")
                 val sig = methodSignature(m)
-                logger.debug(s"Signature for ${m.name} in ${td.fullName}: $sig")
+                logger.trace(s"Signature for ${m.name} in ${td.fullName}: $sig")
                 sb.append("  " * (indent + 1)).append(sig).append(" {...}\n")
             } catch {
                 // Catching all Throwables because LinkageError or similar could occur if CPG is malformed,
@@ -278,95 +403,123 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
             }
         }
     } else {
-        logger.debug(s"No methods found for skeleton of ${td.fullName}")
+        logger.trace(s"No methods found for skeleton of ${td.fullName}")
     }
 
     sb.append("  " * indent).append("}")
     sb.toString()
   }
 
-  override def getSkeleton(className: String): Optional[String] = {
-    // Convert to C++ canonical FQN (e.g., "shapes.Circle" -> "shapes::Circle") for CPG lookup.
-    // This simple replacement assumes typical C++ FQNs. More complex logic might be needed if dots can appear legitimately within C++ namespace or class names themselves.
-    val cpgClassName = className.replace('.', ':')
-    logger.debug(s"getSkeleton: input className='$className', converted for CPG lookup to '$cpgClassName'")
+  override def getSkeleton(fqName: String): Optional[String] = {
+    // 1. Basic validation
+    if (fqName == null || fqName.isEmpty) {
+      logger.debug(s"getSkeleton: FQN is null or empty. Returning empty.")
+      return Optional.empty()
+    }
+    // Filter for names that are clearly CPG internal artifacts or unlikely to be user-defined types/functions
+    // Allow ':' for namespaces (e.g. my::ns::MyClass, my::ns::function) or file prefixes (e.g. file.cpp:func)
+    if ((fqName.startsWith("<") && fqName.endsWith(">")) || fqName.contains("<operator>")) {
+      logger.debug(s"getSkeleton: FQN '$fqName' looks like a CPG internal artifact (e.g. <global>, <operator>.add). Returning empty.")
+      return Optional.empty()
+    }
+    logger.debug(s"getSkeleton: Received FQN='$fqName'")
 
-    val decls = cpg.typeDecl.fullNameExact(cpgClassName).l
-    if (decls.isEmpty) {
-      // Fallback: if not found with '::', try the original name. This might occur if c2cpg stores some FQNs with '.'
-      // or if the input was already canonical (e.g. a global class "Point" has no '.' or '::').
-      val fallbackDecls = if (cpgClassName == className) {
-        // No conversion happened, original name already failed or was a simple name
-        List.empty // Avoid re-querying if cpgClassName was same as className
-      } else {
-        logger.debug(s"No TypeDecl found for C++ FQN '$cpgClassName', trying original name '$className'")
-        cpg.typeDecl.fullNameExact(className).l
-      }
-      
-      if (fallbackDecls.isEmpty) {
-        logger.debug(s"No TypeDecl found for either '$cpgClassName' or '$className'")
-        Optional.empty()
-      } else {
-        logger.debug(s"Found TypeDecl using fallback name '$className'. Outlining TypeDecl: ${fallbackDecls.head.fullName}")
-        Optional.of(outlineTypeDecl(fallbackDecls.head))
-      }
-    } else {
-      logger.debug(s"Found TypeDecl using C++ FQN '$cpgClassName'. Outlining TypeDecl: ${decls.head.fullName}")
-      Optional.of(outlineTypeDecl(decls.head))
+    // 2. Try to find as a TypeDecl (class, struct, etc.)
+    // C++ FQNs use '::', but input might use '.' from user or other CodeUnit sources.
+    val cpgStyleFqnForType = fqName.replace('.', ':')
+    logger.debug(s"getSkeleton: Trying TypeDecl lookup. Original FQN='$fqName', CPG-style for Type='$cpgStyleFqnForType'")
+
+    // Attempt lookup with CPG style (foo::Bar), then with original fqName if different and first failed.
+    val typeDecls: List[TypeDecl] = cpg.typeDecl.fullNameExact(cpgStyleFqnForType).l ++ (
+      if (fqName != cpgStyleFqnForType) cpg.typeDecl.fullNameExact(fqName).l else List.empty
+      ).distinct // distinct in case fqName and cpgStyleFqnForType were effectively the same after some CPG normalization
+
+    typeDecls.headOption match {
+      case Some(td) =>
+        logger.debug(s"getSkeleton: Found TypeDecl: Name='${td.name}', FullName='${td.fullName}'")
+        // Additional filter: td.name itself should not be an artifact.
+        // td.name for "foo::Bar" is "Bar". td.name for "file.cpp:<global>" might be "<global>"
+        if (td.name.contains(':') || td.name.contains('<') || td.name.contains('>')) {
+          logger.debug(s"getSkeleton: TypeDecl name '${td.name}' (from FullName '${td.fullName}') seems like an artifact. Returning empty.")
+          Optional.empty()
+        } else {
+          logger.debug(s"getSkeleton: Outlining TypeDecl '${td.fullName}'.")
+          Optional.of(outlineTypeDecl(td))
+        }
+      case None =>
+        // 3. Not a TypeDecl, try to find as a Method (global function, namespaced function)
+        logger.debug(s"getSkeleton: No TypeDecl found for '$fqName' or '$cpgStyleFqnForType'. Trying Method lookup.")
+        // resolveMethodName handles various C++ FQN styles and strips signatures/suffixes.
+        // If fqName is "at::native::start_index", resolvedMethodFqn should be the same.
+        // If fqName is "at::native::start_index:int(int,int,int)", it will be "at::native::start_index".
+        // If fqName is "file.cpp:func:void()", it will be "file.cpp:func".
+        val resolvedMethodFqn = resolveMethodName(fqName)
+        logger.debug(s"getSkeleton: FQN for method lookup (after resolveMethodName on '$fqName') = '$resolvedMethodFqn'")
+
+        val methods = methodsFromName(resolvedMethodFqn) // This should handle various C++ FQN styles for methods
+        if (methods.nonEmpty) {
+          logger.debug(s"getSkeleton: Found ${methods.size} method(s) for '$resolvedMethodFqn'.")
+          val skeletons = methods.map { m =>
+            val sig = methodSignature(m)
+            logger.debug(s"getSkeleton: Method signature for '${m.fullName}' (name: ${m.name}) = '$sig'")
+            s"$sig {...}"
+          }.mkString("\n")
+          Optional.of(skeletons)
+        } else {
+          logger.debug(s"getSkeleton: No methods found for '$resolvedMethodFqn' (original FQN '$fqName'). Returning empty.")
+          Optional.empty()
+        }
     }
   }
 
-  protected[analyzer] def parseFqName(fqName: String, expectedType: CodeUnitType): CodeUnit.Tuple3[String,String,String] = {
-    if (fqName == null || fqName.isEmpty) {
+  protected[analyzer] def parseFqName(originalFqName: String, expectedType: CodeUnitType): CodeUnit.Tuple3[String,String,String] = {
+    if (originalFqName == null || originalFqName.isEmpty) {
       val resultTuple = new CodeUnit.Tuple3("", "", "")
       return resultTuple
     }
+    // Normalize C++ "::" to "." for consistent parsing, but keep original for logging if needed.
+    val fqName = originalFqName.replace("::", ".")
 
-    // Heuristic for global functions/fields
-    // Case 1: "file_ext.membername" (e.g., "geometry_cpp.global_func") - direct from test data or constructed in AbstractAnalyzer
-    // Case 2: "file.ext:membername" (e.g., "geometry.cpp:global_func") - from CPG method.fullName after resolveMethodName(chopColon(...))
+    // Heuristic for global functions/fields prefixed by filename
+    // Case 1: "file_ext.membername" (e.g., "geometry_cpp.global_func") - common test input style
+    // Case 2: "file.ext:membername" (e.g., "geometry.cpp:global_func") - from CPG method.fullName
     if (expectedType == CodeUnitType.FUNCTION || expectedType == CodeUnitType.FIELD) {
-      val colonIndex = fqName.lastIndexOf(':')
-      val dotIndex = fqName.lastIndexOf('.')
+      val colonIndex = fqName.lastIndexOf(':') // Check on originalFqName if : is significant and not replaced
+      val dotIndex = fqName.lastIndexOf('.')   // This is on the dot-normalized fqName
 
-      if (colonIndex != -1 && colonIndex > dotIndex) { // Case 2: "file.ext:membername"
-        val filePart = fqName.substring(0, colonIndex) // e.g., "geometry.cpp"
-        val memberPart = fqName.substring(colonIndex + 1) // e.g., "global_func"
-        
-        // Ensure filePart looks like "name.ext" and memberPart is simple
+      if (colonIndex != -1 && originalFqName.substring(0, colonIndex).matches("^[^:]+\\.(c|cpp|h|hpp|cc|hh|cxx|hxx)$")) {
+        // Handles "file.ext:membername" like "geometry.cpp:global_func"
+        val filePart = originalFqName.substring(0, colonIndex) // e.g., "geometry.cpp"
+        val memberPart = originalFqName.substring(colonIndex + 1) // e.g., "global_func"
+
         val lastDotInFile = filePart.lastIndexOf('.')
-        if (lastDotInFile > 0 && lastDotInFile < filePart.length - 1 && 
-            !memberPart.contains('.') && !memberPart.contains(':') && 
-            !filePart.substring(0, lastDotInFile).contains('/') && // No path in basename
-            !filePart.substring(0, lastDotInFile).contains('\\') &&
-            !filePart.substring(0, lastDotInFile).contains(':') ) {
-              
+        // Basic validation that filePart looks like name.ext and memberPart is simple
+        if (lastDotInFile > 0 && lastDotInFile < filePart.length - 1 &&
+            !memberPart.contains('.') && !memberPart.contains(':')) {
+
           val fileBasename = filePart.substring(0, lastDotInFile) // "geometry"
           val fileExt = filePart.substring(lastDotInFile + 1)     // "cpp"
-          
-          // Construct the "packageName" as "basename_ext"
           val pseudoPackage = s"${fileBasename.replace('.', '_')}_$fileExt" // "geometry_cpp"
-          logger.debug(s"Parsed CPG-style global FQN (file.ext:member) '$fqName' as Pkg='$pseudoPackage', Cls='', Member='$memberPart'")
+          logger.debug(s"Parsed CPG-style global FQN (file.ext:member) '$originalFqName' as Pkg='$pseudoPackage', Cls='', Member='$memberPart'")
           val resultTuple = new CodeUnit.Tuple3(pseudoPackage, "", memberPart)
           return resultTuple
         }
       } else if (dotIndex != -1 && fqName.substring(0, dotIndex).matches("[a-zA-Z0-9_]+_(h|cpp|c|hpp|cc|hh|hxx|cxx)")) {
-        // Case 1: "file_ext.membername" (e.g. "geometry_cpp.global_func")
-        // Extended to match more C++ extensions.
-        // The part before the dot must look like "name_ext"
+        // Handles "file_ext.membername" like "geometry_cpp.global_func"
         val packagePart = fqName.substring(0, dotIndex)
         val memberPart = fqName.substring(dotIndex + 1)
-        // Ensure memberPart is simple (no dots or colons)
-        if (!memberPart.contains('.') && !memberPart.contains(':')) {
-          logger.debug(s"Parsed test-style global FQN (file_ext.member) '$fqName' as Pkg='$packagePart', Cls='', Member='$memberPart'")
+        if (!memberPart.contains('.') && !memberPart.contains(':')) { // Ensure memberPart is simple
+          logger.debug(s"Parsed test-style global FQN (file_ext.member) '$originalFqName' (normalized: '$fqName') as Pkg='$packagePart', Cls='', Member='$memberPart'")
           val resultTuple = new CodeUnit.Tuple3(packagePart, "", memberPart)
           return resultTuple
         }
       }
     }
 
-    // Attempt 1: CPG lookup - Is fqName a fully qualified class/struct name?
-    if (expectedType == CodeUnitType.CLASS && cpg.typeDecl.fullNameExact(fqName).nonEmpty) {
+    // Standard parsing based on dot-separated fqName
+    // Attempt 1: CPG lookup - Is fqName a fully qualified class/struct name? (using dotNormalized fqName)
+    // We use originalFqName for CPG lookups if `::` is significant there, but fqName (dot-normalized) for splitting.
+    if (expectedType == CodeUnitType.CLASS && cpg.typeDecl.fullNameExact(originalFqName).nonEmpty) {
       val lastDot = fqName.lastIndexOf('.')
       val (pkg, cls) = if (lastDot == -1) ("", fqName) else (fqName.substring(0, lastDot), fqName.substring(lastDot + 1))
       val resultTuple = new CodeUnit.Tuple3(pkg, cls, "")
@@ -376,92 +529,83 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
     // Attempt 2: CPG lookup - Parse as potentialClass.potentialMember
     val lastDotMemberSep = fqName.lastIndexOf('.')
     if (lastDotMemberSep != -1) {
-      val potentialClassFullName = fqName.substring(0, lastDotMemberSep)
-      val potentialMemberName = fqName.substring(lastDotMemberSep + 1)
+      val potentialClassFullName = fqName.substring(0, lastDotMemberSep) // Class part from dot-normalized
+      val potentialOriginalClassFullName = originalFqName.substring(0, originalFqName.replace("::", ".").lastIndexOf('.')) // reconstruct original class part for CPG lookup
 
-      if (cpg.typeDecl.fullNameExact(potentialClassFullName).nonEmpty) {
-        // potentialClassFullName is a known class/struct
-        val classDotPkgSep = potentialClassFullName.lastIndexOf('.')
+      val memberName = fqName.substring(lastDotMemberSep + 1)
+
+      // Use original structure for CPG lookup if it involved '::'
+      val cpgLookupName = if (originalFqName.contains("::")) potentialOriginalClassFullName else potentialClassFullName
+
+      if (cpg.typeDecl.fullNameExact(cpgLookupName).nonEmpty) {
+        val classDotPkgSep = potentialClassFullName.lastIndexOf('.') // Use dot-normalized for splitting package
         val (pkg, cls) = if (classDotPkgSep == -1) ("", potentialClassFullName)
         else (potentialClassFullName.substring(0, classDotPkgSep), potentialClassFullName.substring(classDotPkgSep + 1))
-        // If it's a class, then potentialMemberName is indeed a member (method or field)
-        val resultTuple = new CodeUnit.Tuple3(pkg, cls, potentialMemberName)
+        val resultTuple = new CodeUnit.Tuple3(pkg, cls, memberName)
         return resultTuple
       }
     }
 
-    // Fallback Heuristics if CPG lookups didn't resolve as expected
-    // Store result in a val to print before returning
-    val finalResultTuple: CodeUnit.Tuple3[String, String, String] = if (lastDotMemberSep == -1) { // Single identifier like "MyClass" or "my_func"
+    // Fallback Heuristics if CPG lookups didn't resolve
+    val finalResultTuple: CodeUnit.Tuple3[String, String, String] = if (lastDotMemberSep == -1) { // Single identifier
       if (expectedType == CodeUnitType.CLASS) {
-        new CodeUnit.Tuple3("", fqName, "") // (namespace="", class=fqName, member="") - global class
-      } else { // FUNCTION or FIELD
-        // Could be global function/variable, or file-prefixed global.
-        // Let's assume it's a simple global for now, package determination for globals can be complex.
-        new CodeUnit.Tuple3("", "", fqName) // (namespace="", class="", member=fqName)
+        if (fqName.contains(':') || fqName.contains('<') || fqName.contains('>')) {
+          logger.debug(s"parseFqName: Single segment FQN '$originalFqName' for CLASS type contains ':', '<', or '>'. Treating as invalid.")
+          new CodeUnit.Tuple3("", "", "")
+        } else {
+          new CodeUnit.Tuple3("", fqName, "") // (package="", class=fqName, member="")
+        }
+      } else { // FUNCTION or FIELD (global)
+        new CodeUnit.Tuple3("", "", fqName) // (package="", class="", member=fqName)
       }
-    } else { // Multiple segments: "ns.member", "cls.member", "ns.cls.member"
+    } else { // Multiple segments: "ns.member", "cls.member", "ns.cls.member" based on dot-normalized fqName
       val partBeforeLastDot = fqName.substring(0, lastDotMemberSep)
       val partAfterLastDot = fqName.substring(lastDotMemberSep + 1)
 
       if (expectedType == CodeUnitType.CLASS) {
-        // e.g. fqName = "shapes.Circle" -> (pkg="shapes", cls="Circle", member="")
-        new CodeUnit.Tuple3(partBeforeLastDot, partAfterLastDot, "")
+         if (partAfterLastDot.contains(':') || partAfterLastDot.contains('<') || partAfterLastDot.contains('>')) {
+            logger.debug(s"parseFqName: FQN '$originalFqName' for CLASS type has ':', '<', or '>' in class part '$partAfterLastDot'. Treating as invalid.")
+            new CodeUnit.Tuple3("", "", "")
+        } else {
+            // e.g. fqName = "shapes.Circle" (from "shapes::Circle") -> (pkg="shapes", cls="Circle", member="")
+            new CodeUnit.Tuple3(partBeforeLastDot, partAfterLastDot, "")
+        }
       } else { // FUNCTION or FIELD
-        // Fallback: if partBeforeLastDot was not a class (checked in Attempt 2), it's likely a namespace.
-        // e.g. "shapes.another_in_shapes" -> (pkg="shapes", cls="", member="another_in_shapes")
-        // or "pkg.Cls.method" where "pkg.Cls" is NOT a known TypeDecl.
-        // Test "pkg.Cls.method" expects ("pkg", "Cls", "method").
-        // This implies if `partBeforeLastDot` has a dot, split it.
         val deeperDot = partBeforeLastDot.lastIndexOf('.')
-        if (deeperDot != -1) { // partBeforeLastDot is like "pkg.Cls"
+        if (deeperDot != -1) { // e.g. "pkg.Cls.method" or "ns1.ns2.func"
             val pkg = partBeforeLastDot.substring(0, deeperDot)
-            val cls = partBeforeLastDot.substring(deeperDot + 1)
-            new CodeUnit.Tuple3(pkg, cls, partAfterLastDot)
-        } else { // partBeforeLastDot is simple, e.g. "shapes" in "shapes.func" or "Cls" in "Cls.method"
-            // If this was "Cls.method" and "Cls" is not a TypeDecl, it's ambiguous.
-            // The test "Cls.method" -> ("", "Cls", "method") implies we treat partBeforeLastDot as class.
-            // The test "pkg.func" -> ("pkg", "", "func") implies we treat partBeforeLastDot as package.
-            // Test `geometry_h.global_func_decl_in_header` (FUNCTION) expects ("geometry_h", "", "global_func_decl_in_header")
-            
-            if (expectedType == CodeUnitType.FUNCTION || expectedType == CodeUnitType.FIELD) {
-                val isLikelyFilePrefix = partBeforeLastDot.endsWith("_h") || partBeforeLastDot.endsWith("_cpp") ||
-                                         partBeforeLastDot.endsWith("_c") || partBeforeLastDot.endsWith("_hpp") ||
-                                         partBeforeLastDot.endsWith("_cc") || partBeforeLastDot.endsWith("_hh")
-                
-                if (isLikelyFilePrefix && !partBeforeLastDot.contains(".")) { // e.g., "geometry_h.func"
-                    new CodeUnit.Tuple3(partBeforeLastDot, "", partAfterLastDot) // pkg=file, cls="", member=func
-                } else if (!partBeforeLastDot.contains(".")) { 
-                    // This handles "Cls.method" (FUNCTION) -> ("", "Cls", "method")
-                    // AND "shapes.another_in_shapes" (FUNCTION) -> ("shapes", "", "another_in_shapes")
-                    // For "Cls.method", we expect ("", "Cls", method).
-                    // For "shapes.func", we expect ("shapes", "", func).
-                    // Heuristic: if `partBeforeLastDot` is capitalized, assume class. Otherwise, namespace.
-                    // This is a weak heuristic. A more robust solution would require CPG namespace info.
-                    if (partBeforeLastDot.headOption.exists(_.isUpper)) { // Crude heuristic for class name
-                        new CodeUnit.Tuple3("", partBeforeLastDot, partAfterLastDot) // Assume Class.method
-                    } else {
-                        new CodeUnit.Tuple3(partBeforeLastDot, "", partAfterLastDot) // Assume namespace.func
-                    }
-                }
-                 else { // "pkg.Cls.method" (where pkg.Cls is not a TypeDecl or partBeforeLastDot has dots but is not a file prefix)
-                    logger.warn(s"Complex fallback for $fqName ($expectedType): treating $partBeforeLastDot as class part of $partAfterLastDot.")
-                    new CodeUnit.Tuple3("", partBeforeLastDot, partAfterLastDot) 
-                }
-            } else { // This `else` corresponds to `if (expectedType == CodeUnitType.FUNCTION || expectedType == CodeUnitType.FIELD)`
-                // This block is for when expectedType is CLASS but we're in a complex fallback.
-                logger.warn(s"Unexpected fallback case in parseFqName for C++ (expecting CLASS): fqName=$fqName, " +
-                            s"partBeforeLastDot=$partBeforeLastDot, partAfterLastDot=$partAfterLastDot. Defaulting to (ns.cls).mem logic.")
-                val deeperDotCls = partBeforeLastDot.lastIndexOf('.')
-                if (deeperDotCls != -1) { // pkg.Cls.mem -> implies partAfterLastDot should be empty for CLASS
-                     new CodeUnit.Tuple3(partBeforeLastDot.substring(0, deeperDotCls), partBeforeLastDot.substring(deeperDotCls+1), partAfterLastDot)
-                } else { // Cls.mem -> implies partAfterLastDot should be empty for CLASS
-                     new CodeUnit.Tuple3(partBeforeLastDot, "", partAfterLastDot)
-                }
+            val clsOrNs = partBeforeLastDot.substring(deeperDot + 1)
+            // If clsOrNs starts with uppercase, assume it's a class, otherwise part of namespace path.
+            // This is a heuristic. For C++, namespaces are common.
+            // "at.native.start_index" -> pkg="at.native", cls="", member="start_index"
+            // "shapes.Circle.getArea" -> pkg="shapes", cls="Circle", member="getArea"
+            // "pkg.Cls.method" -> pkg="pkg", cls="Cls", member="method"
+            if (clsOrNs.headOption.exists(_.isUpper)) { // Heuristic: if the part after the first dot is capitalized, assume Class.method
+                 new CodeUnit.Tuple3(pkg, clsOrNs, partAfterLastDot) // pkg="pkg", Cls="Cls", method="method"
+            } else { // Assume it's a deeper namespace ns1.ns2.func or pkg.lowerCaseClass.method
+                 // If clsOrNs is not capitalized, treat partBeforeLastDot as the full package path.
+                 new CodeUnit.Tuple3(partBeforeLastDot, "", partAfterLastDot) // pkg="ns1.ns2" or "pkg.lowerCaseClass", cls="", member="func" or "method"
+            }
+        } else { // e.g. "shapes.func" or "Cls.method" (partBeforeLastDot has no dots)
+            // If partBeforeLastDot looks like a file_ext prefix for globals, treat as package.
+            val isLikelyFilePrefix = partBeforeLastDot.matches("[a-zA-Z0-9_]+_(h|cpp|c|hpp|cc|hh|hxx|cxx)") && !partBeforeLastDot.contains(".")
+            if (isLikelyFilePrefix) {
+                // Case: "file_ext.member" -> Pkg="file_ext", Cls="", Member="member"
+                new CodeUnit.Tuple3(partBeforeLastDot, "", partAfterLastDot)
+            } else if (partBeforeLastDot.headOption.exists(_.isUpper)) {
+                // Case: "UpPeRcAsE.member" (and not a file_ext prefix) -> Pkg="", Cls="UpPeRcAsE", Member="member"
+                // This covers "Cls.method" even if "Cls" is not a known TypeDecl.
+                new CodeUnit.Tuple3("", partBeforeLastDot, partAfterLastDot)
+            }
+            else {
+                // Case: "lowercase.member" (and not a file_ext prefix, and not starting with uppercase)
+                // Assume Pkg="lowercase", Cls="", Member="member"
+                new CodeUnit.Tuple3(partBeforeLastDot, "", partAfterLastDot)
             }
         }
       }
     }
+    logger.debug(s"parseFqName for '$originalFqName' (normalized '$fqName', type $expectedType) -> Pkg='${finalResultTuple._1()}', Cls='${finalResultTuple._2()}', Mem='${finalResultTuple._3()}'")
     finalResultTuple
   }
 

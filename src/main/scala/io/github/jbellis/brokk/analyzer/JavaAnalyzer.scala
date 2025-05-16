@@ -6,14 +6,16 @@ import io.joern.joerncli.CpgBasedTool
 import io.joern.x2cpg.X2Cpg
 import io.shiftleft.codepropertygraph.generated.Cpg
 import io.shiftleft.codepropertygraph.generated.nodes.{Method, TypeDecl}
-import io.shiftleft.semanticcpg.language.* // Import necessary for extension methods
+import io.shiftleft.semanticcpg.language.*
 import io.shiftleft.semanticcpg.layers.LayerCreatorContext
 
 import java.io.IOException
 import java.nio.file.Path
+import java.util.Optional
 import scala.util.matching.Regex
 import scala.util.Try
-import scala.util.boundary, boundary.break // Added for modern early exit
+import scala.util.boundary
+import boundary.break // Added for modern early exit
 
 /**
  * A concrete analyzer for Java source code, extending AbstractAnalyzer
@@ -290,6 +292,14 @@ class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
         break(new CodeUnit.Tuple3(pkg, cls, memberName))
       }
     }
+  }
+
+  /**
+   * Builds a structural skeleton for a given class by name
+   */
+  override def getSkeleton(fqName: String): Optional[String] = {
+    val decls = cpg.typeDecl.fullNameExact(fqName).l
+    if (decls.isEmpty) Optional.empty() else Optional.of(outlineTypeDecl(decls.head))
   }
 
   // --- Implementations of Abstract CodeUnit Creation ---
