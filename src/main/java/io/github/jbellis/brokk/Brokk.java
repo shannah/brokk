@@ -313,6 +313,33 @@ public class Brokk {
      * @param path The path to the project.
      * @return A CompletableFuture that completes with true if the project was opened successfully, false otherwise.
      */
+    /**
+     * Checks if a project window is already open for the given path.
+     * @param path The project path.
+     * @return true if the project window is open, false otherwise.
+     */
+    public static boolean isProjectOpen(Path path) {
+        return openProjectWindows.containsKey(path.toAbsolutePath().normalize());
+    }
+
+    /**
+     * Brings the existing window for the given project path to the front and focuses it.
+     * Does nothing if the project is not currently open.
+     * @param path The project path.
+     */
+    public static void focusProjectWindow(Path path) {
+        Path normalizedPath = path.toAbsolutePath().normalize();
+        Chrome existingWindow = openProjectWindows.get(normalizedPath);
+        if (existingWindow != null) {
+            SwingUtilities.invokeLater(() -> {
+                JFrame frame = existingWindow.getFrame();
+                frame.setState(Frame.NORMAL);
+                frame.toFront();
+                frame.requestFocus();
+            });
+        }
+    }
+
     public static CompletableFuture<Boolean> openProject(Path path) {
         final Path projectPath = path.toAbsolutePath().normalize();
         logger.debug("Attempting to open project at " + projectPath);

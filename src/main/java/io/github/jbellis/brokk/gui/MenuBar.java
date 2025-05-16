@@ -304,10 +304,15 @@ public class MenuBar {
             .toList();
 
         for (var entry : sorted) {
-            var path = entry.getKey();
-            var item = new JMenuItem(path);
+            var pathString = entry.getKey();
+            var item = new JMenuItem(pathString);
             item.addActionListener(e -> {
-                io.github.jbellis.brokk.Brokk.openProject(java.nio.file.Path.of(path));
+                var projectPath = java.nio.file.Path.of(pathString);
+                if (Brokk.isProjectOpen(projectPath)) {
+                    Brokk.focusProjectWindow(projectPath);
+                } else {
+                    Brokk.openProject(projectPath);
+                }
             });
             recentMenu.add(item);
         }
