@@ -21,6 +21,7 @@ import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.util.LoggingExecutorService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -93,12 +94,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final javax.swing.Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicBoolean forceSuggestions = new AtomicBoolean(false);
     // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
-    private final ExecutorService suggestionWorker = Executors.newSingleThreadExecutor(r -> {
+    private final ExecutorService suggestionWorker = new LoggingExecutorService(Executors.newSingleThreadExecutor(r -> {
         Thread t = Executors.defaultThreadFactory().newThread(r);
         t.setName("Brokk-Suggestion-Worker");
         t.setDaemon(true);
         return t;
-    });
+    }), e -> logger.error("Unexpected error", e));
     // Generation counter to identify the latest suggestion request
     private final AtomicLong suggestionGeneration = new AtomicLong(0);
     private JPanel overlayPanel; // Panel used to initially disable command input

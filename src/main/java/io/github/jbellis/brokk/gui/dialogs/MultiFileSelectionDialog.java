@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.gui.AutoCompleteUtil;
 import io.github.jbellis.brokk.gui.FileSelectionPanel; // Import new panel
+import io.github.jbellis.brokk.util.LoggingExecutorService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;
@@ -90,11 +91,11 @@ public class MultiFileSelectionDialog extends JDialog {
         this.analyzerWrapper = contextManager.getAnalyzerWrapper();
         this.completableProjectFilesFuture = completableFiles; // Store the original future
 
-        this.backgroundExecutor = Executors.newSingleThreadExecutor(r -> {
+        this.backgroundExecutor = new LoggingExecutorService(Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "MultiFileSelectionDialog-BG");
             t.setDaemon(true);
             return t;
-        });
+        }), e -> logger.error("Unexpected error", e));
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
