@@ -1323,7 +1323,7 @@ public class GitRepo implements Closeable, IGitRepo {
                               commit.getName(),
                               commit.getShortMessage(),
                               commit.getAuthorIdent().getName(),
-                              commit.getCommitterIdent().getWhen());
+                              Date.from(commit.getCommitterIdent().getWhenAsInstant()));
     }
 
     /**
@@ -1334,7 +1334,7 @@ public class GitRepo implements Closeable, IGitRepo {
                               commit.getName(),
                               commit.getShortMessage(),
                               commit.getAuthorIdent().getName(),
-                              commit.getAuthorIdent().getWhen(),
+                              Date.from(commit.getAuthorIdent().getWhenAsInstant()),
                               index);
     }
 }
