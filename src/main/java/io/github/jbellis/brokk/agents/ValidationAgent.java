@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
  */
 public class ValidationAgent {
     private static final Logger logger = LogManager.getLogger(ValidationAgent.class);
+    private static final long MAX_FILES_TO_CONSIDER = 20;
+
     private final ContextManager contextManager;
 
     // Constants for relevance markers
@@ -76,6 +78,8 @@ public class ValidationAgent {
                 You are an assistant that identifies potentially relevant test files.
                 Given a coding task, the current workspace, and a list of test files, identify which files *may* contain tests relevant to implementing the instructions.
                 List the full paths of the potentially relevant files, one per line. If none seem relevant, respond with "None".
+                
+                Give the most-relevant files first.
                 """.stripIndent();
         var userMessage = """
                 <testfiles>
@@ -117,6 +121,7 @@ public class ValidationAgent {
         // Filter the known files based on whether their path appears in the LLM response
         return allTestFiles.stream().parallel()
                 .filter(f -> llmResponse.contains(f.toString()))
+                .limit(MAX_FILES_TO_CONSIDER)
                 .toList();
     }
 
