@@ -401,7 +401,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Returns the Models instance associated with this context manager.
      */
     @Override
-    public Models getModels() {
+    public Service getModels() {
         return models.get();
     }
 
@@ -1527,7 +1527,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return EditBlockParser.getParserFor(allText);
     }
 
-    public Models reloadModels() {
+    public Service reloadModels() {
         models.reinit(project);
         return models.get();
     }

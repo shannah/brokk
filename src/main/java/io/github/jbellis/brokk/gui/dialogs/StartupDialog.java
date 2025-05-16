@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.Brokk;
-import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import org.apache.logging.log4j.LogManager;
@@ -197,7 +197,7 @@ public class StartupDialog extends JDialog {
 
             if (!currentKeyText.equals(this.initialKey) || !this.keyInitiallyValid) {
                 try {
-                    Models.validateKey(currentKeyText);
+                    Service.validateKey(currentKeyText);
                     finalKeyToUse = currentKeyText;
                     this.initialKey = currentKeyText; // Update internal state
                     this.keyInitiallyValid = true;    // Mark as now valid

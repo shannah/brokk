@@ -6,12 +6,10 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.tools.ToolRegistry;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -92,7 +90,7 @@ public interface IContextManager {
         return getProject().getRepo();
     }
 
-    default Models getModels() {
+    default Service getModels() {
         throw new UnsupportedOperationException();
     }
 

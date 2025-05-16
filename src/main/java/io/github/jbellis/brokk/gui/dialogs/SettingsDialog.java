@@ -1,6 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
-import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.Project.DataRetentionPolicy;
 import io.github.jbellis.brokk.agents.BuildAgent;
@@ -243,7 +243,7 @@ public class SettingsDialog extends JDialog {
         this.balanceField.setColumns(8);
         var balanceDisplayPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         balanceDisplayPanel.add(this.balanceField);
-        var topUpUrl = Models.TOP_UP_URL;
+        var topUpUrl = Service.TOP_UP_URL;
         var topUpLabel = new BrowserLabel(topUpUrl, "Top Up");
         balanceDisplayPanel.add(topUpLabel);
 
@@ -416,7 +416,7 @@ public class SettingsDialog extends JDialog {
             if (quickModelsTable.isEditing()) {
                 quickModelsTable.getCellEditor().stopCellEditing();
             }
-            quickModelsTableModel.addFavorite(new Models.FavoriteModel("new-alias", availableModelNames[0], Project.ReasoningLevel.DEFAULT));
+            quickModelsTableModel.addFavorite(new Service.FavoriteModel("new-alias", availableModelNames[0], Project.ReasoningLevel.DEFAULT));
             int newRowIndex = quickModelsTableModel.getRowCount() - 1;
             quickModelsTable.setRowSelectionInterval(newRowIndex, newRowIndex);
             quickModelsTable.scrollRectToVisible(quickModelsTable.getCellRect(newRowIndex, 0, true));
@@ -1211,7 +1211,7 @@ public class SettingsDialog extends JDialog {
         if (!newBrokkKey.equals(currentBrokkKey)) {
             if (!newBrokkKey.isEmpty()) {
                 try {
-                    Models.validateKey(newBrokkKey);
+                    Service.validateKey(newBrokkKey);
                 } catch (IllegalArgumentException ex) {
                     JOptionPane.showMessageDialog(this,
                                                   "Invalid Brokk Key",
@@ -1418,11 +1418,11 @@ public class SettingsDialog extends JDialog {
     /**
      * Updates the enabled state and selection of a reasoning combo box based on the selected model.
      */
-    private void updateReasoningComboBox(JComboBox<String> modelComboBox, JComboBox<Project.ReasoningLevel> reasoningComboBox, Models models) {
+    private void updateReasoningComboBox(JComboBox<String> modelComboBox, JComboBox<Project.ReasoningLevel> reasoningComboBox, Service service) {
         if (modelComboBox == null || reasoningComboBox == null) return; // Not initialized yet
 
         String selectedModelName = (String) modelComboBox.getSelectedItem();
-        boolean supportsReasoning = selectedModelName != null && models.supportsReasoningEffort(selectedModelName);
+        boolean supportsReasoning = selectedModelName != null && service.supportsReasoningEffort(selectedModelName);
 
         reasoningComboBox.setEnabled(supportsReasoning);
         reasoningComboBox.setToolTipText(supportsReasoning ? "Select reasoning effort" : "Reasoning effort not supported by this model");
@@ -1634,20 +1634,20 @@ public class SettingsDialog extends JDialog {
      * TableModel for managing FavoriteModel data.
      */
     private static class FavoriteModelsTableModel extends AbstractTableModel {
-        private final List<Models.FavoriteModel> favorites;
+        private final List<Service.FavoriteModel> favorites;
         private final String[] columnNames = {"Alias", "Model Name", "Reasoning"};
 
-        public FavoriteModelsTableModel(List<Models.FavoriteModel> initialFavorites) {
+        public FavoriteModelsTableModel(List<Service.FavoriteModel> initialFavorites) {
             // Work on a mutable copy
             this.favorites = new ArrayList<>(initialFavorites);
         }
 
-        public List<Models.FavoriteModel> getFavorites() {
+        public List<Service.FavoriteModel> getFavorites() {
             // Return an immutable copy or the direct list depending on desired behavior outside the dialog
             return new ArrayList<>(favorites);
         }
 
-        public void addFavorite(Models.FavoriteModel favorite) {
+        public void addFavorite(Service.FavoriteModel favorite) {
             favorites.add(favorite);
             fireTableRowsInserted(favorites.size() - 1, favorites.size() - 1);
         }
@@ -1691,7 +1691,7 @@ public class SettingsDialog extends JDialog {
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
-            Models.FavoriteModel favorite = favorites.get(rowIndex);
+            Service.FavoriteModel favorite = favorites.get(rowIndex);
             return switch (columnIndex) {
                 case 0 -> favorite.alias();
                 case 1 -> favorite.modelName();
@@ -1704,26 +1704,26 @@ public class SettingsDialog extends JDialog {
         public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
             if (rowIndex < 0 || rowIndex >= favorites.size()) return;
 
-            Models.FavoriteModel oldFavorite = favorites.get(rowIndex);
-            Models.FavoriteModel newFavorite = oldFavorite; // Start with old values
+            Service.FavoriteModel oldFavorite = favorites.get(rowIndex);
+            Service.FavoriteModel newFavorite = oldFavorite; // Start with old values
 
             try {
                 switch (columnIndex) {
                     case 0: // Alias
                         if (aValue instanceof String alias) {
-                            newFavorite = new Models.FavoriteModel(alias.trim(), oldFavorite.modelName(), oldFavorite.reasoning());
+                            newFavorite = new Service.FavoriteModel(alias.trim(), oldFavorite.modelName(), oldFavorite.reasoning());
                         }
                         break;
                     case 1: // Model Name
                         if (aValue instanceof String modelName) {
                             // If model changes, potentially reset reasoning if new model doesn't support the old level (though editor should handle this)
                             // For simplicity, we just update the model name here. The editor/renderer handles enabling.
-                            newFavorite = new Models.FavoriteModel(oldFavorite.alias(), modelName, oldFavorite.reasoning());
+                            newFavorite = new Service.FavoriteModel(oldFavorite.alias(), modelName, oldFavorite.reasoning());
                         }
                         break;
                     case 2: // Reasoning
                         if (aValue instanceof Project.ReasoningLevel reasoning) {
-                            newFavorite = new Models.FavoriteModel(oldFavorite.alias(), oldFavorite.modelName(), reasoning);
+                            newFavorite = new Service.FavoriteModel(oldFavorite.alias(), oldFavorite.modelName(), reasoning);
                         }
                         break;
                 }
@@ -1750,11 +1750,11 @@ public class SettingsDialog extends JDialog {
      * Displays "Off" if the model in the same row doesn't support reasoning.
      */
     private static class ReasoningCellRenderer extends DefaultTableCellRenderer {
-        private final Models models;
+        private final Service models;
         private final JTable table;
 
-        public ReasoningCellRenderer(Models models, JTable table) {
-            this.models = models;
+        public ReasoningCellRenderer(Service service, JTable table) {
+            this.models = service;
             this.table = table;
         }
 
@@ -1801,14 +1801,14 @@ public class SettingsDialog extends JDialog {
      * Disables the ComboBox if the model in the same row doesn't support reasoning.
      */
     private static class ReasoningCellEditor extends DefaultCellEditor {
-        private final Models models;
+        private final Service models;
         private final JTable table;
         private final JComboBox<Project.ReasoningLevel> comboBox; // Keep reference to the actual combo
 
-        public ReasoningCellEditor(JComboBox<Project.ReasoningLevel> comboBox, Models models, JTable table) {
+        public ReasoningCellEditor(JComboBox<Project.ReasoningLevel> comboBox, Service service, JTable table) {
             super(comboBox);
             this.comboBox = comboBox; // Store the combo box instance
-            this.models = models;
+            this.models = service;
             this.table = table;
             setClickCountToStart(1); // Start editing on a single click
         }

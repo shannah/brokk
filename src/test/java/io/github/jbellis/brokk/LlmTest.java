@@ -57,7 +57,7 @@ public class LlmTest {
 
 
         };
-        var models = new Models(project);
+        var models = new Service(project);
         contextManager = new IContextManager() {
             @Override
             public IConsoleIO getIo() {
@@ -70,7 +70,7 @@ public class LlmTest {
             }
 
             @Override
-            public Models getModels() {
+            public Service getModels() {
                 return models;
             }
         };

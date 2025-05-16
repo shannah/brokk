@@ -284,7 +284,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getArchitectModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(ARCHITECT_MODEL_KEY, Models.GEMINI_2_5_PRO);
+        return props.getProperty(ARCHITECT_MODEL_KEY, Service.GEMINI_2_5_PRO);
     }
 
     /**
@@ -301,7 +301,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getCodeModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(CODE_MODEL_KEY, Models.GEMINI_2_5_PRO);
+        return props.getProperty(CODE_MODEL_KEY, Service.GEMINI_2_5_PRO);
     }
 
     /**
@@ -318,7 +318,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getAskModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(ASK_MODEL_KEY, Models.GEMINI_2_5_PRO);
+        return props.getProperty(ASK_MODEL_KEY, Service.GEMINI_2_5_PRO);
     }
 
     /**
@@ -336,7 +336,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getEditModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO);
+        return props.getProperty(EDIT_MODEL_KEY, Service.GEMINI_2_5_PRO);
     }
 
     /**
@@ -439,7 +439,7 @@ public class Project implements IProject, AutoCloseable {
      */
     public String getSearchModelName() {
         var props = loadGlobalProperties();
-        return props.getProperty(SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO);
+        return props.getProperty(SEARCH_MODEL_KEY, Service.GEMINI_2_5_PRO);
     }
 
     /**
@@ -1074,7 +1074,7 @@ public class Project implements IProject, AutoCloseable {
         }
 
         // Pass the key directly to the static Models method
-        boolean allowed = Models.getDataShareAllowed(brokkKey);
+        boolean allowed = Service.getDataShareAllowed(brokkKey);
         isDataShareAllowedCache = allowed;
         logger.info("Data sharing allowed for organization: {}", allowed);
         return allowed;
@@ -1141,11 +1141,11 @@ public class Project implements IProject, AutoCloseable {
         boolean changed = false;
 
         // Define preferred defaults for each model type
-        var preferredDefaults = Map.of(ARCHITECT_MODEL_KEY, Models.O3,
-                                       CODE_MODEL_KEY, Models.GEMINI_2_5_PRO,
-                                       ASK_MODEL_KEY, Models.GEMINI_2_5_PRO,
-                                       EDIT_MODEL_KEY, Models.GEMINI_2_5_PRO,
-                                       SEARCH_MODEL_KEY, Models.GEMINI_2_5_PRO);
+        var preferredDefaults = Map.of(ARCHITECT_MODEL_KEY, Service.O3,
+                                       CODE_MODEL_KEY, Service.GEMINI_2_5_PRO,
+                                       ASK_MODEL_KEY, Service.GEMINI_2_5_PRO,
+                                       EDIT_MODEL_KEY, Service.GEMINI_2_5_PRO,
+                                       SEARCH_MODEL_KEY, Service.GEMINI_2_5_PRO);
 
         for (var e : preferredDefaults.entrySet()) {
             var key = e.getKey();
@@ -1294,11 +1294,11 @@ public class Project implements IProject, AutoCloseable {
     /**
      * Default favorite model aliases.
      */
-    public static final List<Models.FavoriteModel> DEFAULT_FAVORITE_MODELS = List.of(
-            new Models.FavoriteModel("o3", Models.O3, ReasoningLevel.DEFAULT),
-            new Models.FavoriteModel("Gemini Pro 2.5", Models.GEMINI_2_5_PRO, ReasoningLevel.DEFAULT),
-            new Models.FavoriteModel("Sonnet 3.7", "claude-3.7-sonnet", ReasoningLevel.DEFAULT),
-            new Models.FavoriteModel("Flash 2.0", "gemini-2.0-flash", ReasoningLevel.DEFAULT)
+    public static final List<Service.FavoriteModel> DEFAULT_FAVORITE_MODELS = List.of(
+            new Service.FavoriteModel("o3", Service.O3, ReasoningLevel.DEFAULT),
+            new Service.FavoriteModel("Gemini Pro 2.5", Service.GEMINI_2_5_PRO, ReasoningLevel.DEFAULT),
+            new Service.FavoriteModel("Sonnet 3.7", "claude-3.7-sonnet", ReasoningLevel.DEFAULT),
+            new Service.FavoriteModel("Flash 2.0", "gemini-2.0-flash", ReasoningLevel.DEFAULT)
     );
 
     /**
@@ -1307,7 +1307,7 @@ public class Project implements IProject, AutoCloseable {
      *
      * @return List of FavoriteModel records.
      */
-    public static List<Models.FavoriteModel> loadFavoriteModels() {
+    public static List<Service.FavoriteModel> loadFavoriteModels() {
         var props = loadGlobalProperties();
         String json = props.getProperty(FAVORITE_MODELS_KEY);
         if (json != null && !json.isEmpty()) {
@@ -1315,10 +1315,10 @@ public class Project implements IProject, AutoCloseable {
                 // Need to handle deserialization carefully, maybe custom deserializer if needed
                 // For now, assuming ObjectMapper can handle the record directly
                 var typeFactory = objectMapper.getTypeFactory();
-                var listType = typeFactory.constructCollectionType(List.class, Models.FavoriteModel.class);
+                var listType = typeFactory.constructCollectionType(List.class, Service.FavoriteModel.class);
                 // Explicit cast needed as readValue with JavaType returns Object
                 @SuppressWarnings("unchecked") // Cast is safe due to the type factory construction
-                List<Models.FavoriteModel> loadedList = objectMapper.readValue(json, listType);
+                List<Service.FavoriteModel> loadedList = objectMapper.readValue(json, listType);
                 logger.debug("Loaded {} favorite models from global properties.", loadedList.size());
                 return loadedList;
             } catch (JsonProcessingException | ClassCastException e) { // Catch potential ClassCastException too
@@ -1336,7 +1336,7 @@ public class Project implements IProject, AutoCloseable {
      *
      * @param favorites The list of FavoriteModel records to save.
      */
-    public static void saveFavoriteModels(List<Models.FavoriteModel> favorites) {
+    public static void saveFavoriteModels(List<Service.FavoriteModel> favorites) {
         assert favorites != null;
         var props = loadGlobalProperties();
         String newJson = "";

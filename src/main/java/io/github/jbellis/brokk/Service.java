@@ -29,7 +29,7 @@ import static java.lang.Math.min;
 /**
  * Manages dynamically loaded models via LiteLLM.
  */
-public final class Models {
+public final class Service {
     public static final String TOP_UP_URL = "https://brokk.ai/dashboard";
     public static float MINIMUM_PAID_BALANCE = 0.20f;
     public static float LOW_BALANCE_WARN_AT = 2.00f;
@@ -71,7 +71,7 @@ public final class Models {
         return new KeyParts(userId, "sk-" + parts[2]);
     }
 
-    private final Logger logger = LogManager.getLogger(Models.class);
+    private final Logger logger = LogManager.getLogger(Service.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     // Share OkHttpClient across instances for efficiency
     // Model name constants
@@ -102,7 +102,7 @@ public final class Models {
     private volatile boolean isFreeTierOnly = false; // Store balance status
 
     // Constructor - could potentially take project-specific config later
-    public Models(IProject project) {
+    public Service(IProject project) {
         // Get and handle data retention policy
         var policy = project.getDataRetentionPolicy();
         if (policy == Project.DataRetentionPolicy.UNSET) {
@@ -236,7 +236,7 @@ public final class Models {
             parseKey(key); // Validate key format first
         } catch (IllegalArgumentException e) {
             // Invalid key format, cannot fetch org policy, assume allowed.
-            LogManager.getLogger(Models.class).debug("Invalid key format, cannot fetch data sharing status. Assuming allowed.", e);
+            LogManager.getLogger(Service.class).debug("Invalid key format, cannot fetch data sharing status. Assuming allowed.", e);
             return true;
         }
 
@@ -250,7 +250,7 @@ public final class Models {
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 String errorBody = response.body() != null ? response.body().string() : "(no body)";
-                LogManager.getLogger(Models.class).warn("Failed to fetch data sharing status (HTTP {}): {}. Assuming allowed.", response.code(), errorBody);
+                LogManager.getLogger(Service.class).warn("Failed to fetch data sharing status (HTTP {}): {}. Assuming allowed.", response.code(), errorBody);
                 return true; // Assume allowed if request fails
             }
             String responseBody = response.body() != null ? response.body().string() : "";
@@ -259,15 +259,15 @@ public final class Models {
                 if (rootNode.has("data_sharing_enabled") && rootNode.get("data_sharing_enabled").isBoolean()) {
                     return rootNode.get("data_sharing_enabled").asBoolean();
                 } else {
-                    LogManager.getLogger(Models.class).warn("Data sharing status response did not contain 'data_sharing_enabled' boolean field: {}. Assuming allowed.", responseBody);
+                    LogManager.getLogger(Service.class).warn("Data sharing status response did not contain 'data_sharing_enabled' boolean field: {}. Assuming allowed.", responseBody);
                     return true; // Assume allowed if field is missing or not a boolean
                 }
             } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-                LogManager.getLogger(Models.class).warn("Failed to parse data sharing status JSON response: {}. Assuming allowed.", responseBody, e);
+                LogManager.getLogger(Service.class).warn("Failed to parse data sharing status JSON response: {}. Assuming allowed.", responseBody, e);
                 return true; // Assume allowed if JSON parsing fails
             }
         } catch (IOException e) {
-            LogManager.getLogger(Models.class).warn("IOException while fetching data sharing status. Assuming allowed.", e);
+            LogManager.getLogger(Service.class).warn("IOException while fetching data sharing status. Assuming allowed.", e);
             return true; // Assume allowed if network error
         }
     }

@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.ContextFragment.PathFragment;
 import io.github.jbellis.brokk.ContextFragment.VirtualFragment;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
@@ -703,7 +704,7 @@ public class WorkspacePanel extends JPanel {
             try {
                 var model = models.get(config.name(), config.level());
                 // Skip if model is unavailable or a placeholder
-                if (model instanceof io.github.jbellis.brokk.Models.UnavailableStreamingModel) {
+                if (model instanceof Service.UnavailableStreamingModel) {
                     logger.debug("Skipping unavailable model for context warning: {}", config.name());
                     continue;
                 }

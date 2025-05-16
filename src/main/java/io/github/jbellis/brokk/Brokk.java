@@ -134,7 +134,7 @@ public class Brokk {
             currentBrokkKey = Project.getBrokkKey(); // I/O (prefs)
             if (!currentBrokkKey.isEmpty()) {
                 try {
-                    Models.validateKey(currentBrokkKey); // I/O (network)
+                    Service.validateKey(currentBrokkKey); // I/O (network)
                     keyIsValid = true;
                 } catch (IOException e) {
                     logger.warn("Network error validating existing Brokk key at startup. Assuming valid for now.", e);

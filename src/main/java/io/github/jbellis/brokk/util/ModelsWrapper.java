@@ -1,20 +1,20 @@
 package io.github.jbellis.brokk.util;
 
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.Project;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 public class ModelsWrapper {
-    private volatile CompletableFuture<Models> future;
+    private volatile CompletableFuture<Service> future;
 
     public void reinit(Project project) {
-        future = CompletableFuture.supplyAsync(() -> new Models(project));
+        future = CompletableFuture.supplyAsync(() -> new Service(project));
     }
 
-    public Models get() {
+    public Service get() {
         try {
             return future.get();
         } catch (InterruptedException | ExecutionException e) {

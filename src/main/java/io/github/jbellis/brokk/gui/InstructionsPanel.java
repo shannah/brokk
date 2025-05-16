@@ -13,7 +13,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.ContextAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
-import io.github.jbellis.brokk.Models; // Import Models to access FavoriteModel
+import io.github.jbellis.brokk.Service; // Import Models to access FavoriteModel
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.components.SplitButton;
@@ -1067,8 +1067,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 logger.debug("Checked balance: ${}", String.format("%.2f", balance));
 
                 // If balance drops below the minimum paid threshold, reinitialize models to enforce free tier
-                if (balance < Models.MINIMUM_PAID_BALANCE) {
-                    logger.debug("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Models.MINIMUM_PAID_BALANCE);
+                if (balance < Service.MINIMUM_PAID_BALANCE) {
+                    logger.debug("Balance below minimum paid threshold (${}), reinitializing models to free tier.", Service.MINIMUM_PAID_BALANCE);
                     // This will refetch models and apply the lowBalance filter based on MINIMUM_PAID_BALANCE
                     contextManager.reloadModels();
 
@@ -1087,7 +1087,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         panel.add(Box.createVerticalStrut(5));
                         var label = new JLabel("To enable smarter models, subscribe or top up at:");
                         panel.add(label);
-                        var browserLabel = new BrowserLabel(Models.TOP_UP_URL);
+                        var browserLabel = new BrowserLabel(Service.TOP_UP_URL);
                         browserLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
                         label.setAlignmentX(Component.LEFT_ALIGNMENT);
                         panel.add(browserLabel);
@@ -1099,7 +1099,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                 JOptionPane.WARNING_MESSAGE
                         );
                     });
-                } else if (balance < Models.LOW_BALANCE_WARN_AT) {
+                } else if (balance < Service.LOW_BALANCE_WARN_AT) {
                     if (lowBalanceNotified) {
                         // Only show the dialog once unless balance recovers
                         return;
@@ -1111,7 +1111,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         var balanceMessage = String.format("Low account balance: $%.2f.", balance);
                         panel.add(new JLabel(balanceMessage), BorderLayout.NORTH);
 
-                        var browserLabel = new io.github.jbellis.brokk.gui.components.BrowserLabel(Models.TOP_UP_URL, "Top up at " + Models.TOP_UP_URL + " to avoid interruptions.");
+                        var browserLabel = new io.github.jbellis.brokk.gui.components.BrowserLabel(Service.TOP_UP_URL, "Top up at " + Service.TOP_UP_URL + " to avoid interruptions.");
                         panel.add(browserLabel, BorderLayout.SOUTH);
 
                         JOptionPane.showMessageDialog(
@@ -1627,12 +1627,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Cast the result of loadFavoriteModels and ensure it's handled correctly
         @SuppressWarnings("unchecked") // Suppress warning for the cast from Object/ANY
-        List<Models.FavoriteModel> favoriteModels = (List<Models.FavoriteModel>) Project.loadFavoriteModels();
+        List<Service.FavoriteModel> favoriteModels = (List<Service.FavoriteModel>) Project.loadFavoriteModels();
 
         // Filter favorite models to show only those that are currently available, and sort by alias
-        List<Models.FavoriteModel> favoriteModelsToShow = favoriteModels.stream()
+        List<Service.FavoriteModel> favoriteModelsToShow = favoriteModels.stream()
                 .filter(fav -> availableModelsMap.containsKey(fav.modelName()))
-                .sorted(Comparator.comparing(Models.FavoriteModel::alias))
+                .sorted(Comparator.comparing(Service.FavoriteModel::alias))
                 .toList();
 
         if (favoriteModelsToShow.isEmpty()) {

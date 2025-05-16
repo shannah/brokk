@@ -7,7 +7,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.EditBlock;
 import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.Models;
+import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 
 import java.io.IOException;
@@ -46,8 +46,8 @@ public abstract class CodePrompts {
             """.stripIndent();
 
     // Now takes a Models instance
-    public static String reminderForModel(Models models, StreamingChatLanguageModel model) {
-        return models.isLazy(model)
+    public static String reminderForModel(Service service, StreamingChatLanguageModel model) {
+        return service.isLazy(model)
                 ? LAZY_REMINDER
                 : OVEREAGER_REMINDER;
     }
