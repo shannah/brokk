@@ -17,6 +17,7 @@ import java.awt.*;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -46,8 +47,8 @@ public class Brokk {
                 }
                 localModelPath = SafeTensorSupport.maybeDownloadModel(cacheDir, modelName);
             } catch (IOException e) {
-                logger.warn(e);
-                return null;
+                // InstructionsPanel will catch ExecutionException
+                throw new UncheckedIOException(e);
             }
             // Assuming loadEmbeddingModel returns BertEmbeddingModel or a compatible type
             var model = ModelSupport.loadEmbeddingModel(localModelPath, DType.F32, DType.I8);
