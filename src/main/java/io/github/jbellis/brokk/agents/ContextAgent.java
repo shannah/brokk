@@ -302,10 +302,11 @@ public class ContextAgent {
 
     private RecommendationResult executeWithSummaries(List<ProjectFile> filesToConsider, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
         Map<CodeUnit, String> rawSummaries;
-        // If the workspace isn't empty, use pagerank candidates for Quick context
         var ctx = contextManager.topContext();
         var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources(analyzer).stream()).findAny().isPresent();
+
         if (codeInWorkspace && !deepScan) {
+            // If the workspace isn't empty, use pagerank candidates for Quick context
             var ac = contextManager.topContext().buildAutoContext(50);
             debug("Non-empty workspace; using pagerank candidates {}",
                   ac.skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
