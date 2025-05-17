@@ -1076,11 +1076,10 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
   override def getDeclarationsInFile(file: ProjectFile): java.util.Set[CodeUnit] = {
     import scala.jdk.CollectionConverters.*
     val declarations = mutable.Set[CodeUnit]()
-    val relPathString = file.toString().replace('\\', '/') // Normalize path separators
 
     // Add class/struct/union declarations and their members/methods
     cpg.typeDecl
-      .filenameExact(relPathString)
+      .filenameExact(file.toString())
       .filterNot { td => // Filter out synthetic/internal TypeDecls
         val name = td.name
         val fullName = td.fullName
@@ -1115,7 +1114,7 @@ abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val c
 
     // Add global/namespace-level functions
     cpg.method
-      .filenameExact(relPathString)
+      .filenameExact(file.toString())
       .filterNot { m => // Filter out synthetic/internal methods by name
         m.name == "<global>" || m.name.startsWith("<operator>")
       }
