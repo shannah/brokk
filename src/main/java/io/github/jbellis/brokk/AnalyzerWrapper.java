@@ -48,7 +48,13 @@ public class AnalyzerWrapper implements AutoCloseable {
 
         // build the initial Analyzer
         language = project.getAnalyzerLanguage();
-        future = runner.submit("Initializing code intelligence", this::loadOrCreateAnalyzer);
+        future = runner.submit("Initializing code intelligence", () -> {
+            var an = loadOrCreateAnalyzer();
+            var codeUnits = an.getAllDeclarations();
+            var codeFiles = codeUnits.stream().map(CodeUnit::source).distinct().count();
+            logger.debug("Initial analyzer has {} declarations across {} files", codeUnits.size(), codeFiles);
+            return an;
+        });
     }
 
     private void beginWatching(Path root) {

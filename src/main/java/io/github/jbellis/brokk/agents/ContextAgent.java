@@ -307,7 +307,7 @@ public class ContextAgent {
         var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources(analyzer).stream()).findAny().isPresent();
         if (codeInWorkspace && !deepScan) {
             var ac = contextManager.topContext().buildAutoContext(50);
-            debug("Non-empty context; using pagerank candidates {}",
+            debug("Non-empty workspace; using pagerank candidates {}",
                   ac.skeletons().keySet().stream().map(CodeUnit::identifier).collect(Collectors.joining(",")));
             rawSummaries = ac.skeletons();
         } else {
