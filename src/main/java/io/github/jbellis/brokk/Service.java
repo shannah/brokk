@@ -79,9 +79,9 @@ public final class Service {
     public static final String GEMINI_2_5_PRO = "gemini-2.5-pro";
 
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build();
 
     public static final String UNAVAILABLE = "AI is unavailable";
