@@ -126,6 +126,16 @@ public class GitLogTab extends JPanel {
                 }
                 return c;
             }
+
+            @Override
+            public String getToolTipText(MouseEvent e) {
+                int row = rowAtPoint(e.getPoint());
+                int col = columnAtPoint(e.getPoint());
+                if (row >= 0 && col == 1) { // Branch name column
+                    return (String) getValueAt(row, col);
+                }
+                return super.getToolTipText(e);
+            }
         };
         branchTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Ensure only one branch can be selected
         branchTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
