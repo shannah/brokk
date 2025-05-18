@@ -11,12 +11,15 @@ import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.nio.file.Path;
 import java.util.*;
@@ -55,6 +58,8 @@ public class GitLogTab extends JPanel {
     private JTree changesTree;
     private DefaultTreeModel changesTreeModel;
     private DefaultMutableTreeNode changesRootNode;
+    private JLabel revisionTextLabel; // For "Revision:" or "Revisions:"
+    private JTextArea revisionIdTextArea; // For the actual commit ID(s)
 
     // Search
     private JTextArea searchField;
@@ -109,7 +114,7 @@ public class GitLogTab extends JPanel {
         };
         branchTable = new JTable(branchTableModel) {
             @Override
-            public Component prepareRenderer(javax.swing.table.TableCellRenderer renderer, int row, int column) {
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
                 if (column == 1 && row >= 0 && row < getRowCount()) {
                     String branchName = (String) getValueAt(row, 1);
@@ -165,6 +170,7 @@ public class GitLogTab extends JPanel {
 
         JPanel commitsPanel = new JPanel(new BorderLayout());
         commitsPanel.setBorder(BorderFactory.createTitledBorder("Commits"));
+
         // Add hidden column 5 for ICommitInfo object
         commitsTableModel = new DefaultTableModel(
                 new Object[]{"Message", "Author", "Date", "ID", "Unpushed", "CommitObject"}, 0
@@ -206,7 +212,7 @@ public class GitLogTab extends JPanel {
         }
 
         // Highlight unpushed rows
-        commitsTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
+        commitsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(
                     JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)
@@ -237,20 +243,70 @@ public class GitLogTab extends JPanel {
             }
         });
 
-        // Commit selection => show changed files
+        // Commit selection => show changed files & update revision label
         commitsTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting() && commitsTable.getSelectedRow() != -1) {
-                int[] selectedRows = commitsTable.getSelectedRows();
-                if (selectedRows.length >= 1) {
-                    // Extract commit info objects from hidden column 5
-                    List<ICommitInfo> selectedCommits = new ArrayList<>();
-                    for (int row : selectedRows) {
-                        selectedCommits.add((ICommitInfo) commitsTableModel.getValueAt(row, 5));
-                    }
-                    // Pass the list of commit objects
-                    updateChangesForCommits(selectedCommits);
-                }
+            if (e.getValueIsAdjusting()) {
+                return;
             }
+
+            // The e.getValueIsAdjusting() check is already at the top of this listener.
+            // The following declarations were duplicated.
+
+            int[] selectedRows = commitsTable.getSelectedRows();
+            final List<ICommitInfo> allSelectedCommitsFlat;
+            String labelPrefixToSet;
+            String idTextToSet;
+
+            if (selectedRows.length == 0) {
+                allSelectedCommitsFlat = List.of();
+                labelPrefixToSet = "Revision:";
+                idTextToSet = "N/A";
+            } else {
+                Arrays.sort(selectedRows);
+                allSelectedCommitsFlat = Arrays.stream(selectedRows)
+                        .mapToObj(row -> (ICommitInfo) commitsTableModel.getValueAt(row, 5))
+                        .toList();
+
+                var labelParts = new ArrayList<String>();
+                if (selectedRows.length == 1) {
+                    labelParts.add(getShortId(allSelectedCommitsFlat.getFirst().id()));
+                } else { // selectedRows.length > 1
+                    var contiguousRowIndexGroups = new ArrayList<List<Integer>>();
+                    var currentGroup = new ArrayList<Integer>();
+                    currentGroup.add(selectedRows[0]);
+                    contiguousRowIndexGroups.add(currentGroup);
+
+                    for (int i = 1; i < selectedRows.length; i++) {
+                        if (selectedRows[i] == selectedRows[i - 1] + 1) {
+                            currentGroup.add(selectedRows[i]);
+                        } else {
+                            currentGroup = new ArrayList<>();
+                            currentGroup.add(selectedRows[i]);
+                            contiguousRowIndexGroups.add(currentGroup);
+                        }
+                    }
+
+                    for (var rowIndexGroup : contiguousRowIndexGroups) {
+                        ICommitInfo firstCommitInGroup = (ICommitInfo) commitsTableModel.getValueAt(rowIndexGroup.getFirst(), 5);
+                        String firstShortId = getShortId(firstCommitInGroup.id());
+
+                        if (rowIndexGroup.size() == 1) {
+                            labelParts.add(firstShortId);
+                        } else {
+                            ICommitInfo lastCommitInGroup = (ICommitInfo) commitsTableModel.getValueAt(rowIndexGroup.getLast(), 5);
+                            String lastShortId = getShortId(lastCommitInGroup.id());
+                            labelParts.add(String.format("%s..%s", firstShortId, lastShortId));
+                        }
+                    }
+                }
+
+                idTextToSet = String.join(", ", labelParts);
+                labelPrefixToSet = (labelParts.size() <= 1) ? "Revision:" : "Revisions:";
+            }
+
+            revisionTextLabel.setText(labelPrefixToSet);
+            revisionIdTextArea.setText(idTextToSet);
+            updateChangesForCommits(allSelectedCommitsFlat);
         });
 
         // Context menu
@@ -278,7 +334,7 @@ public class GitLogTab extends JPanel {
         commitsContextMenu.add(applyStashCommitItem);
         commitsContextMenu.add(dropStashCommitItem);
 
-        commitsTable.addMouseListener(new java.awt.event.MouseAdapter() {
+        commitsTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 maybeShowPopup(e);
@@ -385,7 +441,7 @@ public class GitLogTab extends JPanel {
                 return;
             }
 
-            java.util.Arrays.sort(selectedRows); // Ensure rows are sorted for contiguous group detection
+            Arrays.sort(selectedRows); // Ensure rows are sorted for contiguous group detection
 
             var contiguousRowGroups = new ArrayList<List<Integer>>();
             if (selectedRows.length > 0) {
@@ -503,6 +559,23 @@ public class GitLogTab extends JPanel {
 
         JPanel changesPanel = new JPanel(new BorderLayout());
         changesPanel.setBorder(BorderFactory.createTitledBorder("Changes"));
+
+        // Panel for Revision Label and Text Area
+        JPanel revisionDisplayPanel = new JPanel(new BorderLayout(5, 0)); // 5px hgap
+        revisionTextLabel = new JLabel("Revision:");
+        revisionIdTextArea = new JTextArea("N/A", 1, 1); // Min 1 row, 1 col (will expand)
+        revisionIdTextArea.setEditable(false);
+        revisionIdTextArea.setLineWrap(true);
+        revisionIdTextArea.setWrapStyleWord(true);
+        revisionIdTextArea.setBackground(UIManager.getColor("Label.background"));
+        revisionIdTextArea.setForeground(UIManager.getColor("Label.foreground"));
+        revisionIdTextArea.setFont(UIManager.getFont("Label.font"));
+        revisionIdTextArea.setBorder(BorderFactory.createEmptyBorder(2,2,2,2)); // Small padding like a label
+
+        revisionDisplayPanel.add(revisionTextLabel, BorderLayout.WEST);
+        revisionDisplayPanel.add(revisionIdTextArea, BorderLayout.CENTER);
+        changesPanel.add(revisionDisplayPanel, BorderLayout.NORTH);
+
         changesRootNode = new DefaultMutableTreeNode("Changes");
         changesTreeModel = new DefaultTreeModel(changesRootNode);
         changesTree = new JTree(changesTreeModel);
@@ -536,7 +609,7 @@ public class GitLogTab extends JPanel {
         changesContextMenu.add(compareFileWithLocalItem);
         changesContextMenu.add(comparePrevWithLocalItem);
 
-        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
+        changesTree.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 handleChangesPopup(e);
@@ -573,9 +646,9 @@ public class GitLogTab extends JPanel {
                 }
             }
         });
-        changesTree.addMouseListener(new java.awt.event.MouseAdapter() {
+        changesTree.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
+            public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
                     var path = changesTree.getPathForLocation(e.getX(), e.getY());
                     if (path != null) {
@@ -601,7 +674,7 @@ public class GitLogTab extends JPanel {
                     if (selRows.length >= 1) {
                         // Extract commit IDs from CommitInfo objects
                         var sorted = selRows.clone();
-                        java.util.Arrays.sort(sorted);
+                        Arrays.sort(sorted);
                         String firstCommitId = ((ICommitInfo) commitsTableModel.getValueAt(sorted[0], 5)).id();
                         String lastCommitId = ((ICommitInfo) commitsTableModel.getValueAt(sorted[sorted.length - 1], 5)).id();
 
@@ -662,7 +735,7 @@ public class GitLogTab extends JPanel {
             if (paths != null) {
                 var selectedFiles = getSelectedFilePaths(paths);
                 for (String fp : selectedFiles) {
-                    var repoFile = new io.github.jbellis.brokk.analyzer.ProjectFile(contextManager.getRoot(), fp);
+                    var repoFile = new ProjectFile(contextManager.getRoot(), fp);
                     chrome.getGitPanel().addFileHistoryTab(repoFile);
                 }
             }
@@ -722,6 +795,14 @@ public class GitLogTab extends JPanel {
 
         // ============ Add sub-panels to logPanel with GridBag ============ 
 
+        // Set a nominal preferred size for direct children of logPanel
+        // to make GridBagLayout distribute space primarily based on weightx.
+        Dimension nominalPreferredSize = new Dimension(1, 1);
+        branchesPanel.setPreferredSize(nominalPreferredSize);
+        commitsPanel.setPreferredSize(nominalPreferredSize);
+        changesPanel.setPreferredSize(nominalPreferredSize);
+        searchPanel.setPreferredSize(nominalPreferredSize);
+
         constraints.gridx = 0; // branches
         constraints.weightx = 0.15;
         logPanel.add(branchesPanel, constraints);
@@ -777,7 +858,7 @@ public class GitLogTab extends JPanel {
         branchContextMenu.add(renameItem);
         branchContextMenu.add(deleteItem);
 
-        branchTable.addMouseListener(new java.awt.event.MouseAdapter() {
+        branchTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 handleBranchPopup(e);
@@ -983,6 +1064,8 @@ public class GitLogTab extends JPanel {
                         commitsTableModel.setRowCount(0);
                         changesRootNode.removeAllChildren();
                         changesTreeModel.reload();
+                        revisionTextLabel.setText("Revision:");
+                        revisionIdTextArea.setText("N/A");
                         pullButton.setEnabled(false);
                         pushButton.setEnabled(false);
                     }
@@ -996,6 +1079,8 @@ public class GitLogTab extends JPanel {
                     commitsTableModel.setRowCount(0);
                     changesRootNode.removeAllChildren();
                     changesTreeModel.reload();
+                    revisionTextLabel.setText("Revision:");
+                    revisionIdTextArea.setText("N/A");
                 });
             }
             return null;
@@ -1078,6 +1163,8 @@ public class GitLogTab extends JPanel {
                     pushButton.setVisible(!branchName.equals("stashes")); // Hide push button for stashes
 
                     if (commitRows.isEmpty()) {
+                        revisionTextLabel.setText("Revision:");
+                        revisionIdTextArea.setText("N/A");
                         return;
                     }
 
@@ -1091,9 +1178,13 @@ public class GitLogTab extends JPanel {
 
                     if (commitsTableModel.getRowCount() > 0) {
                         commitsTable.setRowSelectionInterval(0, 0);
-                        // Pass the CommitInfo object of the first row
-                        ICommitInfo firstCommitInfo = (ICommitInfo) commitsTableModel.getValueAt(0, 5);
-                        updateChangesForCommits(List.of(firstCommitInfo)); // Update to take List<ICommitInfo>
+                        // Listener will handle updates to revision display and changes tree
+                    } else {
+                        // Ensure changes area and revision display are cleared if no commits
+                        changesRootNode.removeAllChildren();
+                        changesTreeModel.reload();
+                        revisionTextLabel.setText("Revision:");
+                        revisionIdTextArea.setText("N/A");
                     }
                 });
             } catch (Exception e) {
@@ -1105,6 +1196,8 @@ public class GitLogTab extends JPanel {
                     });
                     changesRootNode.removeAllChildren();
                     changesTreeModel.reload();
+                    revisionTextLabel.setText("Revision:");
+                    revisionIdTextArea.setText("N/A");
                 });
             }
             return null;
@@ -1115,11 +1208,14 @@ public class GitLogTab extends JPanel {
      * Fills the "Changes" tree with files from the selected commit objects.
      */
     private void updateChangesForCommits(List<ICommitInfo> commits) {
+        // The revision display (revisionTextLabel, revisionIdTextArea) is updated by the ListSelectionListener.
         if (commits == null || commits.isEmpty()) {
             changesRootNode.removeAllChildren();
             changesTreeModel.reload();
             return;
         }
+
+        // Label update logic removed from here, handled by listener.
 
         contextManager.submitBackgroundTask("Fetching changes for commits", () -> {
             try {
@@ -1495,6 +1591,8 @@ public class GitLogTab extends JPanel {
                     changesTreeModel.reload();
 
                     if (commitRows.isEmpty()) {
+                        revisionTextLabel.setText("Revision:");
+                        revisionIdTextArea.setText("N/A");
                         chrome.systemOutput("No commits found matching: " + query);
                         return;
                     }
@@ -1509,14 +1607,22 @@ public class GitLogTab extends JPanel {
                         TableUtils.fitColumnWidth(commitsTable, 1); // Author
                         TableUtils.fitColumnWidth(commitsTable, 2); // Date
                         commitsTable.setRowSelectionInterval(0, 0);
-                        // Pass the CommitInfo object of the first row
-                        ICommitInfo firstCommitInfo = (ICommitInfo) commitsTableModel.getValueAt(0, 5);
-                        updateChangesForCommits(List.of(firstCommitInfo)); // Update to take List<ICommitInfo>
+                        // Listener will handle updates to revision display and changes tree
+                    } else {
+                        // Ensure changes area and revision display are cleared if no search results
+                        changesRootNode.removeAllChildren();
+                        changesTreeModel.reload();
+                        revisionTextLabel.setText("Revision:");
+                        revisionIdTextArea.setText("N/A");
                     }
                 });
             } catch (Exception e) {
                 logger.error("Error searching commits: {}", query, e);
-                SwingUtilities.invokeLater(() -> chrome.toolErrorRaw("Error searching commits: " + e.getMessage()));
+                SwingUtilities.invokeLater(() -> {
+                    chrome.toolErrorRaw("Error searching commits: " + e.getMessage());
+                    revisionTextLabel.setText("Revision:");
+                    revisionIdTextArea.setText("N/A");
+                });
             }
         });
     }
@@ -1524,6 +1630,10 @@ public class GitLogTab extends JPanel {
     // ==================================================================
     // Helper methods
     // ==================================================================
+
+    private String getShortId(String commitId) {
+        return commitId != null && commitId.length() >= 7 ? commitId.substring(0, 7) : commitId;
+    }
 
     private GitRepo getRepo() {
         return (GitRepo) contextManager.getProject().getRepo();
@@ -1736,7 +1846,7 @@ public class GitLogTab extends JPanel {
             if (commitId.equals(commitInfo.id())) {
                 commitsTable.setRowSelectionInterval(i, i);
                 commitsTable.scrollRectToVisible(commitsTable.getCellRect(i, 0, true));
-                updateChangesForCommits(List.of(commitInfo)); // Update to take List<ICommitInfo>
+                // Listener will handle updateChangesForCommits and revisionLabel
                 return;
             }
         }
