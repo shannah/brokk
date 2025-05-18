@@ -6,7 +6,8 @@ Check out the README at https://github.com/jbellis/brokk for more details.
 
 ## Getting Started
 - Type in the Instructions area; right-click on the suggested files to add them to the Workspace
-- Use `Context -> Edit Files` to directly add files you want the AI to modify.
+- Use Deep Scan to get higher-quality recommendations of what to add to the Workspace to accomplish your task
+- You can manually add files or summaries to your Workspace from the Workspace menu
 - Reference material should usually be added with `Context -> Summarize Files` to keep your context streamlined.
 
 Completion Suggestions: Press Ctrl+Space in any dialog to get completions.
