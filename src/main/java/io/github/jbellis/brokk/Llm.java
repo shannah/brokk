@@ -979,7 +979,7 @@ public class Llm {
     /**
      * Writes history information to session-specific files.
      */
-    private void logRequest(StreamingChatLanguageModel model, ChatRequest request, StreamingResult result) {
+    private synchronized void logRequest(StreamingChatLanguageModel model, ChatRequest request, StreamingResult result) {
         if (sessionHistoryDir == null) {
             // History directory creation failed in constructor, do nothing.
             return;
