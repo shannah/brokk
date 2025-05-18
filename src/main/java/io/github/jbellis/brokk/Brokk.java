@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
+import javax.swing.border.Border;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -29,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Brokk {
     private static final Logger logger = LogManager.getLogger(Brokk.class);
 
+    private static JWindow splashScreen = null;
     private static final ConcurrentHashMap<Path, Chrome> openProjectWindows = new ConcurrentHashMap<>();
     private static final Set<Path> reOpeningProjects = ConcurrentHashMap.newKeySet();
     public static final CompletableFuture<AbstractModel> embeddingModelFuture;
@@ -90,7 +92,7 @@ public class Brokk {
             }
         }
 
-        // Ensure L&F is set on EDT before any UI is created.
+        // Ensure L&F is set on EDT before any UI is created, then show splash screen.
         try {
             SwingUtilities.invokeAndWait(() -> {
                 try {
@@ -98,9 +100,10 @@ public class Brokk {
                 } catch (Exception e) {
                     logger.warn("Failed to set LAF, using default", e);
                 }
+                showSplashScreen();
             });
         } catch (Exception e) { // Catches InterruptedException and InvocationTargetException
-            logger.fatal("Failed to initialize Look and Feel on EDT. Exiting.", e);
+            logger.fatal("Failed to initialize Look and Feel or SplashScreen on EDT. Exiting.", e);
             System.exit(1);
         }
 
@@ -169,6 +172,7 @@ public class Brokk {
         }
 
         if (projectPathArg != null && !projectPathIsValid) {
+            SwingUtil.runOnEdt(Brokk::hideSplashScreen);
             System.err.printf("Specified project path `%s` does not appear to be a valid directory%n", projectPathArg);
             System.exit(1);
         }
@@ -180,6 +184,7 @@ public class Brokk {
         while (true) {
             // If no project is selected, or key is invalid, or selected project is not a valid directory, show StartupDialog
             if (!currentKeyIsValid || !isValidDirectory(projectToOpen)) {
+                SwingUtil.runOnEdt(Brokk::hideSplashScreen); // Hide splash before showing StartupDialog
                 final Path initialDialogPath = projectToOpen; // Capture for lambda
                 final boolean initialDialogKeyValid = currentKeyIsValid; // Capture for lambda
 
@@ -200,9 +205,12 @@ public class Brokk {
 
                 if (projectToOpen == null) { // User quit the dialog
                     logger.info("Startup dialog was closed or exited. Shutting down.");
+                    SwingUtil.runOnEdt(Brokk::hideSplashScreen); // Hide splash before exiting
                     System.exit(0);
                     return; // Unreachable
                 }
+                // If StartupDialog was shown and returned a project, key is assumed to be (re)validated or handled by it.
+                currentKeyIsValid = true;
             }
 
             CompletableFuture<Boolean> openFuture = openProject(projectToOpen);
@@ -215,17 +223,61 @@ public class Brokk {
             }
 
             if (success) {
-                // Project opened successfully, break the loop.
+                // Project opened successfully, splash screen hidden by openProject. Break the loop.
                 // The AWT event dispatch thread will keep the application alive if windows are open.
                 break;
             } else {
                 // Project failed to open. Error messages/dialogs handled by openProject/initializeProjectAndContextManager.
+                // Splash screen should have been hidden by openProject's failure paths.
                 // Nullify projectToOpen to force StartupDialog again for a new selection.
+                SwingUtil.runOnEdt(Brokk::hideSplashScreen); // Ensure hidden if openProject failed to hide it
                 projectToOpen = null;
                 // Assume key might be an issue, or user might want to change it.
                 // StartupDialog will re-verify/prompt for key if currentKeyIsValid is false.
                 currentKeyIsValid = false;
             }
+        }
+    }
+
+    private static void showSplashScreen() {
+        assert SwingUtilities.isEventDispatchThread();
+        if (splashScreen != null) {
+            splashScreen.dispose(); // Should not happen if logic is correct
+        }
+        splashScreen = new JWindow();
+        Chrome.applyIcon(splashScreen); // Sets window icon for taskbar if applicable
+
+        var panel = new JPanel(new BorderLayout(0, 10)); // Vertical gap
+        Border lineBorder = BorderFactory.createLineBorder(Color.GRAY);
+        Border emptyBorder = BorderFactory.createEmptyBorder(30, 50, 30, 50); // Increased padding
+        panel.setBorder(BorderFactory.createCompoundBorder(lineBorder, emptyBorder));
+
+        var iconUrl = Brokk.class.getResource(ICON_RESOURCE);
+        if (iconUrl != null) {
+            var icon = new ImageIcon(iconUrl);
+            // Scale icon to a reasonable size for splash, e.g., 64x64
+            Image scaledImage = icon.getImage().getScaledInstance(64, 64, Image.SCALE_SMOOTH);
+            JLabel iconLabel = new JLabel(new ImageIcon(scaledImage), SwingConstants.CENTER);
+            panel.add(iconLabel, BorderLayout.NORTH);
+        }
+
+        var label = new JLabel("Connecting to Brokk...", SwingConstants.CENTER);
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 18f)); // Larger font
+        panel.add(label, BorderLayout.CENTER);
+
+        splashScreen.add(panel);
+        splashScreen.pack();
+        splashScreen.setLocationRelativeTo(null); // Center on screen
+        splashScreen.setVisible(true);
+        splashScreen.toFront(); // Ensure it's on top
+    }
+
+    private static void hideSplashScreen() {
+        assert SwingUtilities.isEventDispatchThread();
+        if (splashScreen != null) {
+            splashScreen.setVisible(false);
+            splashScreen.dispose();
+            splashScreen = null;
         }
     }
 
@@ -363,7 +415,8 @@ public class Brokk {
         CompletableFuture.supplyAsync(() -> initializeProjectAndContextManager(projectPath), ForkJoinPool.commonPool())
             .thenAcceptAsync(contextManagerOpt -> { // Stage 2: Handle policy dialog and GUI creation (on-EDT)
                 if (contextManagerOpt.isEmpty()) {
-                    openCompletionFuture.complete(false); // Initialization failed
+                    hideSplashScreen(); // Initialization failed
+                    openCompletionFuture.complete(false);
                     return;
                 }
 
@@ -378,6 +431,7 @@ public class Brokk {
 
                     if (!policySetAndConfirmed) {
                         logger.info("Data retention dialog cancelled for project {}. Aborting open.", actualProjectPath.getFileName());
+                        hideSplashScreen();
                         openCompletionFuture.complete(false);
                         return;
                     }
@@ -386,6 +440,7 @@ public class Brokk {
                 }
 
                 // If policy was already set, or was set and OK'd by the dialog
+                hideSplashScreen(); // Hide splash just before showing the main GUI
                 createAndShowGui(actualProjectPath, contextManager);
                 openCompletionFuture.complete(true);
 
@@ -393,18 +448,21 @@ public class Brokk {
             .exceptionally(ex -> { // Handles exceptions from Stage 1 or Stage 2
                 logger.fatal("Fatal error during project opening process for: {}", projectPath, ex);
                 Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                    String errorMessage = """
-                                          A critical error occurred while trying to open the project:
-                                          %s
+                String errorMessage = """
+                                      A critical error occurred while trying to open the project:
+                                      %s
 
-                                          Please check the logs at ~/.brokk/debug.log and consider filing a bug report.
-                                          """.formatted(cause.getMessage()).stripIndent();
-                    SwingUtil.runOnEdt(() -> JOptionPane.showMessageDialog(null,
-                                                                      errorMessage,
-                                                                      "Project Open Error", JOptionPane.ERROR_MESSAGE));
-                    openCompletionFuture.complete(false); // Signify failure
-                    return null; // Required for exceptionally's Function<Throwable, ? extends T>
+                                      Please check the logs at ~/.brokk/debug.log and consider filing a bug report.
+                                      """.formatted(cause.getMessage()).stripIndent();
+                SwingUtil.runOnEdt(() -> {
+                    hideSplashScreen(); // Hide splash before showing error dialog
+                    JOptionPane.showMessageDialog(null,
+                                                  errorMessage,
+                                                  "Project Open Error", JOptionPane.ERROR_MESSAGE);
                 });
+                openCompletionFuture.complete(false); // Signify failure
+                return null; // Required for exceptionally's Function<Throwable, ? extends T>
+            });
 
         return openCompletionFuture;
     }
