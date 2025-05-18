@@ -1036,14 +1036,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         var version = BuildInfo.version();
 
-        // Get configured models for display
-        String architectModelName = project.getArchitectModelName();
-        String codeModelName = project.getCodeModelName();
-        String askModelName = project.getAskModelName(); // Added Ask model
-        String editModelName = project.getEditModelName();
-        String searchModelName = project.getSearchModelName();
-        String quickModelName = models.nameOf(models.quickModel());
-
         return """
                %s
                
@@ -1051,25 +1043,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
                - Brokk version: %s
                - Project: %s (%d native files, %d total including dependencies)
                - Analyzer language: %s
-               - Configured Models:
-                     - Architect: %s
-                     - Code: %s
-                     - Ask: %s
-                     - Edit: %s
-                     - Search: %s
-                     - Quick: %s
                """.stripIndent().formatted(welcomeMarkdown,
                                            version,
                                            project.getRoot().getFileName(), // Show just the folder name
                                            project.getRepo().getTrackedFiles().size(),
                                            project.getAllFiles().size(),
-                                           project.getAnalyzerLanguage(),
-                                           architectModelName != null ? architectModelName : "(Not Set)",
-                                           codeModelName != null ? codeModelName : "(Not Set)",
-                                           askModelName != null ? askModelName : "(Not Set)", // Added Ask model
-                                           editModelName != null ? editModelName : "(Not Set)",
-                                           searchModelName != null ? searchModelName : "(Not Set)",
-                                           quickModelName.equals("unknown") ? "(Unavailable)" : quickModelName);
+                                           project.getAnalyzerLanguage());
     }
 
     /**
