@@ -22,7 +22,7 @@ import boundary.break // Added for modern early exit
  * with Java-specific logic for building the CPG, method signatures, etc.
  */
 class JavaAnalyzer private(sourcePath: Path, cpgInit: Cpg)
-  extends AbstractAnalyzer(sourcePath, cpgInit) {
+  extends JoernAnalyzer(sourcePath, cpgInit) {
 
   def this(sourcePath: Path, preloadedPath: Path) =
     this(sourcePath, CpgBasedTool.loadFromFile(preloadedPath.toString))

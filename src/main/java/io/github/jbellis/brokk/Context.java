@@ -4,7 +4,7 @@ import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.ContextFragment.SkeletonFragment;
-import io.github.jbellis.brokk.analyzer.AbstractAnalyzer;
+import io.github.jbellis.brokk.analyzer.JoernAnalyzer;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -317,7 +317,7 @@ public class Context implements Serializable {
                 var parentFqcn = fqcn.substring(0, fqcn.indexOf('$'));
                 // FIXME generalize this
                 // Check if the analyzer supports cuClass and cast if necessary
-                if (analyzer instanceof AbstractAnalyzer aa) {
+                if (analyzer instanceof JoernAnalyzer aa) {
                     // Use the analyzer helper method which handles splitting correctly
                     var parentUnitOpt = aa.cuClass(parentFqcn, sourceFile); // Returns scala.Option
                     if (parentUnitOpt.isDefined() && ineligibleSources.contains(parentUnitOpt.get())) {

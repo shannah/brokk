@@ -17,7 +17,7 @@ import scala.util.matching.Regex // Added for mutable.ListBuffer
 
 /** Analyzer for C and C++ source files (leveraging joern c2cpg). */
 class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
-  extends AbstractAnalyzer(sourcePath, cpgInit) {
+  extends JoernAnalyzer(sourcePath, cpgInit) {
 
   def this(sourcePath: Path, preloadedPath: Path) =
     this(sourcePath, io.joern.joerncli.CpgBasedTool.loadFromFile(preloadedPath.toString))

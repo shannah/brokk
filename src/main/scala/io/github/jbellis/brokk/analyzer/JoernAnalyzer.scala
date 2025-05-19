@@ -30,7 +30,7 @@ import scala.jdk.OptionConverters.RichOptional
  * but delegates language-specific operations (like building a CPG or
  * constructing method signatures) to concrete subclasses.
  */
-abstract class AbstractAnalyzer protected(sourcePath: Path, private[brokk] val cpg: Cpg)
+abstract class JoernAnalyzer protected(sourcePath: Path, private[brokk] val cpg: Cpg)
   extends IAnalyzer with Closeable {
 
   // Logger instance for this class
