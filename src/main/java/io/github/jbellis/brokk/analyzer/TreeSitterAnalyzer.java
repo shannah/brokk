@@ -906,9 +906,20 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                     classSignatureText = textSlice(nodeForContent.getStartByte(), bodyNode.getStartByte(), src).stripTrailing();
                 } else {
                     classSignatureText = textSlice(nodeForContent.getStartByte(), nodeForContent.getEndByte(), src).stripTrailing();
+                    // Attempt to remove trailing tokens like '{' or ';' if no body node found, to get a cleaner signature part
                     if (classSignatureText.endsWith("{")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                     else if (classSignatureText.endsWith(";")) classSignatureText = classSignatureText.substring(0, classSignatureText.length() - 1).stripTrailing();
                 }
+
+                // If exportPrefix is present and classSignatureText also starts with it,
+                // remove it from classSignatureText to avoid duplication by renderClassHeader.
+                if (!exportPrefix.isEmpty() && !exportPrefix.isBlank() && classSignatureText.startsWith(exportPrefix.strip())) {
+                    classSignatureText = classSignatureText.substring(exportPrefix.strip().length()).stripLeading();
+                } else if (!exportPrefix.isEmpty() && !exportPrefix.isBlank() && classSignatureText.startsWith(exportPrefix)) { // Check with trailing space too
+                     classSignatureText = classSignatureText.substring(exportPrefix.length()).stripLeading();
+                }
+
+
                 String headerLine = assembleClassSignature(nodeForContent, src, exportPrefix, classSignatureText, "");
                 if (headerLine != null && !headerLine.isBlank()) signatureLines.add(headerLine);
                 break;
@@ -918,8 +929,15 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 buildFunctionSkeleton(nodeForContent, Optional.of(simpleName), src, "", signatureLines, exportPrefix);
                 break;
             case FIELD_LIKE: {
-                // The signature is exportPrefix + text_of_field_declaration (from nodeForContent)
-                signatureLines.add(exportPrefix + textSlice(nodeForContent, src).stripLeading().strip());
+                String fieldDeclText = textSlice(nodeForContent, src).stripLeading().strip();
+                // If exportPrefix is present and fieldDeclText also starts with it,
+                // remove it from fieldDeclText to avoid duplication.
+                if (!exportPrefix.isEmpty() && !exportPrefix.isBlank() && fieldDeclText.startsWith(exportPrefix.strip())) {
+                    fieldDeclText = fieldDeclText.substring(exportPrefix.strip().length()).stripLeading();
+                } else if (!exportPrefix.isEmpty() && !exportPrefix.isBlank() && fieldDeclText.startsWith(exportPrefix)) {
+                    fieldDeclText = fieldDeclText.substring(exportPrefix.length()).stripLeading();
+                }
+                signatureLines.add(exportPrefix + fieldDeclText);
                 break;
             }
             case UNSUPPORTED:
@@ -1149,7 +1167,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
      * Tries finding a child node with field name specified in LanguageSyntaxProfile.
      * Needs the source string `src` for substring extraction.
      */
-    private Optional<String> extractSimpleName(TSNode decl, String src) {
+    protected Optional<String> extractSimpleName(TSNode decl, String src) {
         Optional<String> nameOpt = Optional.empty();
         String identifierFieldName = getLanguageSyntaxProfile().identifierFieldName();
         if (identifierFieldName.isEmpty()) {

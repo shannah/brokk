@@ -396,6 +396,41 @@ public interface Language {
         @Override public List<Path> getDependencyCandidates(Project project) { return List.of(); }
     };
 
+    Language RUST = new Language() {
+        private final List<String> extensions = List.of("rs");
+        @Override public List<String> getExtensions() { return extensions; }
+        @Override public String name() { return "RUST"; }
+        @Override public String toString() { return name(); }
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            return new RustAnalyzer(project, project.getBuildDetails().excludedDirectories());
+        }
+        @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
+        // TODO: Implement getDependencyCandidates for Rust (e.g. scan Cargo.lock, vendor dir)
+        @Override public List<Path> getDependencyCandidates(Project project) { return List.of(); }
+        // TODO: Refine isAnalyzed for Rust (e.g. target directory, .cargo, vendor)
+        @Override
+        public boolean isAnalyzed(Project project, Path pathToImport) {
+            assert pathToImport.isAbsolute() : "Path must be absolute for isAnalyzed check: " + pathToImport;
+            Path projectRoot = project.getRoot();
+            Path normalizedPathToImport = pathToImport.normalize();
+
+            if (!normalizedPathToImport.startsWith(projectRoot)) {
+                return false; // Not part of this project
+            }
+            // Example: exclude target directory
+            Path targetDir = projectRoot.resolve("target");
+            if (normalizedPathToImport.startsWith(targetDir)) {
+                return false;
+            }
+            // Example: exclude .cargo directory if it exists
+            Path cargoDir = projectRoot.resolve(".cargo");
+            if (Files.isDirectory(cargoDir) && normalizedPathToImport.startsWith(cargoDir)) {
+                return false;
+            }
+            return true; // Default: if under project root and not in typical build/dependency dirs
+        }
+    };
+
     Language NONE = new Language() {
         private final List<String> extensions = Collections.emptyList();
         @Override public List<String> getExtensions() { return extensions; }
@@ -413,9 +448,10 @@ public interface Language {
                                            JAVA,
                                            JAVASCRIPT,
                                            PYTHON,
-                                           C_CPP,
-                                           GO,
-                                           NONE);
+            C_CPP,
+            GO,
+            RUST,
+            NONE);
 
     /**
      * Returns the Language constant corresponding to the given file extension.

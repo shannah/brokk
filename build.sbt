@@ -77,6 +77,7 @@ libraryDependencies ++= Seq(
   "io.github.bonede" % "tree-sitter-go" % "0.23.3",
   "io.github.bonede" % "tree-sitter-javascript" % "0.23.1",
   "io.github.bonede" % "tree-sitter-python" % "0.23.4",
+  "io.github.bonede" % "tree-sitter-rust" % "0.23.1",
   "io.github.bonede" % "tree-sitter-typescript" % "0.21.1",
 
   // Testing
