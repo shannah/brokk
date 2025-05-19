@@ -76,7 +76,6 @@ public class GuiTheme {
                 mainScrollPane.revalidate();
             }
         } catch (Exception e) {
-            logger.error("Failed to switch theme", e);
             chrome.toolErrorRaw("Failed to switch theme: " + e.getMessage());
         }
     }

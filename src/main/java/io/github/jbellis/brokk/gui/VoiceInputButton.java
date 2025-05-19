@@ -284,7 +284,6 @@ public class VoiceInputButton extends JButton {
                     try {
                         result = sttModel.transcribe(tempFile, symbolsForTranscription);
                     } catch (Exception e) {
-                        logger.error("Failed to transcribe audio: {}", e.getMessage(), e);
                         contextManager.getIo().toolError("Error transcribing audio: " + e.getMessage());
                         result = "";
                     }
@@ -310,10 +309,8 @@ public class VoiceInputButton extends JButton {
                     }
                 }
             } catch (IOException ex) { // Catch specific IO errors from file writing/reading
-                logger.error("Error processing audio file for transcription: {}", ex.getMessage(), ex);
                 onError.accept("Error processing audio file: " + ex.getMessage());
             } catch (Exception ex) { // Catch broader exceptions during transcription API call etc.
-                logger.error("Error during transcription process: {}", ex.getMessage(), ex);
                 onError.accept("Error during transcription: " + ex.getMessage());
             } finally {
                 SwingUtilities.invokeLater(() -> targetTextArea.setEnabled(true));

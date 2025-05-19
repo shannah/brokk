@@ -275,7 +275,6 @@ public class Llm {
                 && !cr.aiMessage().hasToolExecutionRequests()
                 && toolChoice == ToolChoice.REQUIRED)
         {
-            logger.debug("Enforcing tool selection");
             io.systemOutput("Enforcing tool selection");
 
             var extraMessages = new ArrayList<>(messages);

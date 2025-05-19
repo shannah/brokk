@@ -63,7 +63,6 @@ public class Decompiler {
                     try {
                         Decompiler.deleteDirectoryRecursive(outputDir);
                     } catch (IOException e) {
-                        logger.error("Failed to delete existing directory: {}", outputDir, e);
                         io.toolErrorRaw("Error deleting existing decompiled directory: " + e.getMessage());
                         return; // Stop if deletion fails
                     }
@@ -148,7 +147,6 @@ public class Decompiler {
                 } catch (Exception e) {
                     // Handle exceptions within the task
                     io.toolErrorRaw("Error during decompilation process: " + e.getMessage());
-                    logger.error("Error during decompilation background task for {}", jarPath, e);
                 } finally {
                     // 6. Clean up the temporary directory
                     if (tempDir != null) {
@@ -166,7 +164,6 @@ public class Decompiler {
         } catch (IOException e) {
             // Error *before* starting the worker (e.g., creating directories)
             io.toolErrorRaw("Error preparing decompilation: " + e.getMessage());
-            logger.error("Error preparing decompilation for {}", jarPath, e);
         }
     }
 

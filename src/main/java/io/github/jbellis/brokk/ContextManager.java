@@ -468,7 +468,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
             } catch (Exception e) {
-                logger.error("Error while " + description, e);
                 io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
             } finally {
                 io.actionComplete();
@@ -492,7 +491,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 io.systemOutput(description + " canceled.");
                 throw cex;
             } catch (Exception e) {
-                logger.error("Error while " + description, e);
                 io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
                 throw e;
             } finally {
@@ -509,7 +507,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (CancellationException cex) {
                 io.systemOutput(description + " canceled.");
             } catch (Exception e) {
-                logger.error("Error while " + description, e);
                 io.toolErrorRaw("Error while " + description + ": " + e.getMessage());
             }
         });
@@ -1328,7 +1325,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public void removeBadFragment(ContextFragment f, IOException th)
     {
-        logger.warn("Removing unreadable fragment {}", f.description(), th);
         io.toolErrorRaw("Removing unreadable fragment " + f.description());
         // removeBadFragment takes IOException, but we caught Exception. Wrap it.
         // Ideally removeBadFragment would take Exception or Throwable.
@@ -1486,7 +1482,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
 
             project.saveBuildDetails(inferredDetails);
-            logger.debug("Build details inferred and saved");
             io.systemOutput("Build details inferred and saved");
             return inferredDetails;
         });

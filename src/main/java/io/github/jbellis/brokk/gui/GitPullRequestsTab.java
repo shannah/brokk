@@ -105,7 +105,6 @@ public class GitPullRequestsTab extends JPanel {
      * Logs an error and shows a toolErrorRaw message to the user.
      */
     private void reportBackgroundError(String contextMessage, Exception e) {
-        logger.error(contextMessage, e);
         chrome.toolErrorRaw(contextMessage + (e != null && e.getMessage() != null ? ": " + e.getMessage() : ""));
     }
 
@@ -1194,7 +1193,6 @@ public class GitPullRequestsTab extends JPanel {
                 SwingUtilities.invokeLater(() -> chrome.openFragmentPreview(fragment));
                 chrome.systemOutput("Opened diff for PR #" + pr.getNumber() + " in preview panel");
             } catch (Exception ex) {
-                logger.error("Error generating diff for PR #{}", pr.getNumber(), ex);
                 chrome.toolErrorRaw("Error generating diff for PR #" + pr.getNumber() + ": " + ex.getMessage());
             }
         });
@@ -1241,7 +1239,6 @@ public class GitPullRequestsTab extends JPanel {
                 chrome.systemOutput("Updated local branch " + localBranchName + " for PR #" + prNumber);
                 logger.info("Successfully updated local branch {} for PR #{}", localBranchName, prNumber);
             } catch (Exception e) {
-                logger.error("Failed to update local branch {} for PR #{}: {}", localBranchName, prNumber, e.getMessage(), e);
                 chrome.toolErrorRaw("Error updating local branch " + localBranchName + ": " + e.getMessage());
             }
         });
@@ -1347,7 +1344,6 @@ public class GitPullRequestsTab extends JPanel {
                     }
                 });
             } catch (Exception e) {
-                logger.error("Failed to check out PR #{}: {}", prNumber, e.getMessage(), e);
                 chrome.toolErrorRaw("Error checking out PR: " + e.getMessage());
             }
         });
@@ -1368,7 +1364,6 @@ public class GitPullRequestsTab extends JPanel {
                 logger.warn("Desktop.Action.BROWSE not supported, cannot open PR URL: {}", url);
             }
         } catch (Exception e) {
-            logger.error("Error opening PR #{} in browser: {}", pr.getNumber(), e.getMessage(), e);
             chrome.toolErrorRaw("Error opening PR in browser: " + e.getMessage());
         }
     }

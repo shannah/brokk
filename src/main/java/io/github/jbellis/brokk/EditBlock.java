@@ -122,7 +122,6 @@ public class EditBlock {
                     file.write(""); // Using ProjectFile.write handles directory creation internally
                     logger.debug("Pre-created empty file: {}", file);
                 } catch (IOException e) {
-                    logger.error("Failed to pre-create empty file {}: {}", file, e.getMessage());
                     io.toolError("Failed to create empty file " + file + ": " + e.getMessage());
                 }
             }

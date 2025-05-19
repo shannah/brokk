@@ -107,7 +107,6 @@ public class ArchitectAgent {
     )
     {
         var msg = "Architect Agent project aborted: %s".formatted(reason);
-        logger.debug(msg);
         io.systemOutput(msg);
     }
 
@@ -341,7 +340,6 @@ public class ArchitectAgent {
             }
             if (result.chatResponse() == null || result.chatResponse().aiMessage() == null) {
                 var msg = "Empty LLM response. Stopping project now";
-                logger.debug(msg);
                 io.systemOutput(msg);
                 return;
             }

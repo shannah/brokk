@@ -1176,19 +1176,19 @@ public class WorkspacePanel extends JPanel {
                     }
 
                     if (image != null) {
-                        contextManager.addPastedImageFragment(image);
-                        chrome.systemOutput("Pasted image added to context");
+                            contextManager.addPastedImageFragment(image);
+                            chrome.systemOutput("Pasted image added to context");
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    if (e.getMessage() != null && e.getMessage().contains("INCR")) {
+                        chrome.toolErrorRaw("Unable to paste image data from Windows to Brokk running under WSL. This is a limitation of WSL. You can write the image to a file and read it that way instead.");
                         return;
                     }
-                }
-            } catch (Exception e) {
-                logger.error("Failed to process image flavor: {}", flavor.getMimeType(), e);
-                if (e.getMessage() != null && e.getMessage().contains("INCR")) {
-                    chrome.toolErrorRaw("Unable to paste image data from Windows to Brokk running under WSL. This is a limitation of WSL. You can write the image to a file and read it that way instead.");
-                    return;
+                    logger.error("Failed to process image flavor: {}", flavor.getMimeType(), e);
                 }
             }
-        }
 
         // Text Flavor
         if (contents.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
@@ -1200,7 +1200,6 @@ public class WorkspacePanel extends JPanel {
                     return;
                 }
             } catch (Exception e) {
-                logger.error("Failed to get text data from clipboard", e);
                 chrome.toolErrorRaw("Failed to read clipboard text: " + e.getMessage());
                 return;
             }

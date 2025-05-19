@@ -89,7 +89,6 @@ class DeepScanDialog {
                     if (ee.getCause() instanceof InterruptedException ie) {
                         throw ie;
                     } else {
-                        logger.error("Error during Deep Scan agent execution", ee.getCause());
                         chrome.toolErrorRaw("Error during Deep Scan execution: " + ee.getCause().getMessage());
                         return;
                     }

@@ -77,7 +77,8 @@ public class CodeAgent {
         String buildError = "";
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>();
 
-        io.systemOutput("Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput)));
+        var msg = "Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput));
+        io.systemOutput(msg);
         SessionResult.StopDetails stopDetails;
 
         var parser = contextManager.getParserForWorkspace();
@@ -117,7 +118,6 @@ public class CodeAgent {
                     stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.EMPTY_RESPONSE, message);
                 }
                 io.toolErrorRaw(message);
-                logger.debug(message);
                 break;
             }
 

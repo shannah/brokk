@@ -251,7 +251,6 @@ public class SearchAgent {
                     throw new InterruptedException();
                 }
                 var msg = "Search Agent interrupted, attempting to answer with already-gathered information";
-                logger.debug(msg);
                 io.systemOutput(msg);
                 beastMode = true;
             }

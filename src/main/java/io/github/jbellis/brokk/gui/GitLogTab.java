@@ -1373,7 +1373,6 @@ public class GitLogTab extends JPanel {
                     updateCommitsForBranch(branchDisplay);
                 }
             } catch (GitAPIException e) {
-                logger.error("Error reverting commit: {}", commitId, e);
                 chrome.toolErrorRaw("Error reverting commit: " + e.getMessage());
             }
         });
@@ -1543,7 +1542,6 @@ public class GitLogTab extends JPanel {
                 // Check if branch exists before trying to delete
                 List<String> localBranches = getRepo().listLocalBranches();
                 if (!localBranches.contains(branchName)) {
-                    logger.warn("Cannot delete branch '{}' - it doesn't exist in local branches list", branchName);
                     chrome.toolErrorRaw("Cannot delete branch '" + branchName + "' - it doesn't exist locally");
                     return;
                 }
@@ -1562,11 +1560,9 @@ public class GitLogTab extends JPanel {
                     getRepo().deleteBranch(branchName);
                 }
 
-                logger.debug("Branch '{}' deletion completed successfully", branchName);
                 SwingUtilities.invokeLater(this::update);
                 chrome.systemOutput("Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
             } catch (GitAPIException e) {
-                logger.error("Error deleting branch '{}': {}", branchName, e.getMessage(), e);
                 chrome.toolErrorRaw("Error deleting branch '" + branchName + "': " + e.getMessage());
             }
         });
