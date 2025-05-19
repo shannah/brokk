@@ -278,23 +278,22 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         List<CodeUnit> topCUs = topLevelDeclarations.getOrDefault(file, List.of());
         if (topCUs.isEmpty()) return Set.of();
 
-        Set<CodeUnit> classesInFile = new HashSet<>();
+        Set<CodeUnit> allDeclarationsInFile = new HashSet<>();
         Queue<CodeUnit> toProcess = new LinkedList<>(topCUs);
         Set<CodeUnit> visited = new HashSet<>(topCUs); // Track visited to avoid cycles and redundant processing
 
         while(!toProcess.isEmpty()) {
             CodeUnit current = toProcess.poll();
-            if (current.isClass()) {
-                classesInFile.add(current);
-            }
+            allDeclarationsInFile.add(current); // Add all encountered CodeUnits
+
             childrenByParent.getOrDefault(current, List.of()).forEach(child -> {
                 if (visited.add(child)) { // Add to queue only if not visited
                     toProcess.add(child);
                 }
             });
         }
-        log.trace("getClassesInFile: file={}, count={}", file, classesInFile.size());
-        return Collections.unmodifiableSet(classesInFile);
+        log.trace("getDeclarationsInFile: file={}, count={}", file, allDeclarationsInFile.size());
+        return Collections.unmodifiableSet(allDeclarationsInFile);
     }
 
     private String reconstructFullSkeleton(CodeUnit cu) {
@@ -563,19 +562,39 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
                     if (nameNode != null && !nameNode.isNull()) {
                         simpleName = textSlice(nameNode, src);
+                        if (simpleName != null && simpleName.isBlank()) {
+                            log.warn("Name capture '{}' for definition '{}' in file {} resulted in a BLANK string. NameNode text: [{}], type: [{}]. Will attempt fallback.",
+                                     expectedNameCapture, captureName, file, textSlice(nameNode, src), nameNode.getType());
+                            // Force fallback if primary name extraction yields blank.
+                            simpleName = extractSimpleName(definitionNode, src).orElse(null);
+                        }
                     } else {
-                        log.warn("Expected name capture '{}' not found for definition '{}' in match for file {}. Falling back to extractSimpleName on definition node.",
-                                 expectedNameCapture, captureName, file);
+                        log.warn("Expected name capture '{}' not found for definition '{}' in match for file {}. Current captures in this match: {}. Falling back to extractSimpleName on definition node.",
+                                 expectedNameCapture, captureName, file, capturedNodes.keySet());
                         simpleName = extractSimpleName(definitionNode, src).orElse(null); // extractSimpleName is now non-static
                     }
 
                     if (simpleName != null && !simpleName.isBlank()) {
+                        if ("interface.method.definition".equals(captureName) && file.getFileName().equals("declarations.go")) {
+                            log.info("[declarations.go DEBUG] About to add to declarationNodes: Node='{}' (line {} text:'{}'), Capture='{}', SimpleName='{}'",
+                                     definitionNode.getType(), definitionNode.getStartPoint().getRow() + 1, textSlice(definitionNode, src).lines().findFirst().orElse(""),
+                                     captureName, simpleName);
+                        }
                         declarationNodes.putIfAbsent(definitionNode, Map.entry(captureName, simpleName));
                         log.trace("MATCH [{}]: Found potential definition: Capture [{}], Node Type [{}], Simple Name [{}] -> Storing with determined name.",
                                   match.getId(), captureName, definitionNode.getType(), simpleName);
                     } else {
-                        log.warn("Could not determine simple name for definition capture {} (Node Type [{}], Line {}) in file {} using explicit capture and fallback.",
-                                 captureName, definitionNode.getType(), definitionNode.getStartPoint().getRow() + 1, file);
+                        // Expanded logging for null vs blank simpleName
+                        if (simpleName == null) {
+                            log.warn("Could not determine simple name (resulted in NULL) for definition capture {} (Node Type [{}], Line {}) in file {} using explicit capture and fallback.",
+                                     captureName, definitionNode.getType(), definitionNode.getStartPoint().getRow() + 1, file);
+                        } else { // simpleName is not null, but IS blank
+                            String defNodeTextPreview = definitionNode.isNull() ? "NULL_DEF_NODE" : textSlice(definitionNode, src).lines().findFirst().orElse("");
+                            String nameNodeTextPreview = (nameNode == null || nameNode.isNull()) ? "N/A (nameNode was null or fallback failed)" : textSlice(nameNode, src);
+                            log.warn("Determined simple name for definition capture {} (Node Type [{}], Line {}) in file {} is BLANK. Definition will be skipped. DefinitionNode text preview: [{}]. NameNode text preview: [{}]",
+                                     captureName, definitionNode.getType(), definitionNode.getStartPoint().getRow() + 1, file,
+                                     defNodeTextPreview, nameNodeTextPreview);
+                        }
                     }
                 }
             }
@@ -585,14 +604,26 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         // This is crucial for parent lookup.
         if (file.getFileName().equals("vars.py")) {
             log.info("[vars.py DEBUG] declarationNodes for vars.py: {}", declarationNodes.entrySet().stream()
-                .map(entry -> String.format("Node: %s (%s), Capture: %s, Name: %s", 
-                                        entry.getKey().getType(), 
-                                        textSlice(entry.getKey(), src).lines().findFirst().orElse("").trim(), 
-                                        entry.getValue().getKey(), 
+                .map(entry -> String.format("Node: %s (%s), Capture: %s, Name: %s",
+                                        entry.getKey().getType(),
+                                        textSlice(entry.getKey(), src).lines().findFirst().orElse("").trim(),
+                                        entry.getValue().getKey(),
                                         entry.getValue().getValue()))
                 .collect(Collectors.toList()));
             if (declarationNodes.isEmpty()) {
                 log.info("[vars.py DEBUG] declarationNodes for vars.py is EMPTY after query execution.");
+            }
+        } else if (file.getFileName().equals("declarations.go")) {
+            log.info("[declarations.go DEBUG] declarationNodes before sort: {}", declarationNodes.entrySet().stream()
+                .map(entry -> String.format("Node: %s (line %d, text: '%s'), Value: (Capture: %s, Name: %s)",
+                                        entry.getKey().getType(),
+                                        entry.getKey().getStartPoint().getRow() + 1,
+                                        textSlice(entry.getKey(), src).lines().findFirst().orElse("").trim(),
+                                        entry.getValue().getKey(),
+                                        entry.getValue().getValue()))
+                .collect(Collectors.toList()));
+             if (declarationNodes.isEmpty()) {
+                log.info("[declarations.go DEBUG] declarationNodes is EMPTY after query execution.");
             }
         }
         List<Map.Entry<TSNode, Map.Entry<String, String>>> sortedDeclarationEntries =
@@ -630,6 +661,57 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             }
             String classChain = String.join("$", enclosingClassNames);
             log.trace("Computed classChain for simpleName='{}': '{}'", simpleName, classChain);
+
+            // Adjust simpleName and classChain for Go methods to correctly include the receiver type
+            if (project.getAnalyzerLanguage() == Language.GO && "method.definition".equals(primaryCaptureName)) {
+                // The SCM query for Go methods captures `@method.receiver.type` and `@method.identifier`
+                // `simpleName` at this point is from `@method.identifier` (e.g., "MyMethod")
+                // We need to find the receiver type from the original captures for this match
+                // The `capturedNodes` map (re-populated per match earlier in the loop) is not directly available here.
+                // We need to re-access the specific captures for the current `match` associated with `node`.
+                // This requires finding the original TSQueryMatch or passing its relevant parts.
+                // For now, let's assume `node` is the `method_declaration` node, and we can query its children.
+                // A more robust way would be to pass `capturedNodes` from the outer loop or re-query for this specific `node`.
+
+                TSNode receiverNode = null;
+                TSNode methodIdentifierNode = null; // This would be `node.getChildByFieldName("name")` for method_declaration
+                                                    // or more reliably, the node associated with captureName.replace(".definition", ".name")
+                                                    // simpleName is already derived from method.identifier.
+
+                // Re-evaluate captures specific to this `node` (method_definition)
+                // This is a simplified re-querying logic. A more efficient approach might involve
+                // passing the full `capturedNodes` map associated with the `match` that led to this `node`.
+                TSQueryCursor an_cursor = new TSQueryCursor();
+                an_cursor.exec(this.query, node); // Execute query only on the current definition node
+                TSQueryMatch an_match = new TSQueryMatch();
+                Map<String, TSNode> localCaptures = new HashMap<>();
+                if (an_cursor.nextMatch(an_match)) { // Should find one match for the definition node itself
+                    for (TSQueryCapture capture : an_match.getCaptures()) {
+                        String capName = this.query.getCaptureNameForId(capture.getIndex());
+                        localCaptures.put(capName, capture.getNode());
+                    }
+                }
+                // an_cursor.close(); // TSQueryCursor does not have close
+
+                receiverNode = localCaptures.get("method.receiver.type");
+
+                if (receiverNode != null && !receiverNode.isNull()) {
+                    String receiverTypeText = textSlice(receiverNode, src).trim();
+                    if (receiverTypeText.startsWith("*")) { // Handle pointer receivers like *MyStruct
+                        receiverTypeText = receiverTypeText.substring(1).trim();
+                    }
+                    // Prepend receiver type to simpleName and set classChain to receiver type
+                    if (!receiverTypeText.isEmpty()) {
+                        simpleName = receiverTypeText + "." + simpleName;
+                        classChain = receiverTypeText;
+                        log.trace("Go method: Adjusted simpleName to '{}', classChain to '{}'", simpleName, classChain);
+                    } else {
+                        log.warn("Go method: Receiver type text was empty for node {}. FQN might be incorrect.", textSlice(receiverNode, src));
+                    }
+                } else {
+                    log.warn("Go method: Could not find @method.receiver.type capture for method '{}'. FQN might be incorrect.", simpleName);
+                }
+            }
 
             CodeUnit cu = createCodeUnit(file, primaryCaptureName, simpleName, packageName, classChain);
             log.trace("createCodeUnit returned: {}", cu);

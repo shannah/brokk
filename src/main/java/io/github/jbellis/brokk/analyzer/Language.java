@@ -384,6 +384,18 @@ public interface Language {
         public boolean isCpg() { return true; }
     };
 
+    Language GO = new Language() {
+        private final List<String> extensions = List.of("go");
+        @Override public List<String> getExtensions() { return extensions; }
+        @Override public String name() { return "GO"; }
+        @Override public String toString() { return name(); }
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            return new GoAnalyzer(project, project.getBuildDetails().excludedDirectories());
+        }
+        @Override public IAnalyzer loadAnalyzer(Project project) {return createAnalyzer(project);}
+        @Override public List<Path> getDependencyCandidates(Project project) { return List.of(); }
+    };
+
     Language NONE = new Language() {
         private final List<String> extensions = Collections.emptyList();
         @Override public List<String> getExtensions() { return extensions; }
@@ -402,6 +414,7 @@ public interface Language {
                                            JAVASCRIPT,
                                            PYTHON,
                                            C_CPP,
+                                           GO,
                                            NONE);
 
     /**
