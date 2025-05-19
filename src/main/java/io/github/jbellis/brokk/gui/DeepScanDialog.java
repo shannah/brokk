@@ -126,7 +126,11 @@ class DeepScanDialog {
                 logger.debug("Deep Scan finished. Proposing {} unique fragments.", allSuggestedFragments.size());
 
                 if (allSuggestedFragments.isEmpty()) {
-                    chrome.systemOutput("Deep Scan complete: No relevant fragments found");
+                    if (contextManager.topContext().allFragments().findAny().isPresent()) {
+                        chrome.systemOutput("Deep Scan complete with no additional recommendations");
+                    } else {
+                        chrome.systemOutput("Deep Scan complete with no recommendations");
+                    }
                 } else {
                     chrome.systemOutput("Deep Scan complete: Found %d relevant fragments".formatted(allSuggestedFragments.size()));
                     SwingUtil.runOnEdt(() -> showDialog(chrome, allSuggestedFragments, reasoning));
