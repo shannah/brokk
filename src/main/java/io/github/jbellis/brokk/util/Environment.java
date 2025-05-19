@@ -20,6 +20,8 @@ public class Environment {
     private static final Logger logger = LogManager.getLogger(Environment.class);
     public static final Environment instance = new Environment();
 
+    private TrayIcon brokkTrayIcon = null;
+
     private Environment() {
     }
     
@@ -119,6 +121,10 @@ public class Environment {
         return System.getProperty("os.name").toLowerCase().contains("win");
     }
 
+    private static boolean isMacOs() {
+        return System.getProperty("os.name").toLowerCase().contains("mac");
+    }
+
     /**
      * Sends a desktop notification asynchronously.
      *
@@ -129,7 +135,7 @@ public class Environment {
         CompletableFuture.runAsync(() -> {
             try {
                 String os = System.getProperty("os.name").toLowerCase();
-                if (SystemTray.isSupported()) {
+                if (isSystemTrayNotificationSupported()) {
                     sendSystemTrayNotification(message);
                 } else if (os.contains("linux")) {
                     sendLinuxNotification(message);
@@ -142,28 +148,43 @@ public class Environment {
         });
     }
 
+    private boolean isSystemTrayNotificationSupported() {
+        return !isMacOs() && SystemTray.isSupported();
+    }
+
     private void sendLinuxNotification(String message) throws IOException {
         runCommandFireAndForget("notify-send", "--category", "Brokk", message);
     }
-    
-    private void sendSystemTrayNotification(String message) {
-        SystemTray tray = SystemTray.getSystemTray();
-        var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
-        assert iconUrl != null;
-        var image = new ImageIcon(iconUrl).getImage();
-        TrayIcon trayIcon = new TrayIcon(image, "Brokk"); // Tooltip is the title
-        trayIcon.setImageAutoSize(true);
 
-        try {
-            tray.add(trayIcon);
-            trayIcon.displayMessage("Brokk", message, TrayIcon.MessageType.INFO);
-            // The tray icon will be removed by the system or when the application exits.
-            // For temporary notifications, some systems auto-remove. If it lingers,
-            // a mechanism to remove it after a delay might be needed, but adds complexity.
-            // Let's keep it simple for now.
-        } catch (AWTException e) {
-            logger.warn("Could not add TrayIcon for notification: {}", e.getMessage());
+    private synchronized void sendSystemTrayNotification(String message) {
+        assert SystemTray.isSupported(); // caller is responsible for checking
+
+        if (this.brokkTrayIcon == null) {
+            // Check if SystemTray is supported before attempting to get it.
+            // isSystemTrayNotificationSupported() already checks SystemTray.isSupported()
+            // but this method could theoretically be called directly.
+            SystemTray tray = SystemTray.getSystemTray();
+            var iconUrl = Chrome.class.getResource(Brokk.ICON_RESOURCE);
+            if (iconUrl == null) {
+                logger.error("Brokk icon resource not found, cannot create TrayIcon.");
+                return;
+            }
+            var image = new ImageIcon(iconUrl).getImage();
+            TrayIcon newTrayIcon = new TrayIcon(image, "Brokk");
+            newTrayIcon.setImageAutoSize(true);
+
+            try {
+                tray.add(newTrayIcon);
+                this.brokkTrayIcon = newTrayIcon; // Assign only if add succeeds
+            } catch (AWTException e) {
+                logger.warn("Could not add TrayIcon to SystemTray: {}", e.getMessage());
+                // brokkTrayIcon remains null, message won't be displayed via tray this time.
+                // Subsequent calls will attempt to add it again.
+                return; // Do not proceed to displayMessage if icon wasn't added
+            }
         }
+
+        this.brokkTrayIcon.displayMessage("Brokk", message, TrayIcon.MessageType.INFO);
     }
 
     private void runCommandFireAndForget(String... command) throws IOException {
