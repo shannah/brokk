@@ -39,7 +39,6 @@ public class BrokkMarkdownExtension implements Parser.ParserExtension, HtmlRende
     public void extend(HtmlRenderer.Builder rendererBuilder, String rendererType) {
         if (rendererBuilder.get(ENABLE_EDIT_BLOCK)) {
             rendererBuilder.nodeRendererFactory(new EditBlockRenderer.Factory());
-            rendererBuilder.nodeRendererFactory(new RawHtmlWhitelistRenderer.Factory());
         }
         rendererBuilder.nodeRendererFactory(new CodeFenceRenderer.Factory());
     }

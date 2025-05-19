@@ -301,7 +301,8 @@ public class CodeAgent {
                                         ? userInput
                                         : userInput + " [" + stopDetails.reason().name() + "]";
         // architect auto-compresses the task entry so let's give it the full history to work with, quickModel is cheap
-        var finalMessages = forArchitect ? List.copyOf(io.getLlmRawMessages()) : getMessagesForHistory(parser);
+        // Prepare messages for TaskEntry log: filter raw messages and keep S/R blocks verbatim
+        var finalMessages = forArchitect ? List.copyOf(io.getLlmRawMessages()) : prepareMessagesForTaskEntryLog();
         return new SessionResult("Code: " + finalActionDescription,
                                  new ContextFragment.TaskFragment(finalMessages, userInput),
                                  originalContents,
@@ -495,46 +496,15 @@ public class CodeAgent {
         }
     }
 
-    private List<ChatMessage> getMessagesForHistory(EditBlockParser parser) {
+    /**
+     * Prepares messages for storage in a TaskEntry.
+     * This involves filtering raw LLM I/O to keep USER, CUSTOM, and AI messages.
+     * AI messages containing SEARCH/REPLACE blocks will have their raw text preserved,
+     * rather than converting blocks to HTML placeholders or summarizing block-only messages.
+     */
+    private List<ChatMessage> prepareMessagesForTaskEntryLog() {
         var rawMessages = io.getLlmRawMessages();
-        var trackedFiles = contextManager.getRepo().getTrackedFiles();
 
-        // Identify messages needing summarization (because they have no plaintext) and submit tasks
-        var summarizationFutures = new HashMap<AiMessage, Future<String>>();
-        for (var message : rawMessages) {
-            if (message.type() == ChatMessageType.AI) {
-                var aiMessage = (AiMessage) message;
-                var parseResult = parser.parse(aiMessage.text(), trackedFiles);
-                boolean hasNonBlankText = parseResult.blocks().stream()
-                        .anyMatch(outputBlock -> outputBlock.block() == null && !outputBlock.text().strip().isBlank());
-
-                if (!hasNonBlankText && !parseResult.blocks().isEmpty()) { // Has blocks, but no actual text
-                    logger.debug("Submitting message for summarization as it contains only edit blocks/whitespace.");
-                    // Use get() for now, consider async handling if performance becomes an issue
-                    var worker = ((ContextManager) contextManager).submitSummarizeTaskForConversation(aiMessage.text());
-                    summarizationFutures.put(aiMessage, worker);
-                }
-            }
-        }
-        // Wait for summaries and collect results
-        var summaries = new HashMap<AiMessage, String>();
-        summarizationFutures.forEach((message, future) -> {
-            try {
-                // Use a reasonable timeout
-                String summary = future.get(30, TimeUnit.SECONDS);
-                summaries.put(message, summary);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                logger.debug("Summarization interrupted for message.", e);
-            } catch (TimeoutException e) {
-                logger.warn("Summarization timed out for message.", e);
-                future.cancel(true);
-            } catch (ExecutionException e) {
-                logger.error("Summarization failed for message.", e.getCause());
-            }
-        });
-
-        // Process messages, using summaries or inserting placeholders ---
         return rawMessages.stream()
                 .flatMap(message -> {
                     switch (message.type()) {
@@ -542,41 +512,17 @@ public class CodeAgent {
                             return Stream.of(message);
                         case AI:
                             var aiMessage = (AiMessage) message;
-                            // Check if we have a summary for this message
-                            if (summaries.containsKey(aiMessage)) {
-                                return Stream.of(new AiMessage(summaries.get(aiMessage)));
-                            }
-
-                            // Process results and create edit block HTML
-                            var parseResult = parser.parse(aiMessage.text(), trackedFiles);
-                            var processedBlocks = parseResult.blocks().stream()
-                                .map(ob -> {
-                                    if (ob.block() == null) {
-                                        return ob.text();
-                                    } else {
-                                        // Use EditBlockHtml to create HTML placeholder
-                                        var block = ob.block();
-                                        return EditBlockHtml.toHtml(
-                                            block.hashCode(),
-                                            block.filename(),
-                                            (int)block.afterText().lines().count(),
-                                            (int)block.beforeText().lines().count(),
-                                            Math.min((int)block.afterText().lines().count(), (int)block.beforeText().lines().count()),
-                                            GitStatus.UNKNOWN
-                                        );
-                                    }
-                                })
-                                .collect(Collectors.joining());
-                            
-                            return processedBlocks.isBlank() ? Stream.empty() : Stream.of(new AiMessage(processedBlocks));
-
-                        // Ignore SYSTEM/TOOL messages for history purposes
+                            // Pass through AI messages with their original text.
+                            // Raw S/R blocks are preserved.
+                            // If the text is blank, effectively filter out the message.
+                            return aiMessage.text().isBlank() ? Stream.empty() : Stream.of(aiMessage);
+                        // Ignore SYSTEM/TOOL messages for TaskEntry log purposes
                         case SYSTEM, TOOL_EXECUTION_RESULT:
                         default:
                             return Stream.empty();
                     }
                 })
-                .toList(); // Collect the filtered messages into an immutable list
+                .toList();
     }
 
     /**
