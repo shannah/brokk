@@ -43,6 +43,10 @@ public interface IContextManager {
         return "";
     }
 
+    default Context topContext() {
+        throw new UnsupportedOperationException();
+    }
+
     /**
      * Listener interface for context change events.
      */

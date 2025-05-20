@@ -379,6 +379,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /**
      * Return the top, active context in the history stack
      */
+    @Override
     public Context topContext()
     {
         return contextHistory.topContext();

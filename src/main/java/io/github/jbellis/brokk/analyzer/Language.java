@@ -452,6 +452,38 @@ public interface Language {
 
     // --- Infrastructure for fromExtension and enum-like static methods ---
 
+    Language PHP = new Language() {
+        private final List<String> extensions = List.of("php", "phtml", "php3", "php4", "php5", "phps");
+        @Override public List<String> getExtensions() { return extensions; }
+        @Override public String name() { return "PHP"; }
+        @Override public String toString() { return name(); }
+        @Override public IAnalyzer createAnalyzer(Project project) {
+            return new PhpAnalyzer(project, project.getBuildDetails().excludedDirectories());
+        }
+        @Override public IAnalyzer loadAnalyzer(Project project) { return createAnalyzer(project); }
+        // TODO: Implement getDependencyCandidates for PHP (e.g. composer's vendor directory)
+        @Override public List<Path> getDependencyCandidates(Project project) { return List.of(); }
+        // TODO: Refine isAnalyzed for PHP (e.g. vendor directory)
+        @Override
+        public boolean isAnalyzed(Project project, Path pathToImport) {
+            assert pathToImport.isAbsolute() : "Path must be absolute for isAnalyzed check: " + pathToImport;
+            Path projectRoot = project.getRoot();
+            Path normalizedPathToImport = pathToImport.normalize();
+
+            if (!normalizedPathToImport.startsWith(projectRoot)) {
+                return false; // Not part of this project
+            }
+            // Example: exclude vendor directory
+            Path vendorDir = projectRoot.resolve("vendor");
+            if (normalizedPathToImport.startsWith(vendorDir)) {
+                return false;
+            }
+            return true; // Default: if under project root and not in typical build/dependency dirs
+        }
+    };
+
+    // --- Infrastructure for fromExtension and enum-like static methods ---
+
     List<Language> ALL_LANGUAGES = List.of(C_SHARP,
                                            JAVA,
                                            JAVASCRIPT,
@@ -459,6 +491,7 @@ public interface Language {
                                            C_CPP,
                                            GO,
                                            RUST,
+                                           PHP, // Added PHP here
                                            NONE);
 
     /**
