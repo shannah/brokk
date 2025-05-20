@@ -341,12 +341,14 @@ public class CodeAgent {
         }
 
         // add new files to git and the Workspace
-        try {
-            contextManager.getRepo().add(newFiles);
-        } catch (GitAPIException e) {
-            io.toolError("Failed to add %s to git".formatted(newFiles));
+        if (!newFiles.isEmpty()) {
+            try {
+                contextManager.getRepo().add(newFiles);
+            } catch (GitAPIException e) {
+                io.toolError("Failed to add %s to git".formatted(newFiles));
+            }
+            contextManager.editFiles(newFiles);
         }
-        contextManager.editFiles(newFiles);
     }
 
     /**
