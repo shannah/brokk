@@ -60,26 +60,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private static final Pattern TEST_FILE_PATTERN = Pattern.compile(
             "(?i).*(?:[/\\\\.]|\\b|_|(?<=[a-z])(?=[A-Z]))tests?(?:[/\\\\.]|\\b|_|(?=[A-Z][a-z])|$).*"
     );
-
-    /**
-     * Identifies test files within the project based on file path matching a regex pattern.
-     * This method runs synchronously.
-     *
-     * @return A list of ProjectFile objects identified as test files. Returns an empty list if none are found.
-     */
-    @Override
-    public List<ProjectFile> getTestFiles() {
-        Set<ProjectFile> allFiles = getRepo().getTrackedFiles();
-
-        // Filter files based on the regex pattern matching their path string
-        var testFiles = allFiles.stream()
-                .filter(ContextManager::isTestFile)
-                .toList();
-
-        logger.debug("Identified {} test files via regex.", testFiles.size());
-        return testFiles;
-    }
-
+    
     public static boolean isTestFile(ProjectFile file) {
         return TEST_FILE_PATTERN.matcher(file.toString()).matches();
     }

@@ -356,13 +356,30 @@ public class BuildAgent {
                 return null;
             }
 
-            // Get the set of files currently loaded in the workspace (both editable and read-only ProjectFiles)
-            var workspaceFiles = Stream.concat(cm.getEditableFiles().stream(), cm.getReadonlyFiles().stream())
-                    .collect(Collectors.toSet());
+            // Get ProjectFiles from editable and read-only fragments
+            Stream<ProjectFile> projectFilesFromEditableOrReadOnly =
+                Stream.concat(
+                        cm.topContext().editableFiles(),
+                        cm.topContext().readonlyFiles()
+                      )
+                      .flatMap(fragment -> fragment.files(cm.getProject()).stream());
+
+            // Get ProjectFiles specifically from SkeletonFragments among all virtual fragments
+            Stream<ProjectFile> projectFilesFromSkeletons =
+                cm.topContext().virtualFragments()
+                    .filter(vf -> vf instanceof io.github.jbellis.brokk.ContextFragment.SkeletonFragment)
+                    .flatMap(skeletonFragment -> skeletonFragment.files(cm.getProject()).stream());
+
+            // Combine all relevant ProjectFiles into a single set for checking against test files
+            var workspaceFiles =
+                Stream.concat(projectFilesFromEditableOrReadOnly, projectFilesFromSkeletons)
+                      .collect(Collectors.toSet());
 
             // Check if any of the identified project test files are present in the current workspace set
             var projectTestFiles = cm.getTestFiles();
-            var workspaceTestFiles = projectTestFiles.stream().filter(workspaceFiles::contains).toList();
+            var workspaceTestFiles = projectTestFiles.stream()
+                                                     .filter(workspaceFiles::contains)
+                                                     .toList();
 
             // Decide which command to use
             if (workspaceTestFiles.isEmpty()) {

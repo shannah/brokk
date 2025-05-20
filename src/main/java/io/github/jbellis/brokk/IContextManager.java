@@ -92,7 +92,10 @@ public interface IContextManager {
     }
 
     default List<ProjectFile> getTestFiles() {
-        throw new UnsupportedOperationException();
+        Set<ProjectFile> allFiles = getRepo().getTrackedFiles();
+        return allFiles.stream()
+                .filter(ContextManager::isTestFile)
+                .toList();
     }
 
     default void replaceContext(Context newContext, Context replacement) {
