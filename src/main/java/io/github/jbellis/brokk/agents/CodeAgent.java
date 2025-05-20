@@ -207,7 +207,11 @@ public class CodeAgent {
 
             // Pre-create empty files for any new files (and add to git + workspace)
             // This prevents UI race conditions with file existence checks
-            preCreateNewFiles(newlyParsedBlocks);
+            var createdFiles = preCreateNewFiles(newlyParsedBlocks);
+            if (createdFiles.stream().anyMatch(ContextManager::isTestFile)) {
+                logger.debug("New test files created, re-determining verification command.");
+                verificationCommandFuture = BuildAgent.determineVerificationCommandAsync(contextManager);
+            }
 
             // Apply all accumulated blocks
             EditBlock.EditResult editResult;
@@ -317,7 +321,7 @@ public class CodeAgent {
      * @param blocks         Collection of SearchReplaceBlocks potentially containing new file creations
      */
     @VisibleForTesting
-    public void preCreateNewFiles(Collection<EditBlock.SearchReplaceBlock> blocks) {
+    public List<ProjectFile> preCreateNewFiles(Collection<EditBlock.SearchReplaceBlock> blocks) {
         var io = contextManager.getIo();
         List<ProjectFile> newFiles = new ArrayList<>();
         for (EditBlock.SearchReplaceBlock block : blocks) {
@@ -350,6 +354,7 @@ public class CodeAgent {
             }
             contextManager.editFiles(newFiles);
         }
+        return newFiles;
     }
 
     /**

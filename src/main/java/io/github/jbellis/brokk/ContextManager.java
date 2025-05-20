@@ -73,11 +73,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         // Filter files based on the regex pattern matching their path string
         var testFiles = allFiles.stream()
-                .filter(file -> TEST_FILE_PATTERN.matcher(file.toString()).matches())
+                .filter(ContextManager::isTestFile)
                 .toList();
 
         logger.debug("Identified {} test files via regex.", testFiles.size());
         return testFiles;
+    }
+
+    public static boolean isTestFile(ProjectFile file) {
+        return TEST_FILE_PATTERN.matcher(file.toString()).matches();
     }
 
     @NotNull
