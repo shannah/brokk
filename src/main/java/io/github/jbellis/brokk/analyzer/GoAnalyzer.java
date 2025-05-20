@@ -120,11 +120,11 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
 
         return switch (captureName) {
             case "function.definition" -> {
-                log.debug("Creating FN CodeUnit for Go function: File='{}', Pkg='{}', Name='{}'", file.getFileName(), packageName, simpleName);
+                log.trace("Creating FN CodeUnit for Go function: File='{}', Pkg='{}', Name='{}'", file.getFileName(), packageName, simpleName);
                 yield CodeUnit.fn(file, packageName, simpleName);
             }
             case "type.definition" -> { // Covers struct_type and interface_type
-                log.debug("Creating CLS CodeUnit for Go type: File='{}', Pkg='{}', Name='{}'", file.getFileName(), packageName, simpleName);
+                log.trace("Creating CLS CodeUnit for Go type: File='{}', Pkg='{}', Name='{}'", file.getFileName(), packageName, simpleName);
                 yield CodeUnit.cls(file, packageName, simpleName);
             }
             case "variable.definition", "constant.definition" -> {
@@ -134,14 +134,14 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
                     log.warn("Expected empty classChain for package-level var/const '{}', but got '{}'. Proceeding with _module_ convention.", simpleName, classChain);
                 }
                 String fieldShortName = "_module_." + simpleName;
-                log.debug("Creating FIELD CodeUnit for Go package-level var/const: File='{}', Pkg='{}', Name='{}', Resulting ShortName='{}'", 
+                log.trace("Creating FIELD CodeUnit for Go package-level var/const: File='{}', Pkg='{}', Name='{}', Resulting ShortName='{}'",
                           file.getFileName(), packageName, simpleName, fieldShortName);
                 yield CodeUnit.field(file, packageName, fieldShortName);
             }
             case "method.definition" -> {
                 // simpleName is now expected to be ReceiverType.MethodName due to adjustments in TreeSitterAnalyzer
                 // classChain is now expected to be ReceiverType
-                log.debug("Creating FN CodeUnit for Go method: File='{}', Pkg='{}', Name='{}', ClassChain (Receiver)='{}'",
+                log.trace("Creating FN CodeUnit for Go method: File='{}', Pkg='{}', Name='{}', ClassChain (Receiver)='{}'",
                           file.getFileName(), packageName, simpleName, classChain);
                 // CodeUnit.fn will create FQN = packageName + "." + simpleName (e.g., declpkg.MyStruct.GetFieldA)
                 // The parent-child relationship will be established by TreeSitterAnalyzer using classChain.
@@ -152,7 +152,7 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
                 // classChain is StructName (e.g., "MyStruct")
                 // We want the CodeUnit's shortName to be "StructName.FieldName" for uniqueness and parenting.
                 String fieldShortName = classChain + "." + simpleName;
-                log.debug("Creating FIELD CodeUnit for Go struct field: File='{}', Pkg='{}', Struct='{}', Field='{}', Resulting ShortName='{}'",
+                log.trace("Creating FIELD CodeUnit for Go struct field: File='{}', Pkg='{}', Struct='{}', Field='{}', Resulting ShortName='{}'",
                           file.getFileName(), packageName, classChain, simpleName, fieldShortName);
                 yield CodeUnit.field(file, packageName, fieldShortName);
             }
@@ -161,7 +161,7 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
                 // classChain is InterfaceName (e.g., "MyInterface")
                 // We want the CodeUnit's shortName to be "InterfaceName.MethodName".
                 String methodShortName = classChain + "." + simpleName;
-                log.debug("Creating FN CodeUnit for Go interface method: File='{}', Pkg='{}', Interface='{}', Method='{}', Resulting ShortName='{}'",
+                log.trace("Creating FN CodeUnit for Go interface method: File='{}', Pkg='{}', Interface='{}', Method='{}', Resulting ShortName='{}'",
                           file.getFileName(), packageName, classChain, simpleName, methodShortName);
                 yield CodeUnit.fn(file, packageName, methodShortName);
             }

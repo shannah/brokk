@@ -132,7 +132,7 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
                  signature = textSlice(funcNode.getStartByte(), paramsNode.getEndByte(), src).stripTrailing();
             } else {
                  signature = textSlice(funcNode, src).lines().findFirst().orElse("").stripTrailing();
-                 log.debug("renderFunctionDeclaration for C# (node type {}): body and params not found, using fallback signature '{}'", funcNode.getType(), signature);
+                 log.trace("renderFunctionDeclaration for C# (node type {}): body and params not found, using fallback signature '{}'", funcNode.getType(), signature);
             }
         }
         return signature + " " + bodyPlaceholder(); // Do not prepend indent here

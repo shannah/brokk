@@ -76,7 +76,7 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
                 }
                 case "field.definition" -> { // For class attributes or top-level variables
                     if (file.getFileName().equals("vars.py")) {
-                        log.info("[vars.py DEBUG PythonAnalyzer.createCodeUnit] file: {}, captureName: {}, simpleName: {}, packageName: {}, classChain: {}, moduleName: {}",
+                        log.trace("[vars.py DEBUG PythonAnalyzer.createCodeUnit] file: {}, captureName: {}, simpleName: {}, packageName: {}, classChain: {}, moduleName: {}",
                                  file.getFileName(), captureName, simpleName, packageName, classChain, moduleName);
                     }
                     String finalShortName;

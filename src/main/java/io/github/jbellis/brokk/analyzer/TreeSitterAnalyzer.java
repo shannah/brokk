@@ -108,7 +108,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 .filter(pf -> {
                     var pathStr = pf.absPath().toString();
                     if (this.normalizedExcludedFiles.contains(pathStr)) {
-                        log.debug("Skipping excluded file: {}", pf);
+                        log.trace("Skipping excluded file: {}", pf);
                         return false;
                     }
                     return validExtensions.stream().anyMatch(pathStr::endsWith);
@@ -576,7 +576,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
                     if (simpleName != null && !simpleName.isBlank()) {
                         if ("interface.method.definition".equals(captureName) && file.getFileName().equals("declarations.go")) {
-                            log.info("[declarations.go DEBUG] About to add to declarationNodes: Node='{}' (line {} text:'{}'), Capture='{}', SimpleName='{}'",
+                            log.trace("[declarations.go DEBUG] About to add to declarationNodes: Node='{}' (line {} text:'{}'), Capture='{}', SimpleName='{}'",
                                      definitionNode.getType(), definitionNode.getStartPoint().getRow() + 1, textSlice(definitionNode, src).lines().findFirst().orElse(""),
                                      captureName, simpleName);
                         }
@@ -603,7 +603,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         // Sort declaration nodes by their start byte to process outer definitions before inner ones.
         // This is crucial for parent lookup.
         if (file.getFileName().equals("vars.py")) {
-            log.info("[vars.py DEBUG] declarationNodes for vars.py: {}", declarationNodes.entrySet().stream()
+            log.trace("[vars.py DEBUG] declarationNodes for vars.py: {}", declarationNodes.entrySet().stream()
                 .map(entry -> String.format("Node: %s (%s), Capture: %s, Name: %s",
                                         entry.getKey().getType(),
                                         textSlice(entry.getKey(), src).lines().findFirst().orElse("").trim(),
@@ -611,10 +611,10 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                                         entry.getValue().getValue()))
                 .collect(Collectors.toList()));
             if (declarationNodes.isEmpty()) {
-                log.info("[vars.py DEBUG] declarationNodes for vars.py is EMPTY after query execution.");
+                log.trace("[vars.py DEBUG] declarationNodes for vars.py is EMPTY after query execution.");
             }
         } else if (file.getFileName().equals("declarations.go")) {
-            log.info("[declarations.go DEBUG] declarationNodes before sort: {}", declarationNodes.entrySet().stream()
+            log.trace("[declarations.go DEBUG] declarationNodes before sort: {}", declarationNodes.entrySet().stream()
                 .map(entry -> String.format("Node: %s (line %d, text: '%s'), Value: (Capture: %s, Name: %s)",
                                         entry.getKey().getType(),
                                         entry.getKey().getStartPoint().getRow() + 1,
@@ -623,7 +623,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                                         entry.getValue().getValue()))
                 .collect(Collectors.toList()));
              if (declarationNodes.isEmpty()) {
-                log.info("[declarations.go DEBUG] declarationNodes is EMPTY after query execution.");
+                log.trace("[declarations.go DEBUG] declarationNodes is EMPTY after query execution.");
             }
         }
         List<Map.Entry<TSNode, Map.Entry<String, String>>> sortedDeclarationEntries =
@@ -725,9 +725,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.trace("Built signature for '{}': [{}]", simpleName, signature == null ? "NULL" : signature.isBlank() ? "BLANK" : signature.lines().findFirst().orElse("EMPTY"));
 
             if (file.getFileName().equals("vars.py") && primaryCaptureName.equals("field.definition")) {
-                log.info("[vars.py DEBUG] Processing entry for vars.py field: Node Type='{}', SimpleName='{}', CaptureName='{}', PackageName='{}', ClassChain='{}'",
+                log.trace("[vars.py DEBUG] Processing entry for vars.py field: Node Type='{}', SimpleName='{}', CaptureName='{}', PackageName='{}', ClassChain='{}'",
                          node.getType(), simpleName, primaryCaptureName, packageName, classChain);
-                log.info("[vars.py DEBUG] CU created: {}, Signature: [{}]", cu, signature == null ? "NULL_SIG" : signature.isBlank() ? "BLANK_SIG" : signature.lines().findFirst().orElse("EMPTY_SIG"));
+                log.trace("[vars.py DEBUG] CU created: {}, Signature: [{}]", cu, signature == null ? "NULL_SIG" : signature.isBlank() ? "BLANK_SIG" : signature.lines().findFirst().orElse("EMPTY_SIG"));
             }
 
             if (signature == null || signature.isBlank()) {
