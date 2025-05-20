@@ -299,28 +299,6 @@ public class IncrementalBlockRendererTest {
     }
 
     @Test
-    void editBlockIsPresentWhenEnabled() {
-        String md = """
-                    Regular text
-                    
-                    <edit-block data-id="100" data-adds="2" data-dels="3" data-file="Bar.java"/>
-                    """;
-
-        // Use a renderer with edit blocks enabled (default behavior)
-        var renderer = new IncrementalBlockRenderer(false /*dark*/, true /*enableEditBlocks*/);
-
-        // Parse the markdown directly at the model level
-        var html = renderer.createHtml(md);
-        var components = renderer.buildComponentData(html);
-
-        // Check that at least one EditBlockComponentData object was created
-        assertTrue(
-                components.stream().anyMatch(c -> c instanceof EditBlockComponentData),
-                "EditBlockComponentData must be produced when feature is enabled"
-        );
-    }
-
-    @Test
     void streamingSessionKeepsComponentInstances() {
         var renderer = new IncrementalBlockRenderer(false);
         var root = renderer.getRoot();

@@ -972,30 +972,80 @@ public class ContextManager implements IContextManager, AutoCloseable {
     {
         var taskHistory = topContext().getTaskHistory();
         var messages = new ArrayList<ChatMessage>();
+        EditBlockParser parser = getParserForWorkspace(); // Parser for redacting S/R blocks
 
         // Merge compressed messages into a single taskhistory message
-        // TODO check that no compressed tasks are mixed in with the uncompressed?
         var compressed = taskHistory.stream()
                 .filter(TaskEntry::isCompressed)
-                .map(TaskEntry::toString)
+                .map(TaskEntry::toString) // This will use raw messages if TaskEntry was created with them
                 .collect(Collectors.joining("\n\n"));
         if (!compressed.isEmpty()) {
             messages.add(new UserMessage("<taskhistory>%s</taskhistory>".formatted(compressed)));
             messages.add(new AiMessage("Ok, I see the history."));
         }
 
-        // Uncompressed messages we just add directly
+        // Uncompressed messages: process for S/R block redaction
         taskHistory.stream()
                 .filter(e -> !e.isCompressed())
                 .forEach(e -> {
-                    var rawMessages = e.log().messages();
-                    var taskMessages = rawMessages.getLast() instanceof AiMessage
-                                       ? rawMessages
-                                       : rawMessages.subList(0, rawMessages.size() - 1);
-                    messages.addAll(taskMessages);
+                    var entryRawMessages = e.log().messages();
+                    // Determine the messages to include from the entry
+                    var relevantEntryMessages = entryRawMessages.getLast() instanceof AiMessage
+                                           ? entryRawMessages
+                                           : entryRawMessages.subList(0, entryRawMessages.size() - 1);
+
+                    List<ChatMessage> processedMessages = new ArrayList<>();
+                    for (var chatMessage : relevantEntryMessages) {
+                        if (chatMessage instanceof AiMessage aiMessage) {
+                            redactAiMessage(aiMessage, parser).ifPresent(processedMessages::add);
+                        } else {
+                            // Not an AiMessage (e.g., UserMessage, CustomMessage), add as is
+                            processedMessages.add(chatMessage);
+                        }
+                    }
+                    messages.addAll(processedMessages);
                 });
 
         return messages;
+    }
+
+    /**
+     * Redacts SEARCH/REPLACE blocks from an AiMessage.
+     * If the message contains S/R blocks, they are replaced with "[elided SEARCH/REPLACE block]".
+     * If the message does not contain S/R blocks, or if the redacted text is blank, Optional.empty() is returned.
+     *
+     * @param aiMessage The AiMessage to process.
+     * @param parser    The EditBlockParser to use for parsing.
+     * @return An Optional containing the redacted AiMessage, or Optional.empty() if no message should be added.
+     */
+    static Optional<AiMessage> redactAiMessage(AiMessage aiMessage, EditBlockParser parser) {
+        // Pass an empty set for trackedFiles as it's not needed for redaction.
+        var parsedResult = parser.parse(aiMessage.text(), Collections.emptySet());
+        // Check if there are actual S/R block objects, not just text parts
+        boolean hasSrBlocks = parsedResult.blocks().stream().anyMatch(b -> b.block() != null);
+
+        if (!hasSrBlocks) {
+            // No S/R blocks, return message as is (if not blank)
+            return aiMessage.text().isBlank() ? Optional.empty() : Optional.of(aiMessage);
+        } else {
+            // Contains S/R blocks, needs redaction
+            var blocks = parsedResult.blocks();
+            var sb = new StringBuilder();
+            for (int i = 0; i < blocks.size(); i++) {
+                var ob = blocks.get(i);
+                if (ob.block() == null) { // Plain text part
+                    sb.append(ob.text());
+                } else { // An S/R block
+                    sb.append("[elided SEARCH/REPLACE block]");
+                    // If the next output block is also an S/R block, add a newline
+                    if (i + 1 < blocks.size() && blocks.get(i + 1).block() != null) {
+                        sb.append('\n');
+                    }
+                }
+            }
+            String redactedText = sb.toString();
+            return redactedText.isBlank() ? Optional.empty() : Optional.of(new AiMessage(redactedText));
+        }
     }
 
     public List<ChatMessage> getHistoryMessagesForCopy()
