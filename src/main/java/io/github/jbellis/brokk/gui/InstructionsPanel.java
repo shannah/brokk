@@ -100,7 +100,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JPanel centerPanel;
     private final javax.swing.Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicBoolean forceSuggestions = new AtomicBoolean(false);
-    private final AtomicBoolean menuItemClicked = new AtomicBoolean(false); // Flag for @ popup menu item click
     // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
     private final ExecutorService suggestionWorker = new LoggingExecutorService(Executors.newSingleThreadExecutor(r -> {
         Thread t = Executors.defaultThreadFactory().newThread(r);
@@ -1723,9 +1722,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         for (java.awt.event.ActionListener al : originalListeners) {
                             item.removeActionListener(al);
                         }
-                        // Add new listener that sets flag then calls originals
+                        // Add new listener that removes "@" then calls originals
                         item.addActionListener(actionEvent -> {
-                            menuItemClicked.set(true);
+                            SwingUtilities.invokeLater(() -> { // Ensure document modification is on EDT
+                                try {
+                                    instructionsArea.getDocument().remove(atOffset, 1);
+                                } catch (BadLocationException ble) {
+                                    logger.warn("Could not remove @ symbol after selection in ActionListener", ble);
+                                }
+                            });
                             for (java.awt.event.ActionListener al : originalListeners) {
                                 al.actionPerformed(actionEvent);
                             }
@@ -1739,17 +1744,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         // Unregister listener to avoid memory leaks
                         popup.removePopupMenuListener(this);
                         isPopupOpen = false; // Allow new popups
-
-                        if (menuItemClicked.get()) {
-                            SwingUtilities.invokeLater(() -> { // Ensure document modification is on EDT
-                                try {
-                                    instructionsArea.getDocument().remove(atOffset, 1);
-                                } catch (BadLocationException ble) {
-                                    logger.warn("Could not remove @ symbol after selection", ble);
-                                }
-                            });
-                        }
-                        menuItemClicked.set(false); // Reset flag for next time
+                        // Removal of "@" is now handled by the JMenuItem's ActionListener
                     }
 
                     @Override
@@ -1760,7 +1755,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         // Unregister listener
                         popup.removePopupMenuListener(this);
                         isPopupOpen = false; // Allow new popups
-                        menuItemClicked.set(false); // Reset flag
                         // Do not remove "@" on cancel
                     }
                 });
