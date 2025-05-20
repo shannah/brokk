@@ -545,18 +545,16 @@ public class CodeAgent {
      * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
      * or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
      */
-    private static List<ProjectFile> autoAddReferencedFiles(
-            List<EditBlock.SearchReplaceBlock> blocks,
-            ContextManager cm,
-            boolean rejectReadonlyEdits
-    )
+    private static List<ProjectFile> autoAddReferencedFiles(List<EditBlock.SearchReplaceBlock> blocks,
+                                                            ContextManager cm,
+                                                            boolean rejectReadonlyEdits)
     {
-        // Use the passed coder instance directly
+        // Identify files referenced by blocks that are not already editable
         var filesToAdd = blocks.stream()
                 .map(EditBlock.SearchReplaceBlock::filename)
                 .filter(Objects::nonNull)
                 .distinct()
-                .map(cm::toFile)
+                .map(cm::toFile) // Convert filename string to ProjectFile
                 .filter(file -> !cm.getEditableFiles().contains(file))
                 .toList();
 
@@ -564,9 +562,10 @@ public class CodeAgent {
             return List.of();
         }
 
+        // Check for conflicts with read-only files if rejectReadonlyEdits is true
         if (rejectReadonlyEdits) {
             var readOnlyFiles = filesToAdd.stream()
-                    .filter(f -> cm.getReadonlyFiles().contains(f))
+                    .filter(file -> cm.getReadonlyFiles().contains(file))
                     .toList();
             if (!readOnlyFiles.isEmpty()) {
                 cm.getIo().systemOutput(
