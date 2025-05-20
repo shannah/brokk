@@ -120,12 +120,18 @@ Brokk will decompile the jar; after reopening the project, you can read, search,
 and otherwise treat them like your own project files. (Except you can't edit them.)
 (The decompiled source is 99% as useful to an LLM as the original source would be, and it's guaranteed to be the right version.)
 
-# Current status
+# Code Intelligence Status
 
-* Java support: excellent
-* Python support: partial
-* C Sharp support: partial
-* Javascript + JSX support: partial
+| Language    | Summarization | Symbolic Search Tools | Type-Aware Usage | Call Graphs |
+| ----------- | ------------- |----------------------| ---------------- | ----------- |
+| Java        | ✅             | ✅                    | ✅                | ✅           |
+| C++, C      | ✅             | ✅                    | ✅                | ✅           |
+| Python      | ✅             | ✅                    |                  |             |
+| Javascript, JSX | ✅          | ✅                    |                  |             |
+| C#          | ✅             | ✅                    |                  |             |
+| Go          | ✅             | ✅                    |                  |             |
+| Rust        | ✅             | ✅                    |                  |             |
+| PHP         | ✅             | ✅                    |                  |             |
 
 When Brokk doesn’t (yet) have full AST-level intelligence for a language, it falls back to file-level retrieval and Architect-mode orchestration—but those fallbacks are still stronger than the “full” support most tools provide. Brokk's Deep Scan, Search, Architect, and Workspace integrations make Brokk remains the fastest path to understanding and fixing code in any language.
 
