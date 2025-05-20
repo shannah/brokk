@@ -17,6 +17,7 @@ import io.github.jbellis.brokk.Service; // Import Models to access FavoriteModel
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.components.SplitButton;
+import io.github.jbellis.brokk.gui.util.AddMenuFactory;
 import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
@@ -30,6 +31,12 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import javax.swing.undo.UndoManager;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -62,7 +69,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     private static final String PLACEHOLDER_TEXT = """
-                                                   Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions.
+                                                   Put your instructions or questions here.  Brokk will suggest relevant files below; right-click on them to add them to your Workspace.  The Workspace will be visible to the AI when coding or answering your questions. Type "@" for add more context.
                                                    
                                                    More tips are available in the Getting Started section on the right -->
                                                    """;
@@ -93,6 +100,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JPanel centerPanel;
     private final javax.swing.Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicBoolean forceSuggestions = new AtomicBoolean(false);
+    private final AtomicBoolean menuItemClicked = new AtomicBoolean(false); // Flag for @ popup menu item click
     // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
     private final ExecutorService suggestionWorker = new LoggingExecutorService(Executors.newSingleThreadExecutor(r -> {
         Thread t = Executors.defaultThreadFactory().newThread(r);
@@ -291,6 +299,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         area.setEnabled(false); // Start disabled
         area.setText(PLACEHOLDER_TEXT); // Keep placeholder, will be cleared on activation
         area.getDocument().addUndoableEditListener(commandInputUndoManager);
+        ((AbstractDocument) area.getDocument()).setDocumentFilter(new AtTriggerFilter());
+
 
         // Add Ctrl+Enter shortcut to trigger the default button
         var ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, java.awt.event.InputEvent.CTRL_DOWN_MASK);
@@ -1659,5 +1669,122 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             chrome.themeManager.registerPopupMenu(popupMenu);
         }
         return popupMenu;
+    }
+
+    private final class AtTriggerFilter extends DocumentFilter {
+        private boolean isPopupOpen = false; // Guard against re-entrant calls
+
+        @Override
+        public void insertString(FilterBypass fb, int offs, String str, AttributeSet a)
+                throws BadLocationException {
+            super.insertString(fb, offs, str, a);
+            if (!isPopupOpen) {
+                maybeHandleAt(fb, offs + str.length());
+            }
+        }
+
+        @Override
+        public void replace(FilterBypass fb, int offs, int len, String str, AttributeSet a)
+                throws BadLocationException {
+            super.replace(fb, offs, len, str, a);
+            if (!isPopupOpen) {
+                maybeHandleAt(fb, offs + str.length());
+            }
+        }
+
+        private void maybeHandleAt(DocumentFilter.FilterBypass fb, int caretPos) {
+            try {
+                if (fb.getDocument().getLength() >= caretPos && caretPos > 0 &&
+                    fb.getDocument().getText(caretPos - 1, 1).equals("@")) {
+                    // Schedule popup display on EDT
+                    SwingUtilities.invokeLater(() -> showAddPopup(caretPos - 1));
+                }
+            } catch (BadLocationException ignored) {
+                // Ignore, means text was changing rapidly
+            }
+        }
+
+        private void showAddPopup(int atOffset) {
+            if (isPopupOpen) return; // Already showing one
+
+            isPopupOpen = true;
+            try {
+                Rectangle r = instructionsArea.modelToView2D(atOffset).getBounds();
+                Point p = SwingUtilities.convertPoint(instructionsArea, r.x, r.y + r.height, chrome.getFrame());
+
+                JPopupMenu popup = AddMenuFactory.buildAddPopup(chrome.getContextPanel());
+
+                // Add action listeners to set the flag when an item is clicked
+                for (Component comp : popup.getComponents()) {
+                    if (comp instanceof JMenuItem item) {
+                        // Get original listeners
+                        java.awt.event.ActionListener[] originalListeners = item.getActionListeners();
+                        // Remove them to re-wrap
+                        for (java.awt.event.ActionListener al : originalListeners) {
+                            item.removeActionListener(al);
+                        }
+                        // Add new listener that sets flag then calls originals
+                        item.addActionListener(actionEvent -> {
+                            menuItemClicked.set(true);
+                            for (java.awt.event.ActionListener al : originalListeners) {
+                                al.actionPerformed(actionEvent);
+                            }
+                        });
+                    }
+                }
+
+                popup.addPopupMenuListener(new PopupMenuListener() {
+                    @Override
+                    public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+                        // Unregister listener to avoid memory leaks
+                        popup.removePopupMenuListener(this);
+                        isPopupOpen = false; // Allow new popups
+
+                        if (menuItemClicked.get()) {
+                            SwingUtilities.invokeLater(() -> { // Ensure document modification is on EDT
+                                try {
+                                    instructionsArea.getDocument().remove(atOffset, 1);
+                                } catch (BadLocationException ble) {
+                                    logger.warn("Could not remove @ symbol after selection", ble);
+                                }
+                            });
+                        }
+                        menuItemClicked.set(false); // Reset flag for next time
+                    }
+
+                    @Override
+                    public void popupMenuWillBecomeVisible(PopupMenuEvent e) {}
+
+                    @Override
+                    public void popupMenuCanceled(PopupMenuEvent e) {
+                        // Unregister listener
+                        popup.removePopupMenuListener(this);
+                        isPopupOpen = false; // Allow new popups
+                        menuItemClicked.set(false); // Reset flag
+                        // Do not remove "@" on cancel
+                    }
+                });
+
+                if (chrome.themeManager != null) {
+                    chrome.themeManager.registerPopupMenu(popup);
+                }
+                popup.show(instructionsArea, r.x, r.y + r.height);
+
+                // Preselect the first item in the popup
+                if (popup.getComponentCount() > 0) {
+                    Component firstComponent = popup.getComponent(0);
+                    if (firstComponent instanceof JMenuItem) { // Or more generally, MenuElement
+                        MenuElement[] path = {popup, (MenuElement) firstComponent};
+                        MenuSelectionManager.defaultManager().setSelectedPath(path);
+                    }
+                }
+            } catch (BadLocationException ble) {
+                isPopupOpen = false; // Reset guard on error
+                logger.warn("Could not show @ popup", ble);
+            } catch (Exception ex) {
+                isPopupOpen = false; // Reset guard on any other error
+                logger.error("Error showing @ popup", ex);
+            }
+        }
     }
 }

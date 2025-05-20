@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.gui.dialogs.CallGraphDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog;
 import io.github.jbellis.brokk.gui.dialogs.MultiFileSelectionDialog.SelectionMode;
 import io.github.jbellis.brokk.gui.dialogs.SymbolSelectionDialog;
+import io.github.jbellis.brokk.gui.util.AddMenuFactory;
 import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 import io.github.jbellis.brokk.prompts.CopyExternalPrompts;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
@@ -439,45 +440,7 @@ public class WorkspacePanel extends JPanel {
 
         // Add options submenu
         JMenu addMenu = new JMenu("Add");
-
-        JMenuItem editMenuItem = new JMenuItem("Edit Files");
-        editMenuItem.addActionListener(e -> {
-            performContextActionAsync(ContextAction.EDIT, List.<ContextFragment>of());
-        });
-        // Only add Edit Files when git is present
-        if (contextManager != null && contextManager.getProject() != null && contextManager.getProject().hasGit()) {
-            addMenu.add(editMenuItem);
-        }
-
-        JMenuItem readMenuItem = new JMenuItem("Read Files");
-        readMenuItem.addActionListener(e -> {
-            performContextActionAsync(ContextAction.READ, List.<ContextFragment>of());
-        });
-        addMenu.add(readMenuItem);
-
-        JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
-        summarizeMenuItem.addActionListener(e -> {
-            performContextActionAsync(ContextAction.SUMMARIZE, List.<ContextFragment>of());
-        });
-        addMenu.add(summarizeMenuItem);
-
-        JMenuItem symbolMenuItem = new JMenuItem("Symbol Usage");
-        symbolMenuItem.addActionListener(e -> {
-            findSymbolUsageAsync();
-        });
-        addMenu.add(symbolMenuItem);
-
-        JMenuItem callersMenuItem = new JMenuItem("Callers");
-        callersMenuItem.addActionListener(e -> {
-            findMethodCallersAsync();
-        });
-        addMenu.add(callersMenuItem);
-
-        JMenuItem calleesMenuItem = new JMenuItem("Callees");
-        calleesMenuItem.addActionListener(e -> {
-            findMethodCalleesAsync();
-        });
-        addMenu.add(calleesMenuItem);
+        AddMenuFactory.populateAddMenu(addMenu, this);
 
         tablePopupMenu.add(addMenu);
         tablePopupMenu.addSeparator();
@@ -495,7 +458,7 @@ public class WorkspacePanel extends JPanel {
         });
         tablePopupMenu.add(copyAllMenuItem);
 
-        JMenuItem pasteMenuItem = new JMenuItem("Paste");
+        JMenuItem pasteMenuItem = new JMenuItem("Paste text, images, urls");
         pasteMenuItem.addActionListener(e -> {
             performContextActionAsync(ContextAction.PASTE, List.<ContextFragment>of());
         });
@@ -865,6 +828,11 @@ public class WorkspacePanel extends JPanel {
     // ------------------------------------------------------------------
     // Context Action Logic
     // ------------------------------------------------------------------
+
+    // Public getter for ContextManager needed by AddMenuFactory
+    public ContextManager getContextManager() {
+        return contextManager;
+    }
 
     /**
      * Checks if analyzer is ready for operations, shows error message if not.
