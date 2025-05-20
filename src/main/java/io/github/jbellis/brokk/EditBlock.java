@@ -92,44 +92,10 @@ public class EditBlock {
     }
 
     /**
-     * Pre-creates empty files for SearchReplaceBlocks representing new files
-     * (those with empty beforeText). This ensures files exist on disk before
-     * they are added to the context, preventing race conditions with UI updates.
-     *
-     * @param blocks         Collection of SearchReplaceBlocks potentially containing new file creations
-     * @param contextManager The context manager for resolving file paths
-     */
-    public static void preCreateNewFiles(Collection<SearchReplaceBlock> blocks, IContextManager contextManager) {
-        var io = contextManager.getIo();
-        for (SearchReplaceBlock block : blocks) {
-            // Skip blocks that aren't for new files (new files have empty beforeText)
-            if (block.filename() == null || !block.beforeText().trim().isEmpty()) {
-                continue;
-            }
-
-            // Resolve the file path (same logic used in applyEditBlocks)
-            ProjectFile file;
-            try {
-                file = resolveProjectFile(contextManager, block.filename(), true);
-            } catch (SymbolNotFoundException | SymbolAmbiguousException e) {
-                logger.debug("Failed to resolve file for pre-creation: {}", e.getMessage());
-                continue;
-            }
-
-            // Create the empty file if it doesn't exist yet
-            if (!file.exists()) {
-                try {
-                    file.write(""); // Using ProjectFile.write handles directory creation internally
-                    logger.debug("Pre-created empty file: {}", file);
-                } catch (IOException e) {
-                    io.toolError("Failed to create empty file " + file + ": " + e.getMessage());
-                }
-            }
-        }
-    }
-
-    /**
      * Parse the LLM response for SEARCH/REPLACE blocks and apply them.
+     * 
+     * Note: it is the responsibility of the caller (e.g. CodeAgent::preCreateNewFiles)
+     * to create empty files for blocks corresponding to new files.
      */
     public static EditResult applyEditBlocks(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks)
     throws IOException
@@ -144,12 +110,11 @@ public class EditBlock {
         for (SearchReplaceBlock block : blocks) {
             // 1. Resolve the filename
             ProjectFile file;
-            boolean isCreateNew = block.beforeText().trim().isEmpty();
             try {
                 if (block.filename() == null || block.filename().isBlank()) {
                     throw new SymbolNotFoundException("Block is missing filename");
                 }
-                file = resolveProjectFile(contextManager, block.filename(), isCreateNew);
+                file = resolveProjectFile(contextManager, block.filename());
             } catch (SymbolNotFoundException | SymbolAmbiguousException e) {
                 logger.debug("File resolution failed for block [{}]: {}", block.filename(), e.getMessage());
                 failed.add(new FailedBlock(block, EditBlockFailureReason.FILE_NOT_FOUND));
@@ -166,14 +131,10 @@ public class EditBlock {
             // Perform the replacement
             replaceInFile(file, block.beforeText(), block.afterText(), contextManager);
 
-            // If successful, add to succeeded list
+            // add to succeeded list
             // If it was a deletion, replaceInFile handled it and returned; file will not exist.
             // If it was a modification or creation, the file will exist with new content.
             succeeded.put(block, file);
-            if (isCreateNew) {
-                contextManager.getRepo().add(List.of(file));
-                io.systemOutput("Added to git " + file);
-            }
         } catch(NoMatchException | AmbiguousMatchException e) {
                 assert changedFiles.containsKey(file);
                 var originalContent = changedFiles.get(file);
@@ -629,18 +590,17 @@ public class EditBlock {
      *
      * @param cm        The context manager.
      * @param filename  The filename string to resolve (potentially partial).
-     * @param createNew If true, allow resolving to a non-existent file path for creation.
      * @return The resolved ProjectFile.
      * @throws SymbolNotFoundException  if the file cannot be found.
      * @throws SymbolAmbiguousException if the filename matches multiple files.
      */
-    static ProjectFile resolveProjectFile(IContextManager cm, String filename, boolean createNew)
+    static ProjectFile resolveProjectFile(IContextManager cm, String filename)
     throws SymbolNotFoundException, SymbolAmbiguousException
     {
         var file = cm.toFile(filename);
 
         // 1. Exact match (common case)
-        if (file.exists() || createNew) {
+        if (file.exists()) {
             return file;
         }
 

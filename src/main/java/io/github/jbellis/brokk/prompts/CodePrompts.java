@@ -4,10 +4,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.EditBlock;
-import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.Service;
+import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 
 import java.io.IOException;
@@ -52,7 +49,7 @@ public abstract class CodePrompts {
                 : OVEREAGER_REMINDER;
     }
 
-    public final List<ChatMessage> collectCodeMessages(ContextManager cm,
+    public final List<ChatMessage> collectCodeMessages(IContextManager cm,
                                                        StreamingChatLanguageModel model,
                                                        EditBlockParser parser,
                                                        ArrayList<ChatMessage> sessionMessages,
@@ -91,7 +88,7 @@ public abstract class CodePrompts {
      * @param cm The ContextManager.
      * @return A string summarizing editable files, read-only snippets, etc.
      */
-    public static String formatWorkspaceDescriptions(ContextManager cm) {
+    public static String formatWorkspaceDescriptions(IContextManager cm) {
         var editableContents = cm.getEditableSummary();
         var readOnlyContents = cm.getReadOnlySummary();
         var workspaceBuilder = new StringBuilder();
@@ -104,7 +101,7 @@ public abstract class CodePrompts {
         return workspaceBuilder.toString();
     }
 
-    protected SystemMessage systemMessage(ContextManager cm, String reminder) {
+    protected SystemMessage systemMessage(IContextManager cm, String reminder) {
         var workspaceSummary = formatWorkspaceDescriptions(cm);
         var styleGuide = cm.getProject().getStyleGuide();
 
@@ -193,7 +190,7 @@ public abstract class CodePrompts {
                                                 EditBlockParser parser,
                                                 int succeededCount,
                                                 IConsoleIO io,
-                                                ContextManager cm)
+                                                IContextManager cm)
     {
         if (failedBlocks.isEmpty()) {
             return "";
@@ -305,7 +302,7 @@ public abstract class CodePrompts {
      * @param taskMessages
      * @return List of ChatMessages ready for the LLM.
      */
-    public List<ChatMessage> collectFullFileReplacementMessages(ContextManager cm,
+    public List<ChatMessage> collectFullFileReplacementMessages(IContextManager cm,
                                                                 ProjectFile targetFile,
                                                                 String goal,
                                                                 ArrayList<ChatMessage> taskMessages)

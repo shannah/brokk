@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.prompts;
 
 import dev.langchain4j.data.message.SystemMessage;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IContextManager;
 
 public abstract class ArchitectPrompts extends CodePrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};
@@ -9,7 +10,7 @@ public abstract class ArchitectPrompts extends CodePrompts {
     public static final double WORKSPACE_CRITICAL_THRESHOLD = 0.9;
 
     @Override
-    public SystemMessage systemMessage(ContextManager cm, String reminder) {
+    public SystemMessage systemMessage(IContextManager cm, String reminder) {
         var workspaceSummary = formatWorkspaceDescriptions(cm);
         var styleGuide = cm.getProject().getStyleGuide();
 

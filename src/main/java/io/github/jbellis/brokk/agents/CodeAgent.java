@@ -21,6 +21,8 @@ import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.jetbrains.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -41,11 +43,11 @@ import java.util.stream.Stream;
 public class CodeAgent {
     private static final Logger logger = LogManager.getLogger(CodeAgent.class);
     private static final int MAX_PARSE_ATTEMPTS = 3;
-    private final ContextManager contextManager;
+    private final IContextManager contextManager;
     private final StreamingChatLanguageModel model;
     private final IConsoleIO io;
 
-    public CodeAgent(ContextManager contextManager, StreamingChatLanguageModel model) {
+    public CodeAgent(IContextManager contextManager, StreamingChatLanguageModel model) {
         this.contextManager = contextManager;
         this.model = model;
         this.io = contextManager.getIo();
@@ -195,17 +197,17 @@ public class CodeAgent {
                 break;
             }
 
-            // Pre-create empty files for any new files before context updates
-            // This prevents UI race conditions with file existence checks
-            EditBlock.preCreateNewFiles(newlyParsedBlocks, contextManager);
-
-            // Auto-add newly referenced files as editable (but error out if trying to edit an explicitly read-only file)
-            var readOnlyFiles = autoAddReferencedFiles(blocks, contextManager, !forArchitect);
+            // Abort if LLM tried to edit read-only files
+            var readOnlyFiles = findConflicts(blocks, contextManager);
             if (!readOnlyFiles.isEmpty()) {
                 var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
                 stopDetails = new SessionResult.StopDetails(SessionResult.StopReason.READ_ONLY_EDIT, filenames);
                 break;
             }
+
+            // Pre-create empty files for any new files (and add to git + workspace)
+            // This prevents UI race conditions with file existence checks
+            preCreateNewFiles(newlyParsedBlocks);
 
             // Apply all accumulated blocks
             EditBlock.EditResult editResult;
@@ -306,6 +308,46 @@ public class CodeAgent {
                                  stopDetails);
     }
 
+    /**
+     * Pre-creates empty files for SearchReplaceBlocks representing new files
+     * (those with empty beforeText). This ensures files exist on disk before
+     * they are added to the context, preventing race conditions with UI updates.
+     *
+     * @param blocks         Collection of SearchReplaceBlocks potentially containing new file creations
+     */
+    @VisibleForTesting
+    public void preCreateNewFiles(Collection<EditBlock.SearchReplaceBlock> blocks) {
+        var io = contextManager.getIo();
+        List<ProjectFile> newFiles = new ArrayList<>();
+        for (EditBlock.SearchReplaceBlock block : blocks) {
+            // Skip blocks that aren't for new files (new files have empty beforeText)
+            if (block.filename() == null || !block.beforeText().trim().isEmpty()) {
+                continue;
+            }
+
+            // We're creating a new file so resolveProjectFile is complexity we don't need, just use the filename
+            ProjectFile file = contextManager.toFile(block.filename());
+            newFiles.add(file);
+
+            // Create the empty file if it doesn't exist yet
+            if (!file.exists()) {
+                try {
+                    file.write(""); // Using ProjectFile.write handles directory creation internally
+                    logger.debug("Pre-created empty file: {}", file);
+                } catch (IOException e) {
+                    io.toolError("Failed to create empty file " + file + ": " + e.getMessage());
+                }
+            }
+        }
+
+        // add new files to git and the Workspace
+        try {
+            contextManager.getRepo().add(newFiles);
+        } catch (GitAPIException e) {
+            io.toolError("Failed to add %s to git".formatted(newFiles));
+        }
+        contextManager.editFiles(newFiles);
+    }
 
     /**
      * Fallback mechanism when standard SEARCH/REPLACE fails repeatedly.
@@ -469,7 +511,7 @@ public class CodeAgent {
                 if (!hasNonBlankText && !parseResult.blocks().isEmpty()) { // Has blocks, but no actual text
                     logger.debug("Submitting message for summarization as it contains only edit blocks/whitespace.");
                     // Use get() for now, consider async handling if performance becomes an issue
-                    var worker = contextManager.submitSummarizeTaskForConversation(aiMessage.text());
+                    var worker = ((ContextManager) contextManager).submitSummarizeTaskForConversation(aiMessage.text());
                     summarizationFutures.put(aiMessage, worker);
                 }
             }
@@ -538,16 +580,11 @@ public class CodeAgent {
     }
 
     /**
-     * Attempts to add as editable any project files that the LLM wants to edit but are not yet editable.
-     * If `rejectReadonlyEdits` is true, it returns a list of read-only files attempted to be edited.
-     * Otherwise, it returns an empty list.
-     *
      * @return A list of ProjectFile objects representing read-only files the LLM attempted to edit,
-     * or an empty list if no read-only files were targeted or if `rejectReadonlyEdits` is false.
+     * or an empty list if no read-only files were targeted.
      */
-    private static List<ProjectFile> autoAddReferencedFiles(List<EditBlock.SearchReplaceBlock> blocks,
-                                                            ContextManager cm,
-                                                            boolean rejectReadonlyEdits)
+    private static List<ProjectFile> findConflicts(List<EditBlock.SearchReplaceBlock> blocks,
+                                                   IContextManager cm)
     {
         // Identify files referenced by blocks that are not already editable
         var filesToAdd = blocks.stream()
@@ -558,30 +595,16 @@ public class CodeAgent {
                 .filter(file -> !cm.getEditableFiles().contains(file))
                 .toList();
 
-        if (filesToAdd.isEmpty()) {
-            return List.of();
+        // Check for conflicts with read-only files
+        var readOnlyFiles = filesToAdd.stream()
+                .filter(file -> cm.getReadonlyFiles().contains(file))
+                .toList();
+        if (!readOnlyFiles.isEmpty()) {
+            cm.getIo().systemOutput(
+                    "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
+                            .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
         }
-
-        // Check for conflicts with read-only files if rejectReadonlyEdits is true
-        if (rejectReadonlyEdits) {
-            var readOnlyFiles = filesToAdd.stream()
-                    .filter(file -> cm.getReadonlyFiles().contains(file))
-                    .toList();
-            if (!readOnlyFiles.isEmpty()) {
-                cm.getIo().systemOutput(
-                        "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
-                                .formatted(readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","))));
-                // Return the list of read-only files that caused the issue
-                return readOnlyFiles;
-            }
-        }
-
-        // Add the files regardless of rejectReadonlyEdits (unless we returned early due to read-only conflicts)
-        cm.getIo().systemOutput("Editing additional files " + filesToAdd);
-        cm.editFiles(filesToAdd);
-
-        // Return empty list if no read-only files were rejected
-        return List.of();
+        return readOnlyFiles;
     }
 
     /**
@@ -589,7 +612,7 @@ public class CodeAgent {
      * Returns empty string if build is successful, error message otherwise.
      */
     private static String attemptBuildVerification(CompletableFuture<String> verificationCommandFuture,
-                                                   ContextManager contextManager,
+                                                   IContextManager contextManager,
                                                    IConsoleIO io) throws InterruptedException
     {
         String verificationCommand;

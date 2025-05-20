@@ -1178,6 +1178,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return List.of(workspaceUserMessage, new AiMessage("Thank you for providing the Workspace contents."));
     }
 
+    @Override
     public Collection<ChatMessage> getWorkspaceContentsMessages() throws InterruptedException {
         return getWorkspaceContentsMessages(false);
     }

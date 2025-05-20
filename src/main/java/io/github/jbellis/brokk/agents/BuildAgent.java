@@ -8,7 +8,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.Project;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -346,7 +346,7 @@ public class BuildAgent {
      * @return A CompletableFuture containing the suggested verification command string (either specific test command or build/lint command),
      * or null if BuildDetails are unavailable.
      */
-    static CompletableFuture<String> determineVerificationCommandAsync(ContextManager cm) {
+    static CompletableFuture<String> determineVerificationCommandAsync(IContextManager cm) {
         // Runs asynchronously on the background executor provided by ContextManager
         return CompletableFuture.supplyAsync(() -> {
             // Retrieve build details from the project associated with the ContextManager

@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessageType;
+import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.git.InMemoryRepo;
@@ -41,6 +42,23 @@ class EditBlockTest {
         @Override
         public IGitRepo getRepo() {
             return repo;
+        }
+
+        @Override
+        public IConsoleIO getIo() {
+            return new IConsoleIO() {
+                @Override
+                public void actionOutput(String msg) {
+                }
+
+                @Override
+                public void toolErrorRaw(String msg) {
+                }
+
+                @Override
+                public void llmOutput(String token, ChatMessageType type) {
+                }
+            };
         }
     }
 
@@ -252,6 +270,8 @@ class EditBlockTest {
 
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
         var blocks = EditBlockParser.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
+        var ca = new CodeAgent(ctx, new Service.UnavailableStreamingModel());
+        ca.preCreateNewFiles(blocks);
         EditBlock.applyEditBlocks(ctx, io, blocks);
 
         // existing filename
@@ -346,7 +366,7 @@ class EditBlockTest {
     @Test
     void testResolveFilenameIgnoreCase(@TempDir Path tempDir) throws EditBlock.SymbolAmbiguousException, EditBlock.SymbolNotFoundException {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
-        var f = EditBlock.resolveProjectFile(ctx, "fOo.TXt", false);
+        var f = EditBlock.resolveProjectFile(ctx, "fOo.TXt");
         assertEquals("foo.txt", f.getFileName());
     }
 

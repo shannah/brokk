@@ -178,43 +178,7 @@ class EditBlockConflictsTest {
         assertEquals("one", blocks[1].beforeText().trim());
         assertEquals("two", blocks[1].afterText().trim());
     }
-
-    @Test
-    void testApplyEditsCreatesNewFile(@TempDir Path tempDir) throws IOException, EditBlock.AmbiguousMatchException, EditBlock.NoMatchException {
-        TestConsoleIO io = new TestConsoleIO();
-        Path existingFile = tempDir.resolve("fileA.txt");
-        Files.writeString(existingFile, "Original text\n");
-
-        String response = """
-                <<<<<<< SEARCH fileA.txt
-                Original text
-                ======= fileA.txt
-                Updated text
-                >>>>>>> REPLACE fileA.txt
-
-                <<<<<<< SEARCH newFile.txt
-                ======= newFile.txt
-                Created content
-                >>>>>>> REPLACE newFile.txt
-                """;
-
-        TestContextManager ctx = new TestContextManager(tempDir, Set.of("fileA.txt"));
-        var blocks = EditBlockConflictsParser.instance.parseEditBlocks(response, ctx.getEditableFiles()).blocks();
-        EditBlock.applyEditBlocks(ctx, io, blocks);
-
-        // existing filename
-        String actualA = Files.readString(existingFile);
-        assertTrue(actualA.contains("Updated"));
-
-        // new filename
-        Path newFile = tempDir.resolve("newFile.txt");
-        String newFileText = Files.readString(newFile);
-        assertEquals("Created content\n", newFileText);
-
-        // no errors
-        assertTrue(io.getErrorLog().isEmpty(), "No error expected");
-    }
-
+    
     @Test
     void testApplyEditsFailsForUnknownFile(@TempDir Path tempDir) throws IOException, EditBlock.AmbiguousMatchException, EditBlock.NoMatchException {
         TestConsoleIO io = new TestConsoleIO();
@@ -287,7 +251,7 @@ class EditBlockConflictsTest {
     @Test
     void testResolveFilenameIgnoreCase(@TempDir Path tempDir) throws EditBlock.SymbolAmbiguousException, EditBlock.SymbolNotFoundException {
         TestContextManager ctx = new TestContextManager(tempDir, Set.of("foo.txt"));
-        var f = EditBlock.resolveProjectFile(ctx, "fOo.TXt", false);
+        var f = EditBlock.resolveProjectFile(ctx, "fOo.TXt");
         assertEquals("foo.txt", f.getFileName());
     }
 

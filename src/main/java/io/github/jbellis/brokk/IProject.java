@@ -51,4 +51,8 @@ public interface IProject {
     default List<String> overrideMissingModels(Set<String> availableModels, String genericDefaultModel) {
         return List.of();
     }
+
+    default String getStyleGuide() {
+        return "";
+    }
 }

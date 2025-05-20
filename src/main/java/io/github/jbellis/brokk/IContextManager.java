@@ -1,24 +1,47 @@
 package io.github.jbellis.brokk;
 
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 /**
  * Interface for context manager functionality
  */
 public interface IContextManager {
+    default EditBlockParser getParserForWorkspace() {
+        throw new UnsupportedOperationException();
+    }
+
+    default ExecutorService getBackgroundTasks() {
+        throw new UnsupportedOperationException();
+    }
+
+    default Collection<? extends ChatMessage> getHistoryMessages() {
+        return List.of();
+    }
+
+    default Collection<? extends ChatMessage> getWorkspaceContentsMessages() throws InterruptedException {
+        return List.of();
+    }
+
+    default String getEditableSummary() {
+        return "";
+    }
+
+    default String getReadOnlySummary() {
+        return "";
+    }
 
     /**
      * Listener interface for context change events.
@@ -95,7 +118,6 @@ public interface IContextManager {
     }
 
     default void editFiles(Collection<ProjectFile> path) {
-        throw new UnsupportedOperationException();
     }
 
     default IProject getProject() {
