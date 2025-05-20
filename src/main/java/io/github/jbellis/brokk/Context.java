@@ -583,10 +583,6 @@ public class Context implements Serializable {
      * @return A new Context instance with the updated history.
      */
     public Context withCompressedHistory(List<TaskEntry> newHistory) {
-        // Use the new history
-        // original contents
-        // parsed output
-        // Call refresh to potentially update autoContext
         return new Context(newId(),
                            contextManager,
                            editableFiles,
